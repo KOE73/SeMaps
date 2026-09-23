@@ -7,6 +7,19 @@ the question it answers. Layout is manual only; there is no auto-layout.
   does a relation point anywhere.
 - Meaning (containers, axes, texts, views) stays with the human and the agent.
 
+## Two-way work with agents
+
+The map is shared ground between people and coding agents, and it works in both directions:
+
+- **Agent → map.** Following the rules in [`docs/CONTRACT.md`](docs/CONTRACT.md), an agent records
+  what it built or learned: entities, relations, descriptions, which container a thing belongs to.
+  Views and layout stay human; the agent writes registries and texts, never geometry.
+- **Map → agent.** Before changing code, an agent reads the map to learn the intended
+  architecture: which part owns what, which interactions are allowed, what a relation means. Its
+  work then conforms to the design instead of drifting from it.
+
+The map is the architecture as intended; the sync check shows where the code has moved away from it.
+
 ## Layout
 
 | Path | What |
