@@ -4,7 +4,7 @@
   "private": true,
   "type": "module",
   "description": "Semantic architecture diagram canvas and editor. Fixed coordinates, no auto-layout.",
-  "license": "UNLICENSED",
+  "license": "MIT",
   "files": [
     "dist"
   ],

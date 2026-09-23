@@ -17,6 +17,7 @@
     <Version>0.2.0</Version>
     <Authors>SeMaps</Authors>
     <Description>semaps-extract-csharp: prints code facts for a C# workspace per docs/EXTRACTOR.md.</Description>
+    <PackageLicenseExpression>MIT</PackageLicenseExpression>
     <PackageType>DotnetTool</PackageType>
   </PropertyGroup>
 
