@@ -40,36 +40,37 @@ entries give you relations of type `references`, with the `.csproj` as `evidence
 with a short script instead of writing them by hand. This is enough to open the editor and drag
 entities from the registry panel.
 
-## A fuller registry from the code (until `extractors/csharp` exists)
+Deeper than assemblies (types, inheritance, calls) is the job of `extractors/csharp`
+([plan](plans/PLAN_20260923_extractors_csharp.md)). Do not parse the code with regexes to fill
+`entities.json` by hand: ids and relations produced that way are not reproducible, and nothing
+will keep them in sync with the code.
 
-This is a regex-level extraction, not Roslyn. It is good enough for a first map.
-
-- **Types:** top-level `class|interface|struct|record|enum` per `.cs`. Entity id is `e_<lowercased
-  name>`, and `kind` is the keyword, with `record struct` → `record-struct`. Keep `codeRef` and
-  `namespace`. Skip nested types and generated code (for example protobuf reflection).
-- **Relations:** from the base list after `:`. The type is `implements` if the target is a known
-  interface and `extends` otherwise. `evidence` is the declaring file. Bases outside the model are
-  dropped. Ids stay stable as long as type names do; regeneration must not change them.
-- **Containers:** one per assembly and one per first-level folder, with `match.path` set. Every
-  container needs a `name` in **every** language (`недостача` otherwise).
-- **Descriptions:** take the XML `<summary>`. Bilingual `EN:`/`RU:` blocks split into
-  `text.en.json` and `text.ru.json`. Types without docs get no text, and that is a legal gap
-  (entity text is not mandatory).
-
-### Two languages: link them or `check` fails
+## Two languages: link them or `check` fails
 
 If the same field is `authored` in two catalogues, `check` reports `расхождение`. Decide which
 one is the source and mark the other as
 `{ "origin": "translated", "from": "<src lang>", "fromHash": "<hash>" }`. Compute `fromHash`
-exactly like `core.Hash`:
-1. Normalise the source text: CRLF→LF, strip trailing spaces and tabs, collapse 3+ newlines into 2,
-   trim.
-2. Run FNV-1a 32-bit over its **UTF-16 code units**.
-3. Write the result as 8 lowercase hex digits.
+as CONTRACT §7.3 describes.
 
 Pick the direction from the project's own convention. For example, if its comment rule says "EN
 first, RU the same meaning", then RU is `translated from en`. Texts you write yourself take
 whichever language you wrote first as the source.
+
+## Hand-over: show the user where the model is
+
+An empty canvas looks like a failure, so say where the registry went. In the editor the right
+panel **«База сущностей»** (entity base) sits collapsed next to «Свойства» and «Фильтры»;
+entities are dragged from it onto the canvas. Relations appear as soon as both ends are on the
+view. Placing the first nodes is the human's job, not yours — including a "starter" layout
+(CONTRACT §8.2 rule 3, §9.6): a view with nodes an agent wrote is a contract violation, not a
+favour.
+
+## Verifying that the editor opened the model
+
+A 200 on `catalog.json` proves nothing. Open `/app/`, click the view in «Каталог схем» and check
+that every file of the project (`views/…`, `project.json`, `entities.json`, `relations.json`,
+`relation-types.json`, every `text.<lang>.json`) returned 200. A 404 on the view with a 200 on
+`catalog.json` means two servers share the port (see the port trap).
 
 ## Traps
 
@@ -87,7 +88,6 @@ whichever language you wrote first as the source.
   notice this. The browser then gets `catalog.json` from one workspace and a
   `HTTP 404` on the view from the other. Diagnose with `netstat -ano | grep :P` and the process
   command lines. The fix is a unique port in the `.semaps` file.
-- Generator scripts full of regexes (`\t`, `\n`, `\\`): write them as files with the file-writing
-  tool, not through a bash heredoc or `python -c`. On Windows/Git Bash, escaping got mangled even
-  with `<<'EOF'`.
+- Scripts with backslashes (`\t`, `\\`): write them as files, not through a bash heredoc or
+  `python -c`; on Windows/Git Bash the escaping got mangled even with `<<'EOF'`.
 - Do not commit in the consuming repo unless asked; list the created files for the user.
