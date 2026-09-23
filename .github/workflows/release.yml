@@ -40,6 +40,14 @@ jobs:
           GOOS=linux   GOARCH=amd64 go build -trimpath -ldflags "-s -w" -o out/semaps-linux-amd64 ./host
           GOOS=darwin  GOARCH=arm64 go build -trimpath -ldflags "-s -w" -o out/semaps-darwin-arm64 ./host
 
+      - uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: 10.0.x
+
+      - name: Pack the C# extractor as a dotnet tool
+        working-directory: extractors/csharp
+        run: dotnet test && dotnet pack src/SeMaps.Extract.CSharp -c Release -o ../../out
+
       - uses: softprops/action-gh-release@v2
         with:
           files: out/*

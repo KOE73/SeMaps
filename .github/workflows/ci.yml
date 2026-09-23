@@ -38,3 +38,20 @@ jobs:
 
       - name: Example workspace passes the model check
         run: go run ./host check examples/example.semaps
+
+      - name: Extractor TypeScript — tests and a run on the editor itself
+        working-directory: extractors/typescript
+        run: |
+          npm ci
+          npm test
+          npm run self > /dev/null
+
+      - uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: 10.0.x
+
+      - name: Extractor C# — tests and pack
+        working-directory: extractors/csharp
+        run: |
+          dotnet test
+          dotnet pack src/SeMaps.Extract.CSharp -c Release -o ../../dist/nupkg
