@@ -17,8 +17,8 @@ the question it answers. Layout is manual only; there is no auto-layout.
 | `extractors/<lang>/` | one process per language, prints code facts as JSON |
 | `schemas/` | JSON schemas: workspace contract, extractor facts |
 | `docs/` | CONTRACT, API, EXTRACTOR, ADR |
+| `agents/` | rules for agents; documentation genres and naming |
 | `examples/workspace/` | minimal workspace to open |
 
 A consuming project keeps only its workspace (`docs/diagrams/`) — no Node, no Go.
 
-Origin: `tools/spla-diagram` and `tools/spla-atlas` from SPLA.

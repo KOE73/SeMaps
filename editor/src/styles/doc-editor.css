@@ -1,0 +1,687 @@
+/* ==========================================================================
+   SeMaps Doc & Description Editor and Rich Markdown Styles
+   ========================================================================== */
+
+/* ------------------------------------------------------------------ Modal */
+
+.semaps-doc-modal {
+  position: fixed;
+  inset: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 20px;
+  background: rgba(0, 0, 0, 0.55);
+  backdrop-filter: blur(5px);
+  z-index: 1000;
+  user-select: none;
+}
+
+.semaps-doc-modal[hidden] {
+  display: none !important;
+}
+
+.semaps-doc-card {
+  display: flex;
+  flex-direction: column;
+  width: min(1140px, 86vw);
+  height: min(780px, 85vh);
+  min-width: 580px;
+  min-height: 460px;
+  max-width: 96vw;
+  max-height: 92vh;
+  resize: both;
+  overflow: hidden;
+  border: 1px solid var(--line, #3a3a3c);
+  border-radius: 12px;
+  background: var(--panel, #1e1e20);
+  box-shadow: 0 20px 50px rgba(0, 0, 0, 0.6), 0 0 0 1px var(--border, #2d2d30);
+  user-select: text;
+}
+
+/* ------------------------------------------------------------------ Header */
+
+.semaps-doc-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 10px 16px;
+  background: var(--panel-alt, #252528);
+  border-bottom: 1px solid var(--line, #3a3a3c);
+  cursor: grab;
+  user-select: none;
+}
+
+.semaps-doc-head:active {
+  cursor: grabbing;
+}
+
+.semaps-doc-title-group {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  min-width: 0;
+  flex: 1;
+}
+
+.semaps-doc-title-icon {
+  font-size: 16px;
+  line-height: 1;
+  opacity: 0.9;
+}
+
+.semaps-doc-title-text {
+  font-size: 14px;
+  font-weight: 700;
+  color: var(--text, #f0f0f0);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.semaps-doc-kind-badge {
+  font-size: 10px;
+  font-weight: 700;
+  padding: 2px 7px;
+  border-radius: 4px;
+  background: var(--panel, #1e1e20);
+  border: 1px solid var(--line, #3a3a3c);
+  color: var(--muted, #999);
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+  flex-shrink: 0;
+}
+
+.semaps-doc-head-actions {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  flex-shrink: 0;
+}
+
+.semaps-doc-lang-selector {
+  display: flex;
+  align-items: center;
+  background: var(--input-bg, #141416);
+  border: 1px solid var(--line, #3a3a3c);
+  border-radius: 6px;
+  padding: 2px;
+  gap: 2px;
+}
+
+.semaps-doc-lang-btn {
+  background: transparent;
+  border: none;
+  color: var(--muted, #999);
+  font-size: 11px;
+  font-weight: 700;
+  padding: 2px 8px;
+  border-radius: 4px;
+  cursor: pointer;
+  transition: all 0.15s ease;
+}
+
+.semaps-doc-lang-btn:hover {
+  color: var(--text, #fff);
+}
+
+.semaps-doc-lang-btn.is-active {
+  background: var(--accent, #3b82f6);
+  color: #fff;
+}
+
+.semaps-doc-close-btn {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 26px;
+  height: 26px;
+  border: none;
+  background: transparent;
+  color: var(--muted, #999);
+  border-radius: 6px;
+  cursor: pointer;
+  font-size: 14px;
+  transition: all 0.15s;
+}
+
+.semaps-doc-close-btn:hover {
+  background: rgba(239, 68, 68, 0.2);
+  color: #ef4444;
+}
+
+/* ------------------------------------------------------------------ Body */
+
+.semaps-doc-body {
+  display: flex;
+  flex-direction: column;
+  flex: 1;
+  min-height: 0;
+  padding: 14px 16px;
+  gap: 12px;
+  overflow: hidden;
+}
+
+.semaps-doc-section-desc {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  flex-shrink: 0;
+}
+
+.semaps-doc-label {
+  font-size: 11px;
+  font-weight: 700;
+  color: var(--muted, #a0a0a0);
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+}
+
+.semaps-doc-desc-input {
+  width: 100%;
+  padding: 8px 10px;
+  font-size: 12px;
+  line-height: 1.4;
+  background: var(--input-bg, #141416);
+  color: var(--text, #f0f0f0);
+  border: 1px solid var(--line, #3a3a3c);
+  border-radius: 6px;
+  box-sizing: border-box;
+  resize: vertical;
+  min-height: 38px;
+  max-height: 80px;
+  font-family: inherit;
+}
+
+.semaps-doc-desc-input:focus {
+  outline: none;
+  border-color: var(--accent, #3b82f6);
+  box-shadow: 0 0 0 2px rgba(59, 130, 246, 0.25);
+}
+
+/* ------------------------------------------------------------------ Doc Section */
+
+.semaps-doc-section-main {
+  display: flex;
+  flex-direction: column;
+  flex: 1;
+  min-height: 0;
+  border: 1px solid var(--line, #3a3a3c);
+  border-radius: 8px;
+  overflow: hidden;
+  background: var(--input-bg, #141416);
+}
+
+.semaps-doc-toolbar-bar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 6px 10px;
+  background: var(--panel-alt, #252528);
+  border-bottom: 1px solid var(--line, #3a3a3c);
+  gap: 12px;
+  flex-shrink: 0;
+  user-select: none;
+}
+
+.semaps-doc-toolbar {
+  display: flex;
+  align-items: center;
+  gap: 3px;
+  flex-wrap: wrap;
+}
+
+.semaps-doc-tb-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 26px;
+  height: 24px;
+  padding: 0 6px;
+  border: 1px solid transparent;
+  background: transparent;
+  color: var(--text, #e0e0e0);
+  border-radius: 4px;
+  font-size: 11px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: all 0.12s ease;
+}
+
+.semaps-doc-tb-btn:hover {
+  background: var(--panel, #1e1e20);
+  border-color: var(--line, #3a3a3c);
+  color: var(--accent, #3b82f6);
+}
+
+.semaps-doc-tb-sep {
+  width: 1px;
+  height: 16px;
+  background: var(--line, #3a3a3c);
+  margin: 0 4px;
+}
+
+.semaps-doc-view-tabs {
+  display: flex;
+  align-items: center;
+  background: var(--panel, #1e1e20);
+  border: 1px solid var(--line, #3a3a3c);
+  border-radius: 6px;
+  padding: 2px;
+  gap: 2px;
+}
+
+.semaps-doc-tab-btn {
+  background: transparent;
+  border: none;
+  color: var(--muted, #999);
+  font-size: 11px;
+  font-weight: 600;
+  padding: 2px 9px;
+  border-radius: 4px;
+  cursor: pointer;
+  transition: all 0.15s ease;
+}
+
+.semaps-doc-tab-btn:hover {
+  color: var(--text, #fff);
+}
+
+.semaps-doc-tab-btn.is-active {
+  background: var(--accent, #3b82f6);
+  color: #fff;
+}
+
+/* ------------------------------------------------------------------ Content View */
+
+.semaps-doc-content-area {
+  display: flex;
+  flex: 1;
+  min-height: 0;
+  position: relative;
+  overflow: hidden;
+}
+
+.semaps-doc-editor-pane,
+.semaps-doc-preview-pane {
+  flex: 1;
+  min-height: 0;
+  height: 100%;
+  box-sizing: border-box;
+  overflow: auto;
+}
+
+.semaps-doc-editor-pane {
+  display: flex;
+}
+
+.semaps-doc-textarea {
+  width: 100%;
+  height: 100%;
+  box-sizing: border-box;
+  border: none;
+  padding: 12px 14px;
+  font-family: ui-monospace, SFMono-Regular, "Cascadia Code", Consolas, "Liberation Mono", Menlo, monospace;
+  font-size: 12px;
+  line-height: 1.55;
+  background: transparent;
+  color: var(--text, #f0f0f0);
+  resize: none;
+  outline: none;
+  tab-size: 2;
+}
+
+.semaps-doc-preview-pane {
+  padding: 14px 16px;
+  background: var(--panel, #1e1e20);
+  border-left: 1px solid var(--line, #3a3a3c);
+}
+
+/* View Mode states */
+.semaps-doc-content-area.mode-edit .semaps-doc-preview-pane {
+  display: none !important;
+}
+
+.semaps-doc-content-area.mode-preview .semaps-doc-editor-pane {
+  display: none !important;
+}
+
+.semaps-doc-content-area.mode-preview .semaps-doc-preview-pane {
+  border-left: none;
+  background: transparent;
+}
+
+.semaps-doc-content-area.mode-split .semaps-doc-editor-pane {
+  flex: 1 1 50%;
+}
+
+.semaps-doc-content-area.mode-split .semaps-doc-preview-pane {
+  flex: 1 1 50%;
+}
+
+/* ------------------------------------------------------------------ Markdown Body Styling */
+
+.semaps-markdown-body {
+  font-size: 12px;
+  line-height: 1.6;
+  color: var(--text, #f0f0f0);
+  word-wrap: break-word;
+}
+
+.semaps-markdown-body h1,
+.semaps-markdown-body h2,
+.semaps-markdown-body h3,
+.semaps-markdown-body h4 {
+  margin-top: 14px;
+  margin-bottom: 8px;
+  font-weight: 700;
+  line-height: 1.3;
+  color: var(--text, #ffffff);
+}
+
+.semaps-markdown-body h1 {
+  font-size: 16px;
+  border-bottom: 1px solid var(--line, #3a3a3c);
+  padding-bottom: 4px;
+}
+
+.semaps-markdown-body h2 {
+  font-size: 14px;
+  border-bottom: 1px solid var(--line, #3a3a3c);
+  padding-bottom: 3px;
+}
+
+.semaps-markdown-body h3 {
+  font-size: 13px;
+}
+
+.semaps-markdown-body h4 {
+  font-size: 12px;
+}
+
+.semaps-markdown-body p {
+  margin-top: 0;
+  margin-bottom: 8px;
+}
+
+.semaps-markdown-body p:last-child {
+  margin-bottom: 0;
+}
+
+.semaps-markdown-body a {
+  color: var(--accent, #3b82f6);
+  text-decoration: underline;
+  text-underline-offset: 2px;
+}
+
+.semaps-markdown-body code {
+  font-family: ui-monospace, SFMono-Regular, Consolas, monospace;
+  font-size: 11px;
+  padding: 2px 5px;
+  border-radius: 4px;
+  background: var(--panel-alt, #2a2a2d);
+  color: #ff9800;
+  border: 1px solid var(--line, #3a3a3c);
+}
+
+.semaps-markdown-body pre {
+  margin: 8px 0;
+  padding: 10px 12px;
+  border-radius: 6px;
+  background: var(--input-bg, #101012);
+  border: 1px solid var(--line, #3a3a3c);
+  overflow-x: auto;
+}
+
+.semaps-markdown-body pre code {
+  background: transparent;
+  border: none;
+  padding: 0;
+  color: var(--text, #f0f0f0);
+}
+
+.semaps-markdown-body blockquote {
+  margin: 8px 0;
+  padding: 4px 12px;
+  border-left: 3px solid var(--accent, #3b82f6);
+  background: rgba(59, 130, 246, 0.08);
+  border-radius: 0 4px 4px 0;
+  color: var(--text, #e5e5e5);
+}
+
+.semaps-markdown-body ul,
+.semaps-markdown-body ol {
+  margin-top: 4px;
+  margin-bottom: 8px;
+  padding-left: 20px;
+}
+
+.semaps-markdown-body li {
+  margin-bottom: 3px;
+}
+
+.semaps-markdown-body table {
+  border-collapse: collapse;
+  width: 100%;
+  margin: 10px 0;
+  font-size: 11px;
+}
+
+.semaps-markdown-body th,
+.semaps-markdown-body td {
+  border: 1px solid var(--line, #3a3a3c);
+  padding: 6px 10px;
+  text-align: left;
+}
+
+.semaps-markdown-body th {
+  background: var(--panel-alt, #252528);
+  font-weight: 700;
+}
+
+.semaps-markdown-body tr:nth-child(even) {
+  background: rgba(255, 255, 255, 0.02);
+}
+
+.semaps-doc-empty-preview {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  height: 100%;
+  color: var(--muted, #777);
+  font-style: italic;
+  font-size: 12px;
+  text-align: center;
+  padding: 20px;
+}
+
+/* ------------------------------------------------------------------ Footer */
+
+.semaps-doc-foot {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 10px 16px;
+  background: var(--panel-alt, #252528);
+  border-top: 1px solid var(--line, #3a3a3c);
+  gap: 12px;
+  flex-shrink: 0;
+  user-select: none;
+}
+
+.semaps-doc-foot-hint {
+  font-size: 11px;
+  color: var(--muted, #888);
+  font-family: ui-monospace, SFMono-Regular, monospace;
+}
+
+.semaps-doc-foot-actions {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.semaps-doc-btn {
+  padding: 6px 14px;
+  border-radius: 6px;
+  font-size: 12px;
+  font-weight: 600;
+  cursor: pointer;
+  border: 1px solid var(--line, #3a3a3c);
+  background: var(--panel, #1e1e20);
+  color: var(--text, #f0f0f0);
+  transition: all 0.15s ease;
+}
+
+.semaps-doc-btn:hover {
+  background: var(--panel-alt, #2a2a2d);
+  border-color: var(--border, #4a4a4d);
+}
+
+.semaps-doc-btn-primary {
+  background: var(--accent, #3b82f6);
+  border-color: var(--accent, #3b82f6);
+  color: #fff;
+}
+
+.semaps-doc-btn-primary:hover {
+  background: #2563eb;
+  border-color: #2563eb;
+}
+
+/* ------------------------------------------------------------------ Rich Doc Tooltip */
+
+.semaps-rich-doc-tooltip {
+  position: fixed;
+  z-index: 1000;
+  width: 560px;
+  max-width: 92vw;
+  max-height: 520px;
+  background: var(--panel, #1e1e20);
+  color: var(--text, #f0f0f0);
+  border: 1px solid var(--border, #3a3a3c);
+  border-radius: 10px;
+  padding: 14px 16px;
+  font-size: 13px;
+  line-height: 1.5;
+  box-shadow: 0 16px 40px rgba(0, 0, 0, 0.6), 0 0 0 1px var(--line, #2d2d30);
+  pointer-events: none;
+  transition: opacity 0.12s ease-out;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  overflow: hidden;
+}
+
+.semaps-rich-doc-tooltip-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  border-bottom: 1px solid var(--line, #3a3a3c);
+  padding-bottom: 6px;
+}
+
+.semaps-rich-doc-tooltip-title {
+  font-weight: 700;
+  font-size: 14px;
+  color: var(--text, #fff);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.semaps-rich-doc-tooltip-desc {
+  color: var(--text, #d0d0d0);
+  font-size: 12px;
+  line-height: 1.5;
+}
+
+.semaps-rich-doc-tooltip-doc {
+  flex: 1;
+  max-height: 360px;
+  overflow-y: auto;
+  padding-right: 6px;
+  font-size: 13px;
+  line-height: 1.55;
+}
+
+.semaps-rich-doc-tooltip-foot {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  font-size: 10px;
+  color: var(--muted, #888);
+  border-top: 1px dashed var(--line, #3a3a3c);
+  padding-top: 4px;
+}
+
+/* ------------------------------------------------------------------ Edge Controls Floating Bar */
+
+.semaps-edge-controls {
+  position: fixed;
+  z-index: 1050;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 4px 10px;
+  background: var(--panel, #1e1e20);
+  border: 1px solid var(--border, #3a3a3c);
+  border-radius: 20px;
+  box-shadow: 0 6px 18px rgba(0, 0, 0, 0.45), 0 0 0 1px var(--line, #2d2d30);
+  transform: translate(-50%, -100%);
+  pointer-events: auto;
+  transition: opacity 0.15s ease;
+  user-select: none;
+}
+
+/* Invisible hit bridge between edge line and floating controls */
+.semaps-edge-controls::after {
+  content: "";
+  position: absolute;
+  top: 100%;
+  left: -12px;
+  right: -12px;
+  height: 20px;
+  background: transparent;
+}
+
+.semaps-edge-ctrl-type {
+  font-size: 10px;
+  font-weight: 700;
+  color: var(--muted, #999);
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+  padding: 0 4px;
+}
+
+.semaps-edge-ctrl-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 22px;
+  height: 22px;
+  border-radius: 50%;
+  border: 1px solid var(--line, #3a3a3c);
+  background: var(--panel-alt, #252528);
+  color: var(--text, #f0f0f0);
+  font-size: 11px;
+  cursor: pointer;
+  transition: all 0.15s ease;
+  padding: 0;
+}
+
+.semaps-edge-ctrl-btn:hover {
+  background: var(--accent, #3b82f6);
+  border-color: var(--accent, #3b82f6);
+  color: #fff;
+  transform: scale(1.1);
+}
+
+.semaps-edge-ctrl-btn.has-doc {
+  background: #eff6ff;
+  border-color: #60a5fa;
+  color: #1d4ed8;
+}
+

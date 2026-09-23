@@ -1,0 +1,325 @@
+/*
+ * Canvas Visual Modifiers & Filter Flyout Styling
+ * Modular stylesheet for live canvas image adjustments and stroke filters.
+ */
+
+/* ==========================================================================
+   Canvas Element Filters Application
+   ========================================================================== */
+
+.semaps-canvas-host {
+  /* Dynamic CSS filter chain controlled by CanvasFilterManager */
+  --semaps-filter-brightness: 100%;
+  --semaps-filter-contrast: 100%;
+  --semaps-filter-sepia: 0%;
+  --semaps-filter-hue-rotate: 0deg;
+  --semaps-filter-saturate: 100%;
+  --semaps-matte-overlay-opacity: 0;
+  --semaps-matte-color: #1a1a1a;
+  --semaps-edge-stroke-boost: 0px;
+}
+
+.semaps-canvas-host .semaps-canvas {
+  filter: brightness(var(--semaps-filter-brightness))
+          contrast(var(--filter-contrast, var(--semaps-filter-contrast)))
+          sepia(var(--semaps-filter-sepia))
+          hue-rotate(var(--semaps-filter-hue-rotate))
+          saturate(var(--semaps-filter-saturate));
+  transition: filter 0.15s ease;
+}
+
+/* Stroke boost on edges */
+.semaps-canvas-host.with-stroke-boost .semaps-edge-line {
+  stroke-width: calc(1.5px + var(--semaps-edge-stroke-boost, 0.5px)) !important;
+}
+
+/* Matte overlay on top of canvas to soften extreme whites in dark environments */
+.semaps-canvas-matte-layer {
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  background-color: var(--semaps-matte-color);
+  opacity: var(--semaps-matte-overlay-opacity);
+  mix-blend-mode: multiply;
+  transition: opacity 0.15s ease;
+  z-index: 10;
+}
+
+/* ==========================================================================
+   Canvas Filters Flyout Popup
+   ========================================================================== */
+
+.canvas-filters-backdrop {
+  position: fixed;
+  inset: 0;
+  z-index: 999;
+  background: transparent;
+}
+
+.canvas-filters-popup {
+  position: fixed;
+  z-index: 1000;
+  width: 320px;
+  background: var(--panel, #252526);
+  border: 1px solid var(--border, #3a3a3c);
+  border-radius: 8px;
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.35);
+  display: flex;
+  flex-direction: column;
+  color: var(--text, #e6e6e6);
+  font-size: 12px;
+  user-select: none;
+  animation: canvasFilterFadeIn 0.15s ease-out;
+  overflow: hidden;
+}
+
+@keyframes canvasFilterFadeIn {
+  from {
+    opacity: 0;
+    transform: translateY(-4px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+.canvas-filters-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 8px 12px;
+  background: var(--panel-alt, #2d2d30);
+  border-bottom: 1px solid var(--line, #3a3a3c);
+}
+
+.canvas-filters-title {
+  font-weight: 600;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 12.5px;
+}
+
+.canvas-filters-theme-badge {
+  font-size: 10px;
+  font-weight: 600;
+  text-transform: uppercase;
+  padding: 2px 6px;
+  border-radius: 4px;
+  background: var(--accent-soft, rgba(78, 161, 255, 0.15));
+  color: var(--accent, #4ea1ff);
+}
+
+.canvas-filters-body {
+  padding: 10px 12px;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  max-height: 480px;
+  overflow-y: auto;
+}
+
+.canvas-filters-section {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  padding-bottom: 10px;
+  border-bottom: 1px solid var(--line, #3a3a3c);
+}
+
+.canvas-filters-section:last-of-type {
+  border-bottom: none;
+  padding-bottom: 0;
+}
+
+.canvas-filters-section-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+
+.canvas-filters-section-label {
+  font-weight: 600;
+  font-size: 11.5px;
+  color: var(--text, #e6e6e6);
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.canvas-filters-control-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  margin-top: 2px;
+}
+
+.canvas-filters-control-name {
+  font-size: 11px;
+  color: var(--muted, #9aa0a6);
+  min-width: 80px;
+}
+
+.canvas-filters-slider-wrapper {
+  flex: 1;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.canvas-filters-slider {
+  flex: 1;
+  -webkit-appearance: none;
+  appearance: none;
+  height: 4px;
+  border-radius: 2px;
+  background: var(--hover, #333336);
+  outline: none;
+  cursor: pointer;
+}
+
+.canvas-filters-slider::-webkit-slider-thumb {
+  -webkit-appearance: none;
+  appearance: none;
+  width: 12px;
+  height: 12px;
+  border-radius: 50%;
+  background: var(--accent, #4ea1ff);
+  cursor: pointer;
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.3);
+  transition: transform 0.1s ease;
+}
+
+.canvas-filters-slider::-webkit-slider-thumb:hover {
+  transform: scale(1.2);
+}
+
+.canvas-filters-slider:disabled {
+  opacity: 0.35;
+  cursor: not-allowed;
+}
+
+.canvas-filters-slider:disabled::-webkit-slider-thumb {
+  background: var(--muted, #9aa0a6);
+  cursor: not-allowed;
+}
+
+.canvas-filters-value {
+  font-size: 10.5px;
+  font-family: monospace;
+  color: var(--muted, #9aa0a6);
+  min-width: 32px;
+  text-align: right;
+}
+
+/* Custom switch */
+.canvas-filters-switch {
+  position: relative;
+  display: inline-block;
+  width: 28px;
+  height: 16px;
+  cursor: pointer;
+}
+
+.canvas-filters-switch input {
+  opacity: 0;
+  width: 0;
+  height: 0;
+}
+
+.canvas-filters-switch-slider {
+  position: absolute;
+  inset: 0;
+  background-color: var(--hover, #333336);
+  border: 1px solid var(--border, #3a3a3c);
+  border-radius: 16px;
+  transition: 0.2s;
+}
+
+.canvas-filters-switch-slider::before {
+  position: absolute;
+  content: "";
+  height: 10px;
+  width: 10px;
+  left: 2px;
+  bottom: 2px;
+  background-color: var(--muted, #9aa0a6);
+  border-radius: 50%;
+  transition: 0.2s;
+}
+
+.canvas-filters-switch input:checked + .canvas-filters-switch-slider {
+  background-color: var(--accent, #4ea1ff);
+  border-color: var(--accent, #4ea1ff);
+}
+
+.canvas-filters-switch input:checked + .canvas-filters-switch-slider::before {
+  transform: translateX(12px);
+  background-color: #ffffff;
+}
+
+/* Radio buttons / Pill selector */
+.canvas-filters-pill-group {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  background: var(--input-bg, #1a1a1a);
+  padding: 2px;
+  border-radius: 5px;
+  border: 1px solid var(--line, #3a3a3c);
+}
+
+.canvas-filters-pill {
+  flex: 1;
+  text-align: center;
+  padding: 4px 6px;
+  border-radius: 4px;
+  font-size: 10.5px;
+  color: var(--muted, #9aa0a6);
+  background: transparent;
+  border: none;
+  cursor: pointer;
+  transition: all 0.12s ease;
+}
+
+.canvas-filters-pill:hover {
+  color: var(--text, #e6e6e6);
+}
+
+.canvas-filters-pill.is-active {
+  background: var(--panel-alt, #2d2d30);
+  color: var(--text, #ffffff);
+  font-weight: 600;
+  box-shadow: 0 1px 2px rgba(0, 0, 0, 0.2);
+}
+
+.canvas-filters-footer {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 8px 12px;
+  background: var(--panel-alt, #2d2d30);
+  border-top: 1px solid var(--line, #3a3a3c);
+}
+
+.canvas-filters-reset-btn {
+  padding: 4px 10px;
+  border-radius: 4px;
+  background: transparent;
+  border: 1px solid var(--border, #3a3a3c);
+  color: var(--muted, #9aa0a6);
+  font-size: 11px;
+  cursor: pointer;
+  transition: all 0.15s ease;
+  display: flex;
+  align-items: center;
+  gap: 4px;
+}
+
+.canvas-filters-reset-btn:hover {
+  background: var(--hover, #333336);
+  color: var(--text, #e6e6e6);
+  border-color: var(--text, #e6e6e6);
+}

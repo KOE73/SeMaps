@@ -1,0 +1,14 @@
+{
+  "id": "shapes_demo",
+  "title": "Стенд: формы, шаблоны, подписи",
+  "subtitle": "Проверочный вид для ADR_20260903",
+  "defaultView": "v_main",
+  "languages": [
+    "ru"
+  ],
+  "views": [
+    "v_main"
+  ],
+  "contractVersion": 3,
+  "defaultAxis": "axis_subsystem"
+}

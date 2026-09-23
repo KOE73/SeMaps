@@ -1,0 +1,1481 @@
+import { DiagramCanvas, type Selection } from "../canvas/DiagramCanvas.js";
+import {
+  CenterPortAssigner,
+  DiscretePortAssigner,
+  UniformPortAssigner,
+} from "../canvas/ports/assigners.js";
+import { DiagramDocument } from "../model/document.js";
+import { StyleLibrary } from "../model/StyleLibrary.js";
+import { builtinStyleSheet } from "../model/style-defaults.js";
+import type { WireStyleSheet } from "../model/style-types.js";
+import { parseDocument, serializeDocument } from "../model/wire.js";
+import type { ModelIssue, WireDocument } from "../model/wire-types.js";
+import type { DiagramElement } from "../model/types.js";
+import { snap } from "../geometry/rect.js";
+import { History } from "./History.js";
+import { Inspector, type InspectorHost } from "./Inspector.js";
+import { EdgesPanel } from "./EdgesPanel.js";
+import { StyleEditor } from "./StyleEditor.js";
+import { StyleList, type StylePanelHost } from "./StyleList.js";
+import { BasePanel } from "./BasePanel.js";
+import { FiltersPanel } from "./FiltersPanel.js";
+import {
+  drawioFileName,
+  exportDrawio,
+  HttpProjectStore,
+  HttpStyleStore,
+  download,
+  readJsonFile,
+  type CatalogEntry,
+  type ModelStore,
+  type StyleStore,
+} from "./io/index.js";
+import { el, replaceChildren } from "../util/dom.js";
+import { DocEditorDialog, type DocTargetKind } from "./doc/DocEditorDialog.js";
+import { CodeViewerDialog } from "./code/CodeViewerDialog.js";
+
+export { type CatalogEntry };
+
+export interface DiagramEditorOptions {
+  catalog?: readonly CatalogEntry[];
+  store?: ModelStore;
+  styleStore?: StyleStore;
+  /**
+   * Where the workspace files live, relative to the page.
+   *
+   * The bundle is served from `app/` while the models sit one level up, so
+   * anything the canvas fetches for itself — `templates.json`, `content/` —
+   * needs the same base the stores were given. Defaulting to "./" would make
+   * the canvas ask `app/templates.json`, which is a 404 that shows up as
+   * "templates silently do nothing".
+   */
+  modelsBase?: string;
+}
+
+import { DIAGRAM_CONFIG } from "../constants/diagram-constants.js";
+
+/** How long a text field must be quiet before its edits become a history step. */
+const FIELD_EDIT_QUIET_MS = DIAGRAM_CONFIG.interaction.fieldEditQuietMs;
+
+const INSPECTOR_WIDTH_KEY = "semaps:inspector-width";
+const MIN_INSPECTOR_WIDTH = 320;
+const STYLE_LIST_WIDTH_KEY = "semaps:style-list-width";
+const MIN_STYLE_LIST_WIDTH = 180;
+const MIN_STYLE_EDITOR_WIDTH = 220;
+
+function clamp(value: number, min: number, max: number): number {
+  return Math.min(max, Math.max(min, value));
+}
+
+type Slot =
+  | "canvas" | "catalog" | "custom-catalog" | "custom-catalog-section"
+  | "inspector-badge" | "inspector-body" | "edges-body" | "filters-body" | "title" | "zoom"
+  | "json-modal" | "json-text" | "file-input" | "drop-hint" | "sidebar"
+  | "styles-body" | "style-list" | "style-editor" | "style-pane-resizer"
+  | "inspector" | "inspector-resizer"
+  | "tab-base" | "base-search" | "base-body" | "base-list";
+
+type Tab = "properties" | "edges" | "filters" | "styles" | "base";
+
+/**
+ * One history entry.
+ *
+ * Styles travel with the document because they are edited from the same panel
+ * and belong to the same "what I just did". Snapshotting only the document —
+ * which is what this used to do — meant Ctrl+Z after recolouring a style undid
+ * whatever came *before* it and threw the style edit away without a trace.
+ */
+interface Snapshot {
+  doc: WireDocument;
+  styles: WireStyleSheet;
+}
+
+/**
+ * The application: a canvas plus everything around it.
+ *
+ * Owns the things a reusable canvas must not know about — where models come
+ * from, where they are saved, what undo means, what the toolbar looks like.
+ * All of it talks to the canvas through its public API and its events.
+ */
+import type { DiagramEditorFacade } from "../workbench/commands/types.js";
+
+export class DiagramEditor implements InspectorHost, StylePanelHost, DiagramEditorFacade {
+  readonly canvas: DiagramCanvas;
+
+  private readonly root: HTMLElement;
+  private readonly slots = new Map<Slot, HTMLElement>();
+  readonly history = new History();
+  readonly docEditor: DocEditorDialog;
+  readonly codeViewer: CodeViewerDialog;
+  private readonly inspector: Inspector;
+  private readonly edgesPanel: EdgesPanel;
+  private readonly filtersPanel: FiltersPanel;
+  private readonly styleList: StyleList;
+  private readonly styleEditor: StyleEditor;
+  private readonly basePanel: BasePanel;
+  private readonly store: ModelStore;
+  private readonly styleStore: StyleStore;
+
+  private catalog: readonly CatalogEntry[];
+  private currentEntry: CatalogEntry | null = null;
+  private dirty = false;
+  /**
+   * Tracked apart from `dirty` because the two have different destinations and
+   * different failure modes: a model may be bound to no file at all while the
+   * styles edited through it are perfectly saveable.
+   */
+  private stylesDirty = false;
+  /** Pending coalesced canvas redraw after a burst of style edits. */
+  private redrawHandle: number | null = null;
+  private styleLibrary: StyleLibrary;
+
+  /** Banner over the canvas reporting what is wrong with the open model. */
+  private banner: HTMLElement | null = null;
+
+  /** State before the current burst of typing, held until the burst settles. */
+  private fieldEditSnapshot: string | null = null;
+  private fieldEditTimer: number | null = null;
+
+  constructor(root: HTMLElement, options: DiagramEditorOptions = {}) {
+    this.root = root;
+    this.catalog = options.catalog ?? [];
+    this.store = options.store ?? new HttpProjectStore("./");
+    this.styleStore = options.styleStore ?? new HttpStyleStore("./");
+
+    for (const node of root.querySelectorAll<HTMLElement>("[data-slot]")) {
+      this.slots.set(node.dataset.slot as Slot, node);
+    }
+
+    // The built-in sheet stands in until the real one arrives: the canvas is
+    // constructed synchronously and must never exist without a library, and a
+    // library that fails to load is not a reason to show a grey diagram.
+    this.styleLibrary = StyleLibrary.parse(builtinStyleSheet());
+
+    this.canvas = new DiagramCanvas(this.slot("canvas"), {
+      styles: this.styleLibrary,
+      modelsBase: options.modelsBase,
+    });
+    this.docEditor = new DocEditorDialog(this);
+    this.codeViewer = new CodeViewerDialog();
+    this.inspector = new Inspector(
+      this.slot("inspector-badge"),
+      this.slot("inspector-body"),
+      this,
+    );
+    this.edgesPanel = new EdgesPanel(this.slot("edges-body"), this);
+    this.filtersPanel = new FiltersPanel(this.slot("filters-body"), this);
+    this.styleList = new StyleList(this.slot("style-list"), this);
+    this.styleEditor = new StyleEditor(this.slot("style-editor"), this);
+    this.basePanel = new BasePanel(
+      this.slot("base-search") as HTMLInputElement,
+      this.slot("base-list"),
+      this
+    );
+
+    this.bindCanvas();
+    this.bindActions();
+    this.bindKeyboard();
+    this.bindFiles();
+    this.bindInspectorResize();
+    this.bindStyleListResize();
+    this.initTheme();
+    this.initPorts();
+    this.initLang();
+    this.renderCatalog();
+    this.setTab("properties");
+
+    void this.start();
+  }
+
+  openTab(tab: Tab): void {
+    this.setTab(tab);
+  }
+
+  openDocEditor(targetId?: string | null, kind?: DocTargetKind): void {
+    const id = targetId || this.canvas.selected?.id;
+    if (!id) {
+      this.notify("Выберите элемент или связь для редактирования документации");
+      return;
+    }
+    this.docEditor.open(id, kind);
+  }
+
+  openCodeViewer(codeRef?: string | null, label?: string): void {
+    if (!codeRef) {
+      const selected = this.canvas.selectedElement();
+      if (selected && typeof selected.metadata?.codeRef === "string") {
+        codeRef = selected.metadata.codeRef;
+        label = label || selected.label;
+      }
+    }
+    if (!codeRef) {
+      this.notify("У выбранного элемента не указана ссылка на исходный код (codeRef)");
+      return;
+    }
+    void this.codeViewer.open(codeRef, label);
+  }
+
+  /**
+   * Load the style library, then the first model.
+   *
+   * Ordered, not parallel: `parseDocument` migrates a zone's inline colours
+   * into the library as it parses, so a model opened against the placeholder
+   * library would mint its imported styles into a library about to be thrown
+   * away — and the zones would come back wearing ids that no longer exist.
+   */
+  private async start(): Promise<void> {
+    try {
+      this.setStyleLibrary(StyleLibrary.parse(await this.styleStore.load()));
+    } catch (err) {
+      this.notify(
+        `Библиотека стилей не загружена: ${(err as Error).message}\n` +
+          "Используются встроенные стили. Сохранение стилей перезапишет файл на сервере.",
+      );
+    }
+    this.styleList.render();
+
+    const first = this.catalog[0];
+    if (first !== undefined) await this.openCatalogEntry(first);
+    else this.showCatalogEmptyState();
+  }
+
+  // ---------------------------------------------------------------- wiring
+
+  private slot(name: Slot): HTMLElement {
+    let node = this.slots.get(name);
+    if (node === undefined) {
+      if (name === "file-input" || name === "base-search") {
+        node = document.createElement("input");
+      } else if (name === "json-text") {
+        node = document.createElement("textarea");
+      } else {
+        node = document.createElement("div");
+      }
+      this.slots.set(name, node);
+    }
+    return node;
+  }
+
+  private bindCanvas(): void {
+    this.canvas.events.on("select", (selection) => {
+      // Moving on commits whatever was being typed, so the step belongs to the
+      // element it was typed into.
+      this.flushFieldEdit();
+      this.inspector.render(selection);
+      this.edgesPanel.render();
+      this.syncToolbar(selection);
+    });
+
+    this.canvas.events.on("gesturestart", () => {
+      this.flushFieldEdit();
+      this.history.begin(this.snapshot());
+    });
+
+    this.canvas.events.on("gestureend", () => {
+      if (this.history.end(this.snapshot())) this.syncToolbar(this.canvas.selected);
+    });
+
+    this.canvas.events.on("modelchange", () => {
+      this.markDirty();
+      const element = this.canvas.selectedElement();
+      if (element !== null) this.inspector.updateGeometry(element);
+    });
+
+    this.canvas.events.on("collapse", () => {
+      this.inspector.render(this.canvas.selected);
+      this.edgesPanel.render();
+    });
+
+    this.canvas.events.on("openDocEditor", (payload: { id: string; kind?: DocTargetKind }) => {
+      this.openDocEditor(payload.id, payload.kind);
+    });
+
+    this.canvas.events.on("openCodeViewer", (payload: { id: string; codeRef: string; label?: string }) => {
+      this.openCodeViewer(payload.codeRef, payload.label);
+    });
+
+    this.canvas.events.on("viewport", (state) => {
+      this.slot("zoom").textContent = `${Math.round(state.zoom * 100)}%`;
+    });
+  }
+
+  private bindActions(): void {
+    this.root.addEventListener("click", (e) => {
+      const target = e.target;
+      if (!(target instanceof Element)) return;
+      const actionNode = target.closest<HTMLElement>("[data-action]");
+      if (actionNode === null || actionNode.getAttribute("disabled") !== null) return;
+      const action = actionNode.dataset.action;
+      if (action !== undefined) {
+        if (action === "open-file") {
+          const rect = actionNode.getBoundingClientRect();
+          const pos = { clientX: rect.left + rect.width / 2, clientY: rect.top + rect.height / 2 };
+          if (this.hasUnsavedChanges) {
+            this.confirmDiscardOrSave(pos, () => {
+              (this.slot("file-input") as HTMLInputElement).click();
+            });
+          } else {
+            (this.slot("file-input") as HTMLInputElement).click();
+          }
+          return;
+        }
+        void this.runAction(action);
+      }
+    });
+
+    this.root.addEventListener("change", (e) => {
+      const target = e.target;
+      if (target instanceof HTMLInputElement) {
+        const toggle = target.dataset.toggle;
+        if (toggle !== undefined) this.applyToggle(toggle, target.checked);
+        return;
+      }
+      if (target instanceof HTMLSelectElement) {
+        if (target.dataset.select === "ports") {
+          this.applyPortAssigner(target.value);
+        } else if (target.dataset.select === "theme") {
+          this.applyTheme(target.value);
+        } else if (target.dataset.select === "data-lang") {
+          this.applyDataLang(target.value);
+        }
+      }
+    });
+  }
+
+  dataLang = "ru";
+
+  private initLang(): void {
+    const saved = localStorage.getItem("semaps.dataLang") || "ru";
+    this.applyDataLang(saved);
+  }
+
+  applyDataLang(lang: string): void {
+    this.dataLang = lang;
+    this.canvas.dataLang = lang;
+    localStorage.setItem("semaps.dataLang", lang);
+    const select = this.root.querySelector<HTMLSelectElement>("[data-select='data-lang']");
+    if (select && select.value !== lang) {
+      select.value = lang;
+    }
+    this.inspector.render(this.canvas.selected);
+  }
+
+  private initTheme(): void {
+    const saved = localStorage.getItem("semaps:theme") || "cream";
+    this.applyTheme(saved);
+  }
+
+  applyTheme(theme: string): void {
+    document.documentElement.setAttribute("data-theme", theme);
+    localStorage.setItem("semaps.theme", theme);
+    localStorage.setItem("semaps:theme", theme);
+    const select = this.root.querySelector<HTMLSelectElement>("[data-select='theme']");
+    if (select && select.value !== theme) {
+      select.value = theme;
+    }
+  }
+
+  private async runAction(action: string): Promise<void> {
+    switch (action) {
+      case "create-node": return this.createNode();
+      case "create-zone": return this.createZone();
+      case "delete": return this.deleteSelection();
+      case "undo": return this.undo();
+      case "redo": return this.redo();
+      case "save": return this.save();
+      case "export-drawio": return this.exportDrawio();
+      case "fit": return this.canvas.fit();
+      case "zoom-in": return this.canvas.zoomBy(1.2);
+      case "zoom-out": return this.canvas.zoomBy(0.8);
+      case "zoom-reset": return this.canvas.resetZoom();
+      case "toggle-sidebar": return this.toggleSidebar();
+      case "open-file": return this.slot("file-input").click();
+      case "toggle-json": return this.toggleJsonModal();
+      case "copy-json": return this.copyJson();
+      case "apply-json": return this.applyJson();
+      case "tab-properties": return this.setTab("properties");
+      case "tab-edges": return this.setTab("edges");
+      case "tab-filters": return this.setTab("filters");
+      case "tab-styles": return this.setTab("styles");
+      case "tab-base": return this.setTab("base");
+      default: return;
+    }
+  }
+
+  /**
+   * Swap which half of the right-hand panel is showing.
+   *
+   * Both halves stay in the DOM and are only hidden, so switching tabs cannot
+   * touch the canvas selection — the properties form is still bound to whatever
+   * is selected when the user comes back to it.
+   */
+  private setTab(tab: Tab): void {
+    this.slot("inspector-body").hidden = tab !== "properties";
+    this.slot("edges-body").hidden = tab !== "edges";
+    this.slot("filters-body").hidden = tab !== "filters";
+    this.slot("styles-body").hidden = tab !== "styles";
+    this.slot("base-body").hidden = tab !== "base";
+    this.slot("inspector-badge").hidden = tab !== "properties" && tab !== "edges";
+
+    for (const node of this.root.querySelectorAll<HTMLElement>("[data-tab]")) {
+      node.classList.toggle("is-active", node.dataset.tab === tab);
+    }
+
+    if (tab === "properties") this.inspector.render(this.canvas.selected);
+    else if (tab === "edges") this.edgesPanel.render();
+    else if (tab === "filters") this.filtersPanel.render();
+    else if (tab === "styles") this.styleList.render();
+    else if (tab === "base") this.basePanel.render();
+  }
+
+  applyToggle(name: string, on: boolean): void {
+    switch (name) {
+      case "grid":
+        this.slot("canvas").classList.toggle("with-grid", on);
+        return;
+      case "snap":
+        this.canvas.gridStep = on ? 10 : 0;
+        return;
+      case "structure-edges":
+        // Not a style question, which is why no style can answer it: in
+        // model-core-full.json 100 of 119 edges are implements/extends, and the
+        // 19 that describe runtime behaviour are invisible inside them however
+        // they are coloured. Presentation state only — nothing is written.
+        this.canvas.setEdgeFamilyHidden("structure", !on);
+        return;
+      case "shadows":
+      case "ghost-edges":
+        this.canvas.toggleOverviewShadows(on);
+        return;
+      default:
+        return;
+    }
+  }
+
+  toggleOverviewShadows(on?: boolean): boolean {
+    return this.canvas.toggleOverviewShadows(on);
+  }
+
+  isOverviewShadowsEnabled(): boolean {
+    return this.canvas.isOverviewShadowsEnabled;
+  }
+
+  /**
+   * Swap how edge ends are placed along a side.
+   *
+   * "center" is the default and reproduces the original renderer: every end
+   * sits in the middle of the facing side, so several edges between the same
+   * pair overlap. The others spread them out, ordering both ends by the same
+   * key so the lines stay parallel instead of crossing.
+   *
+   * Nothing is stored in the model — placement is a pure function of it, which
+   * is why this can be switched freely and why the JSON never learns about it.
+   */
+  private initPorts(): void {
+    const saved = localStorage.getItem("semaps.ports") || "uniform";
+    this.applyPortAssigner(saved);
+  }
+
+  applyPortAssigner(id: string): void {
+    localStorage.setItem("semaps.ports", id);
+    const select = this.root.querySelector<HTMLSelectElement>("[data-select='ports']");
+    if (select && select.value !== id) {
+      select.value = id;
+    }
+    switch (id) {
+      case "center":
+        this.canvas.setPortAssigner(new CenterPortAssigner());
+        return;
+      case "discrete":
+        this.canvas.setPortAssigner(new DiscretePortAssigner());
+        return;
+      case "uniform":
+      default:
+        this.canvas.setPortAssigner(new UniformPortAssigner());
+        return;
+    }
+  }
+
+  private bindKeyboard(): void {
+    window.addEventListener("keydown", (e) => {
+      const target = e.target;
+      if (target instanceof HTMLElement) {
+        const tag = target.tagName;
+        if (tag === "INPUT" || tag === "TEXTAREA" || target.isContentEditable) return;
+      }
+
+      const mod = e.ctrlKey || e.metaKey;
+      const key = e.key.toLowerCase();
+
+      if (mod && key === "z") {
+        e.preventDefault();
+        if (e.shiftKey) this.redo();
+        else this.undo();
+      } else if (mod && key === "y") {
+        e.preventDefault();
+        this.redo();
+      } else if (e.key === "Delete" || e.key === "Backspace") {
+        if (this.canvas.selected === null) return;
+        e.preventDefault();
+        this.deleteSelection();
+      } else if (e.key === "F2" || (mod && key === "d")) {
+        if (this.canvas.selected !== null) {
+          e.preventDefault();
+          this.openDocEditor(this.canvas.selected.id);
+        }
+      }
+    });
+  }
+
+  private bindFiles(): void {
+    const input = this.slot("file-input") as unknown as HTMLInputElement;
+    input.addEventListener("change", () => {
+      const file = input.files?.[0];
+      if (file !== undefined) void this.loadFile(file);
+      input.value = "";
+    });
+
+    const hint = this.slot("drop-hint");
+    window.addEventListener("dragover", (e) => {
+      e.preventDefault();
+      if (!e.dataTransfer?.types.includes("application/semaps-entity")) {
+        hint.hidden = false;
+      }
+    });
+    window.addEventListener("dragleave", (e) => {
+      if (e.relatedTarget === null) hint.hidden = true;
+    });
+    window.addEventListener("drop", (e) => {
+      e.preventDefault();
+      hint.hidden = true;
+
+      const entityData = e.dataTransfer?.getData("application/semaps-entity");
+      if (entityData) {
+        try {
+          const payload = JSON.parse(entityData);
+          if (payload && payload.id) {
+            const at = this.canvas.toModel(e.clientX, e.clientY);
+            const doc = this.canvas.model;
+            if (!doc) return;
+            const id = payload.id;
+            const name = payload.textEntry?.name || payload.entity.name || id;
+            const elToAdd = {
+              id,
+              kind: "node" as const,
+              type: payload.entity.kind,
+              label: name,
+              tags: [],
+              metadata: { description: payload.textEntry?.description, codeRef: payload.entity.codeRef },
+              x: at.x,
+              y: at.y,
+              width: 180,
+              height: 60,
+              parent: null as any,
+              children: [],
+              wireOrder: Infinity,
+              raw: {}
+            };
+            const target = doc.containerAt({ x: at.x + 90, y: at.y + 30 });
+            doc.add(elToAdd, target);
+            this.commit("place-entity");
+            this.canvas.select(id);
+            this.basePanel.render();
+          }
+        } catch (err) {}
+        return;
+      }
+      const file = e.dataTransfer?.files[0];
+      if (file === undefined) return;
+      if (!file.name.endsWith(".json")) {
+        this.notify("Перетащите файл с расширением .json");
+        return;
+      }
+      if (this.hasUnsavedChanges) {
+        this.confirmDiscardOrSave({ clientX: e.clientX, clientY: e.clientY }, () => {
+          void this.loadFile(file);
+        });
+      } else {
+        void this.loadFile(file);
+      }
+    });
+  }
+
+  /**
+   * Drag the strip between the canvas and the right panel to resize it.
+   *
+   * The panel was a fixed 380px, which was fine for a short property list but
+   * cramped for the style editor's gradient stops and per-end arrow controls —
+   * exactly the fields a wide monitor has room for. Width lives in
+   * localStorage, not the model: it is a per-viewer convenience, the same
+   * category as which sidebar is collapsed, not something a saved diagram
+   * should carry.
+   */
+  private bindInspectorResize(): void {
+    this.bindColumnResize({
+      handle: this.slot("inspector-resizer"),
+      panel: this.slot("inspector"),
+      storageKey: INSPECTOR_WIDTH_KEY,
+      min: MIN_INSPECTOR_WIDTH,
+      max: () => this.maxInspectorWidth(),
+      // The handle sits to the panel's left, so dragging it left (negative
+      // delta) must widen the panel: growth is the inverse of pointer motion.
+      grow: "left",
+    });
+  }
+
+  /**
+   * The same drag, one level in: the style list against its own editor form,
+   * inside whatever width the inspector panel currently has. Two independent
+   * resizers because the outer one trades the panel against the canvas, and
+   * this one trades the list against the form — different questions, so a
+   * width for the panel does not answer "how much of it goes to the list".
+   */
+  private bindStyleListResize(): void {
+    const list = this.slot("style-list");
+    this.bindColumnResize({
+      handle: this.slot("style-pane-resizer"),
+      panel: list,
+      storageKey: STYLE_LIST_WIDTH_KEY,
+      min: MIN_STYLE_LIST_WIDTH,
+      max: () => this.slot("styles-body").getBoundingClientRect().width - MIN_STYLE_EDITOR_WIDTH,
+      // Here the handle sits to the panel's right, so dragging it right
+      // (positive delta) is what widens it — motion and growth agree.
+      grow: "right",
+    });
+  }
+
+  /**
+   * One draggable column-width divider. `grow` says which side of the handle
+   * the resized panel is on, which is the one thing that differs between the
+   * two current uses — everything else (clamping, persistence, the dragging
+   * class) is identical and not worth writing twice.
+   */
+  private bindColumnResize(options: {
+    handle: HTMLElement;
+    panel: HTMLElement;
+    storageKey: string;
+    min: number;
+    max: () => number;
+    grow: "left" | "right";
+  }): void {
+    const { handle, panel, storageKey, min, max, grow } = options;
+    const sign = grow === "left" ? -1 : 1;
+
+    const stored = Number(window.localStorage.getItem(storageKey));
+    if (Number.isFinite(stored) && stored > 0) {
+      panel.style.width = `${clamp(stored, min, max())}px`;
+    }
+
+    handle.addEventListener("pointerdown", (e) => {
+      e.preventDefault();
+      const startX = e.clientX;
+      const startWidth = panel.getBoundingClientRect().width;
+      handle.setPointerCapture(e.pointerId);
+      handle.classList.add("is-dragging");
+
+      const onMove = (move: PointerEvent): void => {
+        const width = clamp(startWidth + sign * (move.clientX - startX), min, max());
+        panel.style.width = `${width}px`;
+      };
+      const onUp = (): void => {
+        handle.classList.remove("is-dragging");
+        handle.releasePointerCapture(e.pointerId);
+        handle.removeEventListener("pointermove", onMove);
+        handle.removeEventListener("pointerup", onUp);
+        window.localStorage.setItem(storageKey, panel.getBoundingClientRect().width.toFixed(0));
+      };
+      handle.addEventListener("pointermove", onMove);
+      handle.addEventListener("pointerup", onUp);
+    });
+  }
+
+  /** Leaves room for the sidebar and a usable sliver of canvas either way. */
+  private maxInspectorWidth(): number {
+    return Math.max(MIN_INSPECTOR_WIDTH, window.innerWidth - 480);
+  }
+
+  // ----------------------------------------------------------- model loading
+
+  async openCatalogEntry(entry: CatalogEntry): Promise<void> {
+    try {
+      const wire = await this.store.load(entry.file);
+      this.currentEntry = entry;
+      this.loadWire(wire, entry.title);
+      this.highlightCatalog(entry.id);
+    } catch (err) {
+      // A failed fetch is surfaced rather than papered over with a stale
+      // embedded copy of the model, which is what the original did (D-11).
+      this.notify(`Не удалось открыть «${entry.title}»: ${(err as Error).message}`);
+    }
+  }
+
+  async loadFile(file: File): Promise<void> {
+    try {
+      const wire = await readJsonFile(file);
+      this.currentEntry = null;
+      this.loadWire(wire, file.name);
+      this.addCustomCatalogEntry(file.name, wire);
+    } catch (err) {
+      this.notify((err as Error).message);
+    }
+  }
+
+  private loadWire(wire: WireDocument, title: string): void {
+    // Anything half-typed belongs to the model being replaced, not the new one.
+    if (this.fieldEditTimer !== null) window.clearTimeout(this.fieldEditTimer);
+    this.fieldEditTimer = null;
+    this.fieldEditSnapshot = null;
+
+    // Parsed against the live library so that a model still carrying inline
+    // zone colours is migrated into named styles as it loads (see wire.ts).
+    const doc = parseDocument(wire, this.styleLibrary);
+    this.canvas.setModel(doc);
+    this.history.reset(this.snapshot());
+    this.dirty = false;
+    this.syncSaveButton();
+    this.slot("title").textContent = title;
+    this.renderViews(doc);
+    this.renderTags();
+    this.syncToolbar(null);
+    // Migration may have minted styles; the list must show them.
+    this.styleList.render();
+    this.basePanel.render();
+    this.showModelIssues(wire.bundle?.issues ?? []);
+  }
+
+  /**
+   * Show what is wrong with the model that was just opened, without standing in
+   * the way of working with it.
+   *
+   * A modal would be the wrong shape here: these are properties of the file, not
+   * of anything the user just did, and they stay true until the file is fixed.
+   * The banner sits over the canvas, states the consequence, and can be
+   * dismissed for the session.
+   */
+  private showModelIssues(issues: readonly ModelIssue[]): void {
+    this.banner?.remove();
+    this.banner = null;
+    if (issues.length === 0) return;
+
+    const banner = document.createElement("div");
+    banner.className = "semaps-model-banner";
+
+    const text = document.createElement("div");
+    text.className = "semaps-model-banner-text";
+    for (const issue of issues) {
+      const line = document.createElement("p");
+      line.textContent = issue.message;
+      text.appendChild(line);
+    }
+
+    const close = document.createElement("button");
+    close.type = "button";
+    close.className = "semaps-model-banner-close";
+    close.title = "Скрыть";
+    close.textContent = "×";
+    close.addEventListener("click", () => {
+      banner.remove();
+      this.banner = null;
+    });
+
+    banner.append(text, close);
+    this.canvas.hostElement.appendChild(banner);
+    this.banner = banner;
+  }
+
+  private snapshot(): string {
+    const doc = this.canvas.model;
+    if (doc === null) return "";
+    const state: Snapshot = {
+      doc: serializeDocument(doc),
+      styles: this.styleLibrary.serialize(),
+    };
+    return JSON.stringify(state);
+  }
+
+  private restore(snapshot: string): void {
+    if (snapshot === "") return;
+    const state = JSON.parse(snapshot) as Snapshot;
+
+    // The library is rebuilt, not mutated, so a style deleted since the
+    // snapshot comes back and one added since it goes away. Everything holding
+    // a library must therefore read it through `this.styles`, never cache it.
+    this.styleLibrary = StyleLibrary.parse(state.styles);
+    const doc = parseDocument(state.doc, this.styleLibrary);
+    this.canvas.setStyles(this.styleLibrary);
+    this.canvas.replaceModel(doc);
+    this.renderTags();
+
+    this.markDirty();
+    this.markStylesDirty();
+    this.styleList.setActive(this.styleEditor.openId);
+    this.styleEditor.render();
+    this.syncToolbar(this.canvas.selected);
+  }
+
+  private setStyleLibrary(library: StyleLibrary): void {
+    this.styleLibrary = library;
+    this.canvas.setStyles(library);
+    this.renderTags();
+  }
+
+  // ---------------------------------------------------------------- catalog
+
+  private renderCatalog(): void {
+    const host = this.slot("catalog");
+    replaceChildren(
+      host,
+      ...this.catalog.map((entry) =>
+        el(
+          "button",
+          {
+            class: "catalog-item",
+            dataset: { catalogId: entry.id },
+            on: {
+              click: (e: MouseEvent) => {
+                if (this.currentEntry?.id === entry.id) return;
+                if (this.hasUnsavedChanges) {
+                  this.confirmDiscardOrSave({ clientX: e.clientX, clientY: e.clientY }, () => {
+                    void this.openCatalogEntry(entry);
+                  });
+                } else {
+                  void this.openCatalogEntry(entry);
+                }
+              },
+            },
+          },
+          [
+            el("span", { class: `catalog-icon theme-${entry.theme ?? "blue"}`, text: entry.icon ?? "📄" }),
+            el("span", { class: "catalog-text sidebar-label" }, [
+              el("span", { class: "catalog-title", text: entry.title }),
+              el("span", { class: "catalog-subtitle", text: entry.subtitle ?? "" }),
+            ]),
+          ],
+        ),
+      ),
+    );
+  }
+
+  private showCatalogEmptyState(): void {
+    replaceChildren(
+      this.slot("catalog"),
+      el("div", {
+        class: "catalog-empty",
+        text: "Каталог схем не загружен. Откройте JSON-файл вручную.",
+      }),
+    );
+  }
+
+  private addCustomCatalogEntry(name: string, wire: WireDocument): void {
+    this.slot("custom-catalog-section").hidden = false;
+    this.slot("custom-catalog").appendChild(
+      el(
+        "button",
+        {
+          class: "catalog-item",
+          on: {
+            click: (e: MouseEvent) => {
+              if (this.hasUnsavedChanges) {
+                this.confirmDiscardOrSave({ clientX: e.clientX, clientY: e.clientY }, () => {
+                  this.currentEntry = null;
+                  this.loadWire(wire, name);
+                });
+              } else {
+                this.currentEntry = null;
+                this.loadWire(wire, name);
+              }
+            },
+          },
+        },
+        [
+          el("span", { class: "catalog-icon theme-blue", text: "📄" }),
+          el("span", { class: "catalog-text sidebar-label" }, [
+            el("span", { class: "catalog-title", text: name }),
+            el("span", { class: "catalog-subtitle", text: "Пользовательский файл" }),
+          ]),
+        ],
+      ),
+    );
+  }
+
+  private highlightCatalog(id: string): void {
+    for (const node of this.slot("catalog").querySelectorAll<HTMLElement>("[data-catalog-id]")) {
+      node.classList.toggle("is-active", node.dataset.catalogId === id);
+    }
+  }
+
+  private renderViews(_doc: DiagramDocument): void {
+    this.filtersPanel.render();
+  }
+
+  /**
+   * Re-renders the filters panel when tags in use can have changed:
+   * on model load and after any style edit (a rename, a retag, a new style).
+   */
+  renderTags(): void {
+    this.filtersPanel.render();
+  }
+
+  // ---------------------------------------------------------------- editing
+
+  createNode(): void {
+    const doc = this.canvas.model;
+    if (doc === null) return;
+    const at = this.canvas.viewCenter();
+    const x = snap(at.x, 10);
+    const y = snap(at.y, 10);
+
+    const node: DiagramElement = {
+      id: `node_${Date.now().toString(36)}`,
+      kind: "node",
+      type: "concept",
+      label: "Новый блок",
+      tags: [],
+      metadata: { type: "Concept / Блок", description: "Пользовательский блок архитектуры." },
+      x, y, width: 190, height: 60,
+      parent: null,
+      children: [],
+      wireOrder: Number.POSITIVE_INFINITY,
+    };
+
+    const target = doc.containerAt({ x: x + 95, y: y + 30 });
+    doc.add(node, target);
+    this.commit("create-node");
+    this.canvas.select(node.id);
+  }
+
+  createZone(): void {
+    const doc = this.canvas.model;
+    if (doc === null) return;
+    const at = this.canvas.viewCenter();
+    const id = `zone_${Date.now().toString(36)}`;
+
+    const zone: DiagramElement = {
+      id,
+      kind: "zone",
+      type: "boundary",
+      label: "Новая область / Слой",
+      semanticId: `zone.${id}`,
+      tags: [],
+      metadata: { description: "Пользовательский логический контейнер." },
+      x: snap(at.x, 10), y: snap(at.y, 10), width: 420, height: 300,
+      // A named style, not five inline colours. The slate theme is what the old
+      // hardcoded literals here spelled out, so a new zone looks the same as
+      // before while now being repaintable in one place.
+      styleId: "zone.slate",
+      parent: null,
+      children: [],
+      wireOrder: Number.POSITIVE_INFINITY,
+    };
+
+    doc.add(zone, null);
+    this.commit("create-zone");
+    this.canvas.select(zone.id);
+  }
+
+  deleteSelection(): void {
+    const doc = this.canvas.model;
+    const selection = this.canvas.selected;
+    if (doc === null || selection === null) return;
+
+    if (selection.kind === "edge") {
+      doc.removeEdge(selection.id);
+    } else {
+      // Everything selected goes, not just the primary.
+      for (const element of this.canvas.selectedElements()) {
+        doc.remove(element);
+      }
+    }
+
+    this.canvas.select(null);
+    this.commit("delete");
+  }
+
+  deleteEdge(edgeId: string): void {
+    const doc = this.canvas.model;
+    if (doc === null) return;
+    doc.removeEdge(edgeId);
+    // The selection may have been the edge just removed; dropping it keeps the
+    // inspector from binding to something that no longer exists (D-05).
+    if (this.canvas.selected?.id === edgeId) this.canvas.select(null);
+    this.commit("delete-edge");
+    this.inspector.render(this.canvas.selected);
+  }
+
+  addEdgeFromSelection(targetId: string, type: string, label: string): void {
+    const doc = this.canvas.model;
+    const selection = this.canvas.selected;
+    if (doc === null || selection === null || selection.kind === "edge") return;
+
+    doc.addEdge({
+      id: `edge_${Date.now().toString(36)}`,
+      from: selection.id,
+      to: targetId,
+      label,
+      type,
+    });
+    this.commit("add-edge");
+    this.inspector.render(selection);
+  }
+
+  /**
+   * Apply an inspector field edit.
+   *
+   * Typing produces one history step per burst, not one per keystroke: the
+   * state before the first change is held, and committed once the field has
+   * been quiet for a moment or something else needs the history. Before this,
+   * text edits mutated the model without recording anything, so undo jumped
+   * straight past them and silently discarded the typing (D-02).
+   */
+  editField(apply: () => void, options: { rerender?: boolean; reselect?: boolean } = {}): void {
+    if (this.fieldEditSnapshot === null) {
+      this.fieldEditSnapshot = this.snapshot();
+    }
+
+    apply();
+    this.markDirty();
+    if (options.rerender === true) this.canvas.render();
+    if (options.reselect === true) this.inspector.render(this.canvas.selected);
+
+    if (this.fieldEditTimer !== null) window.clearTimeout(this.fieldEditTimer);
+    this.fieldEditTimer = window.setTimeout(() => this.flushFieldEdit(), FIELD_EDIT_QUIET_MS);
+  }
+
+  /**
+   * Turn a burst of typing into one history step.
+   *
+   * Called whenever something else is about to touch the history, so that a
+   * half-finished edit can never end up straddling another action.
+   */
+  private flushFieldEdit(): void {
+    if (this.fieldEditTimer !== null) {
+      window.clearTimeout(this.fieldEditTimer);
+      this.fieldEditTimer = null;
+    }
+    const before = this.fieldEditSnapshot;
+    this.fieldEditSnapshot = null;
+    if (before === null) return;
+
+    const now = this.snapshot();
+    if (before === now) return;
+
+    // Seed the stack with the pre-edit state when this is the first change
+    // after a load, so undo has somewhere to go back to.
+    this.history.begin(before);
+    if (this.history.end(now)) this.syncToolbar(this.canvas.selected);
+  }
+
+  // ------------------------------------------------------------- styles API
+
+  /** The library everything on screen resolves its look through. */
+  get styles(): StyleLibrary {
+    return this.styleLibrary;
+  }
+
+  /**
+   * A field edit inside a style.
+   *
+   * Deliberately the same machinery as `editField`: a burst of typing into a
+   * colour box is one history step, and a style edit interleaved with a model
+   * edit lands in the right order because both flush through the same timer.
+   * The canvas is redrawn whole, because a style has no single owner — every
+   * element wearing it changes at once, which is the property styles exist for.
+   * Whole is expensive, though, so the redraw is coalesced to one frame: a
+   * dragged colour picker fires this dozens of times a second, and on
+   * `model-core-full.json` that is 428 nodes rebuilt per mouse move.
+   */
+  editStyle(apply: () => void): void {
+    if (this.fieldEditSnapshot === null) {
+      this.fieldEditSnapshot = this.snapshot();
+    }
+
+    apply();
+    this.markStylesDirty();
+    this.scheduleRedraw();
+
+    if (this.fieldEditTimer !== null) window.clearTimeout(this.fieldEditTimer);
+    this.fieldEditTimer = window.setTimeout(() => this.flushFieldEdit(), FIELD_EDIT_QUIET_MS);
+  }
+
+  /**
+   * Redraw once for however many style edits arrived before the next frame.
+   *
+   * Only the drawing is delayed — the library, the dirty flag and the history
+   * are all updated synchronously, so nothing can observe a stale model.
+   */
+  private scheduleRedraw(): void {
+    if (this.redrawHandle !== null) return;
+    this.redrawHandle = window.requestAnimationFrame(() => {
+      this.redrawHandle = null;
+      this.canvas.setStyles();
+      // A retag is exactly the edit this bar exists to reflect, and the bar is
+      // a cheap DOM diff — not worth a second coalescing path of its own.
+      this.renderTags();
+    });
+  }
+
+  private cancelScheduledRedraw(): void {
+    if (this.redrawHandle === null) return;
+    window.cancelAnimationFrame(this.redrawHandle);
+    this.redrawHandle = null;
+  }
+
+  /** Create, clone, rename or delete: one discrete step, never coalesced. */
+  commitStyle(apply: () => void): void {
+    this.flushFieldEdit();
+    apply();
+    this.markStylesDirty();
+    // Immediate, and any frame still pending is dropped: a discrete action must
+    // not be overtaken by a redraw queued before it happened.
+    this.cancelScheduledRedraw();
+    this.canvas.setStyles();
+    this.renderTags();
+    this.history.push(this.snapshot());
+    this.syncToolbar(this.canvas.selected);
+  }
+
+  onOpenStyle?: (id: string | null) => void;
+
+  openStyle(id: string | null): void {
+    this.styleList.setActive(id);
+    this.styleEditor.open(id);
+    this.onOpenStyle?.(id);
+  }
+
+  /** From the inspector's "править стиль" button. */
+  openStyleTab(styleId: string): void {
+    this.setTab("styles");
+    this.openStyle(styleId);
+  }
+
+  private commit(reason: string): void {
+    this.flushFieldEdit();
+    this.canvas.notifyModelChanged(reason);
+    this.history.push(this.snapshot());
+    this.markDirty();
+    this.syncToolbar(this.canvas.selected);
+    this.basePanel.render();
+    this.edgesPanel.render();
+  }
+
+  get isDirty(): boolean {
+    return this.dirty;
+  }
+
+  get isStylesDirty(): boolean {
+    return this.stylesDirty;
+  }
+
+  openFile(): void {
+    const input = this.slots.get("file-input") as HTMLInputElement | undefined;
+    if (input) {
+      input.click();
+    } else {
+      const i = document.createElement("input");
+      i.type = "file";
+      i.accept = ".json";
+      i.onchange = () => {
+        const file = i.files?.[0];
+        if (file) void this.loadFile(file);
+      };
+      i.click();
+    }
+  }
+
+  undo(): void {
+    this.flushFieldEdit();
+    const snapshot = this.history.undo();
+    if (snapshot !== null) this.restore(snapshot);
+  }
+
+  redo(): void {
+    this.flushFieldEdit();
+    const snapshot = this.history.redo();
+    if (snapshot !== null) this.restore(snapshot);
+  }
+
+  // ------------------------------------------------------------------- i/o
+
+  /**
+   * Save whatever is dirty — the model, the styles, or both.
+   *
+   * The two are reported separately on purpose. Styles are shared across every
+   * model in the catalogue and are always bound to a file; a model opened by
+   * hand is bound to none. Rolling both into one "не удалось сохранить" would
+   * mean the user could not tell whether the style work they just did survived.
+   */
+  async save(): Promise<void> {
+    this.flushFieldEdit();
+    const problems: string[] = [];
+    let stylesSaved = false;
+
+    if (this.stylesDirty) {
+      try {
+        await this.styleStore.save(this.styleLibrary.serialize());
+        this.stylesDirty = false;
+        stylesSaved = true;
+      } catch (err) {
+        problems.push(`Стили не сохранены: ${(err as Error).message}`);
+      }
+    }
+
+    const doc = this.canvas.model;
+    if (this.dirty && doc !== null) {
+      if (this.currentEntry === null) {
+        problems.push(
+          "Схема загружена вручную и не привязана к файлу на сервере — она не сохранена.",
+        );
+      } else {
+        try {
+          await this.store.save({ file: this.currentEntry.file }, serializeDocument(doc));
+          this.dirty = false;
+        } catch (err) {
+          problems.push(`Схема не сохранена: ${(err as Error).message}`);
+        }
+      }
+    }
+
+    this.syncSaveButton();
+
+    if (problems.length === 0) {
+      this.flashSaved();
+      return;
+    }
+    this.notify(
+      [
+        stylesSaved ? "Библиотека стилей сохранена." : null,
+        ...problems,
+        "Проверьте, запущен ли сервер.",
+      ]
+        .filter((line): line is string => line !== null)
+        .join("\n"),
+    );
+  }
+
+  private flashSaved(): void {
+    const button = this.root.querySelector<HTMLElement>('[data-action="save"]');
+    if (button === null) return;
+    button.textContent = "✅ Сохранено";
+    window.setTimeout(() => {
+      button.textContent = "💾 Сохранить";
+      this.syncSaveButton();
+    }, 2000);
+  }
+
+  exportDrawio(): void {
+    const doc = this.canvas.model;
+    if (doc === null) return;
+    download(drawioFileName(doc), exportDrawio(doc, this.styleLibrary), "application/xml");
+  }
+
+  toggleJsonModal(): void {
+    let modal = this.slots.get("json-modal");
+    let editor = this.slots.get("json-text") as HTMLTextAreaElement | undefined;
+    if (!modal || !modal.parentElement) {
+      editor = el("textarea", {
+        attrs: {
+          spellcheck: "false",
+          style: "width: 100%; height: 360px; font-family: monospace; font-size: 12px; background: var(--bg, #1a1a1a); color: var(--text, #fff); border: 1px solid var(--border, #3a3a3c); border-radius: 4px; padding: 8px; resize: vertical; box-sizing: border-box;",
+        },
+      }) as HTMLTextAreaElement;
+      this.slots.set("json-text", editor);
+
+      const closeBtn = el("button", { class: "btn-icon", text: "✕", on: { click: () => { modal!.hidden = true; } } });
+      const copyBtn = el("button", { class: "btn", text: "Копировать", on: { click: () => { void this.copyJson(); } } });
+      const applyBtn = el("button", { class: "btn btn-primary", text: "Применить к холсту", on: { click: () => { this.applyJson(); } } });
+
+      modal = el("div", { class: "modal", attrs: { hidden: "true" } }, [
+        el("div", { class: "modal-card", attrs: { style: "width: 600px; max-width: 90vw;" } }, [
+          el("div", { class: "modal-head", attrs: { style: "display: flex; justify-content: space-between; align-items: center; padding: 10px 14px; border-bottom: 1px solid var(--border, #3a3a3c);" } }, [
+            el("h3", { text: "Модель диаграммы (JSON)", attrs: { style: "margin: 0; font-size: 14px;" } }),
+            closeBtn,
+          ]),
+          el("div", { class: "modal-body", attrs: { style: "padding: 14px;" } }, [editor]),
+          el("div", { class: "modal-foot", attrs: { style: "display: flex; justify-content: flex-end; gap: 8px; padding: 10px 14px; border-top: 1px solid var(--border, #3a3a3c);" } }, [
+            copyBtn,
+            applyBtn,
+          ]),
+        ]),
+      ]);
+      this.slots.set("json-modal", modal);
+      document.body.appendChild(modal);
+    }
+
+    const doc = this.canvas.model;
+    if (modal.hidden) {
+      if (editor) editor.value = doc === null ? "" : JSON.stringify(serializeDocument(doc), null, 2);
+      modal.hidden = false;
+    } else {
+      modal.hidden = true;
+    }
+  }
+
+  async copyJson(): Promise<void> {
+    const editor = this.slot("json-text") as unknown as HTMLTextAreaElement;
+    try {
+      await navigator.clipboard.writeText(editor.value);
+      this.notify("JSON скопирован в буфер обмена");
+    } catch {
+      this.notify("Не удалось получить доступ к буферу обмена");
+    }
+  }
+
+  applyJson(): void {
+    const editor = this.slot("json-text") as unknown as HTMLTextAreaElement;
+    try {
+      const wire = JSON.parse(editor.value) as WireDocument;
+      const title = wire.metadata?.title ?? "Пользовательская схема";
+      this.currentEntry = null;
+      this.loadWire(wire, title);
+      this.slot("json-modal").hidden = true;
+    } catch (err) {
+      this.notify(`Ошибка в формате JSON: ${(err as Error).message}`);
+    }
+  }
+
+  // ------------------------------------------------------------------- ui
+
+  toggleSidebar(): void {
+    this.slot("sidebar").classList.toggle("is-collapsed");
+  }
+
+  private markDirty(): void {
+    this.dirty = true;
+    this.syncSaveButton();
+  }
+
+  private markStylesDirty(): void {
+    this.stylesDirty = true;
+    this.syncSaveButton();
+  }
+
+  private syncSaveButton(): void {
+    const isDirty = this.dirty || this.stylesDirty;
+    const saveBtn = this.root.querySelector<HTMLButtonElement>('[data-action="save"]');
+    if (saveBtn !== null) {
+      saveBtn.disabled = !isDirty;
+      saveBtn.classList.toggle("btn-save-dirty", isDirty);
+      saveBtn.title = isDirty
+        ? "Сохранить изменения на сервер (Ctrl+S)"
+        : "Все изменения сохранены";
+    }
+  }
+
+  /**
+   * Shows a custom confirmation popup positioned so that the "Отменить" button
+   * is placed directly under the mouse pointer coordinates (clientX, clientY).
+   */
+  private confirmDiscardOrSave(
+    pos: { clientX: number; clientY: number },
+    onProceed: (saveFirst: boolean) => Promise<void> | void,
+  ): void {
+    const backdrop = el("div", { class: "confirm-popover-backdrop" });
+
+    const saveBtn = el("button", {
+      class: "btn btn-success full",
+      attrs: { style: "padding: 8px 12px; font-size: 12px; font-weight: 600;" },
+      text: "💾 Сохранить и открыть",
+      on: {
+        click: async (ev: MouseEvent) => {
+          ev.stopPropagation();
+          cleanup();
+          await this.save();
+          await onProceed(true);
+        },
+      },
+    });
+
+    const cancelBtn = el("button", {
+      class: "btn full",
+      attrs: { style: "padding: 8px 12px; font-size: 12px; font-weight: 600; background: var(--panel-alt); border: 1px solid var(--line);" },
+      text: "↩ Отменить",
+      on: {
+        click: (ev: MouseEvent) => {
+          ev.stopPropagation();
+          cleanup();
+        },
+      },
+    });
+
+    const discardBtn = el("button", {
+      class: "btn btn-danger full",
+      attrs: { style: "padding: 7px 12px; font-size: 12px; font-weight: 500;" },
+      text: "🗑 Загрузить без сохранения",
+      on: {
+        click: async (ev: MouseEvent) => {
+          ev.stopPropagation();
+          cleanup();
+          await onProceed(false);
+        },
+      },
+    });
+
+    const card = el("div", { class: "confirm-popover-card" }, [
+      el("div", { class: "confirm-popover-title" }, [
+        el("span", { text: "⚠️" }),
+        el("span", { text: "Несохранённые изменения" }),
+      ]),
+      el("p", { class: "confirm-popover-msg", text: "В текущей схеме есть несохранённые правки. Что сделать перед переключением?" }),
+      el("div", { class: "confirm-popover-actions" }, [
+        saveBtn,
+        cancelBtn,
+        discardBtn,
+      ]),
+    ]);
+
+    backdrop.appendChild(card);
+    document.body.appendChild(backdrop);
+
+    // Measure and position so cancelBtn is exactly centered on (pos.clientX, pos.clientY)
+    const cardRect = card.getBoundingClientRect();
+    const cancelRect = cancelBtn.getBoundingClientRect();
+    const cancelOffsetY = cancelRect.top - cardRect.top + cancelRect.height / 2;
+    const cancelOffsetX = cancelRect.left - cardRect.left + cancelRect.width / 2;
+
+    let left = pos.clientX - cancelOffsetX;
+    let top = pos.clientY - cancelOffsetY;
+
+    left = Math.max(10, Math.min(window.innerWidth - cardRect.width - 10, left));
+    top = Math.max(10, Math.min(window.innerHeight - cardRect.height - 10, top));
+
+    card.style.left = `${left}px`;
+    card.style.top = `${top}px`;
+
+    const onKeyDown = (e: KeyboardEvent) => {
+      if (e.key === "Escape") {
+        cleanup();
+      }
+    };
+
+    const cleanup = () => {
+      window.removeEventListener("keydown", onKeyDown);
+      backdrop.remove();
+    };
+
+    backdrop.addEventListener("click", (e) => {
+      if (e.target === backdrop) cleanup();
+    });
+
+    window.addEventListener("keydown", onKeyDown);
+  }
+
+  private syncToolbar(selection: Selection | null): void {
+    this.setDisabled("undo", !this.history.canUndo);
+    this.setDisabled("redo", !this.history.canRedo);
+    this.setDisabled("delete", selection === null);
+  }
+
+  /** Whether the model or the style library has unsaved changes (R-STATE-01). */
+  get hasUnsavedChanges(): boolean {
+    return this.dirty || this.stylesDirty;
+  }
+
+  private setDisabled(action: string, disabled: boolean): void {
+    const button = this.root.querySelector<HTMLButtonElement>(`[data-action="${action}"]`);
+    if (button !== null) button.disabled = disabled;
+  }
+
+  notify(message: string): void {
+    window.alert(message);
+  }
+}

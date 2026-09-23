@@ -1,0 +1,704 @@
+{
+  "version": 1,
+  "description": "Библиотека стилей SeMaps по умолчанию; workspace переопределяет её своим styles.json. Стиль применяется ко всем элементам, чей type совпадает с его id, либо к тем, кто назвал его в styleId.",
+  "styles": [
+    {
+      "id": "default.node",
+      "name": "Блок по умолчанию",
+      "appliesTo": "block",
+      "description": "Последняя инстанция для узла, тип которого не назвал стиль.",
+      "fill": "#ffffff",
+      "border": {
+        "color": "#cbd5e1",
+        "width": 1.5
+      },
+      "radius": 8,
+      "shadow": true,
+      "icon": {
+        "glyph": "📄"
+      }
+    },
+    {
+      "id": "default.zone",
+      "name": "Зона по умолчанию",
+      "appliesTo": "block",
+      "description": "Последняя инстанция для контейнера.",
+      "fill": "#f8fafc",
+      "border": {
+        "color": "#cbd5e1",
+        "width": 2
+      },
+      "radius": 12,
+      "shadow": false,
+      "header": {
+        "fill": "#e2e8f0",
+        "height": 34
+      },
+      "icon": {
+        "show": false
+      },
+      "subtitle": {
+        "align": "end"
+      }
+    },
+    {
+      "id": "class",
+      "name": "Класс",
+      "appliesTo": "block",
+      "description": "Обычный класс: поведение, реализация.",
+      "fill": "#ffffff",
+      "border": {
+        "color": "#cbd5e1",
+        "width": 1.5
+      },
+      "radius": 8,
+      "shadow": true,
+      "icon": {
+        "glyph": "📦"
+      }
+    },
+    {
+      "id": "record",
+      "name": "Record",
+      "appliesTo": "block",
+      "description": "Неизменяемые данные. Отличается от класса заливкой и иконкой.",
+      "basedOn": "class",
+      "fill": "#f0fdfa",
+      "border": {
+        "color": "#5eead4",
+        "width": 1.5
+      },
+      "radius": 14,
+      "shadow": false,
+      "icon": {
+        "glyph": "🧾"
+      }
+    },
+    {
+      "id": "struct",
+      "name": "Struct",
+      "appliesTo": "block",
+      "description": "Значимый тип.",
+      "basedOn": "record",
+      "fill": "#f5f3ff",
+      "border": {
+        "color": "#c4b5fd"
+      },
+      "radius": 4,
+      "icon": {
+        "glyph": "🧱"
+      }
+    },
+    {
+      "id": "interface",
+      "name": "Интерфейс",
+      "appliesTo": "block",
+      "description": "Контракт. Пунктирная рамка — как в UML.",
+      "fill": {
+        "kind": "linear",
+        "angle": 90,
+        "stops": [
+          {
+            "offset": 0,
+            "color": "#e8fecd",
+            "opacity": 1
+          },
+          {
+            "offset": 1,
+            "color": "#b3ffbf",
+            "opacity": 1
+          }
+        ]
+      },
+      "border": {
+        "color": "#60a5fa",
+        "width": 1.6,
+        "dash": "5,3"
+      },
+      "radius": 8,
+      "shadow": true,
+      "icon": {
+        "glyph": "🔌"
+      },
+      "title": {
+        "italic": true
+      }
+    },
+    {
+      "id": "enum",
+      "name": "Enum",
+      "appliesTo": "block",
+      "description": "Перечисление.",
+      "fill": "#fefce8",
+      "border": {
+        "color": "#fde047",
+        "width": 1.6
+      },
+      "radius": 8,
+      "shadow": true,
+      "icon": {
+        "glyph": "🔢"
+      }
+    },
+    {
+      "id": "component",
+      "name": "Component (устар.)",
+      "appliesTo": "block",
+      "description": "Старый обобщённый тип: класс и record до перегенерации моделей.",
+      "basedOn": "class"
+    },
+    {
+      "id": "service",
+      "name": "Service (устар.)",
+      "appliesTo": "block",
+      "description": "Старый тип для интерфейсов.",
+      "basedOn": "interface",
+      "icon": {
+        "glyph": "⚙️"
+      }
+    },
+    {
+      "id": "concept",
+      "name": "Concept (устар.)",
+      "appliesTo": "block",
+      "description": "Старый тип для enum и ручных концептов.",
+      "basedOn": "enum",
+      "icon": {
+        "glyph": "💡"
+      }
+    },
+    {
+      "id": "usecase",
+      "name": "Сценарий (use case)",
+      "appliesTo": "block",
+      "description": "Эллипс. Форма задана здесь, а не у каждого узла: сценарий — эллипс по тому, что он есть.",
+      "shape": "ellipse",
+      "fill": "#ffffff",
+      "border": {
+        "color": "#94a3b8",
+        "width": 1.5
+      },
+      "icon": {
+        "show": false
+      },
+      "title": {
+        "align": "middle"
+      },
+      "subtitle": {
+        "show": false
+      }
+    },
+    {
+      "id": "actor",
+      "name": "Действующее лицо",
+      "appliesTo": "block",
+      "description": "Человечек UML: пользователь, внешняя роль. Заливка красит фигуру, не рамку.",
+      "shape": "actor",
+      "fill": "none",
+      "border": {
+        "color": "#475569",
+        "width": 2
+      },
+      "shadow": false,
+      "icon": {
+        "show": false
+      },
+      "title": {
+        "align": "middle"
+      },
+      "subtitle": {
+        "show": false
+      }
+    },
+    {
+      "id": "store",
+      "name": "Хранилище (цилиндр)",
+      "appliesTo": "block",
+      "description": "Тот же смысл, что у «database», но нарисованный цилиндром.",
+      "basedOn": "database",
+      "shape": "cylinder"
+    },
+    {
+      "id": "decision",
+      "name": "Развилка",
+      "appliesTo": "block",
+      "shape": "diamond",
+      "fill": "#fefce8",
+      "border": {
+        "color": "#fde047",
+        "width": 1.6
+      },
+      "icon": {
+        "show": false
+      },
+      "subtitle": {
+        "show": false
+      }
+    },
+    {
+      "id": "stage",
+      "name": "Стадия (шестиугольник)",
+      "appliesTo": "block",
+      "shape": "hexagon",
+      "fill": "#eff6ff",
+      "border": {
+        "color": "#93c5fd",
+        "width": 1.6
+      },
+      "icon": {
+        "show": false
+      }
+    },
+    {
+      "id": "class.detail",
+      "name": "Класс с полями",
+      "appliesTo": "block",
+      "description": "Тот же класс, но содержимое рисует шаблон «class»: поля и методы. Отдельный стиль, чтобы включать подробность там, где она нужна, а не везде сразу.",
+      "basedOn": "class",
+      "template": "class"
+    },
+    {
+      "id": "table",
+      "name": "Таблица БД",
+      "appliesTo": "block",
+      "description": "Колонки с типами. От «class.detail» отличается только фильтром в шаблоне.",
+      "basedOn": "database",
+      "template": "table"
+    },
+    {
+      "id": "note",
+      "name": "Заметка",
+      "appliesTo": "block",
+      "fill": "#fef9c3",
+      "border": {
+        "color": "#fde047",
+        "width": 1.5
+      },
+      "radius": 6,
+      "shadow": false,
+      "icon": {
+        "glyph": "📝"
+      },
+      "title": {
+        "weight": 500
+      }
+    },
+    {
+      "id": "security-component",
+      "name": "Безопасность",
+      "appliesTo": "block",
+      "fill": "#fff1f2",
+      "border": {
+        "color": "#fca5a5",
+        "width": 2
+      },
+      "icon": {
+        "glyph": "🛡️"
+      }
+    },
+    {
+      "id": "tool",
+      "name": "Инструмент",
+      "appliesTo": "block",
+      "fill": "#ffffff",
+      "border": {
+        "color": "#bfdbfe",
+        "width": 1.5
+      },
+      "icon": {
+        "glyph": "🔧"
+      }
+    },
+    {
+      "id": "database",
+      "name": "Хранилище",
+      "appliesTo": "block",
+      "fill": "#ffffff",
+      "border": {
+        "color": "#d8b4fe",
+        "width": 1.5
+      },
+      "icon": {
+        "glyph": "💾"
+      }
+    },
+    {
+      "id": "external-system",
+      "name": "Внешняя система",
+      "appliesTo": "block",
+      "fill": "#fffbeb",
+      "border": {
+        "color": "#fde68a",
+        "width": 1.5
+      },
+      "icon": {
+        "glyph": "🌐"
+      }
+    },
+    {
+      "id": "zone.green",
+      "name": "Зона · green",
+      "appliesTo": "block",
+      "basedOn": "default.zone",
+      "fill": "#f0fdf4",
+      "border": {
+        "color": "#86efac",
+        "width": 2
+      },
+      "header": {
+        "fill": "#dcfce7"
+      }
+    },
+    {
+      "id": "zone.blue",
+      "name": "Зона · blue",
+      "appliesTo": "block",
+      "basedOn": "default.zone",
+      "fill": "#eff6ff",
+      "border": {
+        "color": "#93c5fd",
+        "width": 2
+      },
+      "header": {
+        "fill": "#dbeafe"
+      }
+    },
+    {
+      "id": "zone.fuchsia",
+      "name": "Зона · fuchsia",
+      "appliesTo": "block",
+      "basedOn": "default.zone",
+      "fill": "#fdf4ff",
+      "border": {
+        "color": "#f0abfc",
+        "width": 2
+      },
+      "header": {
+        "fill": "#fae8ff"
+      }
+    },
+    {
+      "id": "zone.red",
+      "name": "Зона · red",
+      "appliesTo": "block",
+      "basedOn": "default.zone",
+      "fill": "#fff1f2",
+      "border": {
+        "color": "#fca5a5",
+        "width": 2
+      },
+      "header": {
+        "fill": "#ffe4e6"
+      }
+    },
+    {
+      "id": "zone.yellow",
+      "name": "Зона · yellow",
+      "appliesTo": "block",
+      "basedOn": "default.zone",
+      "fill": "#fefce8",
+      "border": {
+        "color": "#fde047",
+        "width": 2
+      },
+      "header": {
+        "fill": "#fef9c3"
+      }
+    },
+    {
+      "id": "zone.slate",
+      "name": "Зона · slate",
+      "appliesTo": "block",
+      "basedOn": "default.zone",
+      "fill": "#f8fafc",
+      "border": {
+        "color": "#cbd5e1",
+        "width": 2
+      },
+      "header": {
+        "fill": "#e2e8f0"
+      }
+    },
+    {
+      "id": "zone.violet",
+      "name": "Зона · violet",
+      "appliesTo": "block",
+      "basedOn": "default.zone",
+      "fill": "#f5f3ff",
+      "border": {
+        "color": "#c4b5fd",
+        "width": 2
+      },
+      "header": {
+        "fill": "#ede9fe"
+      }
+    },
+    {
+      "id": "zone.amber",
+      "name": "Зона · amber",
+      "appliesTo": "block",
+      "basedOn": "default.zone",
+      "fill": "#fffbeb",
+      "border": {
+        "color": "#fde68a",
+        "width": 2
+      },
+      "header": {
+        "fill": "#fef3c7"
+      }
+    },
+    {
+      "id": "zone.sky",
+      "name": "Зона · sky",
+      "appliesTo": "block",
+      "basedOn": "default.zone",
+      "fill": "#f0f9ff",
+      "border": {
+        "color": "#7dd3fc",
+        "width": 2
+      },
+      "header": {
+        "fill": "#e0f2fe"
+      }
+    },
+    {
+      "id": "zone.cyan",
+      "name": "Зона · cyan",
+      "appliesTo": "block",
+      "basedOn": "default.zone",
+      "fill": "#ecfeff",
+      "border": {
+        "color": "#67e8f9",
+        "width": 2
+      },
+      "header": {
+        "fill": "#cffafe"
+      }
+    },
+    {
+      "id": "zone.lime",
+      "name": "Зона · lime",
+      "appliesTo": "block",
+      "basedOn": "default.zone",
+      "fill": "#f7fee7",
+      "border": {
+        "color": "#bef264",
+        "width": 2
+      },
+      "header": {
+        "fill": "#ecfccb"
+      }
+    },
+    {
+      "id": "zone.pink",
+      "name": "Зона · pink",
+      "appliesTo": "block",
+      "basedOn": "default.zone",
+      "fill": "#fdf2f8",
+      "border": {
+        "color": "#f9a8d4",
+        "width": 2
+      },
+      "header": {
+        "fill": "#fce7f3"
+      }
+    },
+    {
+      "id": "zone.gray",
+      "name": "Зона · gray",
+      "appliesTo": "block",
+      "basedOn": "default.zone",
+      "fill": "#f1f5f9",
+      "border": {
+        "color": "#94a3b8",
+        "width": 2
+      },
+      "header": {
+        "fill": "#e2e8f0"
+      }
+    },
+    {
+      "id": "boundary",
+      "name": "Граница (по типу зоны)",
+      "appliesTo": "block",
+      "description": "Стиль по умолчанию для зон типа boundary, если styleId не задан.",
+      "basedOn": "default.zone"
+    },
+    {
+      "id": "subsystem",
+      "name": "Подсистема",
+      "appliesTo": "block",
+      "basedOn": "zone.blue"
+    },
+    {
+      "id": "default.edge",
+      "name": "Связь по умолчанию",
+      "appliesTo": "edge",
+      "line": {
+        "color": "#cbd5e1",
+        "width": 1.5
+      },
+      "target": {
+        "shape": "arrow",
+        "size": 6
+      }
+    },
+    {
+      "id": "implements",
+      "name": "Реализация интерфейса",
+      "appliesTo": "edge",
+      "description": "Класс реализует контракт. Самая частая связь — держим тихой.",
+      "family": "structure",
+      "line": {
+        "color": "#cbd5e1",
+        "width": 1.2,
+        "dash": "6,4"
+      },
+      "target": {
+        "shape": "triangle-hollow",
+        "size": 9
+      }
+    },
+    {
+      "id": "realizes",
+      "name": "Реализация (realizes)",
+      "appliesTo": "edge",
+      "basedOn": "implements"
+    },
+    {
+      "id": "extends",
+      "name": "Наследование класса",
+      "appliesTo": "edge",
+      "family": "structure",
+      "line": {
+        "color": "#94a3b8",
+        "width": 1.4
+      },
+      "target": {
+        "shape": "triangle-hollow",
+        "size": 10
+      }
+    },
+    {
+      "id": "composes",
+      "name": "Владение / композиция",
+      "appliesTo": "edge",
+      "description": "Ромб на стороне владельца, как в UML.",
+      "family": "structure",
+      "line": {
+        "color": "#0f766e",
+        "width": 1.8
+      },
+      "source": {
+        "shape": "diamond",
+        "size": 12
+      },
+      "target": {
+        "shape": "none"
+      }
+    },
+    {
+      "id": "call",
+      "name": "Вызов",
+      "appliesTo": "edge",
+      "family": "flow",
+      "line": {
+        "color": "#64748b",
+        "width": 1.6,
+        "dash": "4,4"
+      },
+      "target": {
+        "shape": "arrow",
+        "size": 7
+      }
+    },
+    {
+      "id": "data-flow",
+      "name": "Поток данных",
+      "appliesTo": "edge",
+      "family": "flow",
+      "line": {
+        "color": "#3b82f6",
+        "width": 2.2
+      },
+      "target": {
+        "shape": "arrow",
+        "size": 8
+      },
+      "label": {
+        "color": "#1d4ed8",
+        "weight": 600
+      }
+    },
+    {
+      "id": "event",
+      "name": "Событие / уведомление",
+      "appliesTo": "edge",
+      "family": "flow",
+      "line": {
+        "color": "#ea580c",
+        "width": 2,
+        "dash": "2,3"
+      },
+      "target": {
+        "shape": "arrow-open",
+        "size": 9
+      },
+      "label": {
+        "color": "#c2410c",
+        "weight": 600
+      }
+    },
+    {
+      "id": "security",
+      "name": "Проверка прав / аудит",
+      "appliesTo": "edge",
+      "family": "flow",
+      "line": {
+        "color": "#f43f5e",
+        "width": 1.8,
+        "dash": "3,3"
+      },
+      "target": {
+        "shape": "arrow",
+        "size": 7
+      },
+      "label": {
+        "color": "#be123c",
+        "weight": 600
+      }
+    },
+    {
+      "id": "storage",
+      "name": "Запись / чтение хранилища",
+      "appliesTo": "edge",
+      "description": "Головки с обеих сторон: чтение и запись — одно ребро.",
+      "family": "flow",
+      "line": {
+        "color": "#a855f7",
+        "width": 2.2
+      },
+      "source": {
+        "shape": "circle-hollow",
+        "size": 7
+      },
+      "target": {
+        "shape": "arrow",
+        "size": 8
+      },
+      "label": {
+        "color": "#7e22ce",
+        "weight": 600
+      }
+    },
+    {
+      "id": "zone.red.dashed",
+      "name": "Зона · red · пунктир",
+      "appliesTo": "block",
+      "basedOn": "zone.red",
+      "border": {
+        "dash": "6,4"
+      }
+    }
+  ]
+}

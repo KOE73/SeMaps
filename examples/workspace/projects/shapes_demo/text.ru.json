@@ -1,0 +1,57 @@
+{
+  "contractVersion": 3,
+  "language": "ru",
+  "entries": {
+    "zone_human": {
+      "name": { "v": "Человек", "at": "2026-09-03T00:00:00Z", "origin": "authored" },
+      "description": { "v": "То, что делается руками.", "at": "2026-09-03T00:00:00Z", "origin": "authored" }
+    },
+    "zone_machine": {
+      "name": { "v": "Разбор", "at": "2026-09-03T00:00:00Z", "origin": "authored" },
+      "description": { "v": "Шаблон превращается в дерево на каждую перерисовку.", "at": "2026-09-03T00:00:00Z", "origin": "authored" }
+    },
+    "zone_storage": {
+      "name": { "v": "Хранение", "at": "2026-09-03T00:00:00Z", "origin": "authored" },
+      "description": { "v": "Тексты шаблонов и картинки. Деревьев здесь нет и не будет.", "at": "2026-09-03T00:00:00Z", "origin": "authored" }
+    },
+    "v_main": {
+      "name": { "v": "Формы, шаблоны и связи", "at": "2026-09-03T00:00:00Z", "origin": "authored" },
+      "description": { "v": "Стенд ADR_20260903: каждая фигура, оба вида шаблонов, все режимы линий.", "at": "2026-09-03T00:00:00Z", "origin": "authored" }
+    },
+    "rt_call": {
+      "name": { "v": "вызов", "at": "2026-09-03T00:00:00Z", "origin": "authored" },
+      "description": { "v": "Одна сторона обращается к другой и ждёт ответа.", "at": "2026-09-03T00:00:00Z", "origin": "authored" }
+    },
+    "rt_data-flow": {
+      "name": { "v": "поток данных", "at": "2026-09-03T00:00:00Z", "origin": "authored" },
+      "description": { "v": "Данные едут в указанную сторону; кто кого вызвал — не утверждается.", "at": "2026-09-03T00:00:00Z", "origin": "authored" }
+    },
+    "rt_storage": {
+      "name": { "v": "чтение и запись", "at": "2026-09-03T00:00:00Z", "origin": "authored" },
+      "description": { "v": "Обращение к хранилищу в обе стороны — одно ребро, головки с двух концов.", "at": "2026-09-03T00:00:00Z", "origin": "authored" }
+    },
+    "uc_edit": {
+      "description": { "v": "Правка идёт на ходу, поэтому текст почти всегда невалиден.", "at": "2026-09-03T00:00:00Z", "origin": "authored" }
+    },
+    "dec_valid": {
+      "description": { "v": "Нет — остаётся последняя валидная картинка и маркер ошибки.", "at": "2026-09-03T00:00:00Z", "origin": "authored" }
+    },
+    "cls_template": {
+      "description": { "v": "Реестр шаблонов.", "at": "2026-09-03T00:00:00Z", "origin": "authored" }
+    },
+    "r_user_edits": {
+      "name": { "v": "правит", "at": "2026-09-03T00:00:00Z", "origin": "authored" },
+      "fromLabel": { "v": "1", "at": "2026-09-03T00:00:00Z", "origin": "authored" },
+      "toLabel": { "v": "0..*", "at": "2026-09-03T00:00:00Z", "origin": "authored" }
+    },
+    "r_library_reads": {
+      "name": { "v": "читает и пишет", "at": "2026-09-03T00:00:00Z", "origin": "authored" },
+      "fromLabel": { "v": "1", "at": "2026-09-03T00:00:00Z", "origin": "authored" },
+      "toLabel": { "v": "1", "at": "2026-09-03T00:00:00Z", "origin": "authored" }
+    },
+    "r_compile_decides": {
+      "fromLabel": { "v": "текст", "at": "2026-09-03T00:00:00Z", "origin": "authored" },
+      "toLabel": { "v": "дерево", "at": "2026-09-03T00:00:00Z", "origin": "authored" }
+    }
+  }
+}

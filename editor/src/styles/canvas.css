@@ -1,0 +1,312 @@
+/*
+ * Canvas styling — everything drawn inside the SVG surface.
+ *
+ * Shipped with the library: a host embedding only DiagramCanvas imports this
+ * and nothing else. Application chrome lives in editor.css.
+ */
+
+.semaps-canvas-host {
+  position: relative;
+  overflow: hidden;
+  cursor: default;
+  background-color: var(--semaps-canvas-bg, var(--bg, #f8fafc));
+  width: 100%;
+  height: 100%;
+  display: flex;
+}
+
+.semaps-canvas-host.is-panning {
+  cursor: grabbing;
+}
+
+.semaps-canvas-host.with-grid {
+  background-image:
+    radial-gradient(var(--line, #cbd5e1) 1.2px, transparent 1.2px),
+    radial-gradient(var(--line, #e2e8f0) 1.2px, var(--semaps-canvas-bg, var(--bg, #f8fafc)) 1.2px);
+  background-size: 20px 20px;
+  background-position: 0 0, 10px 10px;
+}
+
+.semaps-canvas {
+  width: 100%;
+  height: 100%;
+  display: block;
+  user-select: none;
+  flex: 1;
+}
+
+/* ------------------------------------------------------------------ nodes */
+
+.semaps-node {
+  cursor: grab;
+  transition: filter 0.15s ease, opacity 0.2s ease;
+}
+
+.semaps-node:active {
+  cursor: grabbing;
+}
+
+.semaps-node:hover {
+  filter: drop-shadow(0 4px 10px rgb(0 0 0 / 12%));
+}
+
+.semaps-node.is-selected rect[data-role="drag-handle"] {
+  stroke: #2563eb;
+  stroke-width: 2.5px;
+}
+
+.semaps-node-label,
+.semaps-node-subtitle {
+  pointer-events: none;
+}
+
+.semaps-node-resize {
+  cursor: se-resize;
+}
+
+/* ------------------------------------------------------------------ zones */
+
+.semaps-zone {
+  cursor: default;
+  transition: opacity 0.2s ease;
+}
+
+.semaps-zone-header {
+  cursor: grab;
+}
+
+.semaps-zone-header:active {
+  cursor: grabbing;
+}
+
+.semaps-zone-title,
+.semaps-zone-semantic {
+  pointer-events: none;
+}
+
+.semaps-zone.is-selected .semaps-zone-body {
+  stroke: #2563eb;
+  stroke-width: 2.5px;
+}
+
+.semaps-zone.is-drop-target .semaps-zone-body {
+  stroke: #2563eb;
+  stroke-width: 3px;
+  filter: drop-shadow(0 0 8px rgb(37 99 235 / 30%));
+}
+
+.semaps-zone-collapse {
+  cursor: pointer;
+}
+
+.semaps-zone-collapse rect {
+  fill: #fff;
+  stroke: #94a3b8;
+  stroke-width: 1.2px;
+  transition: fill 0.15s ease, stroke 0.15s ease;
+}
+
+.semaps-zone-collapse:hover rect {
+  fill: #2563eb;
+  stroke: #1d4ed8;
+}
+
+.semaps-zone-collapse text {
+  fill: #334155;
+  font-weight: 700;
+  pointer-events: none;
+  transition: fill 0.15s ease;
+}
+
+.semaps-zone-collapse:hover text {
+  fill: #fff;
+}
+
+/* ------------------------------------------------------- selection overlay */
+
+.semaps-handle {
+  fill: #3b82f6;
+  stroke: #fff;
+  stroke-width: 1.5px;
+  vector-effect: non-scaling-stroke;
+}
+
+.semaps-handle:hover {
+  fill: #1d4ed8;
+}
+
+.semaps-selection-outline {
+  fill: none;
+  stroke: #2563eb;
+  pointer-events: none;
+  vector-effect: non-scaling-stroke;
+}
+
+.semaps-marquee {
+  fill: rgb(37 99 235 / 10%);
+  stroke: #2563eb;
+  pointer-events: none;
+  vector-effect: non-scaling-stroke;
+}
+
+/* ------------------------------------------------------------------ edges */
+
+.semaps-edge {
+  cursor: pointer;
+  transition: opacity 0.2s ease;
+}
+
+.semaps-edge-hit {
+  cursor: pointer;
+  pointer-events: stroke;
+}
+
+.semaps-edge-line {
+  transition: stroke 0.15s ease, stroke-width 0.15s ease;
+}
+
+.semaps-edge-glow {
+  opacity: 0;
+  filter: blur(2.5px);
+  pointer-events: none;
+  transition: opacity 0.15s ease;
+}
+
+.semaps-edge:hover .semaps-edge-glow {
+  opacity: 0.4;
+}
+
+.semaps-edge-label {
+  font-size: 11px;
+  font-weight: 500;
+  fill: #475569;
+  pointer-events: none;
+}
+
+.semaps-edge.is-selected .semaps-edge-glow {
+  opacity: 0.6;
+}
+
+.semaps-edge.is-selected .semaps-edge-label {
+  fill: #3b82f6;
+  font-weight: 700;
+}
+
+.semaps-edge.is-ghost-focus {
+  opacity: 1 !important;
+}
+
+.semaps-edge.is-ghost-potential .semaps-edge-line {
+  stroke: var(--accent, #2563eb) !important;
+  stroke-width: 1.6px !important;
+  stroke-dasharray: 5 4 !important;
+  opacity: 0.65;
+}
+
+.semaps-edge.is-ghost-potential:hover .semaps-edge-line {
+  opacity: 1;
+  stroke-width: 2px !important;
+  filter: drop-shadow(0 0 4px var(--accent, #2563eb));
+}
+
+.semaps-node-badge {
+  cursor: pointer;
+}
+
+.semaps-node-badge rect,
+.semaps-node-badge .semaps-node-badge-rect {
+  fill: #f1f5f9;
+  stroke: #cbd5e1;
+  stroke-width: 1;
+  transition: fill 0.15s ease, stroke 0.15s ease;
+}
+
+.semaps-node-badge text,
+.semaps-node-badge .semaps-node-badge-text {
+  fill: #475569;
+  transition: fill 0.15s ease;
+}
+
+.semaps-node-badge:hover rect,
+.semaps-node-badge:hover .semaps-node-badge-rect,
+.semaps-node-badge.is-active rect,
+.semaps-node-badge.is-active .semaps-node-badge-rect {
+  fill: #2563eb !important;
+  stroke: #2563eb !important;
+}
+
+.semaps-node-badge:hover text,
+.semaps-node-badge:hover .semaps-node-badge-text,
+.semaps-node-badge.is-active text,
+.semaps-node-badge.is-active .semaps-node-badge-text {
+  fill: #ffffff !important;
+}
+
+/* ------------------------------------------------------------------ doc buttons */
+
+.semaps-node-doc,
+.semaps-zone-doc {
+  cursor: pointer;
+  opacity: 0.85;
+  transition: opacity 0.15s ease;
+}
+
+.semaps-node-doc:hover,
+.semaps-zone-doc:hover {
+  opacity: 1;
+}
+
+.semaps-node-doc-rect {
+  fill: #f8fafc;
+  stroke: #cbd5e1;
+  stroke-width: 1px;
+  transition: fill 0.15s ease, stroke 0.15s ease;
+}
+
+.semaps-node-doc.has-doc .semaps-node-doc-rect {
+  fill: #eff6ff;
+  stroke: #60a5fa;
+  stroke-width: 1.2px;
+}
+
+.semaps-node-doc:hover .semaps-node-doc-rect {
+  fill: #3b82f6 !important;
+  stroke: #2563eb !important;
+}
+
+.semaps-node-doc-icon {
+  pointer-events: none;
+  transition: fill 0.15s ease;
+}
+
+.semaps-node-doc:hover .semaps-node-doc-icon {
+  fill: #ffffff !important;
+}
+
+.semaps-zone-doc-rect {
+  fill: #fff;
+  stroke: #94a3b8;
+  stroke-width: 1.2px;
+  transition: fill 0.15s ease, stroke 0.15s ease;
+}
+
+.semaps-zone-doc.has-doc .semaps-zone-doc-rect {
+  fill: #eff6ff;
+  stroke: #3b82f6;
+}
+
+.semaps-zone-doc:hover .semaps-zone-doc-rect {
+  fill: #3b82f6 !important;
+  stroke: #1d4ed8 !important;
+}
+
+.semaps-zone-doc-icon {
+  fill: #334155;
+  pointer-events: none;
+  transition: fill 0.15s ease;
+}
+
+.semaps-zone-doc:hover .semaps-zone-doc-icon {
+  fill: #fff !important;
+}
+

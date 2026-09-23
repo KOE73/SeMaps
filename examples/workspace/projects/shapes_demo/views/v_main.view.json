@@ -1,0 +1,124 @@
+{
+  "id": "v_main",
+  "project": "shapes_demo",
+  "axis": "axis_subsystem",
+  "routing": "orthogonal",
+  "zones": [
+    {
+      "id": "zone_human",
+      "container": null,
+      "parent": null,
+      "x": 40,
+      "y": 60,
+      "width": 300,
+      "height": 320,
+      "styleId": "zone.slate",
+      "collapsed": false
+    },
+    {
+      "id": "zone_machine",
+      "container": null,
+      "parent": null,
+      "x": 380,
+      "y": 60,
+      "width": 380,
+      "height": 320,
+      "styleId": "zone.blue",
+      "collapsed": false
+    },
+    {
+      "id": "zone_storage",
+      "container": null,
+      "parent": null,
+      "x": 800,
+      "y": 60,
+      "width": 320,
+      "height": 500,
+      "styleId": "zone.violet",
+      "collapsed": false
+    }
+  ],
+  "nodes": [
+    {
+      "id": "actor_user",
+      "container": "zone_human",
+      "styleId": "actor",
+      "x": 80,
+      "y": 110,
+      "width": 110,
+      "height": 130
+    },
+    {
+      "id": "uc_edit",
+      "container": "zone_human",
+      "styleId": "usecase",
+      "x": 100,
+      "y": 270,
+      "width": 220,
+      "height": 80
+    },
+    {
+      "id": "stage_compile",
+      "container": "zone_machine",
+      "styleId": "stage",
+      "x": 420,
+      "y": 110,
+      "width": 200,
+      "height": 70
+    },
+    {
+      "id": "dec_valid",
+      "container": "zone_machine",
+      "styleId": "decision",
+      "x": 420,
+      "y": 220,
+      "width": 220,
+      "height": 120
+    },
+    {
+      "id": "pic_model",
+      "container": "zone_machine",
+      "styleId": "concept",
+      "template": "picture",
+      "x": 660,
+      "y": 110,
+      "width": 80,
+      "height": 160
+    },
+    {
+      "id": "cls_template",
+      "container": "zone_storage",
+      "styleId": "class.detail",
+      "x": 830,
+      "y": 110,
+      "width": 260,
+      "height": 150
+    },
+    {
+      "id": "tbl_templates",
+      "container": "zone_storage",
+      "styleId": "table",
+      "x": 830,
+      "y": 300,
+      "width": 260,
+      "height": 105
+    },
+    {
+      "id": "store_assets",
+      "container": "zone_storage",
+      "styleId": "store",
+      "x": 860,
+      "y": 440,
+      "width": 200,
+      "height": 90
+    }
+  ],
+  "edges": [
+    { "id": "r_user_edits", "from": "actor_user", "to": "uc_edit", "type": "call", "routing": "tree-vertical" },
+    { "id": "r_edit_compiles", "from": "uc_edit", "to": "stage_compile", "type": "data-flow" },
+    { "id": "r_compile_decides", "from": "stage_compile", "to": "dec_valid", "type": "data-flow" },
+    { "id": "r_library_reads", "from": "cls_template", "to": "tbl_templates", "type": "storage" },
+    { "id": "r_library_compiles", "from": "cls_template", "to": "stage_compile", "type": "call", "routing": "bezier" },
+    { "id": "r_assets_feed", "from": "store_assets", "to": "pic_model", "type": "storage" }
+  ]
+}
