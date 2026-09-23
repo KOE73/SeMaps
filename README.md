@@ -96,6 +96,20 @@ Same project lookup as above. Reports stale translations, texts that are missing
 an axis, one node in two containers on the same axis, broken `codeRef`. Exit code 1 when
 anything is found, so a consuming project can run it in CI.
 
+### Setting up a map with an agent
+
+Your agent does not have the SeMaps source, so give it the link. Paste into the agent in your
+project something like:
+
+```
+Set up a SeMaps architecture map in this repository. Follow
+https://github.com/KOE73/SeMaps/blob/main/docs/ADOPTING.md
+and the format in https://github.com/KOE73/SeMaps/blob/main/docs/CONTRACT.md.
+Do not place nodes on views — leave that to me. Do not commit.
+```
+
+[`docs/ADOPTING.md`](docs/ADOPTING.md) lists the steps and the traps.
+
 ### Try it without a project
 
 ```

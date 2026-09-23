@@ -8,7 +8,7 @@ long they stay true**, not by topic.
 | Path | Prefix | Contents | Lifecycle |
 |---|---|---|---|
 | `agents/` | — | agent-facing rules. **English only.** | must match the code; a mismatch is a bug |
-| `docs/` | — | normative contracts: `CONTRACT.md`, `API.md`, `EXTRACTOR.md` | edited together with the code they govern |
+| `docs/` | — | normative contracts: `CONTRACT.md`, `API.md`, `EXTRACTOR.md`; `ADOPTING.md` — guide for an agent in a consuming project | edited together with the code they govern |
 | `docs/adr/` | `ADR_` | decisions: what was chosen and why, including what was rejected | **never edited** |
 | `docs/plans/` | `PLAN_` | work plans, with a status line | edited as work proceeds, closed when done |
 | `docs/ideas/` | `IDEA_` | ideas, "would be nice" notes | become a plan or die |

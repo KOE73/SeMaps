@@ -19,3 +19,4 @@ Layout and purpose: [README.md](README.md).
 | change a workspace file's shape | [docs/CONTRACT.md](docs/CONTRACT.md) |
 | change what the host serves or accepts | [docs/API.md](docs/API.md) |
 | write or change an extractor | [docs/EXTRACTOR.md](docs/EXTRACTOR.md) |
+| change installing, the `.semaps` file or `semaps check` | also update [docs/ADOPTING.md](docs/ADOPTING.md) |
