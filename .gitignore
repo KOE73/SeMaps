@@ -1,0 +1,8 @@
+node_modules/
+dist/
+bin/
+obj/
+*.user
+.vs/
+.idea/
+.claude/settings.local.json
