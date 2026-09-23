@@ -1,0 +1,325 @@
+{
+  "language": "csharp",
+  "root": ".",
+  "symbols": [
+    {
+      "id": "Sample.App",
+      "kind": "module",
+      "nativeKind": "namespace",
+      "name": "App",
+      "namespace": "",
+      "file": "Sample.App/AdvancedRepetitionGuard.cs",
+      "line": 4
+    },
+    {
+      "id": "Sample.App.AdvancedRepetitionGuard",
+      "kind": "type",
+      "nativeKind": "class",
+      "name": "AdvancedRepetitionGuard",
+      "namespace": "Sample.App",
+      "file": "Sample.App/AdvancedRepetitionGuard.cs",
+      "line": 6,
+      "members": [
+        {
+          "kind": "property",
+          "name": "CurrentStatus",
+          "type": "Status",
+          "visibility": "public"
+        }
+      ]
+    },
+    {
+      "id": "Sample.Core",
+      "kind": "module",
+      "nativeKind": "namespace",
+      "name": "Core",
+      "namespace": "",
+      "file": "Sample.Core/Container.cs",
+      "line": 1
+    },
+    {
+      "id": "Sample.Core.Container",
+      "kind": "type",
+      "nativeKind": "class",
+      "name": "Container",
+      "namespace": "Sample.Core",
+      "file": "Sample.Core/Container.cs",
+      "line": 3,
+      "members": []
+    },
+    {
+      "id": "Sample.Core.Container+Inner",
+      "kind": "type",
+      "nativeKind": "class",
+      "name": "Inner",
+      "namespace": "Sample.Core",
+      "file": "Sample.Core/Container.cs",
+      "line": 5,
+      "members": [
+        {
+          "kind": "property",
+          "name": "Value",
+          "type": "int",
+          "visibility": "public"
+        }
+      ]
+    },
+    {
+      "id": "Sample.Core.Guards",
+      "kind": "module",
+      "nativeKind": "namespace",
+      "name": "Guards",
+      "namespace": "",
+      "file": "Sample.Core/Guards/RepetitionGuard.Extra.cs",
+      "line": 1
+    },
+    {
+      "id": "Sample.Core.Guards.RepetitionGuard",
+      "kind": "type",
+      "nativeKind": "class",
+      "name": "RepetitionGuard",
+      "namespace": "Sample.Core.Guards",
+      "file": "Sample.Core/Guards/RepetitionGuard.Extra.cs",
+      "line": 3,
+      "members": [
+        {
+          "kind": "property",
+          "name": "Count",
+          "type": "int",
+          "visibility": "public"
+        },
+        {
+          "kind": "field",
+          "name": "Label",
+          "type": "string",
+          "visibility": "internal"
+        }
+      ]
+    },
+    {
+      "id": "Sample.Core.IRepository",
+      "kind": "interface",
+      "nativeKind": "interface",
+      "name": "IRepository",
+      "namespace": "Sample.Core",
+      "file": "Sample.Core/IRepository.cs",
+      "line": 3,
+      "members": [
+        {
+          "kind": "property",
+          "name": "CurrentStatus",
+          "type": "Status",
+          "visibility": "public"
+        },
+        {
+          "kind": "event",
+          "name": "Changed",
+          "type": "Notify",
+          "visibility": "public"
+        },
+        {
+          "kind": "method",
+          "name": "Snapshot",
+          "type": "Repo<Status> Snapshot()",
+          "visibility": "public"
+        }
+      ]
+    },
+    {
+      "id": "Sample.Core.Logger",
+      "kind": "type",
+      "nativeKind": "class",
+      "name": "Logger",
+      "namespace": "Sample.Core",
+      "file": "Sample.Core/Logger.cs",
+      "line": 3,
+      "members": [
+        {
+          "kind": "property",
+          "name": "Created",
+          "type": "DateTime",
+          "visibility": "public"
+        },
+        {
+          "kind": "property",
+          "name": "Name",
+          "type": "string",
+          "visibility": "public"
+        }
+      ]
+    },
+    {
+      "id": "Sample.Core.Notify",
+      "kind": "function",
+      "nativeKind": "delegate",
+      "name": "Notify",
+      "namespace": "Sample.Core",
+      "file": "Sample.Core/Notify.cs",
+      "line": 3
+    },
+    {
+      "id": "Sample.Core.Point",
+      "kind": "type",
+      "nativeKind": "record-struct",
+      "name": "Point",
+      "namespace": "Sample.Core",
+      "file": "Sample.Core/Point.cs",
+      "line": 3,
+      "members": [
+        {
+          "kind": "property",
+          "name": "X",
+          "type": "int",
+          "visibility": "public"
+        },
+        {
+          "kind": "property",
+          "name": "Y",
+          "type": "int",
+          "visibility": "public"
+        }
+      ]
+    },
+    {
+      "id": "Sample.Core.Repo`1",
+      "kind": "type",
+      "nativeKind": "class",
+      "name": "Repo",
+      "namespace": "Sample.Core",
+      "file": "Sample.Core/Repo.cs",
+      "line": 3,
+      "members": [
+        {
+          "kind": "property",
+          "name": "Current",
+          "type": "T?",
+          "visibility": "public"
+        },
+        {
+          "kind": "property",
+          "name": "Items",
+          "type": "List<T>",
+          "visibility": "public"
+        }
+      ]
+    },
+    {
+      "id": "Sample.Core.Status",
+      "kind": "type",
+      "nativeKind": "enum",
+      "name": "Status",
+      "namespace": "Sample.Core",
+      "file": "Sample.Core/Status.cs",
+      "line": 3,
+      "members": [
+        {
+          "kind": "value",
+          "name": "Draft",
+          "type": "0"
+        },
+        {
+          "kind": "value",
+          "name": "Published",
+          "type": "1"
+        },
+        {
+          "kind": "value",
+          "name": "Archived",
+          "type": "2"
+        }
+      ]
+    }
+  ],
+  "edges": [
+    {
+      "from": "Sample.App",
+      "to": "Sample.App.AdvancedRepetitionGuard",
+      "kind": "contains"
+    },
+    {
+      "from": "Sample.App.AdvancedRepetitionGuard",
+      "to": "Sample.Core.Guards.RepetitionGuard",
+      "kind": "extends"
+    },
+    {
+      "from": "Sample.App.AdvancedRepetitionGuard",
+      "to": "Sample.Core.IRepository",
+      "kind": "implements"
+    },
+    {
+      "from": "Sample.App.AdvancedRepetitionGuard",
+      "to": "Sample.Core.Repo`1",
+      "kind": "references"
+    },
+    {
+      "from": "Sample.App.AdvancedRepetitionGuard",
+      "to": "Sample.Core.Status",
+      "kind": "references"
+    },
+    {
+      "from": "Sample.Core",
+      "to": "Sample.Core.Container",
+      "kind": "contains"
+    },
+    {
+      "from": "Sample.Core",
+      "to": "Sample.Core.IRepository",
+      "kind": "contains"
+    },
+    {
+      "from": "Sample.Core",
+      "to": "Sample.Core.Logger",
+      "kind": "contains"
+    },
+    {
+      "from": "Sample.Core",
+      "to": "Sample.Core.Notify",
+      "kind": "contains"
+    },
+    {
+      "from": "Sample.Core",
+      "to": "Sample.Core.Point",
+      "kind": "contains"
+    },
+    {
+      "from": "Sample.Core",
+      "to": "Sample.Core.Repo`1",
+      "kind": "contains"
+    },
+    {
+      "from": "Sample.Core",
+      "to": "Sample.Core.Status",
+      "kind": "contains"
+    },
+    {
+      "from": "Sample.Core.Container",
+      "to": "Sample.Core.Container+Inner",
+      "kind": "contains"
+    },
+    {
+      "from": "Sample.Core.Guards",
+      "to": "Sample.Core.Guards.RepetitionGuard",
+      "kind": "contains"
+    },
+    {
+      "from": "Sample.Core.IRepository",
+      "to": "Sample.Core.Notify",
+      "kind": "references"
+    },
+    {
+      "from": "Sample.Core.IRepository",
+      "to": "Sample.Core.Repo`1",
+      "kind": "references"
+    },
+    {
+      "from": "Sample.Core.IRepository",
+      "to": "Sample.Core.Status",
+      "kind": "references"
+    },
+    {
+      "from": "Sample.Core.Notify",
+      "to": "Sample.Core.Status",
+      "kind": "references"
+    }
+  ]
+}

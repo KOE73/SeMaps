@@ -1,0 +1,8 @@
+<Solution>
+  <Folder Name="/src/">
+    <Project Path="src/SeMaps.Extract.CSharp/SeMaps.Extract.CSharp.csproj" />
+  </Folder>
+  <Folder Name="/tests/">
+    <Project Path="tests/SeMaps.Extract.CSharp.Tests/SeMaps.Extract.CSharp.Tests.csproj" />
+  </Folder>
+</Solution>
