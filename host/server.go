@@ -27,6 +27,8 @@ import (
 	"runtime"
 	"strings"
 	"time"
+
+	"semaps/core"
 )
 
 //go:embed all:app all:defaults
@@ -52,6 +54,18 @@ type project struct {
 	Port       int    // default: 8777
 }
 
+// stripComment drops a `#` comment: a line starting with `#`, or ` #` after a
+// value. A `#` glued to text (`name: Project #3`) is part of the value.
+func stripComment(line string) string {
+	if strings.HasPrefix(strings.TrimSpace(line), "#") {
+		return ""
+	}
+	if i := strings.Index(line, " #"); i >= 0 {
+		return line[:i]
+	}
+	return line
+}
+
 // loadProject reads a .semaps file: flat `key: value` lines, `#` comments —
 // the YAML subset this needs, without a YAML dependency.
 func loadProject(file string) (project, error) {
@@ -61,10 +75,7 @@ func loadProject(file string) (project, error) {
 		return p, err
 	}
 	for n, line := range strings.Split(string(data), "\n") {
-		if i := strings.Index(line, "#"); i >= 0 {
-			line = line[:i]
-		}
-		line = strings.TrimSpace(line)
+		line = strings.TrimSpace(stripComment(line))
 		if line == "" {
 			continue
 		}
@@ -95,15 +106,18 @@ func loadProject(file string) (project, error) {
 	return p, nil
 }
 
-// findProjectFile walks up from dir to the first directory with a .semaps file.
-func findProjectFile(dir string) (string, bool) {
+// findProjectFile walks up from dir to the first directory with a .semaps
+// file. Two of them in one directory is an error, not a silent pick.
+func findProjectFile(dir string) (string, bool, error) {
 	for {
-		if m, _ := filepath.Glob(filepath.Join(dir, "*"+ProjectExt)); len(m) > 0 {
-			return m[0], true
+		if m, _ := filepath.Glob(filepath.Join(dir, "*"+ProjectExt)); len(m) > 1 {
+			return "", false, fmt.Errorf("several project files in %s: %s — pass one explicitly", dir, strings.Join(m, ", "))
+		} else if len(m) == 1 {
+			return m[0], true, nil
 		}
 		parent := filepath.Dir(dir)
 		if parent == dir {
-			return "", false
+			return "", false, nil
 		}
 		dir = parent
 	}
@@ -207,11 +221,40 @@ func inside(root, rel string) (string, error) {
 	return target, nil
 }
 
+// noListing wraps a file system so that directories are not listed: the
+// editor asks for files by name, and a listing of a workspace or of the
+// source tree is nobody's business.
+type noListing struct{ http.FileSystem }
+
+func (n noListing) Open(name string) (http.File, error) {
+	f, err := n.FileSystem.Open(name)
+	if err != nil {
+		return nil, err
+	}
+	if info, err := f.Stat(); err == nil && info.IsDir() {
+		f.Close()
+		return nil, fs.ErrNotExist
+	}
+	return f, nil
+}
+
+// sameOrigin is true when the request was made by a page this host served.
+// The host listens on localhost, but any page open in the same browser can
+// still POST to localhost; without this, a stray site could rewrite the
+// workspace. Non-browser clients (curl, agents) send no Origin and pass.
+func sameOrigin(r *http.Request) bool {
+	origin := r.Header.Get("Origin")
+	if origin == "" {
+		return r.Header.Get("Sec-Fetch-Site") == "" || r.Header.Get("Sec-Fetch-Site") == "same-origin"
+	}
+	return strings.EqualFold(strings.TrimPrefix(strings.TrimPrefix(origin, "http://"), "https://"), r.Host)
+}
+
 // workspaceHandler serves the workspace, falling back to the tool defaults
 // for the overridable files.
 func workspaceHandler(workspace string, defaults fs.FS) http.Handler {
-	ws := http.FileServer(http.Dir(workspace))
-	def := http.FileServer(http.FS(defaults))
+	ws := http.FileServer(noListing{http.Dir(workspace)})
+	def := http.FileServer(noListing{http.FS(defaults)})
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		rel := strings.TrimPrefix(path.Clean("/"+r.URL.Path), "/")
 		for _, o := range overridable {
@@ -228,6 +271,20 @@ func workspaceHandler(workspace string, defaults fs.FS) http.Handler {
 }
 
 func main() {
+	// `semaps check ...` takes the same roots as the server and runs the
+	// model check on them instead of serving.
+	checkMode := len(os.Args) > 1 && os.Args[1] == "check"
+	if checkMode {
+		os.Args = append(os.Args[:1], os.Args[2:]...)
+	}
+	// `semaps install`: copy to a stable folder, PATH, *.semaps association.
+	if len(os.Args) > 1 && os.Args[1] == "install" {
+		if err := install(); err != nil {
+			log.Fatalf("Install: %v", err)
+		}
+		return
+	}
+
 	var port int
 	var workspaceDir, sourceDir string
 	var noBrowser bool
@@ -238,7 +295,7 @@ func main() {
 	flag.BoolVar(&noBrowser, "no-browser", false, "Do not open a browser")
 	flag.BoolVar(&here, "here", false, "Run the server in this console instead of a new window")
 	flag.Usage = func() {
-		fmt.Fprintln(os.Stderr, "usage: semaps [flags] [dir | file.semaps]\n\nWith no arguments, finds a *.semaps project file upward from the current directory,\nthen falls back to catalog.json or docs/diagrams/catalog.json.")
+		fmt.Fprintln(os.Stderr, "usage: semaps [flags] [dir | file.semaps]\n       semaps check [flags] [dir | file.semaps]\n\nWith no arguments, finds a *.semaps project file upward from the current directory,\nthen falls back to catalog.json or docs/diagrams/catalog.json.\n`check` reports stale texts, views without an axis, broken codeRef and the like;\nexit code 1 when anything is found.")
 		flag.PrintDefaults()
 	}
 	flag.Parse()
@@ -255,7 +312,9 @@ func main() {
 		file := ""
 		if strings.EqualFold(filepath.Ext(absArg), ProjectExt) {
 			file = absArg
-		} else if f, ok := findProjectFile(absArg); ok {
+		} else if f, ok, err := findProjectFile(absArg); err != nil {
+			log.Fatalf("Project file: %v", err)
+		} else if ok {
 			file = f
 		}
 		if file != "" {
@@ -274,6 +333,12 @@ func main() {
 		} else {
 			ws, ok := findWorkspace(absArg)
 			if !ok {
+				// A downloaded exe started by a double click lands here: nothing
+				// to open, not installed. Offer the install instead of vanishing.
+				if flag.NArg() == 0 && !checkMode && !installed() {
+					offerInstall()
+					return
+				}
 				fmt.Fprintf(os.Stderr, "No *%s, catalog.json or docs/diagrams/catalog.json found from %s upward.\n", ProjectExt, absArg)
 				os.Exit(2)
 			}
@@ -291,6 +356,11 @@ func main() {
 	absRoot, err := filepath.Abs(sourceDir)
 	if err != nil {
 		log.Fatalf("Failed to resolve source root: %v", err)
+	}
+
+	if checkMode {
+		fmt.Printf("  workspace:   %s\n  source root: %s\n\n", absWorkspace, absRoot)
+		os.Exit(core.Report(os.Stdout, core.Check(absWorkspace, absRoot)))
 	}
 
 	// Already serving this workspace? Just show it.
@@ -325,6 +395,9 @@ func main() {
 	fmt.Printf("  workspace:   %s\n", absWorkspace)
 	fmt.Printf("  source root: %s\n", absRoot)
 	fmt.Println("Press Ctrl+C to stop.")
+	if !installed() {
+		fmt.Println("Hint: `semaps install` puts semaps on PATH and opens *.semaps files by double click.")
+	}
 
 	if !noBrowser {
 		go func() {
@@ -352,28 +425,15 @@ func main() {
 			return
 		}
 
-		cleanPath := filepath.Clean(filepath.FromSlash(filePath))
-		if filepath.IsAbs(cleanPath) {
-			http.Error(w, "Absolute paths not allowed", http.StatusBadRequest)
-			return
-		}
-
-		targetPath := filepath.Join(absRoot, cleanPath)
-		absTarget, err := filepath.Abs(targetPath)
+		absTarget, err := inside(absRoot, filePath)
 		if err != nil {
-			http.Error(w, "Failed to resolve path", http.StatusBadRequest)
-			return
-		}
-
-		relToRoot, err := filepath.Rel(absRoot, absTarget)
-		if err != nil || strings.HasPrefix(relToRoot, ".."+string(filepath.Separator)) || relToRoot == ".." {
-			http.Error(w, "Access denied: file outside root", http.StatusForbidden)
+			http.Error(w, "Access denied: "+err.Error(), http.StatusForbidden)
 			return
 		}
 
 		info, err := os.Stat(absTarget)
 		if err != nil || info.IsDir() {
-			http.Error(w, fmt.Sprintf("Source file not found: %s", cleanPath), http.StatusNotFound)
+			http.Error(w, fmt.Sprintf("Source file not found: %s", filePath), http.StatusNotFound)
 			return
 		}
 
@@ -417,25 +477,11 @@ func main() {
 
 		result := make(map[string]bool, len(filesToCheck))
 		for _, f := range filesToCheck {
-			cleanPath := filepath.Clean(filepath.FromSlash(strings.TrimSpace(f)))
-			if cleanPath == "" || cleanPath == "." || filepath.IsAbs(cleanPath) {
-				result[f] = false
-				continue
-			}
-
-			targetPath := filepath.Join(absRoot, cleanPath)
-			absTarget, err := filepath.Abs(targetPath)
+			absTarget, err := inside(absRoot, f)
 			if err != nil {
 				result[f] = false
 				continue
 			}
-
-			relToRoot, err := filepath.Rel(absRoot, absTarget)
-			if err != nil || strings.HasPrefix(relToRoot, ".."+string(filepath.Separator)) || relToRoot == ".." {
-				result[f] = false
-				continue
-			}
-
 			info, err := os.Stat(absTarget)
 			result[f] = (err == nil && !info.IsDir())
 		}
@@ -449,6 +495,10 @@ func main() {
 	http.HandleFunc("/api/save", func(w http.ResponseWriter, r *http.Request) {
 		if r.Method != http.MethodPost {
 			http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
+			return
+		}
+		if !sameOrigin(r) {
+			http.Error(w, "Cross-origin save refused", http.StatusForbidden)
 			return
 		}
 

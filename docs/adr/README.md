@@ -20,3 +20,5 @@ Current form of what they decided: [`CONTRACT.md`](../CONTRACT.md), [`API.md`](.
 |---|---|
 | [ADR_20260923_host_workspace-tool-source-roots](ADR_20260923_host_workspace-tool-source-roots.md) | host takes three separate roots; defaults with workspace override |
 | [ADR_20260923-2_host_one-binary-and-project-file](ADR_20260923-2_host_one-binary-and-project-file.md) | one embedded binary; project file `*.semaps` with the environment |
+| [ADR_20260923-3_build_bundle-from-ci-not-git](ADR_20260923-3_build_bundle-from-ci-not-git.md) | editor bundle built by CI, not committed; binaries in Releases |
+| [ADR_20260923-4_core_check-lives-in-the-binary](ADR_20260923-4_core_check-lives-in-the-binary.md) | `semaps check` in `core/`, the Node script is gone |

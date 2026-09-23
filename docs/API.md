@@ -167,12 +167,23 @@ Any host fulfilling these three interfaces will provide complete visualizer and 
 
 ```
 semaps [flags] [dir | file.semaps]
+semaps check [flags] [dir | file.semaps]
+semaps install
 ```
+
+`install` (Windows) copies the exe to `%LOCALAPPDATA%\Programs\SeMaps`, adds it to the user PATH and
+registers the `*.semaps` association under HKCU; started with nothing to open and not installed, the exe
+offers the same interactively.
+
+`check` resolves the roots exactly as the server does, runs the model check from `core/` and
+exits with `1` when anything is found. It does not serve.
 
 ### Project file `*.semaps`
 
 Lives in the project root; that folder is the project root, and every path in the file is relative
-to it. Flat `key: value` lines (a YAML subset), `#` comments. Unknown keys are an error.
+to it. Flat `key: value` lines (a YAML subset). A `#` at the start of a line or after a space is a
+comment; a `#` glued to text is part of the value. Unknown keys are an error, and so are two
+`*.semaps` files in one directory.
 
 | Key | Default | Meaning |
 |---|---|---|
@@ -197,5 +208,9 @@ keeps it in the current console. Before starting, the host asks `GET /api/info` 
 if a host already serves the same workspace, it only opens the browser there.
 
 `GET /api/info` → `{"workspace": "<abs path>", "sourceRoot": "<abs path>"}`.
+
+`POST /api/save` is refused with `403` when the request carries an `Origin` that is not the host
+itself: the host listens on localhost, but any page open in the same browser could otherwise POST
+to it. Requests without `Origin` (curl, agents) pass. Directories are never listed.
 
 The editor bundle (`app/`) and the defaults (`defaults/`) are embedded into the binary, never taken from the workspace.

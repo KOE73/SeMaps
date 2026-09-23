@@ -24,7 +24,6 @@
     "build:app": "npm run typecheck && vite build --mode app",
     "typecheck": "tsc --noEmit -p tsconfig.json && tsc --noEmit -p tsconfig.node.json",
     "preview": "vite preview",
-    "check:model": "node scripts/check-model.mjs",
     "check:content-template": "node scripts/check-content-template.mjs",
     "check:routers": "node scripts/check-routers.mjs",
     "check:nudge": "node scripts/check-nudge.mjs"

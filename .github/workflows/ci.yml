@@ -1,0 +1,40 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: npm
+          cache-dependency-path: editor/package-lock.json
+
+      - name: Editor — typecheck, self-checks, bundle
+        working-directory: editor
+        run: |
+          npm ci
+          npm run check:content-template
+          npm run check:routers
+          npm run check:nudge
+          npm run build:app
+
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+
+      - name: Host — vet and build
+        run: |
+          gofmt -l . | tee /dev/stderr | test -z "$(cat)"
+          go vet ./...
+          go build ./...
+
+      - name: Example workspace passes the model check
+        run: go run ./host check examples/example.semaps

@@ -1,0 +1,46 @@
+name: Release
+
+# A tag `v*` builds semaps for the three platforms and attaches the binaries
+# to a GitHub Release. The editor bundle is built here and embedded, so the
+# artifact is one file and no Node or Go is needed to use it.
+on:
+  push:
+    tags: ["v*"]
+
+permissions:
+  contents: write
+
+jobs:
+  release:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: npm
+          cache-dependency-path: editor/package-lock.json
+
+      - name: Build the editor bundle
+        working-directory: editor
+        run: npm ci && npm run build:app
+
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+
+      - name: Example workspace passes the model check
+        run: go vet ./... && go run ./host check examples/example.semaps
+
+      - name: Build binaries
+        run: |
+          mkdir -p out
+          GOOS=windows GOARCH=amd64 go build -trimpath -ldflags "-s -w" -o out/semaps.exe ./host
+          GOOS=linux   GOARCH=amd64 go build -trimpath -ldflags "-s -w" -o out/semaps-linux-amd64 ./host
+          GOOS=darwin  GOARCH=arm64 go build -trimpath -ldflags "-s -w" -o out/semaps-darwin-arm64 ./host
+
+      - uses: softprops/action-gh-release@v2
+        with:
+          files: out/*
+          generate_release_notes: true

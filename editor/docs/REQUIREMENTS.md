@@ -1,7 +1,7 @@
 # SeMaps Editor — Implemented Requirements
 
 **Status:** baseline specification, reverse-engineered from the working implementation.
-**Source of truth:** `docs/diagrams/index.html` @ commit `42197c9` (1954 lines, single file).
+**Archive.** Baseline of the pre-TypeScript single-file editor (`docs/diagrams/index.html` @ `42197c9` in the original repository, not present here). Kept as history; the current contract is [`docs/CONTRACT.md`](../../docs/CONTRACT.md).
 **Russian version:** [`REQUIREMENTS.ru.md`](REQUIREMENTS.ru.md) — same identifiers, kept in sync.
 
 ## 0. Purpose of this document

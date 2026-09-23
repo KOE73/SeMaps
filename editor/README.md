@@ -7,5 +7,5 @@ npm ci
 npm run build:app                              # → ../host/app
 npm run build                                  # library → dist/
 npm run dev                                    # SEMAPS_WORKSPACE=<dir> to override examples/workspace
-npm run check:model -- <workspace> [source-root]
+semaps check <dir or file.semaps>              # model check lives in core/, see ../host
 ```

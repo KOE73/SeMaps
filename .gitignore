@@ -6,3 +6,4 @@ obj/
 .vs/
 .idea/
 .claude/settings.local.json
+host/app/
