@@ -1,10 +1,10 @@
 @echo off
-rem Usage: run.cmd [--workspace <dir>] [--source-root <dir>] [--port <n>]
-rem With no arguments opens the bundled example workspace.
+rem Runs the host from source. With no arguments opens the bundled example workspace.
+rem For everyday use install it once (install.cmd) and just type `semaps` inside a project.
 cd /d "%~dp0"
 title SeMaps
 if "%~1"=="" (
-  go run . --workspace ..\examples\workspace --source-root ..
+  go run . ..\examples\example.semaps
 ) else (
   go run . %*
 )

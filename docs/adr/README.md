@@ -19,3 +19,4 @@ Current form of what they decided: [`CONTRACT.md`](../CONTRACT.md), [`API.md`](.
 | ADR | About |
 |---|---|
 | [ADR_20260923_host_workspace-tool-source-roots](ADR_20260923_host_workspace-tool-source-roots.md) | host takes three separate roots; defaults with workspace override |
+| [ADR_20260923-2_host_one-binary-and-project-file](ADR_20260923-2_host_one-binary-and-project-file.md) | one embedded binary; project file `*.semaps` with the environment |

@@ -166,13 +166,36 @@ Any host fulfilling these three interfaces will provide complete visualizer and 
 ## Reference host (`host/`)
 
 ```
-semaps --workspace <dir> [--source-root <dir>] [--port 8777]
+semaps [flags] [dir | file.semaps]
 ```
 
-| Flag | Meaning |
-|---|---|
-| `--workspace` | required; the directory served at `/` and the only place `/api/save` writes to |
-| `--source-root` | what `codeRef` and `/api/source*` resolve against; defaults to the workspace |
-| `--port` | listen port, `8777` by default |
+### Project file `*.semaps`
 
-The editor bundle (`app/`) and the defaults (`defaults/`) are taken from the host's own folder (next to the binary; under `go run`, the current directory), never from the workspace.
+Lives in the project root; that folder is the project root, and every path in the file is relative
+to it. Flat `key: value` lines (a YAML subset), `#` comments. Unknown keys are an error.
+
+| Key | Default | Meaning |
+|---|---|---|
+| `version` | — | format version, `1` |
+| `name` | — | shown in the console |
+| `workspace` | `docs/diagrams` | served at `/`; the only place `/api/save` writes to |
+| `source_root` | `.` | what `codeRef` and `/api/source*` resolve against |
+| `port` | `8777` | if busy, the next free port is taken |
+
+### Resolution order
+
+1. `--workspace` / `--source-root` flags, if given.
+2. The `.semaps` file passed as the argument, or the first `*.semaps` found walking up from `dir`
+   (default: the current directory).
+3. Otherwise the first `catalog.json` or `docs/diagrams/catalog.json` walking up; source root = the
+   nearest directory with `.git` above it, else the workspace.
+
+`--port` beats the file's `port`. `--no-browser` does not open a browser.
+
+On Windows the server moves to a new console window and the command returns at once; `--here`
+keeps it in the current console. Before starting, the host asks `GET /api/info` on the port range;
+if a host already serves the same workspace, it only opens the browser there.
+
+`GET /api/info` → `{"workspace": "<abs path>", "sourceRoot": "<abs path>"}`.
+
+The editor bundle (`app/`) and the defaults (`defaults/`) are embedded into the binary, never taken from the workspace.

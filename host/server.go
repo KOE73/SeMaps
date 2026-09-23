@@ -1,18 +1,24 @@
 // The SeMaps host: serves the editor bundle, a workspace of models, and the
 // source tree that `codeRef` points into. Three roots, kept apart on purpose:
 //
-//   - the tool folder (next to the binary): `app/` and `defaults/`;
-//   - --workspace: catalog, projects, and any override of the defaults;
-//   - --source-root: code, read-only, for the code viewer and codeRef checks.
+//   - the tool itself: `app/` and `defaults/`, embedded into the binary;
+//   - the workspace: catalog, projects, and any override of the defaults;
+//   - the source root: code, read-only, for the code viewer and codeRef checks.
+//
+// Run with no arguments from anywhere inside a project: the workspace and the
+// source root are found by walking up from the current directory.
 package main
 
 import (
+	"embed"
 	"encoding/json"
 	"errors"
 	"flag"
 	"fmt"
 	"io"
+	"io/fs"
 	"log"
+	"net"
 	"net/http"
 	"os"
 	"os/exec"
@@ -23,10 +29,89 @@ import (
 	"time"
 )
 
+//go:embed all:app all:defaults
+var bundled embed.FS
+
 // Workspace files the tool ships a default for. A workspace that has its own
 // copy wins; otherwise the default is served. Saving always writes to the
 // workspace, so the first save of a default turns it into an override.
 var overridable = []string{"styles.json", "templates.json", "content/"}
+
+// ProjectExt marks a project file: `<name>.semaps` in the project root. The
+// directory holding it is the project root; every path inside is relative to it.
+// Opening the file (double click, Enter in a file manager, or `semaps x.semaps`)
+// opens the project.
+const ProjectExt = ".semaps"
+
+// project is the content of a .semaps file. Every key is optional.
+type project struct {
+	File       string
+	Name       string // shown in the console
+	Workspace  string // default: docs/diagrams
+	SourceRoot string // default: the project root
+	Port       int    // default: 8777
+}
+
+// loadProject reads a .semaps file: flat `key: value` lines, `#` comments —
+// the YAML subset this needs, without a YAML dependency.
+func loadProject(file string) (project, error) {
+	p := project{File: file, Workspace: "docs/diagrams", SourceRoot: "."}
+	data, err := os.ReadFile(file)
+	if err != nil {
+		return p, err
+	}
+	for n, line := range strings.Split(string(data), "\n") {
+		if i := strings.Index(line, "#"); i >= 0 {
+			line = line[:i]
+		}
+		line = strings.TrimSpace(line)
+		if line == "" {
+			continue
+		}
+		key, value, ok := strings.Cut(line, ":")
+		if !ok {
+			return p, fmt.Errorf("%s:%d: expected `key: value`", file, n+1)
+		}
+		value = strings.Trim(strings.TrimSpace(value), `"'`)
+		switch strings.TrimSpace(key) {
+		case "version":
+		case "name":
+			p.Name = value
+		case "workspace":
+			p.Workspace = value
+		case "source_root":
+			p.SourceRoot = value
+		case "port":
+			if _, err := fmt.Sscan(value, &p.Port); err != nil {
+				return p, fmt.Errorf("%s:%d: port must be a number", file, n+1)
+			}
+		default:
+			return p, fmt.Errorf("%s:%d: unknown key %q", file, n+1, key)
+		}
+	}
+	root := filepath.Dir(file)
+	p.Workspace = filepath.Join(root, filepath.FromSlash(p.Workspace))
+	p.SourceRoot = filepath.Join(root, filepath.FromSlash(p.SourceRoot))
+	return p, nil
+}
+
+// findProjectFile walks up from dir to the first directory with a .semaps file.
+func findProjectFile(dir string) (string, bool) {
+	for {
+		if m, _ := filepath.Glob(filepath.Join(dir, "*"+ProjectExt)); len(m) > 0 {
+			return m[0], true
+		}
+		parent := filepath.Dir(dir)
+		if parent == dir {
+			return "", false
+		}
+		dir = parent
+	}
+}
+
+// Where a workspace may sit relative to a directory on the way up, when there
+// is no project file.
+var workspaceCandidates = []string{".", "docs/diagrams"}
 
 // noCacheHandler makes the browser revalidate every file (HTML, JS, CSS, JSON) it reads.
 func noCacheHandler(next http.Handler) http.Handler {
@@ -38,17 +123,73 @@ func noCacheHandler(next http.Handler) http.Handler {
 	})
 }
 
-// toolDir is where `app/` and `defaults/` live: next to the binary, or — under
-// `go run`, where the binary sits in a temp folder — the current directory.
-func toolDir() string {
-	if exe, err := os.Executable(); err == nil {
-		dir := filepath.Dir(exe)
-		if info, err := os.Stat(filepath.Join(dir, "app")); err == nil && info.IsDir() {
+func isFile(p string) bool {
+	info, err := os.Stat(p)
+	return err == nil && !info.IsDir()
+}
+
+// findWorkspace walks up from dir to the first directory that holds
+// `catalog.json` itself or in `docs/diagrams/`.
+func findWorkspace(dir string) (string, bool) {
+	for {
+		for _, c := range workspaceCandidates {
+			ws := filepath.Join(dir, c)
+			if isFile(filepath.Join(ws, "catalog.json")) {
+				return ws, true
+			}
+		}
+		parent := filepath.Dir(dir)
+		if parent == dir {
+			return "", false
+		}
+		dir = parent
+	}
+}
+
+// findSourceRoot is the nearest repository root above the workspace, or the
+// workspace itself when there is none.
+func findSourceRoot(workspace string) string {
+	for dir := workspace; ; {
+		if _, err := os.Stat(filepath.Join(dir, ".git")); err == nil {
 			return dir
 		}
+		parent := filepath.Dir(dir)
+		if parent == dir {
+			return workspace
+		}
+		dir = parent
 	}
-	dir, _ := os.Getwd()
-	return dir
+}
+
+// runningFor looks for a SeMaps host already serving workspace on port or the
+// ports listen would have moved on to.
+func runningFor(port int, workspace string) (string, bool) {
+	client := http.Client{Timeout: 300 * time.Millisecond}
+	for p := port; p < port+20; p++ {
+		res, err := client.Get(fmt.Sprintf("http://localhost:%d/api/info", p))
+		if err != nil {
+			continue
+		}
+		var info struct{ Workspace string }
+		err = json.NewDecoder(res.Body).Decode(&info)
+		res.Body.Close()
+		if err == nil && strings.EqualFold(filepath.Clean(info.Workspace), filepath.Clean(workspace)) {
+			return fmt.Sprintf("http://localhost:%d/app/", p), true
+		}
+	}
+	return "", false
+}
+
+// listen takes the requested port, or the next free one after it.
+func listen(port int) (net.Listener, error) {
+	var err error
+	for p := port; p < port+20; p++ {
+		var l net.Listener
+		if l, err = net.Listen("tcp", fmt.Sprintf("localhost:%d", p)); err == nil {
+			return l, nil
+		}
+	}
+	return nil, err
 }
 
 // inside resolves a slash-separated relative path under root and refuses
@@ -68,9 +209,9 @@ func inside(root, rel string) (string, error) {
 
 // workspaceHandler serves the workspace, falling back to the tool defaults
 // for the overridable files.
-func workspaceHandler(workspace, defaults string) http.Handler {
+func workspaceHandler(workspace string, defaults fs.FS) http.Handler {
 	ws := http.FileServer(http.Dir(workspace))
-	def := http.FileServer(http.Dir(defaults))
+	def := http.FileServer(http.FS(defaults))
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		rel := strings.TrimPrefix(path.Clean("/"+r.URL.Path), "/")
 		for _, o := range overridable {
@@ -87,46 +228,117 @@ func workspaceHandler(workspace, defaults string) http.Handler {
 }
 
 func main() {
-	var port, workspaceDir, sourceDir string
-	flag.StringVar(&port, "port", "8777", "Port to listen on")
-	flag.StringVar(&workspaceDir, "workspace", "", "Workspace directory: catalog.json, projects/, overrides (required)")
-	flag.StringVar(&sourceDir, "source-root", "", "Directory codeRef paths resolve against (default: the workspace)")
+	var port int
+	var workspaceDir, sourceDir string
+	var noBrowser bool
+	flag.IntVar(&port, "port", 8777, "Port to listen on; the next free one is taken if busy")
+	flag.StringVar(&workspaceDir, "workspace", "", "Workspace directory (default: found upward from the current directory)")
+	flag.StringVar(&sourceDir, "source-root", "", "Directory codeRef paths resolve against (default: the repository root above the workspace)")
+	var here bool
+	flag.BoolVar(&noBrowser, "no-browser", false, "Do not open a browser")
+	flag.BoolVar(&here, "here", false, "Run the server in this console instead of a new window")
+	flag.Usage = func() {
+		fmt.Fprintln(os.Stderr, "usage: semaps [flags] [dir | file.semaps]\n\nWith no arguments, finds a *.semaps project file upward from the current directory,\nthen falls back to catalog.json or docs/diagrams/catalog.json.")
+		flag.PrintDefaults()
+	}
 	flag.Parse()
 
+	portSet := false
+	flag.Visit(func(f *flag.Flag) { portSet = portSet || f.Name == "port" })
+
 	if workspaceDir == "" {
-		fmt.Fprintln(os.Stderr, "--workspace is required")
-		flag.Usage()
-		os.Exit(2)
-	}
-	if sourceDir == "" {
-		sourceDir = workspaceDir
+		arg := flag.Arg(0)
+		if arg == "" {
+			arg = "."
+		}
+		absArg, _ := filepath.Abs(arg)
+		file := ""
+		if strings.EqualFold(filepath.Ext(absArg), ProjectExt) {
+			file = absArg
+		} else if f, ok := findProjectFile(absArg); ok {
+			file = f
+		}
+		if file != "" {
+			proj, err := loadProject(file)
+			if err != nil {
+				log.Fatalf("Project file: %v", err)
+			}
+			fmt.Printf("Project %s (%s)\n", proj.Name, proj.File)
+			workspaceDir = proj.Workspace
+			if sourceDir == "" {
+				sourceDir = proj.SourceRoot
+			}
+			if !portSet && proj.Port != 0 {
+				port = proj.Port
+			}
+		} else {
+			ws, ok := findWorkspace(absArg)
+			if !ok {
+				fmt.Fprintf(os.Stderr, "No *%s, catalog.json or docs/diagrams/catalog.json found from %s upward.\n", ProjectExt, absArg)
+				os.Exit(2)
+			}
+			workspaceDir = ws
+		}
 	}
 
 	absWorkspace, err := filepath.Abs(workspaceDir)
 	if err != nil {
 		log.Fatalf("Failed to resolve workspace: %v", err)
 	}
+	if sourceDir == "" {
+		sourceDir = findSourceRoot(absWorkspace)
+	}
 	absRoot, err := filepath.Abs(sourceDir)
 	if err != nil {
 		log.Fatalf("Failed to resolve source root: %v", err)
 	}
-	tool := toolDir()
 
-	url := fmt.Sprintf("http://localhost:%s/app/", port)
+	// Already serving this workspace? Just show it.
+	if url, ok := runningFor(port, absWorkspace); ok {
+		fmt.Printf("Already running: %s\n", url)
+		if !noBrowser {
+			openBrowser(url)
+		}
+		return
+	}
+
+	// Launched from a file manager or a shell: hand the server to its own
+	// console window and give the caller its prompt back.
+	if !here {
+		if err := detach(os.Args[1:]); err == nil {
+			return
+		} else {
+			log.Printf("Could not open a new window, running here: %v", err)
+		}
+	}
+
+	appFS, _ := fs.Sub(bundled, "app")
+	defaultsFS, _ := fs.Sub(bundled, "defaults")
+
+	listener, err := listen(port)
+	if err != nil {
+		log.Fatalf("No free port from %d: %v", port, err)
+	}
+	url := fmt.Sprintf("http://%s/app/", listener.Addr().String())
 
 	fmt.Printf("SeMaps on %s\n", url)
-	fmt.Printf("  tool:        %s\n", tool)
 	fmt.Printf("  workspace:   %s\n", absWorkspace)
 	fmt.Printf("  source root: %s\n", absRoot)
 	fmt.Println("Press Ctrl+C to stop.")
 
-	go func() {
-		time.Sleep(500 * time.Millisecond)
-		openBrowser(url)
-	}()
+	if !noBrowser {
+		go func() {
+			time.Sleep(300 * time.Millisecond)
+			openBrowser(url)
+		}()
+	}
 
-	http.Handle("/app/", noCacheHandler(http.StripPrefix("/app/", http.FileServer(http.Dir(filepath.Join(tool, "app"))))))
-	http.Handle("/", noCacheHandler(workspaceHandler(absWorkspace, filepath.Join(tool, "defaults"))))
+	http.Handle("/app/", noCacheHandler(http.StripPrefix("/app/", http.FileServer(http.FS(appFS)))))
+	http.Handle("/", noCacheHandler(workspaceHandler(absWorkspace, defaultsFS)))
+	http.HandleFunc("/api/info", func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json; charset=utf-8")
+		_ = json.NewEncoder(w).Encode(map[string]string{"workspace": absWorkspace, "sourceRoot": absRoot})
+	})
 
 	http.HandleFunc("/api/source", func(w http.ResponseWriter, r *http.Request) {
 		if r.Method != http.MethodGet && r.Method != http.MethodHead {
@@ -275,7 +487,7 @@ func main() {
 		w.Write([]byte("OK"))
 	})
 
-	log.Fatal(http.ListenAndServe(":"+port, nil))
+	log.Fatal(http.Serve(listener, nil))
 }
 
 func openBrowser(url string) {

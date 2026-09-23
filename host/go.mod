@@ -1,3 +1,3 @@
-module semaps/host
+module semaps
 
 go 1.26

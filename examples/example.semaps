@@ -1,0 +1,7 @@
+# SeMaps project file. The folder holding it is the project root;
+# every path below is relative to that folder. All keys are optional.
+version: 1
+name: SeMaps example
+workspace: workspace        # default: docs/diagrams
+source_root: ..             # what codeRef resolves against; default: .
+port: 8777                  # the next free port is taken if busy
