@@ -27,8 +27,8 @@ port: 8777                 # default; the next free one is taken if busy
 ```
 
 Then either press Enter / double-click the `.semaps` file, or type `semaps` anywhere inside the
-project — it walks up to the first `*.semaps`. Without a project file it falls back to the first
-`catalog.json` or `docs/diagrams/catalog.json` upward, with the repository root as source root.
+project — it walks up to the first `*.semaps`. Without a project file there is nothing to open
+(pass `--workspace` explicitly); the host no longer guesses a workspace from marker files.
 
 ```
 semaps [dir | file.semaps]

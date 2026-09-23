@@ -68,7 +68,7 @@ In the **root of your project** (next to `.git`) create `<name>.semaps`, e.g. `m
 ```yaml
 version: 1
 name: My project
-workspace: docs/diagrams   # where the maps live (catalog.json, projects/)
+workspace: docs/diagrams   # where the maps live (projects/)
 source_root: .             # where the code lives, for codeRef
 port: 8777
 ```
@@ -76,8 +76,10 @@ port: 8777
 All paths are relative to the folder of this file. All keys are optional — the values above are
 the defaults. Commit the file: everyone who clones the project gets the same environment.
 
-The workspace folder needs at least `catalog.json`; copy
-[`examples/workspace`](examples/workspace) as a start.
+The workspace folder may start empty: create projects and diagrams in the editor (**Вставка →
+Проекты и схемы**), or copy [`examples/workspace`](examples/workspace). There is no list of
+diagrams to maintain — a project is a folder in `projects/`, a diagram is a file in its `views/`.
+**Справка → Как устроен проект** in the editor draws the layout.
 
 ### 3. Open — every day
 
@@ -160,3 +162,7 @@ A consuming project keeps only its workspace (`docs/diagrams/`) — no Node, no 
 
 The built editor (`host/app/`) is not in git: CI builds it and embeds it into the release
 binaries ([`ADR_20260923-3`](docs/adr/ADR_20260923-3_build_bundle-from-ci-not-git.md)).
+
+## License
+
+[MIT](LICENSE).

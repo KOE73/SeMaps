@@ -23,6 +23,7 @@ export interface UiDictionary {
       readonly view: string;
       readonly formatBlock: string;
       readonly formatEdge: string;
+      readonly help: string;
     };
     readonly groups: {
       readonly history: string;
@@ -35,6 +36,8 @@ export interface UiDictionary {
       readonly perspectives: string;
       readonly edgeFamilies: string;
       readonly canvas: string;
+      readonly workspace: string;
+      readonly help: string;
     };
     readonly labels: {
       readonly theme: string;
@@ -83,6 +86,11 @@ export interface UiDictionary {
     readonly toggleSnap: { readonly title: string; readonly desc: string };
     readonly toggleCanvasFilters: { readonly title: string; readonly desc: string };
     readonly toggleOverviewShadows: { readonly title: string; readonly desc: string };
+    readonly newProject: { readonly title: string; readonly desc: string };
+    readonly newView: { readonly title: string; readonly desc: string };
+    readonly helpStructure: { readonly title: string; readonly desc: string };
+    readonly editProject: { readonly title: string; readonly desc: string };
+    readonly editView: { readonly title: string; readonly desc: string };
   };
   readonly panels: {
     readonly diagram: { readonly title: string };
@@ -91,6 +99,11 @@ export interface UiDictionary {
       readonly projectCatalog: string;
       readonly customSection: string;
       readonly empty: string;
+      readonly noViews: string;
+      readonly addProject: string;
+      readonly addView: string;
+      readonly editProject: string;
+      readonly editView: string;
       readonly openJsonBtn: string;
       readonly hintDragZone: string;
       readonly hintDragBlock: string;
@@ -233,6 +246,9 @@ export interface UiDictionary {
       readonly searchPlaceholder: string;
       readonly emptyNoModel: string;
       readonly emptyNoEntities: string;
+      readonly allKinds: string;
+      readonly kindHint: string;
+      readonly noMatches: string;
     };
     readonly templates: {
       readonly title: string;
@@ -260,6 +276,64 @@ export interface UiDictionary {
     readonly zoomOut: string;
     readonly fit: string;
     readonly dropHint: string;
+  };
+  readonly workspaceDialogs: {
+    readonly newProjectTitle: string;
+    readonly newViewTitle: string;
+    readonly idLabel: string;
+    readonly projectIdHint: string;
+    readonly viewIdHint: string;
+    readonly titleLabel: string;
+    readonly subtitleLabel: string;
+    readonly iconLabel: string;
+    readonly nameLabel: string;
+    readonly axisLabel: string;
+    readonly axisHint: string;
+    readonly projectLabel: string;
+    readonly create: string;
+    readonly required: string;
+    readonly editProjectTitle: string;
+    readonly editViewTitle: string;
+    readonly save: string;
+    readonly idTaken: string;
+    readonly titleTaken: string;
+    readonly nameTaken: string;
+    readonly badProjectId: string;
+    readonly badViewId: string;
+    readonly renameNote: string;
+    readonly iconHint: string;
+    readonly iconPreview: string;
+    readonly iconCustom: string;
+    readonly colorLabel: string;
+    readonly noColor: string;
+  };
+  readonly help: {
+    readonly title: string;
+    readonly projectFile: string;
+    readonly projectFileNote: string;
+    readonly workspace: string;
+    readonly workspaceNote: string;
+    readonly shared: string;
+    readonly sharedNote: string;
+    readonly projectsNote: string;
+    readonly projectJson: string;
+    readonly entitiesJson: string;
+    readonly relationsJson: string;
+    readonly textJson: string;
+    readonly viewsNote: string;
+    readonly anotherProject: string;
+    readonly code: string;
+    readonly codeNote: string;
+    readonly codeRef: string;
+    readonly inEditor: string;
+    readonly mapCatalog: string;
+    readonly mapBase: string;
+    readonly mapRelations: string;
+    readonly mapStyles: string;
+    readonly ideasTitle: string;
+    readonly idea1: string;
+    readonly idea2: string;
+    readonly idea3: string;
   };
   readonly dialogs: {
     readonly confirmDiscardTitle: string;

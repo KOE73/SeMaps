@@ -2,7 +2,7 @@ import type { DiagramCanvas, Selection } from "../../canvas/DiagramCanvas.js";
 import type { DiagramDocument } from "../../model/document.js";
 import type { StyleLibrary } from "../../model/StyleLibrary.js";
 import type { History } from "../../editor/History.js";
-import type { CatalogEntry } from "../../editor/io/types.js";
+import type { NewProject, NewView, ProjectEntry, ViewEntry, WorkspaceIndex } from "../../editor/io/types.js";
 
 export interface IDisposable {
   dispose(): void;
@@ -120,7 +120,15 @@ export interface DiagramEditorFacade {
   applyUiLang?(lang: string): void;
   openTab(tab: "properties" | "edges" | "filters" | "styles" | "base"): void;
   notify(message: string): void;
-  openCatalogEntry(entry: CatalogEntry): Promise<void>;
+  readonly workspace: WorkspaceIndex;
+  readonly currentView: ViewEntry | null;
+  viewName(view: ViewEntry): string;
+  projectOf(view: ViewEntry): ProjectEntry | undefined;
+  openView(view: ViewEntry, pos?: { clientX: number; clientY: number }): void;
+  createProject(project: NewProject): Promise<void>;
+  createView(view: NewView): Promise<void>;
+  updateProject(oldId: string, project: NewProject): Promise<void>;
+  updateView(oldId: string, view: NewView): Promise<void>;
   toggleOverviewShadows?(on?: boolean): boolean;
   isOverviewShadowsEnabled?(): boolean;
 }

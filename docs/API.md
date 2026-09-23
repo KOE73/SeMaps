@@ -9,7 +9,7 @@ This document defines the host/backend communication contract for the SeMaps edi
 ## 1. Architectural Overview
 
 The editor operates over a project workspace containing:
-1. **Catalog**: `catalog.json` listing available projects/views.
+1. **Workspace index**: `GET /api/workspace` — the projects and views the host found on disk (§2.4). There is no list file.
 2. **Global Styles**: `styles.json` defining color schemes, strokes, typography, and badges.
 3. **Content templates**: `templates.json`, the named registry of block content
    templates (`CONTRACT.md` §11.2) — sits next to `styles.json`, not inside it.
@@ -27,7 +27,6 @@ The editor operates over a project workspace containing:
 
 ```
 Workspace Root (--workspace, e.g. docs/diagrams/)
-├── catalog.json              Diagram / view registry — one entry per view
 ├── styles.json               Shared style library
 ├── templates.json            Shared content-template registry
 ├── content/
@@ -57,7 +56,7 @@ The backend must serve static JSON documents and application assets over HTTP or
 |---|---|---|---|
 | `/app/` | `GET` | `text/html` | Entry point for the editor application |
 | `/app/assets/*` | `GET` | `application/javascript`, `text/css` | Bundled JavaScript, CSS, and media |
-| `/catalog.json` | `GET` | `application/json` | Catalog of available diagrams and views |
+| `/api/workspace` | `GET` | `application/json` | Projects and their views, found on disk (§2.4) |
 | `/styles.json` | `GET` | `application/json` | Shared style stylesheet (returns 404 if not created yet; client falls back to built-in styles) |
 | `/templates.json` | `GET` | `application/json` | Content-template registry (404 tolerated: client falls back to the built-in `title-only` template) |
 | `/content/index.json` | `GET` | `application/json` | Asset manifest for `@Asset` (404 tolerated: the picker is simply empty) |
@@ -75,7 +74,29 @@ The backend must serve static JSON documents and application assets over HTTP or
 
 `styles.json`, `templates.json` and `content/` have defaults shipped with the tool (reference host: `host/defaults/`). A host serves the workspace copy when it exists and the default otherwise. Writes always go to the workspace, so the first save of a default creates the override; the defaults themselves are never written.
 
-### 2.2. Base URL Handling
+### 2.2. Workspace index: `GET /api/workspace`
+
+The one listing a host gives. It walks `projects/*/` (a folder counts only with a `project.json`) and
+`views/*.view.json` in each; nothing else is listed, and plain directory listing stays refused
+([`ADR_20260923-7`](adr/ADR_20260923-7_contract_projects-and-views-found-not-listed.md)).
+
+```json
+{ "projects": [
+  { "id": "shop", "title": "Магазин", "subtitle": "…", "icon": "📁", "theme": "blue", "order": 1,
+    "languages": ["ru"],
+    "views": [
+      { "id": "v_main", "file": "projects/shop/views/v_main.view.json", "axis": "axis_subsystem",
+        "icon": "🗺️", "theme": "blue", "order": 1, "names": { "ru": "Общая картина" } } ] } ] }
+```
+
+- `title` falls back to the folder name; `names` holds `name` under the view's id from each
+  `text.<lang>.json` of `languages` (empty when there is none).
+- Projects and views are sorted by `order`, entries without one last, then by `id`.
+- A file that does not parse stays in the list with an `error` string instead of its fields.
+- No `projects/` folder is an empty list, not an error. Served with `Cache-Control: no-cache`.
+- Reference implementation: `core.Index` (`core/index.go`).
+
+### 2.2a. Base URL Handling
 - The editor bundle is **not** part of the workspace. The reference host serves it at `/app/` from its own installation (`host/app/`); the workspace is served at `/`.
 - When served from `/app/`, relative model paths resolve relative to `../` (workspace root).
 - In development mode (Vite dev server), model paths resolve relative to `./` (mounted public root).
@@ -97,10 +118,15 @@ The backend must provide a mechanism to persist updated JSON files back to the w
 - **Headers**: `Content-Type: application/json`
 - **Request Body**: Valid JSON payload formatted with 2-space indentation.
 
+#### Query Parameter `create`
+- `create=1`: write only if the file does not exist yet; otherwise `409 Conflict` and nothing is
+  written. The editor creates `project.json` and new views this way, so a taken id never
+  overwrites anything ([`ADR_20260923-8`](adr/ADR_20260923-8_contract_project-and-view-ids-can-change.md)).
+
 #### Query Parameter `file`
-- Contains a workspace-relative path (e.g. `projects/llm_pipeline/views/v_main.view.json`, `styles.json`, `catalog.json`, `templates.json`).
+- Contains a workspace-relative path (e.g. `projects/llm_pipeline/views/v_main.view.json`, `styles.json`, `templates.json`).
 - Path separators may be `/` (standardized by client) or `\` (Windows).
-- Model paths are always resolved relative to the **workspace root** (the directory holding `catalog.json`/`styles.json`), never relative to `/app/` — the editor application bundle is a separate, content-hashed tree served alongside the models, not a parent of them (§2.2).
+- Model paths are always resolved relative to the **workspace root** (the directory named by `workspace` in the `.semaps` file), never relative to `/app/` — the editor application bundle is a separate, content-hashed tree served alongside the models, not a parent of them (§2.2a).
 
 ### 3.2. Response Status Codes
 
@@ -109,6 +135,7 @@ The backend must provide a mechanism to persist updated JSON files back to the w
 | `200 OK` | File successfully written to disk | `OK` or `{ "status": "ok" }` |
 | `400 Bad Request` | Missing `file` param, invalid extension, or directory traversal attempt | Error message string |
 | `405 Method Not Allowed` | Method is not `POST` | `Method not allowed` |
+| `409 Conflict` | `create=1` and the file exists | `Already exists: <file>` |
 | `500 Internal Server Error` | File system I/O error or permission failure | Error message string |
 
 ### 3.3. Security & Path Traversal Rules
@@ -117,6 +144,14 @@ The backend must provide a mechanism to persist updated JSON files back to the w
 3. **Absolute Path Protection**: Absolute paths (e.g. `/etc/passwd`, `C:\Windows\...`) **MUST** be rejected with HTTP 400.
 4. **Extension Whitelist**: Only `.json` files are permitted to be written via `/api/save`. `templates.json` is written through this same endpoint like any other model file — its multi-line template text is stored as a JSON array of strings (`lines`) precisely so it stays inside the `.json`-only whitelist without widening it (`CONTRACT.md` §11.2, `ADR_20260903` §2.9). Assets under `content/` are never written by the editor: they are static files dropped in by hand, read-only from the editor's point of view.
 5. **Auto Directory Creation**: If parent subdirectories do not exist (e.g. `projects/<project_id>/views/`), the server **MUST** create them automatically before writing the file.
+
+### 3.3a. Rename: `POST /api/move`
+
+`/api/move?from=<rel>&to=<rel>` renames a project folder or a view file. Both paths are
+workspace-relative and **must start with `projects/`**; a file keeps its `.json` extension.
+`404` when `from` is missing, `409` when `to` exists (a rename never replaces anything — on
+Windows `os.Rename` would), `400` for a path outside `projects/`, `403` cross-origin like
+`/api/save`. Directories are moved whole.
 
 ### 3.4. What the editor actually writes
 
@@ -129,9 +164,32 @@ One user-initiated save issues up to three `POST /api/save` calls, in this order
 | `projects/<project_id>/text.<lang>.json` | only if a name or description changed; values the user edited are re-stamped `authored`, untouched ones keep their loaded provenance, so an idle save produces an empty diff |
 | `templates.json` | only when the style/template panel edits a template's text, independent of any view save |
 
-`relations.json`, `relation-types.json`, `containers.json`, `project.json` and
-`content/index.json` are **never written by the editor**. A host that makes
-those files read-only loses nothing.
+Before writing `text.<lang>.json` the editor re-reads it and keeps every key the open view did not
+load, so a name written meanwhile (a new view, an agent's description) survives the save.
+
+Creating a project or a view from the editor, on a person's action, writes:
+
+| Action | Files |
+|---|---|
+| new project | `projects/<id>/project.json` |
+| new view | `projects/<project>/views/<id>.view.json` (axis, empty `zones`/`nodes`, no `edges`), then `text.<lang>.json` with `name` under the view's id |
+
+Editing them (the ✎ in the catalogue), on a person's action:
+
+| Action | Requests |
+|---|---|
+| project title, subtitle, icon, theme | `project.json` rewritten, other keys kept |
+| project id | `move projects/<old> → projects/<new>`, then `project.json` (`id`), then every view (`project`) |
+| view name | `text.<lang>.json` of the language shown |
+| view axis, icon, theme | the `.view.json`, geometry untouched |
+| view id | `move views/<old>.view.json → <new>.view.json`, the file's `id`, the text key in every `text.<lang>.json` (provenance kept), `defaultView` if it named the old id |
+
+The editor refuses a rename while the open view of that project has unsaved changes, and reopens
+it afterwards.
+
+`relations.json`, `relation-types.json`, `containers.json` and `content/index.json` are **never
+written by the editor**, and `project.json` only by creating or editing a project. A host that makes
+those files read-only loses nothing but managing projects.
 
 ---
 
@@ -153,11 +211,14 @@ When embedding `@semaps/editor` in non-HTTP hosts (e.g., VSCode Extension WebVie
      save(sheet: WireStyleSheet): Promise<void>;
    }
    ```
-3. **Implement `CatalogStore`**:
+3. **Implement `WorkspaceStore`**:
    ```typescript
-   export interface CatalogStore {
-     load(): Promise<CatalogEntry[]>;
-     save(catalog: CatalogEntry[]): Promise<void>;
+   export interface WorkspaceStore {
+     load(): Promise<WorkspaceIndex>;          // same shape as GET /api/workspace
+     createProject(project: NewProject): Promise<void>;
+     createView(view: NewView): Promise<string>; // returns the new view's file
+     updateProject(oldId: string, project: NewProject): Promise<void>;
+     updateView(oldId: string, view: NewView, languages: readonly string[]): Promise<string>;
    }
    ```
 
@@ -198,8 +259,9 @@ comment; a `#` glued to text is part of the value. Unknown keys are an error, an
 1. `--workspace` / `--source-root` flags, if given.
 2. The `.semaps` file passed as the argument, or the first `*.semaps` found walking up from `dir`
    (default: the current directory).
-3. Otherwise the first `catalog.json` or `docs/diagrams/catalog.json` walking up; source root = the
-   nearest directory with `.git` above it, else the workspace.
+3. Nothing else: without a `*.semaps` file (or `--workspace`) the host exits with an error. With
+   `--workspace` and no `--source-root`, the source root is the nearest directory with `.git` above
+   the workspace, else the workspace.
 
 `--port` beats the file's `port`. `--no-browser` does not open a browser.
 

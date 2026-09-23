@@ -2,7 +2,7 @@
 // source tree that `codeRef` points into. Three roots, kept apart on purpose:
 //
 //   - the tool itself: `app/` and `defaults/`, embedded into the binary;
-//   - the workspace: catalog, projects, and any override of the defaults;
+//   - the workspace: projects, and any override of the defaults;
 //   - the source root: code, read-only, for the code viewer and codeRef checks.
 //
 // Run with no arguments from anywhere inside a project: the workspace and the
@@ -123,10 +123,6 @@ func findProjectFile(dir string) (string, bool, error) {
 	}
 }
 
-// Where a workspace may sit relative to a directory on the way up, when there
-// is no project file.
-var workspaceCandidates = []string{".", "docs/diagrams"}
-
 // noCacheHandler makes the browser revalidate every file (HTML, JS, CSS, JSON) it reads.
 func noCacheHandler(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
@@ -137,31 +133,9 @@ func noCacheHandler(next http.Handler) http.Handler {
 	})
 }
 
-func isFile(p string) bool {
-	info, err := os.Stat(p)
-	return err == nil && !info.IsDir()
-}
-
-// findWorkspace walks up from dir to the first directory that holds
-// `catalog.json` itself or in `docs/diagrams/`.
-func findWorkspace(dir string) (string, bool) {
-	for {
-		for _, c := range workspaceCandidates {
-			ws := filepath.Join(dir, c)
-			if isFile(filepath.Join(ws, "catalog.json")) {
-				return ws, true
-			}
-		}
-		parent := filepath.Dir(dir)
-		if parent == dir {
-			return "", false
-		}
-		dir = parent
-	}
-}
-
 // findSourceRoot is the nearest repository root above the workspace, or the
-// workspace itself when there is none.
+// workspace itself when there is none. Used only with an explicit --workspace:
+// a project file names its source root.
 func findSourceRoot(workspace string) string {
 	for dir := workspace; ; {
 		if _, err := os.Stat(filepath.Join(dir, ".git")); err == nil {
@@ -295,7 +269,7 @@ func main() {
 	flag.BoolVar(&noBrowser, "no-browser", false, "Do not open a browser")
 	flag.BoolVar(&here, "here", false, "Run the server in this console instead of a new window")
 	flag.Usage = func() {
-		fmt.Fprintln(os.Stderr, "usage: semaps [flags] [dir | file.semaps]\n       semaps check [flags] [dir | file.semaps]\n\nWith no arguments, finds a *.semaps project file upward from the current directory,\nthen falls back to catalog.json or docs/diagrams/catalog.json.\n`check` reports stale texts, views without an axis, broken codeRef and the like;\nexit code 1 when anything is found.")
+		fmt.Fprintln(os.Stderr, "usage: semaps [flags] [dir | file.semaps]\n       semaps check [flags] [dir | file.semaps]\n\nWith no arguments, finds a *.semaps project file upward from the current directory.\n`check` reports stale texts, views without an axis, broken codeRef and the like;\nexit code 1 when anything is found.")
 		flag.PrintDefaults()
 	}
 	flag.Parse()
@@ -317,32 +291,27 @@ func main() {
 		} else if ok {
 			file = f
 		}
-		if file != "" {
-			proj, err := loadProject(file)
-			if err != nil {
-				log.Fatalf("Project file: %v", err)
+		if file == "" {
+			// A downloaded exe started by a double click lands here: nothing
+			// to open, not installed. Offer the install instead of vanishing.
+			if flag.NArg() == 0 && !checkMode && !installed() {
+				offerInstall()
+				return
 			}
-			fmt.Printf("Project %s (%s)\n", proj.Name, proj.File)
-			workspaceDir = proj.Workspace
-			if sourceDir == "" {
-				sourceDir = proj.SourceRoot
-			}
-			if !portSet && proj.Port != 0 {
-				port = proj.Port
-			}
-		} else {
-			ws, ok := findWorkspace(absArg)
-			if !ok {
-				// A downloaded exe started by a double click lands here: nothing
-				// to open, not installed. Offer the install instead of vanishing.
-				if flag.NArg() == 0 && !checkMode && !installed() {
-					offerInstall()
-					return
-				}
-				fmt.Fprintf(os.Stderr, "No *%s, catalog.json or docs/diagrams/catalog.json found from %s upward.\n", ProjectExt, absArg)
-				os.Exit(2)
-			}
-			workspaceDir = ws
+			fmt.Fprintf(os.Stderr, "No *%s found from %s upward. Create one (see docs/ADOPTING.md) or pass --workspace.\n", ProjectExt, absArg)
+			os.Exit(2)
+		}
+		proj, err := loadProject(file)
+		if err != nil {
+			log.Fatalf("Project file: %v", err)
+		}
+		fmt.Printf("Project %s (%s)\n", proj.Name, proj.File)
+		workspaceDir = proj.Workspace
+		if sourceDir == "" {
+			sourceDir = proj.SourceRoot
+		}
+		if !portSet && proj.Port != 0 {
+			port = proj.Port
 		}
 	}
 
@@ -411,6 +380,11 @@ func main() {
 	http.HandleFunc("/api/info", func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "application/json; charset=utf-8")
 		_ = json.NewEncoder(w).Encode(map[string]string{"workspace": absWorkspace, "sourceRoot": absRoot})
+	})
+	http.HandleFunc("/api/workspace", func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json; charset=utf-8")
+		w.Header().Set("Cache-Control", "no-cache")
+		_ = json.NewEncoder(w).Encode(core.Index(absWorkspace))
 	})
 
 	http.HandleFunc("/api/source", func(w http.ResponseWriter, r *http.Request) {
@@ -526,7 +500,22 @@ func main() {
 			return
 		}
 
-		err = os.WriteFile(target, body, 0644)
+		// `create=1`: a new project or view must not land on an existing one.
+		flags := os.O_WRONLY | os.O_CREATE | os.O_TRUNC
+		if r.URL.Query().Get("create") == "1" {
+			flags = os.O_WRONLY | os.O_CREATE | os.O_EXCL
+		}
+		f, err := os.OpenFile(target, flags, 0644)
+		if errors.Is(err, fs.ErrExist) {
+			http.Error(w, "Already exists: "+fileName, http.StatusConflict)
+			return
+		}
+		if err == nil {
+			_, err = f.Write(body)
+			if cerr := f.Close(); err == nil {
+				err = cerr
+			}
+		}
 		if err != nil {
 			http.Error(w, "Failed to write file: "+err.Error(), http.StatusInternalServerError)
 			return
@@ -534,6 +523,47 @@ func main() {
 
 		fmt.Printf("Saved %s (%d bytes)\n", fileName, len(body))
 		w.WriteHeader(http.StatusOK)
+		w.Write([]byte("OK"))
+	})
+
+	// Renaming a project folder or a view file. Only inside projects/, never
+	// onto something that exists: a rename that overwrites is a delete.
+	http.HandleFunc("/api/move", func(w http.ResponseWriter, r *http.Request) {
+		if r.Method != http.MethodPost {
+			http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
+			return
+		}
+		if !sameOrigin(r) {
+			http.Error(w, "Cross-origin move refused", http.StatusForbidden)
+			return
+		}
+		fromRel, toRel := r.URL.Query().Get("from"), r.URL.Query().Get("to")
+		projects := filepath.Join(absWorkspace, "projects")
+		from, errFrom := inside(projects, strings.TrimPrefix(fromRel, "projects/"))
+		to, errTo := inside(projects, strings.TrimPrefix(toRel, "projects/"))
+		if errFrom != nil || errTo != nil || !strings.HasPrefix(fromRel, "projects/") || !strings.HasPrefix(toRel, "projects/") {
+			http.Error(w, "from and to must be paths inside projects/", http.StatusBadRequest)
+			return
+		}
+		src, err := os.Stat(from)
+		if err != nil {
+			http.Error(w, "Not found: "+fromRel, http.StatusNotFound)
+			return
+		}
+		if !src.IsDir() && filepath.Ext(to) != ".json" {
+			http.Error(w, "A file keeps the .json extension", http.StatusBadRequest)
+			return
+		}
+		// Checked here, not left to Rename: on Windows Rename onto a file replaces it.
+		if _, err := os.Stat(to); err == nil {
+			http.Error(w, "Already exists: "+toRel, http.StatusConflict)
+			return
+		}
+		if err := os.Rename(from, to); err != nil {
+			http.Error(w, "Failed to move: "+err.Error(), http.StatusInternalServerError)
+			return
+		}
+		fmt.Printf("Moved %s -> %s\n", fromRel, toRel)
 		w.Write([]byte("OK"))
 	})
 

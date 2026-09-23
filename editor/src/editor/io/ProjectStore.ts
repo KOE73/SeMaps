@@ -294,6 +294,9 @@ export class HttpProjectStore implements ModelStore {
       id: bundle.view.id || "v_main",
       project: bundle.project.id,
       axis: bundle.view.axis,
+      ...(bundle.view.icon === undefined ? {} : { icon: bundle.view.icon }),
+      ...(bundle.view.theme === undefined ? {} : { theme: bundle.view.theme }),
+      ...(bundle.view.order === undefined ? {} : { order: bundle.view.order }),
       ...(bundle.view.routing === undefined ? {} : { routing: bundle.view.routing }),
       ...(bundle.view.relations ? { relations: bundle.view.relations } : {}),
       zones,
@@ -357,10 +360,23 @@ export class HttpProjectStore implements ModelStore {
     if (registries) {
       for (const [lang, catalog] of Object.entries(registries)) {
         if (!catalog?.entries || Object.keys(catalog.entries).length === 0) continue;
+        const textFile = dir + `text.${lang}.json`;
+        // Keys written since this view was opened — a new view's name, an
+        // agent's description — are on disk but not in the bundle; keep them.
+        const onDisk = await fetch(new URL(textFile, new URL(this.baseUrl, location.href)))
+          .then((r) => (r.ok ? r.json() : null))
+          .then((raw) => (raw ? parseTextCatalog(raw, lang) : null))
+          .catch(() => null);
+        const loaded = bundle.textFiles?.[lang] ?? null;
+        const entries = { ...onDisk?.entries, ...catalog.entries };
+        const provenance = { ...onDisk?.provenance, ...loaded?.provenance };
+        const base = onDisk || loaded
+          ? { contractVersion: 3, language: lang, entries: { ...onDisk?.entries, ...loaded?.entries }, provenance }
+          : null;
         // Values the user changed are re-stamped as authored; the rest keep the
         // provenance they were loaded with, so an untouched save is a no-op diff.
-        const file = serializeTextCatalog(lang, catalog.entries, bundle.textFiles?.[lang] ?? null);
-        await fetch(`/api/save?file=${encodeURIComponent(dir + `text.${lang}.json`)}`, {
+        const file = serializeTextCatalog(lang, entries, base);
+        await fetch(`/api/save?file=${encodeURIComponent(textFile)}`, {
           method: "POST",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify(file, null, 2),

@@ -53,6 +53,16 @@ export function createDefaultRibbonSpec(): RibbonSpec {
             ],
           },
           {
+            id: "workspace",
+            get title() { return i18n.d.ribbon.groups.workspace; },
+            items: [
+              { type: "button", command: "workspace.project.new", size: "large" },
+              { type: "button", command: "workspace.view.new", size: "large" },
+              { type: "button", command: "workspace.view.edit", size: "medium" },
+              { type: "button", command: "workspace.project.edit", size: "medium" },
+            ],
+          },
+          {
             id: "catalogs",
             get title() { return i18n.d.ribbon.groups.panels; },
             items: [
@@ -175,6 +185,22 @@ export function createDefaultRibbonSpec(): RibbonSpec {
               { type: "toggle", command: "panel.base.toggle", size: "small" },
               { type: "separator" },
               { type: "button", command: "workspace.layout.reset", size: "small" },
+            ],
+          },
+        ],
+      },
+
+      // ----------------------------------------------------------- Справка
+      {
+        id: "help",
+        get title() { return i18n.d.ribbon.tabs.help; },
+        keyTip: "F",
+        groups: [
+          {
+            id: "help",
+            get title() { return i18n.d.ribbon.groups.help; },
+            items: [
+              { type: "button", command: "help.structure", size: "large" },
             ],
           },
         ],

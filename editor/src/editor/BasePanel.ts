@@ -1,11 +1,17 @@
 import { el, replaceChildren } from "../util/dom.js";
+import { i18n } from "../workbench/i18n/I18nService.js";
 import type { DiagramEditor } from "./DiagramEditor.js";
 
 export class BasePanel {
+  /** Kinds the list is narrowed to; empty means every kind. */
+  private readonly kinds = new Set<string>();
+
   constructor(
     private readonly searchInput: HTMLInputElement,
     private readonly body: HTMLElement,
-    private readonly editor: DiagramEditor
+    private readonly editor: DiagramEditor,
+    /** Where the kind buttons go; none, no buttons. */
+    private readonly kindsSlot?: HTMLElement,
   ) {
     if (this.searchInput && typeof this.searchInput.addEventListener === "function") {
       this.searchInput.addEventListener("input", () => this.render());
@@ -14,28 +20,42 @@ export class BasePanel {
 
   render(): void {
     const doc = this.editor.canvas.model;
+    const t = i18n.d.panels.base;
     if (!doc) {
-      replaceChildren(this.body, el("div", { class: "inspector-empty", text: "Модель не загружена" }));
+      if (this.kindsSlot) replaceChildren(this.kindsSlot);
+      replaceChildren(this.body, el("div", { class: "inspector-empty", text: t.emptyNoModel }));
       return;
     }
 
     const entities = doc.entities;
     if (!entities || entities.length === 0) {
-      replaceChildren(this.body, el("div", { class: "inspector-empty", text: "В базе проекта нет сущностей" }));
+      if (this.kindsSlot) replaceChildren(this.kindsSlot);
+      replaceChildren(this.body, el("div", { class: "inspector-empty", text: t.emptyNoEntities }));
       return;
     }
 
     const query = String(this.searchInput?.value ?? "").toLowerCase().trim();
     const texts = doc.bundle?.text?.entries || {};
-    
+
     const placedIds = new Set(Array.from(doc.elements()).map((e: any) => e.id));
 
-    const matches = entities.filter((e: any) => {
+    const found = entities.filter((e: any) => {
       if (!e) return false;
       const id = String(e.id ?? "");
       const name = String(texts[id]?.name || e.name || id);
       return name.toLowerCase().includes(query) || id.toLowerCase().includes(query);
     });
+
+    // A kind picked in another project, or gone since, must not hide everything.
+    const present = new Set(entities.map((e: any) => String(e?.kind ?? "")));
+    for (const k of [...this.kinds]) if (!present.has(k)) this.kinds.delete(k);
+    this.renderKinds(present, found);
+
+    const matches = this.kinds.size === 0 ? found : found.filter((e: any) => this.kinds.has(String(e.kind ?? "")));
+    if (matches.length === 0) {
+      replaceChildren(this.body, el("div", { class: "inspector-empty", text: t.noMatches }));
+      return;
+    }
 
     replaceChildren(
       this.body,
@@ -104,6 +124,40 @@ export class BasePanel {
         }
         return row;
       })
+    );
+  }
+
+  /**
+   * One button per kind present in the project, with how many of the current
+   * search results it holds. Built from the data: the set of kinds is open.
+   */
+  private renderKinds(present: Set<string>, found: any[]): void {
+    if (!this.kindsSlot) return;
+    const t = i18n.d.panels.base;
+    const counts = new Map<string, number>();
+    for (const e of found) counts.set(String(e.kind ?? ""), (counts.get(String(e.kind ?? "")) ?? 0) + 1);
+
+    const chip = (label: string, count: number, active: boolean, onClick: () => void, title?: string): HTMLElement =>
+      el("button", {
+        type: "button",
+        class: `kind-chip${active ? " is-active" : ""}${count === 0 ? " is-empty" : ""}`,
+        title,
+        on: { click: onClick },
+      }, [el("span", { text: label }), el("span", { class: "kind-chip-count", text: String(count) })]);
+
+    replaceChildren(
+      this.kindsSlot,
+      chip(t.allKinds, found.length, this.kinds.size === 0, () => {
+        this.kinds.clear();
+        this.render();
+      }),
+      ...[...present].sort().map((kind) =>
+        chip(kind || "—", counts.get(kind) ?? 0, this.kinds.has(kind), () => {
+          if (this.kinds.has(kind)) this.kinds.delete(kind);
+          else this.kinds.add(kind);
+          this.render();
+        }, t.kindHint),
+      ),
     );
   }
 

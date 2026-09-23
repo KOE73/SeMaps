@@ -747,7 +747,7 @@ D-03 (inspector HTML injection), D-06 (button located by its inline handler),
 D-07 (catalog duplicated in the source), D-10 (dead marker) and D-11 (embedded
 fallback model) have no expression in the new structure: the inspector builds
 DOM nodes, inline handlers are gone, the catalog is fetched from
-`catalog.json`, and a failed fetch is reported instead of silently replaced.
+`catalog.json` (since ADR_20260923-7: the host's `GET /api/workspace`), and a failed fetch is reported instead of silently replaced.
 
 XML attribute escaping was added to the Draw.io export at the same time, since
 it was the same defect class as D-03 in a different output.

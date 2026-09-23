@@ -669,6 +669,85 @@ body {
   white-space: nowrap;
 }
 
+.catalog-toolbar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+
+.catalog-project {
+  margin-bottom: 6px;
+}
+
+.catalog-project-head {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+}
+
+.catalog-project-head .catalog-item {
+  flex: 1;
+  min-width: 0;
+  margin-bottom: 0;
+}
+
+.catalog-views {
+  margin-left: 18px;
+  padding-left: 6px;
+  border-left: 1px solid var(--line);
+}
+
+.catalog-views .catalog-item {
+  padding: 5px 8px;
+  gap: 8px;
+}
+
+.catalog-views .catalog-icon {
+  width: 24px;
+  height: 24px;
+  font-size: 13px;
+}
+
+/* Icon tints: translucent, so they sit on any UI theme. */
+.catalog-icon.theme-blue { background: rgba(59, 130, 246, 0.22); }
+.catalog-icon.theme-green { background: rgba(34, 197, 94, 0.22); }
+.catalog-icon.theme-teal { background: rgba(20, 184, 166, 0.22); }
+.catalog-icon.theme-orange { background: rgba(249, 115, 22, 0.24); }
+.catalog-icon.theme-red { background: rgba(239, 68, 68, 0.22); }
+.catalog-icon.theme-pink { background: rgba(236, 72, 153, 0.22); }
+.catalog-icon.theme-purple { background: rgba(139, 92, 246, 0.22); }
+.catalog-icon.theme-slate { background: rgba(100, 116, 139, 0.25); }
+
+.catalog-row {
+  display: flex;
+  align-items: center;
+  gap: 2px;
+}
+
+.catalog-row .catalog-item {
+  flex: 1;
+  min-width: 0;
+}
+
+.catalog-edit {
+  visibility: hidden;
+}
+
+.catalog-row:hover .catalog-edit,
+.catalog-project-head:hover .catalog-edit {
+  visibility: visible;
+}
+
+.catalog-item.is-broken {
+  color: var(--danger);
+}
+
+.catalog-none {
+  padding: 4px 8px;
+  font-size: 11px;
+  color: var(--faint);
+}
+
 .catalog-empty,
 .hint {
   margin: 8px;
@@ -1483,6 +1562,273 @@ textarea {
   font-size: 12px;
   background: var(--input-bg);
   color: var(--text);
+}
+
+/* ------------------------------------------------- entity base: kinds */
+
+.kind-chips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px;
+  margin-top: 8px;
+}
+
+.kind-chips:empty {
+  display: none;
+}
+
+.kind-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  padding: 2px 8px;
+  border: 1px solid var(--line);
+  border-radius: 999px;
+  background: var(--panel-alt);
+  color: var(--text);
+  font-family: monospace;
+  font-size: 11px;
+  cursor: pointer;
+}
+
+.kind-chip:hover {
+  background: var(--hover);
+}
+
+.kind-chip.is-active {
+  border-color: var(--accent);
+  background: var(--accent-soft);
+}
+
+.kind-chip.is-empty {
+  opacity: 0.45;
+}
+
+.kind-chip-count {
+  color: var(--muted);
+  font-size: 10px;
+}
+
+/* ------------------------------------------------------ workspace forms */
+
+.form-dialog {
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+}
+
+.form-hint {
+  font-size: 11px;
+  color: var(--muted);
+}
+
+.form-error {
+  font-size: 12px;
+  color: var(--danger);
+}
+
+.form-error:empty {
+  display: none;
+}
+
+.look-picker {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.look-row {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 6px;
+}
+
+.look-icons {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(32px, 1fr));
+  gap: 4px;
+}
+
+.look-icon {
+  height: 32px;
+  border: 1px solid var(--line);
+  border-radius: 6px;
+  background: var(--panel);
+  font-size: 16px;
+  cursor: pointer;
+}
+
+.look-icon:hover {
+  background: var(--hover);
+}
+
+.look-icon.is-active,
+.look-swatch.is-active {
+  outline: 2px solid var(--accent);
+  outline-offset: 1px;
+}
+
+.look-swatch {
+  width: 24px;
+  height: 24px;
+  border: 1px solid var(--line);
+  font-size: 11px;
+  color: var(--muted);
+  cursor: pointer;
+}
+
+/* ------------------------------------------------------------ help: map */
+
+.help-map {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  color: var(--text);
+  font-size: 12px;
+}
+
+.help-top {
+  display: flex;
+  justify-content: center;
+}
+
+.help-top .help-box {
+  max-width: 460px;
+}
+
+.help-grid {
+  display: grid;
+  grid-template-columns: 1fr 220px;
+  gap: 4px 16px;
+}
+
+.help-arrow {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  color: var(--muted);
+  font-family: monospace;
+  font-size: 11px;
+}
+
+.help-arrow-head {
+  color: var(--accent);
+  line-height: 1;
+}
+
+.help-box {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  padding: 10px 12px;
+  border: 1.5px solid var(--line);
+  border-radius: var(--radius);
+  background: var(--panel-alt);
+}
+
+.help-box-head {
+  font-weight: 700;
+  font-family: monospace;
+  font-size: 13px;
+}
+
+.help-box-note {
+  color: var(--muted);
+  line-height: 1.4;
+}
+
+.help-box.semaps,
+.help-box.code {
+  border-color: var(--accent);
+}
+
+.help-box.workspace {
+  background: var(--panel);
+  border-style: dashed;
+}
+
+.help-box.views {
+  border-color: var(--accent);
+  background: var(--accent-soft);
+}
+
+.help-box.ghost {
+  opacity: 0.55;
+  border-style: dashed;
+}
+
+.help-projects {
+  display: grid;
+  grid-template-columns: 1fr 150px;
+  gap: 10px;
+  align-items: start;
+}
+
+.help-file {
+  display: grid;
+  grid-template-columns: minmax(150px, max-content) 1fr;
+  gap: 10px;
+  padding: 4px 6px;
+  border-radius: 4px;
+  background: var(--panel);
+}
+
+.help-file-name {
+  font-family: monospace;
+  font-weight: 600;
+}
+
+.help-file-note {
+  color: var(--muted);
+}
+
+.help-file.is-coderef .help-file-note::after {
+  content: "  →  codeRef";
+  color: var(--accent);
+  font-family: monospace;
+}
+
+.help-coderef {
+  margin-top: auto;
+  color: var(--accent);
+  font-family: monospace;
+  font-size: 11px;
+}
+
+.help-cards {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+
+.help-card {
+  padding: 6px 8px;
+  border: 1px solid var(--accent);
+  border-radius: 6px;
+  background: var(--panel);
+  font-family: monospace;
+  font-size: 11px;
+}
+
+.help-bottom {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 10px;
+}
+
+.help-bottom ul {
+  margin: 0;
+  padding-left: 18px;
+  line-height: 1.6;
+}
+
+@media (max-width: 760px) {
+  .help-grid,
+  .help-projects,
+  .help-bottom {
+    grid-template-columns: 1fr;
+  }
 }
 
 /* ----------------------------------------------------------- searchable select */

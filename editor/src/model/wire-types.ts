@@ -234,7 +234,9 @@ export interface ProjectManifest {
   subtitle?: string;
   defaultView?: string;
   languages?: string[];
-  views?: string[];
+  icon?: string;
+  theme?: string;
+  order?: number;
   [key: string]: unknown;
 }
 
@@ -299,6 +301,10 @@ export interface ViewDocument {
    * says otherwise. A convention of the drawing, not of the model.
    */
   routing?: RoutingMode;
+  /** How the view's row looks in the catalogue (ADR_20260923-7). */
+  icon?: string;
+  theme?: string;
+  order?: number;
   zones?: ViewZonePlacement[];
   nodes?: ViewNodePlacement[];
   placements?: ViewNodePlacement[];

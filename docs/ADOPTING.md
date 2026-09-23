@@ -19,18 +19,24 @@ Format details live in [CONTRACT.md](CONTRACT.md); this file only lists the step
    servers. See the port trap below.
    First check that the target folder (`docs/diagrams`) is free. A `.semaps` file in the SeMaps
    repo itself is not the answer; the file goes into the consuming repo.
-2. **Workspace**: `<workspace>/catalog.json`, one entry per view: `id`, `file` (path to the
-   view, relative to the workspace), `title`, `subtitle`, `icon`, `theme`.
+2. **Workspace**: just the folder. There is no list file: every `projects/<id>/` with a
+   `project.json` is a project, every `views/*.view.json` in it is a view. Do **not** create
+   `catalog.json` — it is no longer read, and `semaps check` reports it as `устарело`.
 3. **Model project** `<workspace>/projects/<id>/`:
-   - `project.json`: `id` = folder name, `contractVersion: 3`, `defaultView`, `defaultAxis`,
-     `languages`, `sources.include`.
+   - `project.json`: `id` = folder name, `title`, `contractVersion: 3`, `defaultAxis`,
+     `languages`, `sources.include`; optional `subtitle`, `icon`, `theme`, `order` for the catalogue.
    - `entities.json`: `e_` ids, `kind`, `origin: code` for anything read from the code, and `codeRef`
      relative to `source_root`.
    - `relations.json` + `relation-types.json`: every `type` used must be in the dictionary.
      For a derived relation, the id is `r_<from>_<to>_<type>` without the `e_` prefix.
    - `text.<lang>.json`: descriptions for `e_`, names for `rt_`/`v_`. Every value is
      `{ "v", "at", "origin" }`, and `at` is UTC ISO-8601 with `Z`.
-   - `views/<id>.view.json`: `id`, `project`, `axis`, and **empty** `zones`/`nodes`.
+   - `views/<id>.view.json`: `id` (starts with `v_`), `project`, `axis`, and **empty**
+     `zones`/`nodes`; optional `icon`, `theme`, `order`. The view's catalogue title is `name` under
+     its id in `text.<lang>.json` — without it the catalogue shows the bare id.
+
+   The human can also create and rename projects and views in the editor (**Вставка → Проекты и
+   схемы**, or ＋ / ✎ in «Каталог схем»); both write exactly these files.
 4. **Check** (see the trap below) and hand over to the human to place nodes.
 
 ## A cheap first model for .NET
@@ -67,12 +73,19 @@ favour.
 
 ## Verifying that the editor opened the model
 
-A 200 on `catalog.json` proves nothing. Open `/app/`, click the view in «Каталог схем» and check
-that every file of the project (`views/…`, `project.json`, `entities.json`, `relations.json`,
-`relation-types.json`, every `text.<lang>.json`) returned 200. A 404 on the view with a 200 on
-`catalog.json` means two servers share the port (see the port trap).
+`GET /api/workspace` lists what the host found; check your project and views are in it. That still
+proves nothing about loading: open `/app/`, click the view in «Каталог схем» and check that every
+file of the project (`views/…`, `project.json`, `entities.json`, `relations.json`,
+`relation-types.json`, every `text.<lang>.json`) returned 200. A 404 on a view that
+`/api/workspace` listed means two servers share the port (see the port trap).
 
 ## Traps
+
+- **Old workspace with `catalog.json`.** Move each entry: `title` → `name` under the view's id in
+  `text.<lang>.json`, `icon`/`theme` → into the `.view.json`; drop `views` from `project.json`;
+  then delete `catalog.json`. `semaps check` reports it until it is gone.
+- **No `*.semaps`, no server.** The host no longer looks for a workspace by itself; the project file
+  is required (or `--workspace`).
 
 - **Geometry is not yours.** An agent never writes `x/y/width/height`, zones or nodes
   (CONTRACT §8.2, §9.6). Create the view empty; the human places the nodes.
@@ -85,7 +98,7 @@ that every file of the project (`views/…`, `project.json`, `entities.json`, `r
   another copy shadows the installed one, update from Releases and remove the stale copy.
 - **A port shared between two servers gives a 404 on the view.** On Windows, one server can bind
   `0.0.0.0:P` and another `127.0.0.1:P` at the same time; "take the next free port" does not
-  notice this. The browser then gets `catalog.json` from one workspace and a
+  notice this. The browser then gets the project list from one workspace and a
   `HTTP 404` on the view from the other. Diagnose with `netstat -ano | grep :P` and the process
   command lines. The fix is a unique port in the `.semaps` file.
 - Scripts with backslashes (`\t`, `\\`): write them as files, not through a bash heredoc or

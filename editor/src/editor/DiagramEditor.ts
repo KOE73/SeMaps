@@ -26,18 +26,26 @@ import {
   HttpStyleStore,
   download,
   readJsonFile,
-  type CatalogEntry,
+  HttpWorkspaceStore,
   type ModelStore,
+  type NewProject,
+  type NewView,
+  type ProjectEntry,
   type StyleStore,
+  type ViewEntry,
+  type WorkspaceIndex,
+  type WorkspaceStore,
 } from "./io/index.js";
-import { el, replaceChildren } from "../util/dom.js";
+import { el } from "../util/dom.js";
+import { Emitter } from "../util/emitter.js";
 import { DocEditorDialog, type DocTargetKind } from "./doc/DocEditorDialog.js";
 import { CodeViewerDialog } from "./code/CodeViewerDialog.js";
 
-export { type CatalogEntry };
+export type { ProjectEntry, ViewEntry, WorkspaceIndex };
 
 export interface DiagramEditorOptions {
-  catalog?: readonly CatalogEntry[];
+  /** Where the list of projects and views comes from, and where new ones go. */
+  workspace?: WorkspaceStore;
   store?: ModelStore;
   styleStore?: StyleStore;
   /**
@@ -116,8 +124,10 @@ export class DiagramEditor implements InspectorHost, StylePanelHost, DiagramEdit
   private readonly store: ModelStore;
   private readonly styleStore: StyleStore;
 
-  private catalog: readonly CatalogEntry[];
-  private currentEntry: CatalogEntry | null = null;
+  private readonly workspaceStore: WorkspaceStore;
+  workspace: WorkspaceIndex = { projects: [] };
+  currentView: ViewEntry | null = null;
+  readonly workspaceEvents = new Emitter<{ change: null }>();
   private dirty = false;
   /**
    * Tracked apart from `dirty` because the two have different destinations and
@@ -138,7 +148,7 @@ export class DiagramEditor implements InspectorHost, StylePanelHost, DiagramEdit
 
   constructor(root: HTMLElement, options: DiagramEditorOptions = {}) {
     this.root = root;
-    this.catalog = options.catalog ?? [];
+    this.workspaceStore = options.workspace ?? new HttpWorkspaceStore("./");
     this.store = options.store ?? new HttpProjectStore("./");
     this.styleStore = options.styleStore ?? new HttpStyleStore("./");
 
@@ -181,7 +191,6 @@ export class DiagramEditor implements InspectorHost, StylePanelHost, DiagramEdit
     this.initTheme();
     this.initPorts();
     this.initLang();
-    this.renderCatalog();
     this.setTab("properties");
 
     void this.start();
@@ -234,9 +243,104 @@ export class DiagramEditor implements InspectorHost, StylePanelHost, DiagramEdit
     }
     this.styleList.render();
 
-    const first = this.catalog[0];
-    if (first !== undefined) await this.openCatalogEntry(first);
-    else this.showCatalogEmptyState();
+    await this.reloadWorkspace();
+    const first = this.workspace.projects.flatMap((p) => p.views).find((v) => !v.error);
+    if (first !== undefined) await this.loadView(first);
+  }
+
+  // ------------------------------------------------------------- workspace
+
+  async reloadWorkspace(): Promise<void> {
+    try {
+      this.workspace = await this.workspaceStore.load();
+    } catch (err) {
+      this.workspace = { projects: [] };
+      this.notify(`Список проектов не получен от сервера: ${(err as Error).message}`);
+    }
+    this.workspaceEvents.emit("change", null);
+  }
+
+  /** The view's name in the data language, else in any language, else its id. */
+  viewName(view: ViewEntry): string {
+    return view.names[this.dataLang] ?? Object.values(view.names)[0] ?? view.id;
+  }
+
+  projectOf(view: ViewEntry): ProjectEntry | undefined {
+    return this.workspace.projects.find((p) => p.views.some((v) => v.file === view.file));
+  }
+
+  /** Open a view, asking first if the current one has unsaved changes. */
+  openView(view: ViewEntry, pos?: { clientX: number; clientY: number }): void {
+    if (this.currentView?.file === view.file) return;
+    if (this.hasUnsavedChanges) {
+      const at = pos ?? { clientX: window.innerWidth / 2, clientY: window.innerHeight / 2 };
+      this.confirmDiscardOrSave(at, () => this.loadView(view));
+    } else {
+      void this.loadView(view);
+    }
+  }
+
+  async createProject(project: NewProject): Promise<void> {
+    if (this.workspace.projects.some((p) => p.id === project.id)) {
+      throw new Error(`Проект «${project.id}» уже есть`);
+    }
+    await this.workspaceStore.createProject(project);
+    await this.reloadWorkspace();
+  }
+
+  /**
+   * Refuse to touch a project whose open view has unsaved edits: saving it
+   * afterwards would write to the old path and bring back the old names.
+   */
+  private guardOpen(projectId: string): boolean {
+    const open = this.currentView ? this.projectOf(this.currentView)?.id === projectId : false;
+    if (open && this.dirty) {
+      throw new Error("В открытой схеме этого проекта есть несохранённые изменения. Сохраните их (Ctrl+S) и повторите.");
+    }
+    return open;
+  }
+
+  /** Reopen the current view from where it lives now, so its bundle has the new ids and names. */
+  private async reopen(file: string): Promise<void> {
+    const view = this.workspace.projects.flatMap((p) => p.views).find((v) => v.file === file);
+    if (view) await this.loadView(view);
+  }
+
+  async updateProject(oldId: string, project: NewProject): Promise<void> {
+    if (project.id !== oldId && this.workspace.projects.some((p) => p.id === project.id)) {
+      throw new Error(`Проект «${project.id}» уже есть`);
+    }
+    const open = this.guardOpen(oldId);
+    await this.workspaceStore.updateProject(oldId, project);
+    await this.reloadWorkspace();
+    if (open && this.currentView) {
+      await this.reopen(this.currentView.file.replace(`projects/${oldId}/`, `projects/${project.id}/`));
+    }
+  }
+
+  async updateView(oldId: string, view: NewView): Promise<void> {
+    const project = this.workspace.projects.find((p) => p.id === view.project);
+    if (!project) throw new Error(`Проекта «${view.project}» нет`);
+    if (view.id !== oldId && project.views.some((v) => v.id === view.id)) {
+      throw new Error(`Вид «${view.id}» в проекте «${view.project}» уже есть`);
+    }
+    const open = this.guardOpen(project.id);
+    const wasCurrent = this.currentView?.file === project.views.find((v) => v.id === oldId)?.file;
+    const file = await this.workspaceStore.updateView(oldId, view, project.languages);
+    await this.reloadWorkspace();
+    if (wasCurrent) await this.reopen(file);
+    else if (open && this.currentView) await this.reopen(this.currentView.file);
+  }
+
+  async createView(view: NewView): Promise<void> {
+    const project = this.workspace.projects.find((p) => p.id === view.project);
+    if (project?.views.some((v) => v.id === view.id)) {
+      throw new Error(`Вид «${view.id}» в проекте «${view.project}» уже есть`);
+    }
+    const file = await this.workspaceStore.createView(view);
+    await this.reloadWorkspace();
+    const created = this.workspace.projects.flatMap((p) => p.views).find((v) => v.file === file);
+    if (created) this.openView(created);
   }
 
   // ---------------------------------------------------------------- wiring
@@ -353,6 +457,7 @@ export class DiagramEditor implements InspectorHost, StylePanelHost, DiagramEdit
     this.dataLang = lang;
     this.canvas.dataLang = lang;
     localStorage.setItem("semaps.dataLang", lang);
+    this.workspaceEvents.emit("change", null);
     const select = this.root.querySelector<HTMLSelectElement>("[data-select='data-lang']");
     if (select && select.value !== lang) {
       select.value = lang;
@@ -696,23 +801,25 @@ export class DiagramEditor implements InspectorHost, StylePanelHost, DiagramEdit
 
   // ----------------------------------------------------------- model loading
 
-  async openCatalogEntry(entry: CatalogEntry): Promise<void> {
+  private async loadView(view: ViewEntry): Promise<void> {
+    const title = this.viewName(view);
     try {
-      const wire = await this.store.load(entry.file);
-      this.currentEntry = entry;
-      this.loadWire(wire, entry.title);
-      this.highlightCatalog(entry.id);
+      const wire = await this.store.load(view.file);
+      this.currentView = view;
+      this.loadWire(wire, title);
+      this.workspaceEvents.emit("change", null);
     } catch (err) {
       // A failed fetch is surfaced rather than papered over with a stale
       // embedded copy of the model, which is what the original did (D-11).
-      this.notify(`Не удалось открыть «${entry.title}»: ${(err as Error).message}`);
+      this.notify(`Не удалось открыть «${title}»: ${(err as Error).message}`);
     }
   }
 
   async loadFile(file: File): Promise<void> {
     try {
       const wire = await readJsonFile(file);
-      this.currentEntry = null;
+      this.currentView = null;
+      this.workspaceEvents.emit("change", null);
       this.loadWire(wire, file.name);
       this.addCustomCatalogEntry(file.name, wire);
     } catch (err) {
@@ -821,51 +928,6 @@ export class DiagramEditor implements InspectorHost, StylePanelHost, DiagramEdit
 
   // ---------------------------------------------------------------- catalog
 
-  private renderCatalog(): void {
-    const host = this.slot("catalog");
-    replaceChildren(
-      host,
-      ...this.catalog.map((entry) =>
-        el(
-          "button",
-          {
-            class: "catalog-item",
-            dataset: { catalogId: entry.id },
-            on: {
-              click: (e: MouseEvent) => {
-                if (this.currentEntry?.id === entry.id) return;
-                if (this.hasUnsavedChanges) {
-                  this.confirmDiscardOrSave({ clientX: e.clientX, clientY: e.clientY }, () => {
-                    void this.openCatalogEntry(entry);
-                  });
-                } else {
-                  void this.openCatalogEntry(entry);
-                }
-              },
-            },
-          },
-          [
-            el("span", { class: `catalog-icon theme-${entry.theme ?? "blue"}`, text: entry.icon ?? "📄" }),
-            el("span", { class: "catalog-text sidebar-label" }, [
-              el("span", { class: "catalog-title", text: entry.title }),
-              el("span", { class: "catalog-subtitle", text: entry.subtitle ?? "" }),
-            ]),
-          ],
-        ),
-      ),
-    );
-  }
-
-  private showCatalogEmptyState(): void {
-    replaceChildren(
-      this.slot("catalog"),
-      el("div", {
-        class: "catalog-empty",
-        text: "Каталог схем не загружен. Откройте JSON-файл вручную.",
-      }),
-    );
-  }
-
   private addCustomCatalogEntry(name: string, wire: WireDocument): void {
     this.slot("custom-catalog-section").hidden = false;
     this.slot("custom-catalog").appendChild(
@@ -877,11 +939,11 @@ export class DiagramEditor implements InspectorHost, StylePanelHost, DiagramEdit
             click: (e: MouseEvent) => {
               if (this.hasUnsavedChanges) {
                 this.confirmDiscardOrSave({ clientX: e.clientX, clientY: e.clientY }, () => {
-                  this.currentEntry = null;
+                  this.currentView = null;
                   this.loadWire(wire, name);
                 });
               } else {
-                this.currentEntry = null;
+                this.currentView = null;
                 this.loadWire(wire, name);
               }
             },
@@ -896,12 +958,6 @@ export class DiagramEditor implements InspectorHost, StylePanelHost, DiagramEdit
         ],
       ),
     );
-  }
-
-  private highlightCatalog(id: string): void {
-    for (const node of this.slot("catalog").querySelectorAll<HTMLElement>("[data-catalog-id]")) {
-      node.classList.toggle("is-active", node.dataset.catalogId === id);
-    }
   }
 
   private renderViews(_doc: DiagramDocument): void {
@@ -1221,13 +1277,13 @@ export class DiagramEditor implements InspectorHost, StylePanelHost, DiagramEdit
 
     const doc = this.canvas.model;
     if (this.dirty && doc !== null) {
-      if (this.currentEntry === null) {
+      if (this.currentView === null) {
         problems.push(
           "Схема загружена вручную и не привязана к файлу на сервере — она не сохранена.",
         );
       } else {
         try {
-          await this.store.save({ file: this.currentEntry.file }, serializeDocument(doc));
+          await this.store.save({ file: this.currentView.file }, serializeDocument(doc));
           this.dirty = false;
         } catch (err) {
           problems.push(`Схема не сохранена: ${(err as Error).message}`);
@@ -1325,7 +1381,7 @@ export class DiagramEditor implements InspectorHost, StylePanelHost, DiagramEdit
     try {
       const wire = JSON.parse(editor.value) as WireDocument;
       const title = wire.metadata?.title ?? "Пользовательская схема";
-      this.currentEntry = null;
+      this.currentView = null;
       this.loadWire(wire, title);
       this.slot("json-modal").hidden = true;
     } catch (err) {

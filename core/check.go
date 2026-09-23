@@ -22,8 +22,10 @@ package core
 
 import (
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io"
+	"io/fs"
 	"os"
 	"path/filepath"
 	"regexp"
@@ -147,10 +149,17 @@ func Check(workspace, sourceRoot string) []Finding {
 	// node id -> axis -> placement, gathered across every project.
 	byAxis := map[string]map[string]seenPlacement{}
 
+	if exists(filepath.Join(workspace, "catalog.json")) {
+		report("workspace", "устарело", "catalog.json больше не читается (ADR_20260923-7): имя вида — `name` под его id в text.<lang>.json, icon/theme — в самом .view.json; затем удалите файл")
+	}
+
 	root := filepath.Join(workspace, "projects")
 	entries, err := os.ReadDir(root)
+	if errors.Is(err, fs.ErrNotExist) {
+		return findings // an empty workspace is legal: projects are created from the editor
+	}
 	if err != nil {
-		report("", "workspace", fmt.Sprintf("%s: %v", root, err))
+		report("workspace", "workspace", fmt.Sprintf("%s: %v", root, err))
 		return findings
 	}
 
@@ -264,7 +273,7 @@ func Check(workspace, sourceRoot string) []Finding {
 		var views []viewFile
 		if files, err := os.ReadDir(viewsDir); err == nil {
 			for _, f := range files {
-				if !strings.HasSuffix(f.Name(), ".json") {
+				if !strings.HasSuffix(f.Name(), ViewSuffix) {
 					continue
 				}
 				var v view

@@ -2,6 +2,8 @@
   "id": "v_main",
   "project": "shapes_demo",
   "axis": "axis_subsystem",
+  "icon": "🧪",
+  "theme": "slate",
   "routing": "orthogonal",
   "zones": [
     {

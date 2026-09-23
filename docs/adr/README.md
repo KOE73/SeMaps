@@ -22,3 +22,5 @@ Current form of what they decided: [`CONTRACT.md`](../CONTRACT.md), [`API.md`](.
 | [ADR_20260923-2_host_one-binary-and-project-file](ADR_20260923-2_host_one-binary-and-project-file.md) | one embedded binary; project file `*.semaps` with the environment |
 | [ADR_20260923-3_build_bundle-from-ci-not-git](ADR_20260923-3_build_bundle-from-ci-not-git.md) | editor bundle built by CI, not committed; binaries in Releases |
 | [ADR_20260923-4_core_check-lives-in-the-binary](ADR_20260923-4_core_check-lives-in-the-binary.md) | `semaps check` in `core/`, the Node script is gone |
+| [ADR_20260923-7_contract_projects-and-views-found-not-listed](ADR_20260923-7_contract_projects-and-views-found-not-listed.md) | no `catalog.json`: projects and views are found on disk; workspace only from `*.semaps` |
+| [ADR_20260923-8_contract_project-and-view-ids-can-change](ADR_20260923-8_contract_project-and-view-ids-can-change.md) | project/view ids are renamable, entity ids are not; `/api/move`, `save?create=1` |

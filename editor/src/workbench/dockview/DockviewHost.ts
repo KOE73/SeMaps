@@ -112,7 +112,7 @@ export class DockviewHost {
       get title() { return i18n.d.panels.catalog.title; },
       minWidth: 100,
       minHeight: 80,
-      createRenderer: () => new CatalogPanel(this.editor, () => (this.editor as any).catalog ?? []),
+      createRenderer: () => new CatalogPanel(this.editor),
     });
 
     this.panelService.register({

@@ -7,7 +7,7 @@ import "../styles/doc-editor.css";
 import "../styles/code-viewer.css";
 
 import { Workbench } from "../workbench/Workbench.js";
-import { HttpProjectStore, HttpStyleStore, loadCatalog } from "../editor/io/index.js";
+import { HttpProjectStore, HttpStyleStore, HttpWorkspaceStore } from "../editor/io/index.js";
 
 /**
  * Application entry point with Workbench Architecture.
@@ -22,10 +22,8 @@ async function main(): Promise<void> {
   const root = document.getElementById("app");
   if (root === null) throw new Error("Missing #app root");
 
-  const catalog = await loadCatalog(MODELS_BASE);
-
   const workbench = new Workbench(root, {
-    catalog,
+    workspace: new HttpWorkspaceStore(MODELS_BASE),
     store: new HttpProjectStore(MODELS_BASE),
     // styles.json sits with the models, not with the app bundle.
     styleStore: new HttpStyleStore(MODELS_BASE),

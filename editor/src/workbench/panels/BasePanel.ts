@@ -22,10 +22,11 @@ export class BasePanel implements IContentRenderer {
       attrs: { style: "flex: 1; overflow-y: auto;" },
     });
 
+    const kinds = el("div", { class: "kind-chips" });
     const head = el("div", {
       class: "base-panel-head",
       attrs: { style: "padding: 10px; border-bottom: 1px solid var(--border); flex-shrink: 0;" },
-    }, [this.searchInput]);
+    }, [this.searchInput, kinds]);
 
     this.element = el(
       "div",
@@ -36,7 +37,7 @@ export class BasePanel implements IContentRenderer {
       [head, this.listSlot],
     );
 
-    this.basePanel = new SemapsBasePanel(this.searchInput, this.listSlot, editor);
+    this.basePanel = new SemapsBasePanel(this.searchInput, this.listSlot, editor, kinds);
 
     editor.canvas.events.on("modelchange", () => {
       this.basePanel.render();

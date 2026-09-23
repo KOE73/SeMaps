@@ -126,6 +126,11 @@ export class Workbench {
       this.commands.notifyStateChanged();
     });
 
+    // Opening a view or changing the workspace enables the view/project commands.
+    this.editor.workspaceEvents.on("change", () => {
+      this.commands.notifyStateChanged();
+    });
+
     // Re-evaluate on panel visibility change
     this.dockviewHost.panelService.onPanelStateChange(() => {
       this.commands.notifyStateChanged();

@@ -6,9 +6,7 @@
   "languages": [
     "ru"
   ],
-  "views": [
-    "v_main"
-  ],
+  "icon": "🧪",
   "contractVersion": 3,
   "defaultAxis": "axis_subsystem"
 }

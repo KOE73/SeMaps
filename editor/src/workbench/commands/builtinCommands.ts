@@ -1,5 +1,12 @@
 import type { CommandDefinition } from "./types.js";
 import { i18n } from "../i18n/I18nService.js";
+import {
+  openEditProjectDialog,
+  openEditViewDialog,
+  openNewProjectDialog,
+  openNewViewDialog,
+} from "../dialogs/WorkspaceDialogs.js";
+import { openHelpDialog } from "../dialogs/HelpDialog.js";
 
 const ICONS = {
   SAVE: `<svg viewBox="0 0 16 16" width="15" height="15" fill="currentColor"><path d="M2 1a1 1 0 0 0-1 1v12a1 1 0 0 0 1 1h12a1 1 0 0 0 1-1V4.5L11.5 1H2zm1 1h7.5L13 4.5V14H3V2zm2 1v3h6V3H5zm1 1h4v1H6V4zm-1 5v4h6V9H5zm1 1h4v2H6v-2z"/></svg>`,
@@ -354,6 +361,59 @@ export function createBuiltinCommands(): CommandDefinition[] {
     },
 
     // ------------------------------------------------------------ Workspace
+    {
+      id: "workspace.project.new",
+      get title() { return i18n.d.commands.newProject.title; },
+      get description() { return i18n.d.commands.newProject.desc; },
+      icon: "📁",
+      category: "Workspace",
+      keyTip: "P",
+      execute: (ctx) => openNewProjectDialog(ctx.editor),
+    },
+    {
+      id: "workspace.view.new",
+      get title() { return i18n.d.commands.newView.title; },
+      get description() { return i18n.d.commands.newView.desc; },
+      icon: "🗺️",
+      category: "Workspace",
+      keyTip: "S",
+      execute: (ctx) => openNewViewDialog(ctx.editor),
+    },
+    {
+      id: "workspace.project.edit",
+      get title() { return i18n.d.commands.editProject.title; },
+      get description() { return i18n.d.commands.editProject.desc; },
+      icon: "✏️",
+      category: "Workspace",
+      keyTip: "E",
+      isEnabled: (ctx) => ctx.editor.currentView !== null,
+      execute: (ctx) => {
+        const project = ctx.editor.currentView ? ctx.editor.projectOf(ctx.editor.currentView) : undefined;
+        if (project) openEditProjectDialog(ctx.editor, project);
+      },
+    },
+    {
+      id: "workspace.view.edit",
+      get title() { return i18n.d.commands.editView.title; },
+      get description() { return i18n.d.commands.editView.desc; },
+      icon: "📝",
+      category: "Workspace",
+      keyTip: "W",
+      isEnabled: (ctx) => ctx.editor.currentView !== null,
+      execute: (ctx) => {
+        if (ctx.editor.currentView) openEditViewDialog(ctx.editor, ctx.editor.currentView);
+      },
+    },
+    {
+      id: "help.structure",
+      get title() { return i18n.d.commands.helpStructure.title; },
+      get description() { return i18n.d.commands.helpStructure.desc; },
+      icon: "🧭",
+      category: "Help",
+      shortcut: "F1",
+      keyTip: "H",
+      execute: () => openHelpDialog(),
+    },
     {
       id: "workspace.layout.reset",
       get title() { return i18n.d.commands.resetLayout.title; },

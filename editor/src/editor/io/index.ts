@@ -1,5 +1,5 @@
 export * from "./types.js";
-export * from "./CatalogStore.js";
+export * from "./WorkspaceStore.js";
 export * from "./StyleStore.js";
 export * from "./ProjectStore.js";
 export * from "./StandaloneStore.js";

@@ -3,7 +3,7 @@
  * for backwards compatibility.
  */
 export * from "./types.js";
-export * from "./CatalogStore.js";
+export * from "./WorkspaceStore.js";
 export * from "./StyleStore.js";
 export * from "./ProjectStore.js";
 export { HttpProjectStore as HttpModelStore } from "./ProjectStore.js";

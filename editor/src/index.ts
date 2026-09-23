@@ -23,7 +23,7 @@ export type {
 } from "./canvas/DiagramCanvas.js";
 
 export { DiagramEditor } from "./editor/DiagramEditor.js";
-export type { CatalogEntry, DiagramEditorOptions } from "./editor/DiagramEditor.js";
+export type { DiagramEditorOptions, ProjectEntry, ViewEntry, WorkspaceIndex } from "./editor/DiagramEditor.js";
 
 export { DiagramDocument } from "./model/document.js";
 export { parseDocument, serializeDocument } from "./model/wire.js";
@@ -81,8 +81,8 @@ export { BezierRouter } from "./canvas/routing/EdgeRouter.js";
 export type { EdgeRouter, Route, RouteRequest } from "./canvas/routing/EdgeRouter.js";
 
 export { exportDrawio } from "./editor/io/drawio.js";
-export { HttpModelStore, HttpStyleStore } from "./editor/io/transfer.js";
-export type { ModelStore, SaveTarget, StyleStore } from "./editor/io/transfer.js";
+export { HttpModelStore, HttpStyleStore, HttpWorkspaceStore } from "./editor/io/transfer.js";
+export type { ModelStore, SaveTarget, StyleStore, WorkspaceStore } from "./editor/io/transfer.js";
 
 export type { BoundarySlot, Point, Rect, Side } from "./geometry/types.js";
 
