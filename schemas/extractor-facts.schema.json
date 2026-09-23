@@ -1,0 +1,64 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://github.com/KOE73/SeMaps/schemas/extractor-facts.schema.json",
+  "title": "SeMaps extractor facts",
+  "description": "What semaps-extract-<lang> prints to stdout. Normative text: docs/EXTRACTOR.md §2.",
+  "type": "object",
+  "required": ["language", "root", "symbols", "edges"],
+  "additionalProperties": false,
+  "properties": {
+    "language": { "type": "string", "pattern": "^[a-z][a-z0-9]*$" },
+    "root": { "type": "string", "minLength": 1 },
+    "symbols": {
+      "type": "array",
+      "items": { "$ref": "#/$defs/symbol" }
+    },
+    "edges": {
+      "type": "array",
+      "items": { "$ref": "#/$defs/edge" }
+    }
+  },
+  "$defs": {
+    "id": { "type": "string", "pattern": "^\\S+$" },
+    "symbol": {
+      "type": "object",
+      "required": ["id", "kind", "nativeKind", "name", "file"],
+      "additionalProperties": false,
+      "properties": {
+        "id": { "$ref": "#/$defs/id" },
+        "kind": { "enum": ["type", "interface", "function", "module", "value"] },
+        "nativeKind": { "type": "string", "minLength": 1 },
+        "name": { "type": "string", "minLength": 1 },
+        "namespace": { "type": "string" },
+        "file": { "type": "string", "pattern": "^[^\\\\]+$", "description": "relative to root, forward slashes" },
+        "line": { "type": "integer", "minimum": 1 },
+        "members": {
+          "type": "array",
+          "items": { "$ref": "#/$defs/member" }
+        }
+      }
+    },
+    "member": {
+      "type": "object",
+      "required": ["name"],
+      "additionalProperties": false,
+      "properties": {
+        "kind": { "type": "string" },
+        "name": { "type": "string", "minLength": 1 },
+        "type": { "type": "string" },
+        "visibility": { "type": "string" },
+        "note": { "type": "string" }
+      }
+    },
+    "edge": {
+      "type": "object",
+      "required": ["from", "to", "kind"],
+      "additionalProperties": false,
+      "properties": {
+        "from": { "$ref": "#/$defs/id" },
+        "to": { "$ref": "#/$defs/id" },
+        "kind": { "enum": ["extends", "implements", "references", "contains"] }
+      }
+    }
+  }
+}

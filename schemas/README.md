@@ -1,5 +1,6 @@
 # schemas
 
-Not started. Planned JSON schemas: the workspace files of [`docs/CONTRACT.md`](../docs/CONTRACT.md)
-and the extractor output of [`docs/EXTRACTOR.md`](../docs/EXTRACTOR.md) §2. The first one arrives
-with the C# extractor ([`PLAN_20260923_extractors_csharp`](../docs/plans/PLAN_20260923_extractors_csharp.md), step 6).
+- [`extractor-facts.schema.json`](extractor-facts.schema.json) — what `semaps-extract-<lang>`
+  prints; normative text in [`docs/EXTRACTOR.md`](../docs/EXTRACTOR.md) §2. Every extractor
+  validates its output against it in tests.
+- Schemas for the workspace files of [`docs/CONTRACT.md`](../docs/CONTRACT.md) — not started.

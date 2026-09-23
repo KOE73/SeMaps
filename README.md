@@ -31,8 +31,9 @@ sync with code (in progress, see below) will show where the code has moved away 
 | Host (`host/`) | works: one binary, `*.semaps` project files, save, source viewer |
 | `semaps check` (`core/`) | works: stale texts, views without an axis, broken `codeRef`, … |
 | Sync with code (`core/`) | **planned** — [`PLAN_20260923_core_sync-with-code`](docs/plans/PLAN_20260923_core_sync-with-code.md) |
-| Extractor for C# (`extractors/csharp/`) | **planned** — [`PLAN_20260923_extractors_csharp`](docs/plans/PLAN_20260923_extractors_csharp.md) |
-| JSON schemas (`schemas/`) | **planned**, with the extractor |
+| Extractor for TypeScript (`extractors/typescript/`) | **in progress** — [`PLAN_20260923_extractors_typescript`](docs/plans/PLAN_20260923_extractors_typescript.md) |
+| Extractor for C# (`extractors/csharp/`) | **in progress** — [`PLAN_20260923_extractors_csharp`](docs/plans/PLAN_20260923_extractors_csharp.md) |
+| JSON schema of extractor facts (`schemas/`) | works: [`extractor-facts.schema.json`](schemas/extractor-facts.schema.json) |
 
 ## Getting started
 
@@ -54,6 +55,11 @@ SeMaps\host\install.cmd
 This builds the editor and `semaps.exe`, then runs the same `install`.
 
 Check: open a new console and type `semaps --help`.
+
+**Extractor for C#** (optional, needs the .NET SDK): download `SeMaps.Extract.CSharp.<version>.nupkg`
+from the same Release into a folder and run
+`dotnet tool install -g --add-source <that folder> SeMaps.Extract.CSharp`. Check:
+`semaps-extract-csharp --root <your repo> --include src > facts.json`.
 
 ### 2. Add a project file — once per project
 
@@ -120,6 +126,22 @@ semaps SeMaps\examples\example.semaps
 
 A new exe from Releases, or `git pull` and `host\install.cmd` again — the editor is inside the
 exe, so an old exe means an old editor.
+
+## Extractors: one per language, yours is welcome
+
+An extractor is a separate program for one language. It reads the sources and prints facts
+about the code (types, interfaces, functions, who extends and references whom) as one JSON
+document; `semaps sync` in the host turns those facts into the registry. The extractor never
+writes files and knows nothing about views, texts or containers, so writing one for a new
+language is a small, well-bounded job:
+
+- the contract: [`docs/EXTRACTOR.md`](docs/EXTRACTOR.md), the output schema:
+  [`schemas/extractor-facts.schema.json`](schemas/extractor-facts.schema.json), the shape of
+  symbol ids: [`ADR_20260923-5`](docs/adr/ADR_20260923-5_extractors_symbol-ids.md);
+- two reference implementations: `extractors/typescript/` (runs on SeMaps' own editor) and
+  `extractors/csharp/` (Roslyn).
+
+If you want an extractor for your language, take one of the two as a template and open a PR.
 
 ## Layout
 
