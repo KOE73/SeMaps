@@ -3,9 +3,10 @@ using Microsoft.CodeAnalysis;
 namespace SeMaps.Extract.CSharp;
 
 /// <summary>
-/// Collects `references` edges: field/property types, params/return of public methods and
-/// constructors, generic type arguments, array element types, Nullable&lt;T&gt; → T. Only to
-/// symbols present in this output; A→A is never printed. See PLAN "Рёбра" / EXTRACTOR.md §2.2.
+/// Collects `references` edges: field/property types (any visibility) and params/return of
+/// methods and constructors (any visibility, ADR-6), plus a delegate's own Invoke signature,
+/// generic type arguments, array element types, Nullable&lt;T&gt; → T. Only to symbols present
+/// in this output; A→A is never printed. See PLAN "Рёбра" / EXTRACTOR.md §2.2.
 /// </summary>
 internal static class ReferenceEdgeCollector
 {
@@ -21,14 +22,11 @@ internal static class ReferenceEdgeCollector
 
             switch (member)
             {
-                case IFieldSymbol field
-                    when field.DeclaredAccessibility is Accessibility.Public or Accessibility.Internal:
+                case IFieldSymbol field:
                     AddFor(fromId, field.Type, outputIds, edges);
                     break;
 
-                case IPropertySymbol { IsIndexer: false } property
-                    when symbol.TypeKind == TypeKind.Interface ||
-                        property.DeclaredAccessibility is Accessibility.Public or Accessibility.Internal:
+                case IPropertySymbol { IsIndexer: false } property:
                     AddFor(fromId, property.Type, outputIds, edges);
                     break;
 
@@ -64,8 +62,7 @@ internal static class ReferenceEdgeCollector
             return method.MethodKind == MethodKind.Ordinary;
         }
 
-        // Classes/structs/records: only public methods and constructors (EXTRACTOR.md "Рёбра").
-        if (method.DeclaredAccessibility != Accessibility.Public) return false;
+        // Classes/structs/records: methods and constructors of any visibility (ADR-6).
         return method.MethodKind is MethodKind.Ordinary or MethodKind.Constructor;
     }
 

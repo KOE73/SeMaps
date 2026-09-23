@@ -18,6 +18,7 @@
       "namespace": "",
       "file": "a.ts",
       "line": 5,
+      "visibility": "exported",
       "members": [
         {
           "kind": "field",
@@ -34,7 +35,8 @@
       "name": "Box",
       "namespace": "",
       "file": "a.ts",
-      "line": 27,
+      "line": 28,
+      "visibility": "exported",
       "members": [
         {
           "kind": "property",
@@ -50,7 +52,8 @@
       "name": "Color",
       "namespace": "",
       "file": "a.ts",
-      "line": 22,
+      "line": 23,
+      "visibility": "exported",
       "members": [
         {
           "kind": "value",
@@ -72,11 +75,36 @@
       "namespace": "",
       "file": "a.ts",
       "line": 1,
+      "visibility": "exported",
       "members": [
         {
           "kind": "method",
           "name": "greet",
           "type": "(name: string) => string"
+        }
+      ]
+    },
+    {
+      "id": "a#Hidden",
+      "kind": "type",
+      "nativeKind": "class",
+      "name": "Hidden",
+      "namespace": "",
+      "file": "a.ts",
+      "line": 9,
+      "visibility": "file",
+      "members": [
+        {
+          "kind": "field",
+          "name": "secret",
+          "type": "number",
+          "visibility": "public"
+        },
+        {
+          "kind": "field",
+          "name": "#password",
+          "type": "string",
+          "visibility": "private"
         }
       ]
     },
@@ -87,7 +115,8 @@
       "name": "Pair",
       "namespace": "",
       "file": "a.ts",
-      "line": 31
+      "line": 32,
+      "visibility": "exported"
     },
     {
       "id": "a#Registry",
@@ -96,7 +125,8 @@
       "name": "Registry",
       "namespace": "",
       "file": "a.ts",
-      "line": 41
+      "line": 42,
+      "visibility": "exported"
     },
     {
       "id": "a#Registry.Entry",
@@ -105,7 +135,8 @@
       "name": "Entry",
       "namespace": "Registry",
       "file": "a.ts",
-      "line": 42,
+      "line": 43,
+      "visibility": "exported",
       "members": [
         {
           "kind": "property",
@@ -121,7 +152,8 @@
       "name": "Store",
       "namespace": "Registry",
       "file": "a.ts",
-      "line": 46,
+      "line": 47,
+      "visibility": "exported",
       "members": [
         {
           "kind": "field",
@@ -138,7 +170,8 @@
       "name": "VERSION",
       "namespace": "",
       "file": "a.ts",
-      "line": 37
+      "line": 38,
+      "visibility": "exported"
     },
     {
       "id": "a#Widget",
@@ -147,13 +180,20 @@
       "name": "Widget",
       "namespace": "",
       "file": "a.ts",
-      "line": 13,
+      "line": 14,
+      "visibility": "exported",
       "members": [
         {
           "kind": "field",
           "name": "id",
           "type": "string",
           "visibility": "public"
+        },
+        {
+          "kind": "field",
+          "name": "token",
+          "type": "string",
+          "visibility": "private"
         },
         {
           "kind": "method",
@@ -170,7 +210,8 @@
       "name": "build",
       "namespace": "",
       "file": "a.ts",
-      "line": 39
+      "line": 40,
+      "visibility": "exported"
     },
     {
       "id": "a#helper",
@@ -179,7 +220,8 @@
       "name": "helper",
       "namespace": "",
       "file": "a.ts",
-      "line": 51
+      "line": 52,
+      "visibility": "exported"
     },
     {
       "id": "a#makeWidget",
@@ -188,7 +230,8 @@
       "name": "makeWidget",
       "namespace": "",
       "file": "a.ts",
-      "line": 33
+      "line": 34,
+      "visibility": "exported"
     },
     {
       "id": "b",
@@ -206,6 +249,7 @@
       "namespace": "",
       "file": "b.ts",
       "line": 3,
+      "visibility": "exported",
       "members": [
         {
           "kind": "field",
@@ -235,6 +279,11 @@
     {
       "from": "a",
       "to": "a#Greeter",
+      "kind": "contains"
+    },
+    {
+      "from": "a",
+      "to": "a#Hidden",
       "kind": "contains"
     },
     {
@@ -306,6 +355,21 @@
       "from": "a#Widget",
       "to": "a#Greeter",
       "kind": "implements"
+    },
+    {
+      "from": "a#build",
+      "to": "a#Widget",
+      "kind": "references"
+    },
+    {
+      "from": "a#helper",
+      "to": "a#Box",
+      "kind": "references"
+    },
+    {
+      "from": "a#makeWidget",
+      "to": "a#Widget",
+      "kind": "references"
     },
     {
       "from": "b",

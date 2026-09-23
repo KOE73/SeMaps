@@ -4,6 +4,8 @@
 TypeScript source tree. Spec and steps:
 [`PLAN_20260923_extractors_typescript`](../../docs/plans/PLAN_20260923_extractors_typescript.md).
 Symbol `id` form: [`ADR_20260923-5`](../../docs/adr/ADR_20260923-5_extractors_symbol-ids.md).
+All declarations and `visibility`:
+[`ADR_20260923-6`](../../docs/adr/ADR_20260923-6_extractors_all-declarations-with-visibility.md).
 
 Uses the TypeScript compiler API (`ts.createProgram` + `TypeChecker`) for resolved symbols,
 not text/regex matching. Only runtime dependency: `typescript`.
@@ -50,11 +52,13 @@ against `schemas/extractor-facts.schema.json` (via `ajv`), two runs are byte-ide
 CLI's exit codes are checked directly (bad `--root` → 1 with empty stdout; unknown flag → 2).
 
 `testdata/project/` is a two-file sample exercising: interface, class with `extends` +
-`implements`, a non-exported class (must not appear), `enum`, generic `type` alias whose
-reference resolves through the type argument, a plain function, a `const` value, an arrow
-function value, a `namespace` with nested exported declarations, a late `export { … }` list,
-and a re-export (`export { Box } from "./a"`, which must not create its own symbol) together
-with a cross-file `references` edge.
+`implements`, a non-exported class (printed with `visibility: "file"`, per ADR-6) with a
+public field and a `#private` field (`visibility: "private"`), `enum`, generic `type` alias
+whose reference resolves through the type argument, a plain function whose own return-type
+signature references another symbol, a `const` value, an arrow function value, a `namespace`
+with nested exported declarations, a late `export { … }` list, and a re-export
+(`export { Box } from "./a"`, which must not create its own symbol) together with a cross-file
+`references` edge.
 
 ## `npm run self`
 
@@ -63,9 +67,10 @@ Runs the extractor on the real SeMaps editor sources: `--root ../..`
 
 | | |
 |---|---|
-| symbols | 432 (module 105, interface 125, type 93, function 84, value 25) |
-| edges | 656 (contains 327, references 306, implements 17, extends 6) |
-| output size | 353 347 bytes |
+| symbols | 645 (module 105, interface 139, type 103, function 205, value 93) |
+| symbols by `visibility` | exported 327, file 213, none (file/module symbols) 105 |
+| edges | 1244 (contains 540, references 681, implements 17, extends 6) |
+| output size | 584 530 bytes |
 
 ## Open questions
 

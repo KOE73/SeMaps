@@ -10,5 +10,7 @@ public class Container
     private class Secret
     {
         public int Hidden { get; set; }
+
+        private Status _status;
     }
 }

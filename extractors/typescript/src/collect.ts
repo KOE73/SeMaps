@@ -12,8 +12,14 @@ export interface SourceFileEntry {
 
 interface DeclEntry {
   id: string;
+  kind: "class" | "interface" | "enum" | "typeAlias" | "function" | "value";
+  /** Declaration node; for class/interface/enum/typeAlias this is walked for members. */
   node: ts.Node;
-  kind: "class" | "interface" | "enum" | "typeAlias";
+  /** function/arrow-function only: parameters and return type of its own signature. */
+  parameters?: readonly ts.ParameterDeclaration[];
+  returnType?: ts.TypeNode;
+  /** value only: its type annotation, if any. */
+  typeNode?: ts.TypeNode;
 }
 
 function hasModifier(node: ts.Node, kind: ts.SyntaxKind): boolean {
@@ -77,10 +83,10 @@ function memberTypeString(checker: ts.TypeChecker, node: ts.Node): string {
   return checker.typeToString(checker.getTypeAtLocation(node));
 }
 
-function classMemberVisibility(member: ts.ClassElement): "public" | "protected" | undefined {
-  if (hasModifier(member, ts.SyntaxKind.PrivateKeyword)) return undefined;
+function classMemberVisibility(member: ts.ClassElement): "public" | "protected" | "private" {
   const nameNode = (member as ts.PropertyDeclaration | ts.MethodDeclaration).name;
-  if (nameNode && ts.isPrivateIdentifier(nameNode)) return undefined;
+  if (nameNode && ts.isPrivateIdentifier(nameNode)) return "private";
+  if (hasModifier(member, ts.SyntaxKind.PrivateKeyword)) return "private";
   if (hasModifier(member, ts.SyntaxKind.ProtectedKeyword)) return "protected";
   return "public";
 }
@@ -122,6 +128,7 @@ export function collectFacts(
     namespacePath: readonly string[],
     file: string,
     line: number | undefined,
+    visibility: string | undefined,
   ): SymbolRecord => {
     const record: SymbolRecord = {
       id,
@@ -131,6 +138,7 @@ export function collectFacts(
       namespace: namespacePath.join("."),
       file,
       ...(line !== undefined ? { line } : {}),
+      ...(visibility !== undefined ? { visibility } : {}),
     };
     symbols.push(record);
     return record;
@@ -173,7 +181,6 @@ export function collectFacts(
         const localName = stmt.name?.text;
         const isDefault = hasModifier(stmt, ts.SyntaxKind.DefaultKeyword) || (localName !== undefined && localName === defaultExportedName);
         const isExported = hasModifier(stmt, ts.SyntaxKind.ExportKeyword) || isDefault || (localName !== undefined && lateExported.has(localName));
-        if (!isExported) continue;
         const exportName = isDefault ? "default" : (localName ?? "default");
         const symbol = symbolOfName(checker, stmt.name, stmt);
         if (symbol && idBySymbol.has(symbol)) {
@@ -182,7 +189,7 @@ export function collectFacts(
         }
         const id = declId(relNoExt, nsPath, exportName);
         const nativeKind = hasModifier(stmt, ts.SyntaxKind.AbstractKeyword) ? "abstract-class" : "class";
-        pushSymbol(id, "type", nativeKind, localName ?? "default", nsPath, relWithExt, lineOf(stmt, stmt.getSourceFile()));
+        pushSymbol(id, "type", nativeKind, localName ?? "default", nsPath, relWithExt, lineOf(stmt, stmt.getSourceFile()), isExported ? "exported" : "file");
         if (symbol) idBySymbol.set(symbol, id);
         declEntries.push({ id, node: stmt, kind: "class" });
         addEdge(containerId, id, "contains");
@@ -191,9 +198,8 @@ export function collectFacts(
 
       if (ts.isInterfaceDeclaration(stmt)) {
         const localName = stmt.name.text;
-        const isExported = hasModifier(stmt, ts.SyntaxKind.ExportKeyword) || lateExported.has(localName) || localName === defaultExportedName;
-        if (!isExported) continue;
         const isDefault = localName === defaultExportedName && !hasModifier(stmt, ts.SyntaxKind.ExportKeyword);
+        const isExported = hasModifier(stmt, ts.SyntaxKind.ExportKeyword) || lateExported.has(localName) || isDefault;
         const exportName = isDefault ? "default" : localName;
         const symbol = symbolOfName(checker, stmt.name, stmt);
         if (symbol && idBySymbol.has(symbol)) {
@@ -201,7 +207,7 @@ export function collectFacts(
           continue;
         }
         const id = declId(relNoExt, nsPath, exportName);
-        pushSymbol(id, "interface", "interface", localName, nsPath, relWithExt, lineOf(stmt, stmt.getSourceFile()));
+        pushSymbol(id, "interface", "interface", localName, nsPath, relWithExt, lineOf(stmt, stmt.getSourceFile()), isExported ? "exported" : "file");
         if (symbol) idBySymbol.set(symbol, id);
         declEntries.push({ id, node: stmt, kind: "interface" });
         addEdge(containerId, id, "contains");
@@ -210,14 +216,13 @@ export function collectFacts(
 
       if (ts.isTypeAliasDeclaration(stmt)) {
         const localName = stmt.name.text;
-        const isExported = hasModifier(stmt, ts.SyntaxKind.ExportKeyword) || lateExported.has(localName) || localName === defaultExportedName;
-        if (!isExported) continue;
         const isDefault = localName === defaultExportedName && !hasModifier(stmt, ts.SyntaxKind.ExportKeyword);
+        const isExported = hasModifier(stmt, ts.SyntaxKind.ExportKeyword) || lateExported.has(localName) || isDefault;
         const exportName = isDefault ? "default" : localName;
         const symbol = symbolOfName(checker, stmt.name, stmt);
         if (symbol && idBySymbol.has(symbol)) continue;
         const id = declId(relNoExt, nsPath, exportName);
-        pushSymbol(id, "type", "type-alias", localName, nsPath, relWithExt, lineOf(stmt, stmt.getSourceFile()));
+        pushSymbol(id, "type", "type-alias", localName, nsPath, relWithExt, lineOf(stmt, stmt.getSourceFile()), isExported ? "exported" : "file");
         if (symbol) idBySymbol.set(symbol, id);
         declEntries.push({ id, node: stmt, kind: "typeAlias" });
         addEdge(containerId, id, "contains");
@@ -226,14 +231,13 @@ export function collectFacts(
 
       if (ts.isEnumDeclaration(stmt)) {
         const localName = stmt.name.text;
-        const isExported = hasModifier(stmt, ts.SyntaxKind.ExportKeyword) || lateExported.has(localName) || localName === defaultExportedName;
-        if (!isExported) continue;
         const isDefault = localName === defaultExportedName && !hasModifier(stmt, ts.SyntaxKind.ExportKeyword);
+        const isExported = hasModifier(stmt, ts.SyntaxKind.ExportKeyword) || lateExported.has(localName) || isDefault;
         const exportName = isDefault ? "default" : localName;
         const symbol = symbolOfName(checker, stmt.name, stmt);
         if (symbol && idBySymbol.has(symbol)) continue;
         const id = declId(relNoExt, nsPath, exportName);
-        pushSymbol(id, "type", "enum", localName, nsPath, relWithExt, lineOf(stmt, stmt.getSourceFile()));
+        pushSymbol(id, "type", "enum", localName, nsPath, relWithExt, lineOf(stmt, stmt.getSourceFile()), isExported ? "exported" : "file");
         if (symbol) idBySymbol.set(symbol, id);
         declEntries.push({ id, node: stmt, kind: "enum" });
         addEdge(containerId, id, "contains");
@@ -244,7 +248,6 @@ export function collectFacts(
         const localName = stmt.name?.text;
         const isDefault = hasModifier(stmt, ts.SyntaxKind.DefaultKeyword) || (localName !== undefined && localName === defaultExportedName);
         const isExported = hasModifier(stmt, ts.SyntaxKind.ExportKeyword) || isDefault || (localName !== undefined && lateExported.has(localName));
-        if (!isExported) continue;
         const exportName = isDefault ? "default" : (localName ?? "default");
         const symbol = symbolOfName(checker, stmt.name, stmt);
         if (symbol && idBySymbol.has(symbol)) {
@@ -252,8 +255,9 @@ export function collectFacts(
           continue;
         }
         const id = declId(relNoExt, nsPath, exportName);
-        pushSymbol(id, "function", "function", localName ?? "default", nsPath, relWithExt, lineOf(stmt, stmt.getSourceFile()));
+        pushSymbol(id, "function", "function", localName ?? "default", nsPath, relWithExt, lineOf(stmt, stmt.getSourceFile()), isExported ? "exported" : "file");
         if (symbol) idBySymbol.set(symbol, id);
+        declEntries.push({ id, kind: "function", node: stmt, parameters: stmt.parameters, returnType: stmt.type });
         addEdge(containerId, id, "contains");
         continue;
       }
@@ -261,7 +265,6 @@ export function collectFacts(
       if (ts.isModuleDeclaration(stmt) && ts.isIdentifier(stmt.name) && stmt.body && ts.isModuleBlock(stmt.body)) {
         const localName = stmt.name.text;
         const isExported = hasModifier(stmt, ts.SyntaxKind.ExportKeyword) || lateExported.has(localName);
-        if (!isExported) continue;
         const symbol = symbolOfName(checker, stmt.name, stmt);
         let id: string;
         if (symbol && idBySymbol.has(symbol)) {
@@ -269,7 +272,7 @@ export function collectFacts(
           addEdge(containerId, id, "contains");
         } else {
           id = declId(relNoExt, nsPath, localName);
-          pushSymbol(id, "module", "namespace", localName, nsPath, relWithExt, lineOf(stmt, stmt.getSourceFile()));
+          pushSymbol(id, "module", "namespace", localName, nsPath, relWithExt, lineOf(stmt, stmt.getSourceFile()), isExported ? "exported" : "file");
           if (symbol) idBySymbol.set(symbol, id);
           addEdge(containerId, id, "contains");
         }
@@ -287,7 +290,6 @@ export function collectFacts(
           const localName = decl.name.text;
           const isDefault = localName === defaultExportedName && !isStmtExported;
           const isExported = isStmtExported || isDefault || lateExported.has(localName);
-          if (!isExported) continue;
           const exportName = isDefault ? "default" : localName;
           const symbol = checker.getSymbolAtLocation(decl.name);
           if (symbol && idBySymbol.has(symbol)) {
@@ -297,11 +299,15 @@ export function collectFacts(
           const id = declId(relNoExt, nsPath, exportName);
           const init = decl.initializer;
           const isFunctionValued = init !== undefined && (ts.isArrowFunction(init) || ts.isFunctionExpression(init));
+          const visibility = isExported ? "exported" : "file";
           if (isFunctionValued) {
-            const nativeKind = ts.isArrowFunction(init!) ? "arrow-function" : "function-expression";
-            pushSymbol(id, "function", nativeKind, localName, nsPath, relWithExt, lineOf(decl, stmt.getSourceFile()));
+            const fn = init as ts.ArrowFunction | ts.FunctionExpression;
+            const nativeKind = ts.isArrowFunction(fn) ? "arrow-function" : "function-expression";
+            pushSymbol(id, "function", nativeKind, localName, nsPath, relWithExt, lineOf(decl, stmt.getSourceFile()), visibility);
+            declEntries.push({ id, kind: "function", node: decl, parameters: fn.parameters, returnType: fn.type });
           } else {
-            pushSymbol(id, "value", declKeyword, localName, nsPath, relWithExt, lineOf(decl, stmt.getSourceFile()));
+            pushSymbol(id, "value", declKeyword, localName, nsPath, relWithExt, lineOf(decl, stmt.getSourceFile()), visibility);
+            declEntries.push({ id, kind: "value", node: decl, typeNode: decl.type });
           }
           if (symbol) idBySymbol.set(symbol, id);
           addEdge(containerId, id, "contains");
@@ -313,7 +319,7 @@ export function collectFacts(
 
   for (const file of files) {
     const fileId = moduleId(file.relNoExt);
-    pushSymbol(fileId, "module", "file", basenameNoExt(file.relNoExt), [], file.relWithExt, undefined);
+    pushSymbol(fileId, "module", "file", basenameNoExt(file.relNoExt), [], file.relWithExt, undefined, undefined);
     processContainer(file.sourceFile.statements, [], fileId, file.relNoExt, file.relWithExt);
   }
 
@@ -335,10 +341,9 @@ export function collectFacts(
       }
       for (const member of classDecl.members) {
         if (ts.isConstructorDeclaration(member)) continue;
-        const visibility = classMemberVisibility(member);
-        if (!visibility) continue;
         const name = memberName((member as ts.PropertyDeclaration | ts.MethodDeclaration).name);
         if (!name) continue;
+        const visibility = classMemberVisibility(member);
         let kind: string | undefined;
         let typeNode: ts.TypeNode | undefined;
         if (ts.isPropertyDeclaration(member)) {
@@ -419,6 +424,13 @@ export function collectFacts(
     } else if (entry.kind === "typeAlias") {
       const aliasDecl = entry.node as ts.TypeAliasDeclaration;
       for (const id of collectReferencedIds(aliasDecl.type, checker, validIds)) addEdge(entry.id, id, "references");
+    } else if (entry.kind === "function") {
+      for (const param of entry.parameters ?? []) {
+        for (const id of collectReferencedIds(param.type, checker, validIds)) addEdge(entry.id, id, "references");
+      }
+      for (const id of collectReferencedIds(entry.returnType, checker, validIds)) addEdge(entry.id, id, "references");
+    } else if (entry.kind === "value") {
+      for (const id of collectReferencedIds(entry.typeNode, checker, validIds)) addEdge(entry.id, id, "references");
     }
   }
 

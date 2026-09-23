@@ -22,6 +22,7 @@ internal sealed class SymbolFact
     [JsonPropertyName("namespace")] public string Namespace { get; set; } = "";
     [JsonPropertyName("file")] public string File { get; set; } = "";
     [JsonPropertyName("line")] public int? Line { get; set; }
+    [JsonPropertyName("visibility")] public string? Visibility { get; set; }
     [JsonPropertyName("members")] public List<MemberFact>? Members { get; set; }
 }
 

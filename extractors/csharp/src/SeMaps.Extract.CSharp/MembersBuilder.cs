@@ -4,8 +4,9 @@ namespace SeMaps.Extract.CSharp;
 
 /// <summary>
 /// Builds the `members` array of a symbol per PLAN_20260923_extractors_csharp.md "Символы":
-/// enum values, interface members, and public/internal fields/properties of class-like types.
-/// Methods of classes/structs/records are never printed (EXTRACTOR.md §6.2 scope limit).
+/// enum values, interface members, and all fields/properties (any visibility, ADR-6) of
+/// class-like types. Methods of classes/structs/records are never printed (EXTRACTOR.md §6.2
+/// scope limit).
 /// </summary>
 internal static class MembersBuilder
 {
@@ -90,7 +91,6 @@ internal static class MembersBuilder
         foreach (var member in symbol.GetMembers())
         {
             if (member.IsImplicitlyDeclared) continue;
-            if (member.DeclaredAccessibility is not (Accessibility.Public or Accessibility.Internal)) continue;
 
             switch (member)
             {

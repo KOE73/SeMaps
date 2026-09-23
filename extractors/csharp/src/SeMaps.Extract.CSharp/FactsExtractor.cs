@@ -72,13 +72,6 @@ internal sealed class FactsExtractor(string rootArgument, string rootFullPath, P
             return;
         }
 
-        if (symbol.ContainingType is not null &&
-            symbol.DeclaredAccessibility is not (Accessibility.Public or Accessibility.Internal))
-        {
-            // Private/protected nested types are not architecture (EXTRACTOR.md §3).
-            return;
-        }
-
         if (HasGeneratedAttribute(symbol))
         {
             return;
@@ -307,6 +300,7 @@ internal sealed class FactsExtractor(string rootArgument, string rootFullPath, P
             Namespace = SymbolIds.NamespaceDottedName(symbol.ContainingNamespace),
             File = file,
             Line = line,
+            Visibility = SymbolDisplayHelpers.Visibility(symbol.DeclaredAccessibility),
             Members = members,
         };
     }

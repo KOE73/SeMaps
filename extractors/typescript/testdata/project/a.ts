@@ -8,6 +8,7 @@ export class Base {
 
 class Hidden {
   secret = 1;
+  #password = "shh";
 }
 
 export class Widget extends Base implements Greeter {

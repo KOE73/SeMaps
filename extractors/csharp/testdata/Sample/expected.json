@@ -19,6 +19,7 @@
       "namespace": "Sample.App",
       "file": "Sample.App/AdvancedRepetitionGuard.cs",
       "line": 6,
+      "visibility": "public",
       "members": [
         {
           "kind": "property",
@@ -45,6 +46,7 @@
       "namespace": "Sample.Core",
       "file": "Sample.Core/Container.cs",
       "line": 3,
+      "visibility": "public",
       "members": []
     },
     {
@@ -55,12 +57,37 @@
       "namespace": "Sample.Core",
       "file": "Sample.Core/Container.cs",
       "line": 5,
+      "visibility": "public",
       "members": [
         {
           "kind": "property",
           "name": "Value",
           "type": "int",
           "visibility": "public"
+        }
+      ]
+    },
+    {
+      "id": "Sample.Core.Container+Secret",
+      "kind": "type",
+      "nativeKind": "class",
+      "name": "Secret",
+      "namespace": "Sample.Core",
+      "file": "Sample.Core/Container.cs",
+      "line": 10,
+      "visibility": "private",
+      "members": [
+        {
+          "kind": "property",
+          "name": "Hidden",
+          "type": "int",
+          "visibility": "public"
+        },
+        {
+          "kind": "field",
+          "name": "_status",
+          "type": "Status",
+          "visibility": "private"
         }
       ]
     },
@@ -81,6 +108,7 @@
       "namespace": "Sample.Core.Guards",
       "file": "Sample.Core/Guards/RepetitionGuard.Extra.cs",
       "line": 3,
+      "visibility": "public",
       "members": [
         {
           "kind": "property",
@@ -104,6 +132,7 @@
       "namespace": "Sample.Core",
       "file": "Sample.Core/IRepository.cs",
       "line": 3,
+      "visibility": "public",
       "members": [
         {
           "kind": "property",
@@ -133,6 +162,7 @@
       "namespace": "Sample.Core",
       "file": "Sample.Core/Logger.cs",
       "line": 3,
+      "visibility": "public",
       "members": [
         {
           "kind": "property",
@@ -155,7 +185,8 @@
       "name": "Notify",
       "namespace": "Sample.Core",
       "file": "Sample.Core/Notify.cs",
-      "line": 3
+      "line": 3,
+      "visibility": "public"
     },
     {
       "id": "Sample.Core.Point",
@@ -165,6 +196,7 @@
       "namespace": "Sample.Core",
       "file": "Sample.Core/Point.cs",
       "line": 3,
+      "visibility": "public",
       "members": [
         {
           "kind": "property",
@@ -188,6 +220,7 @@
       "namespace": "Sample.Core",
       "file": "Sample.Core/Repo.cs",
       "line": 3,
+      "visibility": "public",
       "members": [
         {
           "kind": "property",
@@ -211,6 +244,7 @@
       "namespace": "Sample.Core",
       "file": "Sample.Core/Status.cs",
       "line": 3,
+      "visibility": "public",
       "members": [
         {
           "kind": "value",
@@ -295,6 +329,16 @@
       "from": "Sample.Core.Container",
       "to": "Sample.Core.Container+Inner",
       "kind": "contains"
+    },
+    {
+      "from": "Sample.Core.Container",
+      "to": "Sample.Core.Container+Secret",
+      "kind": "contains"
+    },
+    {
+      "from": "Sample.Core.Container+Secret",
+      "to": "Sample.Core.Status",
+      "kind": "references"
     },
     {
       "from": "Sample.Core.Guards",

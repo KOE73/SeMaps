@@ -32,6 +32,7 @@
         "namespace": { "type": "string" },
         "file": { "type": "string", "pattern": "^[^\\\\]+$", "description": "relative to root, forward slashes" },
         "line": { "type": "integer", "minimum": 1 },
+        "visibility": { "type": "string", "minLength": 1 },
         "members": {
           "type": "array",
           "items": { "$ref": "#/$defs/member" }

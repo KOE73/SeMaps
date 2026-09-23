@@ -17,6 +17,7 @@ export interface SymbolRecord {
   namespace?: string;
   file: string;
   line?: number;
+  visibility?: string;
   members?: MemberRecord[];
 }
 
