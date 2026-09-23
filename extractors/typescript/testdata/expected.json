@@ -1,0 +1,321 @@
+{
+  "language": "typescript",
+  "root": "testdata/project",
+  "symbols": [
+    {
+      "id": "a",
+      "kind": "module",
+      "nativeKind": "file",
+      "name": "a",
+      "namespace": "",
+      "file": "a.ts"
+    },
+    {
+      "id": "a#Base",
+      "kind": "type",
+      "nativeKind": "class",
+      "name": "Base",
+      "namespace": "",
+      "file": "a.ts",
+      "line": 5,
+      "members": [
+        {
+          "kind": "field",
+          "name": "label",
+          "type": "string",
+          "visibility": "public"
+        }
+      ]
+    },
+    {
+      "id": "a#Box",
+      "kind": "interface",
+      "nativeKind": "interface",
+      "name": "Box",
+      "namespace": "",
+      "file": "a.ts",
+      "line": 27,
+      "members": [
+        {
+          "kind": "property",
+          "name": "value",
+          "type": "number"
+        }
+      ]
+    },
+    {
+      "id": "a#Color",
+      "kind": "type",
+      "nativeKind": "enum",
+      "name": "Color",
+      "namespace": "",
+      "file": "a.ts",
+      "line": 22,
+      "members": [
+        {
+          "kind": "value",
+          "name": "Red",
+          "type": "0"
+        },
+        {
+          "kind": "value",
+          "name": "Green",
+          "type": "green"
+        }
+      ]
+    },
+    {
+      "id": "a#Greeter",
+      "kind": "interface",
+      "nativeKind": "interface",
+      "name": "Greeter",
+      "namespace": "",
+      "file": "a.ts",
+      "line": 1,
+      "members": [
+        {
+          "kind": "method",
+          "name": "greet",
+          "type": "(name: string) => string"
+        }
+      ]
+    },
+    {
+      "id": "a#Pair",
+      "kind": "type",
+      "nativeKind": "type-alias",
+      "name": "Pair",
+      "namespace": "",
+      "file": "a.ts",
+      "line": 31
+    },
+    {
+      "id": "a#Registry",
+      "kind": "module",
+      "nativeKind": "namespace",
+      "name": "Registry",
+      "namespace": "",
+      "file": "a.ts",
+      "line": 41
+    },
+    {
+      "id": "a#Registry.Entry",
+      "kind": "interface",
+      "nativeKind": "interface",
+      "name": "Entry",
+      "namespace": "Registry",
+      "file": "a.ts",
+      "line": 42,
+      "members": [
+        {
+          "kind": "property",
+          "name": "box",
+          "type": "Box"
+        }
+      ]
+    },
+    {
+      "id": "a#Registry.Store",
+      "kind": "type",
+      "nativeKind": "class",
+      "name": "Store",
+      "namespace": "Registry",
+      "file": "a.ts",
+      "line": 46,
+      "members": [
+        {
+          "kind": "field",
+          "name": "items",
+          "type": "Entry[]",
+          "visibility": "public"
+        }
+      ]
+    },
+    {
+      "id": "a#VERSION",
+      "kind": "value",
+      "nativeKind": "const",
+      "name": "VERSION",
+      "namespace": "",
+      "file": "a.ts",
+      "line": 37
+    },
+    {
+      "id": "a#Widget",
+      "kind": "type",
+      "nativeKind": "class",
+      "name": "Widget",
+      "namespace": "",
+      "file": "a.ts",
+      "line": 13,
+      "members": [
+        {
+          "kind": "field",
+          "name": "id",
+          "type": "string",
+          "visibility": "public"
+        },
+        {
+          "kind": "method",
+          "name": "greet",
+          "type": "(name: string) => string",
+          "visibility": "public"
+        }
+      ]
+    },
+    {
+      "id": "a#build",
+      "kind": "function",
+      "nativeKind": "arrow-function",
+      "name": "build",
+      "namespace": "",
+      "file": "a.ts",
+      "line": 39
+    },
+    {
+      "id": "a#helper",
+      "kind": "function",
+      "nativeKind": "function",
+      "name": "helper",
+      "namespace": "",
+      "file": "a.ts",
+      "line": 51
+    },
+    {
+      "id": "a#makeWidget",
+      "kind": "function",
+      "nativeKind": "function",
+      "name": "makeWidget",
+      "namespace": "",
+      "file": "a.ts",
+      "line": 33
+    },
+    {
+      "id": "b",
+      "kind": "module",
+      "nativeKind": "file",
+      "name": "b",
+      "namespace": "",
+      "file": "b.ts"
+    },
+    {
+      "id": "b#Consumer",
+      "kind": "type",
+      "nativeKind": "class",
+      "name": "Consumer",
+      "namespace": "",
+      "file": "b.ts",
+      "line": 3,
+      "members": [
+        {
+          "kind": "field",
+          "name": "widget",
+          "type": "Widget",
+          "visibility": "public"
+        }
+      ]
+    }
+  ],
+  "edges": [
+    {
+      "from": "a",
+      "to": "a#Base",
+      "kind": "contains"
+    },
+    {
+      "from": "a",
+      "to": "a#Box",
+      "kind": "contains"
+    },
+    {
+      "from": "a",
+      "to": "a#Color",
+      "kind": "contains"
+    },
+    {
+      "from": "a",
+      "to": "a#Greeter",
+      "kind": "contains"
+    },
+    {
+      "from": "a",
+      "to": "a#Pair",
+      "kind": "contains"
+    },
+    {
+      "from": "a",
+      "to": "a#Registry",
+      "kind": "contains"
+    },
+    {
+      "from": "a",
+      "to": "a#VERSION",
+      "kind": "contains"
+    },
+    {
+      "from": "a",
+      "to": "a#Widget",
+      "kind": "contains"
+    },
+    {
+      "from": "a",
+      "to": "a#build",
+      "kind": "contains"
+    },
+    {
+      "from": "a",
+      "to": "a#helper",
+      "kind": "contains"
+    },
+    {
+      "from": "a",
+      "to": "a#makeWidget",
+      "kind": "contains"
+    },
+    {
+      "from": "a#Pair",
+      "to": "a#Box",
+      "kind": "references"
+    },
+    {
+      "from": "a#Registry",
+      "to": "a#Registry.Entry",
+      "kind": "contains"
+    },
+    {
+      "from": "a#Registry",
+      "to": "a#Registry.Store",
+      "kind": "contains"
+    },
+    {
+      "from": "a#Registry.Entry",
+      "to": "a#Box",
+      "kind": "references"
+    },
+    {
+      "from": "a#Registry.Store",
+      "to": "a#Registry.Entry",
+      "kind": "references"
+    },
+    {
+      "from": "a#Widget",
+      "to": "a#Base",
+      "kind": "extends"
+    },
+    {
+      "from": "a#Widget",
+      "to": "a#Greeter",
+      "kind": "implements"
+    },
+    {
+      "from": "b",
+      "to": "b#Consumer",
+      "kind": "contains"
+    },
+    {
+      "from": "b#Consumer",
+      "to": "a#Widget",
+      "kind": "references"
+    }
+  ]
+}
