@@ -13,10 +13,11 @@ import (
 // knows nothing about the registry; Sync turns these into entities.json and
 // relations.json.
 type Facts struct {
-	Language string   `json:"language"`
-	Root     string   `json:"root"`
-	Symbols  []Symbol `json:"symbols"`
-	Edges    []Edge   `json:"edges"`
+	Language  string   `json:"language"`
+	Root      string   `json:"root"`
+	EdgeKinds []string `json:"edgeKinds,omitempty"` // explicit list of edge kinds covered by these facts
+	Symbols   []Symbol `json:"symbols"`
+	Edges     []Edge   `json:"edges"`
 }
 
 // Symbol is one declaration. ID is the key within one output (ADR_20260923-5),
@@ -40,12 +41,26 @@ type Edge struct {
 	From string `json:"from"`
 	To   string `json:"to"`
 	Kind string `json:"kind"`
+	Via  *Via   `json:"via,omitempty"` // signature of member relation
+}
+
+// Via is the signature of a member relation: docs/EXTRACTOR.md §2.2a.
+// All fields are optional: absent means "not known".
+type Via struct {
+	Member     string   `json:"member,omitempty"`     // name of the member
+	MemberKind string   `json:"memberKind,omitempty"` // field, property, event, indexer, parameter, return, constructor, self
+	Modifiers  []string `json:"modifiers,omitempty"`  // public, private, readonly, static, …
+	Text       string   `json:"text,omitempty"`       // the member type as written in code
+	Path       []string `json:"path,omitempty"`       // path inside the member type to the target symbol
+	Cardinality string   `json:"cardinality,omitempty"` // one, optional, many, keyed
+	Mutability string   `json:"mutability,omitempty"` // mutable, readonly
+	Deferred   bool     `json:"deferred,omitempty"`   // true if the object comes later
 }
 
 // SymbolKinds and EdgeKinds are the closed vocabularies of EXTRACTOR.md §2.2–2.3.
 var (
 	SymbolKinds = []string{"type", "interface", "function", "module", "value"}
-	EdgeKinds   = []string{"extends", "implements", "references", "contains"}
+	EdgeKinds   = []string{"extends", "implements", "contains", "depends", "holds", "uses"}
 )
 
 // FactsError lists every problem found in a facts document, not just the first.
@@ -184,12 +199,23 @@ func (f *Facts) problems() []string {
 		if e.From == e.To {
 			bad("%s: an edge to itself", where)
 		}
+		if e.Via != nil && (e.Kind == "extends" || e.Kind == "implements" || e.Kind == "contains" || e.Kind == "depends") {
+			bad("%s: `via` is only for holds/uses edges", where)
+		}
+		if e.Via != nil {
+			if e.Via.Cardinality != "" && e.Via.Cardinality != "one" && e.Via.Cardinality != "optional" && e.Via.Cardinality != "many" && e.Via.Cardinality != "keyed" {
+				bad("%s: via.cardinality %q must be one of: one, optional, many, keyed", where, e.Via.Cardinality)
+			}
+			if e.Via.Mutability != "" && e.Via.Mutability != "mutable" && e.Via.Mutability != "readonly" {
+				bad("%s: via.mutability %q must be mutable or readonly", where, e.Via.Mutability)
+			}
+		}
 		if i > 0 {
 			switch prev := f.Edges[i-1]; compareEdges(prev, e) {
 			case 0:
 				bad("%s: edge repeats", where)
 			case 1:
-				bad("%s: edges are not sorted by (from, to, kind)", where)
+				bad("%s: edges are not sorted by (from, to, kind, via.member, via.path)", where)
 			}
 		}
 	}
@@ -202,7 +228,28 @@ func compareEdges(a, b Edge) int {
 			return c
 		}
 	}
-	return 0
+	// Member and path are only for member relations (holds/uses).
+	// Missing fields sort before present ones.
+	aMember := ""
+	if a.Via != nil {
+		aMember = a.Via.Member
+	}
+	bMember := ""
+	if b.Via != nil {
+		bMember = b.Via.Member
+	}
+	if c := strings.Compare(aMember, bMember); c != 0 {
+		return c
+	}
+	aPath := ""
+	if a.Via != nil {
+		aPath = strings.Join(a.Via.Path, ",")
+	}
+	bPath := ""
+	if b.Via != nil {
+		bPath = strings.Join(b.Via.Path, ",")
+	}
+	return strings.Compare(aPath, bPath)
 }
 
 func setOf(list []string) map[string]bool {

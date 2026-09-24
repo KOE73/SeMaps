@@ -112,6 +112,7 @@ const (
 	adoptTypes = `{"contractVersion":3,"relationTypes":[{"id":"call","origin":"authored"},{"id":"extends","origin":"code"}]}`
 	adoptFacts = `{
   "language": "csharp", "root": ".",
+  "edgeKinds": ["extends","implements","contains","depends","holds","uses"],
   "symbols": [
     {"id":"N.Base","kind":"type","nativeKind":"class","name":"Base","namespace":"N","file":"src/NeuroModFlowNet.ONNX/Base.cs"},
     {"id":"N.Guard","kind":"type","nativeKind":"class","name":"Guard","namespace":"N","file":"src/NeuroModFlowNet.ONNX/Guard.cs",
@@ -123,11 +124,11 @@ const (
   ],
   "edges": [
     {"from":"N.X","to":"N.Base","kind":"extends"},
-    {"from":"N.X","to":"N.Guard","kind":"references"},
+    {"from":"N.X","to":"N.Guard","kind":"uses","via":{"member":"guard","memberKind":"field","text":"Guard"}},
     {"from":"NeuroModFlowNet.ONNX","to":"N.Base","kind":"contains"},
     {"from":"NeuroModFlowNet.ONNX","to":"N.Guard","kind":"contains"},
     {"from":"NeuroModFlowNet.ONNX","to":"N.X","kind":"contains"},
-    {"from":"Tests.T","to":"N.X","kind":"references"}
+    {"from":"Tests.T","to":"N.X","kind":"uses","via":{"member":"x","memberKind":"field","text":"X"}}
   ]
 }`
 )
@@ -228,11 +229,11 @@ func TestSyncFirstRunAdoptsHandMadeEntities(t *testing.T) {
 	if find(v.Relations, "r_x_base_extends") == nil || find(v.Relations, "r_asm_onnx_guard_2_contains") == nil {
 		t.Errorf("relations: %v", v.Relations)
 	}
-	if ref := find(v.Relations, "r_x_guard_2_references"); ref == nil || ref["type"] != "references" || ref["origin"] != "code" {
-		t.Errorf("references relation: %v", v.Relations)
+	if ref := find(v.Relations, "r_x_guard_2_guard"); ref == nil || ref["type"] != "uses" || ref["origin"] != "code" {
+		t.Errorf("uses relation: %v", v.Relations)
 	}
-	if rt := find(v.Types, "references"); rt == nil || rt["visibility"] != "hidden" {
-		t.Errorf("references type not declared: %v", v.Types)
+	if rt := find(v.Types, "uses"); rt == nil || rt["visibility"] != "hidden" {
+		t.Errorf("uses type not declared: %v", v.Types)
 	}
 	if find(v.Relations, "r_hand") == nil {
 		t.Error("authored relation lost")
@@ -348,8 +349,8 @@ func TestSyncRenameIsOnlyACandidate(t *testing.T) {
     {"from":"NeuroModFlowNet.ONNX","to":"N.Root","kind":"contains"},`, 1)
 	renamed = strings.Replace(renamed,
 		`{"from":"N.X","to":"N.Root","kind":"extends"},
-    {"from":"N.X","to":"N.Guard","kind":"references"},`,
-		`{"from":"N.X","to":"N.Guard","kind":"references"},
+    {"from":"N.X","to":"N.Guard","kind":"uses","via":{"member":"guard","memberKind":"field","text":"Guard"}},`,
+		`{"from":"N.X","to":"N.Guard","kind":"uses","via":{"member":"guard","memberKind":"field","text":"Guard"}},
     {"from":"N.X","to":"N.Root","kind":"extends"},`, 1)
 
 	rep := sync(t, ws, facts(t, renamed), SyncOptions{})
@@ -535,6 +536,133 @@ func TestSyncNeedsProjectWhenSeveral(t *testing.T) {
 	var usage *UsageError
 	if !errors.As(err, &usage) {
 		t.Fatalf("want UsageError, got %v", err)
+	}
+}
+
+// Member relations: type derivation and ID generation
+func TestMemberRelationTypeDerivation(t *testing.T) {
+	for _, tc := range []struct {
+		kind       string
+		via        *Via
+		wantType   string
+		wantPublic bool
+	}{
+		{"uses", &Via{MemberKind: "constructor"}, "injects", true},
+		{"uses", &Via{MemberKind: "parameter"}, "uses", true},
+		{"holds", &Via{Cardinality: "one", Modifiers: []string{"public"}}, "holds.one", true},
+		{"holds", &Via{Cardinality: "optional", Modifiers: []string{"public"}}, "holds.optional", true},
+		{"holds", &Via{Cardinality: "many", Mutability: "mutable", Modifiers: []string{"public"}}, "holds.many", true},
+		{"holds", &Via{Cardinality: "many", Mutability: "readonly", Modifiers: []string{"public"}}, "holds.many.ro", true},
+		{"holds", &Via{Cardinality: "keyed", Mutability: "mutable", Modifiers: []string{"public"}}, "holds.keyed", true},
+		{"holds", &Via{Cardinality: "keyed", Mutability: "readonly", Modifiers: []string{"public"}}, "holds.keyed.ro", true},
+		{"holds", &Via{Cardinality: "one", Modifiers: []string{"private"}}, "holds.one.internal", false},
+		{"holds", &Via{Cardinality: "many", Mutability: "mutable", Modifiers: []string{"private"}}, "holds.many.internal", false},
+		{"holds", nil, "holds.one", true}, // no via: assume public
+	} {
+		got := deriveRelationType(tc.kind, tc.via)
+		if got != tc.wantType {
+			t.Errorf("deriveRelationType(%q, %v) = %q, want %q", tc.kind, tc.via, got, tc.wantType)
+		}
+		gotPublic := isPublicMember(tc.via)
+		if gotPublic != tc.wantPublic {
+			t.Errorf("isPublicMember(%v) = %v, want %v", tc.via, gotPublic, tc.wantPublic)
+		}
+	}
+}
+
+// Member relation ID is stable across wrapper changes (List -> IReadOnlyList).
+func TestMemberRelationIDStability(t *testing.T) {
+	ws, dir := workspace(t, `{"id":"p","contractVersion":3}`, "", "", "")
+	facts1 := `{"language":"csharp","root":".","edgeKinds":["holds"],"symbols":[
+    {"id":"A","kind":"type","nativeKind":"class","name":"A","file":"a.cs"},
+    {"id":"B","kind":"type","nativeKind":"class","name":"B","file":"b.cs"}],
+    "edges":[{"from":"A","to":"B","kind":"holds","via":{"member":"items","memberKind":"field","cardinality":"many","text":"List<B>"}}]}`
+	sync(t, ws, facts(t, facts1), SyncOptions{})
+	v := load(t, dir)
+	relID := find(v.Relations, "r_a_b_items")
+	if relID == nil || relID["type"] != "holds.many" {
+		t.Fatalf("first run: %v", v.Relations)
+	}
+
+	// Same edge, different wrapper: IReadOnlyList -> holds.many.ro
+	facts2 := `{"language":"csharp","root":".","edgeKinds":["holds"],"symbols":[
+    {"id":"A","kind":"type","nativeKind":"class","name":"A","file":"a.cs"},
+    {"id":"B","kind":"type","nativeKind":"class","name":"B","file":"b.cs"}],
+    "edges":[{"from":"A","to":"B","kind":"holds","via":{"member":"items","memberKind":"field","cardinality":"many","mutability":"readonly","text":"IReadOnlyList<B>"}}]}`
+	sync(t, ws, facts(t, facts2), SyncOptions{})
+	v = load(t, dir)
+	updated := find(v.Relations, "r_a_b_items")
+	if updated == nil || updated["type"] != "holds.many.ro" || updated["id"] != "r_a_b_items" {
+		t.Errorf("second run: id changed or type not updated: %v", updated)
+	}
+}
+
+// Visibility is set when new relation types are created.
+func TestMemberRelationVisibility(t *testing.T) {
+	ws, dir := workspace(t, `{"id":"p","contractVersion":3}`, "", "", "")
+	factSet := `{"language":"csharp","root":".","edgeKinds":["holds","uses"],"symbols":[
+    {"id":"A","kind":"type","nativeKind":"class","name":"A","file":"a.cs"},
+    {"id":"B","kind":"type","nativeKind":"class","name":"B","file":"b.cs"},
+    {"id":"C","kind":"type","nativeKind":"class","name":"C","file":"c.cs"}],
+    "edges":[
+      {"from":"A","to":"B","kind":"holds","via":{"member":"pub","memberKind":"field","cardinality":"one","modifiers":["public"]}},
+      {"from":"A","to":"B","kind":"uses","via":{"member":"Method","memberKind":"parameter"}},
+      {"from":"A","to":"C","kind":"holds","via":{"member":"priv","memberKind":"field","cardinality":"one","modifiers":["private"]}}
+    ]}`
+	sync(t, ws, facts(t, factSet), SyncOptions{})
+	v := load(t, dir)
+	for _, tc := range []struct {
+		typeID      string
+		wantVisib   string
+	}{
+		{"holds.one", "visible"},
+		{"holds.one.internal", "hidden"},
+		{"uses", "hidden"},
+	} {
+		rt := find(v.Types, tc.typeID)
+		if rt == nil {
+			t.Errorf("type %s not created", tc.typeID)
+			continue
+		}
+		if rt["visibility"] != tc.wantVisib {
+			t.Errorf("type %s visibility = %v, want %v", tc.typeID, rt["visibility"], tc.wantVisib)
+		}
+	}
+}
+
+// missing marking only for edge kinds in edgeKinds.
+func TestMemberRelationMissingByEdgeKinds(t *testing.T) {
+	ws, _ := workspace(t, `{"id":"p","contractVersion":3}`, "", "", "")
+
+	// First run: extract both holds and uses
+	facts1 := `{"language":"csharp","root":".","edgeKinds":["holds","uses"],"symbols":[
+    {"id":"A","kind":"type","nativeKind":"class","name":"A","file":"a.cs"},
+    {"id":"B","kind":"type","nativeKind":"class","name":"B","file":"b.cs"}],
+    "edges":[
+      {"from":"A","to":"B","kind":"holds","via":{"member":"field1","memberKind":"field"}},
+      {"from":"A","to":"B","kind":"uses","via":{"member":"Method","memberKind":"parameter"}}
+    ]}`
+	sync(t, ws, facts(t, facts1), SyncOptions{})
+
+	// Second run: extract holds, and say we cover uses too (but find nothing)
+	facts2 := `{"language":"csharp","root":".","edgeKinds":["holds","uses"],"symbols":[
+    {"id":"A","kind":"type","nativeKind":"class","name":"A","file":"a.cs"},
+    {"id":"B","kind":"type","nativeKind":"class","name":"B","file":"b.cs"}],
+    "edges":[
+      {"from":"A","to":"B","kind":"holds","via":{"member":"field1","memberKind":"field"}}
+    ]}`
+	rep := sync(t, ws, facts(t, facts2), SyncOptions{DryRun: true})
+
+	// uses edge should be marked missing (was extracted in first run, edgeKinds says we looked for it but found nothing)
+	hasUsesGone := false
+	for _, gone := range rep.Gone {
+		if strings.Contains(gone, "r_a_b_method") {
+			hasUsesGone = true
+			break
+		}
+	}
+	if !hasUsesGone {
+		t.Errorf("uses edge (r_a_b_method) should be marked missing: gone=%v", rep.Gone)
 	}
 }
 

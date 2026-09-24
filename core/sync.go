@@ -121,9 +121,10 @@ func (r *SyncReport) Print(w io.Writer) {
 	}
 }
 
-// structuralTypes are the edge kinds sync writes as relations: all of them.
+// structuralTypes are the edge kinds sync writes as relations: all organic ones.
+// Member relations (holds, uses) are not listed here; they are created per-member.
 // Which ones a view shows is the view's decision (CONTRACT.md §8.5).
-var structuralTypes = EdgeKinds
+var structuralTypes = []string{"extends", "implements", "contains", "depends"}
 
 // Sync reconciles <workspace>/projects/<project> with facts.
 func Sync(workspace string, facts *Facts, opt SyncOptions) (*SyncReport, error) {
@@ -165,6 +166,12 @@ func Sync(workspace string, facts *Facts, opt SyncOptions) (*SyncReport, error) 
 		edges = append(edges, e)
 	}
 	rep.Symbols, rep.Edges = len(order), len(edges)
+
+	// covered holds which edge kinds the facts declare they cover (for missing marking)
+	covered := map[string]bool{}
+	for _, k := range facts.EdgeKinds {
+		covered[k] = true
+	}
 
 	withVersion := func() *object {
 		o := newObject()
@@ -297,12 +304,13 @@ func Sync(workspace string, facts *Facts, opt SyncOptions) (*SyncReport, error) 
 
 	// ------------------------------------------------ relations
 	structural := setOf(structuralTypes)
-	byTriple := map[string][]int{}
+	byKey := map[string][]int{} // relation key -> relation indices
 	for i, r := range rels.items {
-		key := triple(r.str("from"), r.str("to"), relationType(r))
-		byTriple[key] = append(byTriple[key], i)
+		key := relationKey(r)
+		byKey[key] = append(byKey[key], i)
 	}
 	confirmed := map[int]bool{}
+
 	for _, edge := range edges {
 		fi, ok1 := match[edge.From]
 		ti, ok2 := match[edge.To]
@@ -310,54 +318,143 @@ func Sync(workspace string, facts *Facts, opt SyncOptions) (*SyncReport, error) 
 			continue // an end is waiting for a human
 		}
 		from, to := ents.items[fi].str("id"), ents.items[ti].str("id")
-		key := triple(from, to, edge.Kind)
-		existing := byTriple[key]
-		if len(existing) > 0 {
-			for _, ri := range existing {
-				r := rels.items[ri]
-				if r.str("origin") == "authored" {
-					continue // the human's record stands for the edge; no duplicate beside it
-				}
-				confirmed[ri] = true
-				var changes []string
-				if r.str("origin") != "code" {
-					r.set("origin", "code")
-					changes = append(changes, "origin")
-				}
-				if r.str("status") == "missing" {
-					r.set("status", "present")
-					changes = append(changes, "status")
-				}
-				if len(changes) > 0 {
-					rels.dirty = true
-					rep.Changed = append(rep.Changed, fmt.Sprintf("%s: %s", r.str("id"), strings.Join(changes, ", ")))
-				}
-			}
-			continue
-		}
-		id := mint("r_"+strings.TrimPrefix(from, "e_")+"_"+strings.TrimPrefix(to, "e_")+"_"+edge.Kind, relIDs)
 		fromSym := symbols[edge.From]
-		r := newObject()
-		r.set("id", id)
-		r.set("from", from)
-		r.set("to", to)
-		r.set("type", edge.Kind)
-		r.set("origin", "code")
-		r.set("status", "present")
-		r.set("evidence", []map[string]string{{"codeRef": fromSym.File, "symbol": fromSym.ID}})
-		rels.items = append(rels.items, r)
-		rels.dirty = true
-		confirmed[len(rels.items)-1] = true
-		byTriple[key] = append(byTriple[key], len(rels.items)-1)
-		rep.Added = append(rep.Added, id)
+
+		// Organic edges and member relations are handled differently
+		if edge.Kind == "holds" || edge.Kind == "uses" {
+			// Member relation: one edge per member occurrence
+			if edge.Via == nil {
+				// Skip member edges without via information
+				continue
+			}
+			key := memberRelationKey(from, to, edge.Via)
+			relType := deriveRelationType(edge.Kind, edge.Via)
+			existing := byKey[key]
+			if len(existing) > 0 {
+				for _, ri := range existing {
+					r := rels.items[ri]
+					if r.str("origin") == "authored" {
+						continue
+					}
+					confirmed[ri] = true
+					var changes []string
+					if r.str("origin") != "code" {
+						r.set("origin", "code")
+						changes = append(changes, "origin")
+					}
+					if r.str("type") != relType {
+						r.set("type", relType)
+						changes = append(changes, "type")
+					}
+					if r.str("status") == "missing" {
+						r.set("status", "present")
+						changes = append(changes, "status")
+					}
+					// Update via
+					existingViaJSON, hasVia := r.vals["via"]
+					newViaJSON := encodeJSON(edge.Via)
+					if !hasVia || compactJSON(existingViaJSON) != compactJSON(newViaJSON) {
+						r.set("via", edge.Via)
+						if hasVia {
+							changes = append(changes, "via")
+						}
+					}
+					if len(changes) > 0 {
+						rels.dirty = true
+						rep.Changed = append(rep.Changed, fmt.Sprintf("%s: %s", r.str("id"), strings.Join(changes, ", ")))
+					}
+				}
+				continue
+			}
+			// New member relation
+			id := mintMemberRelationID(from, to, edge.Via, relIDs)
+			r := newObject()
+			r.set("id", id)
+			r.set("from", from)
+			r.set("to", to)
+			r.set("type", relType)
+			r.set("origin", "code")
+			r.set("status", "present")
+			r.set("via", edge.Via)
+			r.set("evidence", []map[string]string{{"codeRef": fromSym.File, "symbol": fromSym.ID}})
+			rels.items = append(rels.items, r)
+			rels.dirty = true
+			confirmed[len(rels.items)-1] = true
+			byKey[key] = append(byKey[key], len(rels.items)-1)
+			rep.Added = append(rep.Added, id)
+		} else {
+			// Organic edge (extends, implements, contains, depends)
+			key := triple(from, to, edge.Kind)
+			existing := byKey[key]
+			if len(existing) > 0 {
+				for _, ri := range existing {
+					r := rels.items[ri]
+					if r.str("origin") == "authored" {
+						continue
+					}
+					confirmed[ri] = true
+					var changes []string
+					if r.str("origin") != "code" {
+						r.set("origin", "code")
+						changes = append(changes, "origin")
+					}
+					if r.str("status") == "missing" {
+						r.set("status", "present")
+						changes = append(changes, "status")
+					}
+					if len(changes) > 0 {
+						rels.dirty = true
+						rep.Changed = append(rep.Changed, fmt.Sprintf("%s: %s", r.str("id"), strings.Join(changes, ", ")))
+					}
+				}
+				continue
+			}
+			id := mint("r_"+strings.TrimPrefix(from, "e_")+"_"+strings.TrimPrefix(to, "e_")+"_"+edge.Kind, relIDs)
+			r := newObject()
+			r.set("id", id)
+			r.set("from", from)
+			r.set("to", to)
+			r.set("type", edge.Kind)
+			r.set("origin", "code")
+			r.set("status", "present")
+			r.set("evidence", []map[string]string{{"codeRef": fromSym.File, "symbol": fromSym.ID}})
+			rels.items = append(rels.items, r)
+			rels.dirty = true
+			confirmed[len(rels.items)-1] = true
+			byKey[key] = append(byKey[key], len(rels.items)-1)
+			rep.Added = append(rep.Added, id)
+		}
 	}
+
+	// Mark relations as missing if they're not in the facts
 	for i, r := range rels.items {
-		if confirmed[i] || r.str("origin") != "code" || !structural[relationType(r)] {
+		if confirmed[i] || r.str("origin") != "code" {
 			continue
 		}
+		relType := relationType(r)
+
+		// Check if this relation type's kind is covered by the facts
+		var isCovered bool
+		if strings.HasPrefix(relType, "holds") {
+			isCovered = covered["holds"]
+		} else if relType == "injects" {
+			// injects is covered if "injects" or "uses" are in edgeKinds
+			isCovered = covered["injects"] || covered["uses"]
+		} else if relType == "uses" {
+			isCovered = covered["uses"]
+		} else if structural[relType] {
+			// organic relation: always marked as missing if not confirmed
+			isCovered = true
+		} else {
+			continue
+		}
+
+		if !isCovered {
+			continue // kind not covered by the facts, don't mark as missing
+		}
+
 		from, to := r.str("from"), r.str("to")
-		// Only when sync can see both ends: an end it does not manage, or one
-		// waiting for a human, says nothing about the relation.
+		// Only when sync can see both ends
 		if !(inCode[from] || gone[from]) || !(inCode[to] || gone[to]) {
 			continue
 		}
@@ -379,18 +476,39 @@ func Sync(workspace string, facts *Facts, opt SyncOptions) (*SyncReport, error) 
 			used[relationType(r)] = true
 		}
 	}
+
+	// Organic types
 	for _, t := range structuralTypes {
 		if used[t] && !declared[t] {
 			o := newObject()
 			o.set("id", t)
 			o.set("origin", "code")
-			if t == "references" {
-				// Many and rarely wanted all at once: hidden until a view asks (ADR_20260924-2).
-				o.set("visibility", "hidden")
-			}
+			o.set("visibility", "visible")
 			types.items = append(types.items, o)
 			types.dirty = true
 			rep.Added = append(rep.Added, "relation-types.json: "+t)
+		}
+	}
+
+	// Member relation types derived from holds/uses edges
+	for _, typeID := range []string{
+		"holds.one", "holds.optional", "holds.many", "holds.many.ro", "holds.keyed", "holds.keyed.ro",
+		"holds.one.internal", "holds.optional.internal", "holds.many.internal", "holds.many.ro.internal",
+		"holds.keyed.internal", "holds.keyed.ro.internal",
+		"uses", "injects",
+	} {
+		if used[typeID] && !declared[typeID] {
+			o := newObject()
+			o.set("id", typeID)
+			o.set("origin", "code")
+			visibility := "visible"
+			if strings.HasSuffix(typeID, ".internal") || typeID == "uses" || typeID == "injects" {
+				visibility = "hidden"
+			}
+			o.set("visibility", visibility)
+			types.items = append(types.items, o)
+			types.dirty = true
+			rep.Added = append(rep.Added, "relation-types.json: "+typeID)
 		}
 	}
 
@@ -684,6 +802,121 @@ func relationType(r *object) string {
 }
 
 func triple(from, to, kind string) string { return from + "\x00" + to + "\x00" + kind }
+
+// relationKey returns the identification key for any relation: either triple
+// (from, to, type) for organic edges or member key for member relations.
+func relationKey(r *object) string {
+	via, ok := r.vals["via"]
+	if !ok || len(via) == 0 || string(via) == "null" {
+		// Organic relation
+		return triple(r.str("from"), r.str("to"), relationType(r))
+	}
+	// Member relation: key is (from, to, via.member, via.path)
+	var v Via
+	if err := json.Unmarshal(via, &v); err != nil {
+		// Malformed via; treat as organic for ordering
+		return triple(r.str("from"), r.str("to"), relationType(r))
+	}
+	return memberRelationKey(r.str("from"), r.str("to"), &v)
+}
+
+// memberRelationKey creates the identification key for a member relation:
+// (from, to, member, path).
+func memberRelationKey(from, to string, via *Via) string {
+	member := ""
+	if via != nil {
+		member = via.Member
+	}
+	path := ""
+	if via != nil {
+		path = strings.Join(via.Path, ",")
+	}
+	return from + "\x00" + to + "\x00" + member + "\x00" + path
+}
+
+// deriveRelationType derives the relation type from edge kind and via features.
+// For holds: type is based on cardinality and mutability.
+// For uses: always "uses" unless it's a constructor, which gives "injects".
+func deriveRelationType(kind string, via *Via) string {
+	if kind == "uses" {
+		if via != nil && via.MemberKind == "constructor" {
+			return "injects"
+		}
+		return "uses"
+	}
+	if kind != "holds" {
+		return kind // extends, implements, contains, depends
+	}
+
+	// Derive holds type from cardinality and mutability
+	var base string
+	if via != nil {
+		switch via.Cardinality {
+		case "optional":
+			base = "holds.optional"
+		case "many":
+			if via.Mutability == "readonly" {
+				base = "holds.many.ro"
+			} else {
+				base = "holds.many"
+			}
+		case "keyed":
+			if via.Mutability == "readonly" {
+				base = "holds.keyed.ro"
+			} else {
+				base = "holds.keyed"
+			}
+		default:
+			base = "holds.one"
+		}
+	} else {
+		base = "holds.one"
+	}
+
+	// Add .internal suffix if member is not public
+	if !isPublicMember(via) {
+		base += ".internal"
+	}
+	return base
+}
+
+// isPublicMember checks if a member is public (has "public" modifier or no private markers).
+func isPublicMember(via *Via) bool {
+	if via == nil || len(via.Modifiers) == 0 {
+		return true // no modifiers means public
+	}
+	hasPublic := false
+	hasPrivate := false
+	for _, mod := range via.Modifiers {
+		switch strings.ToLower(mod) {
+		case "public":
+			hasPublic = true
+		case "private", "internal", "protected":
+			hasPrivate = true
+		}
+	}
+	if hasPublic {
+		return true
+	}
+	if hasPrivate {
+		return false
+	}
+	return true // no explicit access modifier means public
+}
+
+// mintMemberRelationID creates an ID for a new member relation.
+// Format: r_<from>_<to>_<member>[_<path>], collision -> _2
+func mintMemberRelationID(from, to string, via *Via, taken map[string]bool) string {
+	member := ""
+	if via != nil {
+		member = via.Member
+	}
+	base := "r_" + strings.TrimPrefix(from, "e_") + "_" + strings.TrimPrefix(to, "e_") + "_" + slug(member)
+	if via != nil && len(via.Path) > 0 {
+		base += "_" + strings.Join(via.Path, "_")
+	}
+	return mint(base, taken)
+}
 
 // newEntityID is the base of a new entity's id. A type, function or value is
 // named by its short name (`e_repetitionguard`). A module is named by its whole
