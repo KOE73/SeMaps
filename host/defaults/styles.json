@@ -699,6 +699,230 @@
       "border": {
         "dash": "6,4"
       }
+    },
+    {
+      "id": "depends",
+      "name": "Зависимость между модулями",
+      "appliesTo": "edge",
+      "family": "structure",
+      "line": {
+        "color": "#94a3b8",
+        "width": 1.6
+      },
+      "target": {
+        "shape": "arrow",
+        "size": 8
+      }
+    },
+    {
+      "id": "holds.one",
+      "name": "Поле / свойство · один объект",
+      "appliesTo": "edge",
+      "family": "structure",
+      "line": {
+        "color": "#7c3aed",
+        "width": 1.5
+      },
+      "target": {
+        "shape": "arrow",
+        "size": 7
+      }
+    },
+    {
+      "id": "holds.optional",
+      "name": "Поле / свойство · опциональный",
+      "appliesTo": "edge",
+      "family": "structure",
+      "line": {
+        "color": "#7c3aed",
+        "width": 1.5,
+        "dash": "2,2"
+      },
+      "target": {
+        "shape": "arrow",
+        "size": 7
+      }
+    },
+    {
+      "id": "holds.many",
+      "name": "Поле / свойство · коллекция",
+      "appliesTo": "edge",
+      "family": "structure",
+      "line": {
+        "color": "#7c3aed",
+        "width": 1.8
+      },
+      "target": {
+        "shape": "arrow",
+        "size": 8
+      }
+    },
+    {
+      "id": "holds.many.ro",
+      "name": "Поле / свойство · коллекция (чтение)",
+      "appliesTo": "edge",
+      "family": "structure",
+      "line": {
+        "color": "#7c3aed",
+        "width": 1.5,
+        "dash": "4,3"
+      },
+      "target": {
+        "shape": "arrow",
+        "size": 8
+      }
+    },
+    {
+      "id": "holds.keyed",
+      "name": "Поле / свойство · словарь",
+      "appliesTo": "edge",
+      "family": "structure",
+      "line": {
+        "color": "#7c3aed",
+        "width": 2
+      },
+      "target": {
+        "shape": "arrow",
+        "size": 9
+      }
+    },
+    {
+      "id": "holds.keyed.ro",
+      "name": "Поле / свойство · словарь (чтение)",
+      "appliesTo": "edge",
+      "family": "structure",
+      "line": {
+        "color": "#7c3aed",
+        "width": 1.6,
+        "dash": "3,4"
+      },
+      "target": {
+        "shape": "arrow",
+        "size": 9
+      }
+    },
+    {
+      "id": "holds.one.internal",
+      "name": "Поле / свойство · один объект · внутренний",
+      "appliesTo": "edge",
+      "family": "structure",
+      "line": {
+        "color": "#d8b4fe",
+        "width": 1.2,
+        "opacity": 0.6
+      },
+      "target": {
+        "shape": "arrow",
+        "size": 6
+      }
+    },
+    {
+      "id": "holds.optional.internal",
+      "name": "Поле / свойство · опциональный · внутренний",
+      "appliesTo": "edge",
+      "family": "structure",
+      "line": {
+        "color": "#d8b4fe",
+        "width": 1.2,
+        "dash": "2,2",
+        "opacity": 0.6
+      },
+      "target": {
+        "shape": "arrow",
+        "size": 6
+      }
+    },
+    {
+      "id": "holds.many.internal",
+      "name": "Поле / свойство · коллекция · внутренний",
+      "appliesTo": "edge",
+      "family": "structure",
+      "line": {
+        "color": "#d8b4fe",
+        "width": 1.4,
+        "opacity": 0.6
+      },
+      "target": {
+        "shape": "arrow",
+        "size": 7
+      }
+    },
+    {
+      "id": "holds.many.ro.internal",
+      "name": "Поле / свойство · коллекция (чтение) · внутренний",
+      "appliesTo": "edge",
+      "family": "structure",
+      "line": {
+        "color": "#d8b4fe",
+        "width": 1.2,
+        "dash": "4,3",
+        "opacity": 0.6
+      },
+      "target": {
+        "shape": "arrow",
+        "size": 7
+      }
+    },
+    {
+      "id": "holds.keyed.internal",
+      "name": "Поле / свойство · словарь · внутренний",
+      "appliesTo": "edge",
+      "family": "structure",
+      "line": {
+        "color": "#d8b4fe",
+        "width": 1.6,
+        "opacity": 0.6
+      },
+      "target": {
+        "shape": "arrow",
+        "size": 8
+      }
+    },
+    {
+      "id": "holds.keyed.ro.internal",
+      "name": "Поле / свойство · словарь (чтение) · внутренний",
+      "appliesTo": "edge",
+      "family": "structure",
+      "line": {
+        "color": "#d8b4fe",
+        "width": 1.3,
+        "dash": "3,4",
+        "opacity": 0.6
+      },
+      "target": {
+        "shape": "arrow",
+        "size": 8
+      }
+    },
+    {
+      "id": "uses",
+      "name": "Параметр / возвращаемое значение",
+      "appliesTo": "edge",
+      "family": "structure",
+      "line": {
+        "color": "#06b6d4",
+        "width": 1.5,
+        "dash": "3,3"
+      },
+      "target": {
+        "shape": "arrow",
+        "size": 7
+      }
+    },
+    {
+      "id": "injects",
+      "name": "Внедрение зависимости",
+      "appliesTo": "edge",
+      "family": "structure",
+      "line": {
+        "color": "#f97316",
+        "width": 1.6,
+        "dash": "4,2"
+      },
+      "target": {
+        "shape": "arrow",
+        "size": 8
+      }
     }
   ]
 }
