@@ -1,5 +1,6 @@
 import type { RoutingMode } from "../model/style-types.js";
 import { DiagramCanvas, type Selection } from "../canvas/DiagramCanvas.js";
+import type { StrokeScaling } from "../canvas/Viewport.js";
 import { layoutFreeKey } from "../util/keys.js";
 import { placeEntities } from "./placeEntity.js";
 import {
@@ -192,7 +193,9 @@ export class DiagramEditor implements InspectorHost, StylePanelHost, DiagramEdit
     this.bindInspectorResize();
     this.bindStyleListResize();
     this.initTheme();
+    this.initDensity();
     this.initPorts();
+    this.initStrokeScaling();
     this.initLang();
     this.setTab("properties");
 
@@ -442,6 +445,8 @@ export class DiagramEditor implements InspectorHost, StylePanelHost, DiagramEdit
           this.applyPortAssigner(target.value);
         } else if (target.dataset.select === "theme") {
           this.applyTheme(target.value);
+        } else if (target.dataset.select === "stroke-scaling") {
+          this.applyStrokeScaling(target.value);
         } else if (target.dataset.select === "data-lang") {
           this.applyDataLang(target.value);
         }
@@ -466,6 +471,32 @@ export class DiagramEditor implements InspectorHost, StylePanelHost, DiagramEdit
       select.value = lang;
     }
     this.inspector.render(this.canvas.selected);
+  }
+
+  /** Per-viewer preference, like ports: the model never learns about it. */
+  private initStrokeScaling(): void {
+    this.applyStrokeScaling(localStorage.getItem("semaps.strokeScaling") || "zoom");
+  }
+
+  applyStrokeScaling(mode: string): void {
+    const next: StrokeScaling = mode === "fixed" || mode === "soft" ? mode : "zoom";
+    localStorage.setItem("semaps.strokeScaling", next);
+    this.canvas.viewport.strokeScaling = next;
+    const select = this.root.querySelector<HTMLSelectElement>("[data-select='stroke-scaling']");
+    if (select && select.value !== next) select.value = next;
+  }
+
+  /** UI density, a per-viewer preference like the theme; styles key off data-density. */
+  private initDensity(): void {
+    this.applyDensity(localStorage.getItem("semaps.density") || "norm");
+  }
+
+  applyDensity(density: string): void {
+    const next = density === "nano" || density === "mini" ? density : "norm";
+    document.documentElement.setAttribute("data-density", next);
+    localStorage.setItem("semaps.density", next);
+    const select = this.root.querySelector<HTMLSelectElement>("[data-select='density']");
+    if (select && select.value !== next) select.value = next;
   }
 
   private initTheme(): void {

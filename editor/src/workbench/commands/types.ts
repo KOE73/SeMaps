@@ -113,9 +113,11 @@ export interface DiagramEditorFacade {
   applyJson(): void;
   applyToggle(name: string, on: boolean): void;
   applyPortAssigner(mode: string): void;
+  applyStrokeScaling(mode: string): void;
   openDocEditor(targetId?: string | null): void;
   openCodeViewer?(codeRef?: string | null, label?: string): void;
   applyTheme(theme: string): void;
+  applyDensity(density: string): void;
   applyDataLang(lang: string): void;
   applyUiLang?(lang: string): void;
   openTab(tab: "properties" | "edges" | "filters" | "styles" | "base"): void;

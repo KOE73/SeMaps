@@ -121,6 +121,19 @@ export function createDefaultRibbonSpec(): RibbonSpec {
             get title() { return i18n.d.ribbon.groups.canvas; },
             items: [
               { type: "button", command: "view.filters.visual.toggle", size: "medium" },
+              {
+                type: "select",
+                command: "view.strokeScaling.set",
+                get label() { return i18n.d.ribbon.labels.strokeScaling; },
+                get options() {
+                  return [
+                    { value: "zoom", label: i18n.d.ribbon.labels.strokeScalingZoom },
+                    { value: "soft", label: i18n.d.ribbon.labels.strokeScalingSoft },
+                    { value: "fixed", label: i18n.d.ribbon.labels.strokeScalingFixed },
+                  ];
+                },
+                getValue: () => localStorage.getItem("semaps.strokeScaling") || "zoom",
+              },
               { type: "toggle", command: "view.shadows.global.toggle", size: "medium" },
               { type: "toggle", command: "view.grid.toggle", size: "small" },
               { type: "toggle", command: "view.snap.toggle", size: "small" },
@@ -138,6 +151,30 @@ export function createDefaultRibbonSpec(): RibbonSpec {
             ],
           },
           {
+            id: "panels",
+            get title() { return i18n.d.ribbon.groups.panels; },
+            items: [
+              { type: "toggle", command: "panel.properties.toggle", size: "small" },
+              { type: "toggle", command: "panel.relations.toggle", size: "small" },
+              { type: "toggle", command: "panel.filters.toggle", size: "small" },
+              { type: "toggle", command: "panel.styles.toggle", size: "small" },
+              { type: "toggle", command: "panel.catalog.toggle", size: "small" },
+              { type: "toggle", command: "panel.base.toggle", size: "small" },
+              { type: "toggle", command: "panel.neighbourhood.toggle", size: "small" },
+              { type: "separator" },
+              { type: "button", command: "workspace.layout.reset", size: "small" },
+            ],
+          },
+        ],
+      },
+
+      // --------------------------------------------------------- Настройки
+      {
+        id: "settings",
+        get title() { return i18n.d.ribbon.tabs.settings; },
+        keyTip: "S",
+        groups: [
+          {
             id: "appearance",
             get title() { return i18n.d.ribbon.groups.appearance; },
             items: [
@@ -152,7 +189,23 @@ export function createDefaultRibbonSpec(): RibbonSpec {
                 ],
                 getValue: () => "cream",
               },
-              { type: "separator" },
+            ],
+          },
+          {
+            id: "interface",
+            get title() { return i18n.d.ribbon.groups.interface; },
+            items: [
+              {
+                type: "select",
+                command: "view.density.set",
+                get label() { return i18n.d.ribbon.labels.density; },
+                options: [
+                  { value: "nano", label: "Nano" },
+                  { value: "mini", label: "Mini" },
+                  { value: "norm", label: "Norm" },
+                ],
+                getValue: () => localStorage.getItem("semaps.density") || "norm",
+              },
               {
                 type: "select",
                 command: "view.uiLang.set",
@@ -173,21 +226,6 @@ export function createDefaultRibbonSpec(): RibbonSpec {
                 ],
                 getValue: (ctx: CommandContext) => ctx.dataLang || "ru",
               },
-            ],
-          },
-          {
-            id: "panels",
-            get title() { return i18n.d.ribbon.groups.panels; },
-            items: [
-              { type: "toggle", command: "panel.properties.toggle", size: "small" },
-              { type: "toggle", command: "panel.relations.toggle", size: "small" },
-              { type: "toggle", command: "panel.filters.toggle", size: "small" },
-              { type: "toggle", command: "panel.styles.toggle", size: "small" },
-              { type: "toggle", command: "panel.catalog.toggle", size: "small" },
-              { type: "toggle", command: "panel.base.toggle", size: "small" },
-              { type: "toggle", command: "panel.neighbourhood.toggle", size: "small" },
-              { type: "separator" },
-              { type: "button", command: "workspace.layout.reset", size: "small" },
             ],
           },
         ],

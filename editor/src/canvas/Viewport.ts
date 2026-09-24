@@ -12,6 +12,12 @@ export interface ViewportState {
   readonly panY: number;
 }
 
+/**
+ * How outlines react to zoom. "zoom" scales them with the diagram, "fixed"
+ * keeps them at their width in screen pixels, "soft" is in between (√zoom).
+ */
+export type StrokeScaling = "zoom" | "fixed" | "soft";
+
 const INITIAL: ViewportState = { zoom: 0.9, panX: 40, panY: 20 };
 const RESET: ViewportState = { zoom: 1, panX: 40, panY: 20 };
 
@@ -26,6 +32,7 @@ export class Viewport {
   readonly changed = new Emitter<{ change: ViewportState }>();
 
   private state: ViewportState = INITIAL;
+  private scaling: StrokeScaling = "zoom";
 
   constructor(private readonly group: SVGGElement) {
     this.apply();
@@ -41,6 +48,15 @@ export class Viewport {
 
   get panY(): number {
     return this.state.panY;
+  }
+
+  get strokeScaling(): StrokeScaling {
+    return this.scaling;
+  }
+
+  set strokeScaling(mode: StrokeScaling) {
+    this.scaling = mode;
+    this.apply();
   }
 
   set(next: Partial<ViewportState>): void {
@@ -124,6 +140,10 @@ export class Viewport {
   private apply(): void {
     const { panX, panY, zoom } = this.state;
     this.group.setAttribute("transform", `translate(${panX}, ${panY}) scale(${zoom})`);
+    // Outlines multiply their width by this factor (see canvas.css), which
+    // undoes all or part of the zoom without touching the rendered diagram.
+    const k = this.scaling === "fixed" ? 1 / zoom : this.scaling === "soft" ? 1 / Math.sqrt(zoom) : 1;
+    this.group.style.setProperty("--semaps-stroke-k", String(k));
     this.changed.emit("change", this.state);
   }
 }

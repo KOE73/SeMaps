@@ -253,6 +253,7 @@ export class BoxRenderer implements ElementRenderer {
       fill: ctx.paints.fill(style.fill),
       stroke: style.border.color,
       "stroke-width": style.border.width,
+      style: `--sw: ${style.border.width}`,
       "stroke-dasharray": dashArray(style.border.dash),
       "stroke-opacity": style.border.opacity === 1 ? null : style.border.opacity,
     };

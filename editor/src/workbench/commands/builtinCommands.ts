@@ -152,6 +152,15 @@ export function createBuiltinCommands(): CommandDefinition[] {
       execute: (ctx, args) => ctx.editor.applyPortAssigner(String(args || "uniform")),
     },
 
+    {
+      id: "view.strokeScaling.set",
+      get title() { return i18n.d.commands.strokeScalingSet.title; },
+      get description() { return i18n.d.commands.strokeScalingSet.desc; },
+      icon: "〰",
+      category: "View",
+      execute: (ctx, args) => ctx.editor.applyStrokeScaling(String(args || "zoom")),
+    },
+
     // ----------------------------------------------------------------- View
     {
       id: "view.grid.toggle",
@@ -270,6 +279,14 @@ export function createBuiltinCommands(): CommandDefinition[] {
       category: "View",
       keyTip: "T",
       execute: (ctx, args) => ctx.editor.applyTheme(String(args || "cream")),
+    },
+    {
+      id: "view.density.set",
+      get title() { return i18n.d.commands.densitySet.title; },
+      get description() { return i18n.d.commands.densitySet.desc; },
+      icon: "▤",
+      category: "View",
+      execute: (ctx, args) => ctx.editor.applyDensity(String(args || "norm")),
     },
     {
       id: "view.uiLang.set",

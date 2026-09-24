@@ -149,6 +149,15 @@
   vector-effect: non-scaling-stroke;
 }
 
+/* ------------------------------------------------------- outline scaling */
+
+/* Block borders and edge lines carry their width as --sw; the viewport sets
+   --semaps-stroke-k to 1 (scale with zoom), 1/zoom (fixed) or 1/√zoom (soft).
+   Selection and highlight rules are more specific and still win. */
+.semaps-viewport [style*="--sw"] {
+  stroke-width: calc(var(--sw) * var(--semaps-stroke-k, 1) * 1px);
+}
+
 /* ------------------------------------------------------------------ edges */
 
 .semaps-edge {

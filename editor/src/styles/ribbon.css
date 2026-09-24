@@ -2,6 +2,86 @@
  * Workbench Ribbon & Dockview Styling
  */
 
+/*
+ * UI density (Nano / Mini / Norm), set as data-density on <html>.
+ * Norm is the original look; Mini and Nano shrink heights, icons and type.
+ */
+:root,
+:root[data-density="norm"] {
+  --rb-page-h: 84px;
+  --rb-large-w: 56px;
+  --rb-large-h: 52px;
+  --rb-large-icon: 20px;
+  --rb-large-label: 10px;
+  --rb-ctl-h: 28px;
+  --rb-medium-px: 8px;
+  --rb-medium-icon: 14px;
+  --rb-small-icon: 15px;
+  --rb-svg: 18px;
+  --rb-font: 12px;
+  --rb-select-font: 11.5px;
+  --rb-group-title: 9.5px;
+  --rb-sep-h: 48px;
+  --rb-tab-py: 6px;
+  --rb-tab-px: 14px;
+  --rb-qat-w: 26px;
+  --rb-qat-h: 24px;
+  --rb-qat-icon: 14px;
+  --rb-qat-svg: 15px;
+  --rb-theme-w: 48px;
+  --rb-theme-h: 32px;
+}
+
+:root[data-density="mini"] {
+  --rb-page-h: 70px;
+  --rb-large-w: 48px;
+  --rb-large-h: 44px;
+  --rb-large-icon: 17px;
+  --rb-large-label: 9.5px;
+  --rb-ctl-h: 24px;
+  --rb-medium-px: 6px;
+  --rb-medium-icon: 13px;
+  --rb-small-icon: 13px;
+  --rb-svg: 16px;
+  --rb-font: 11.5px;
+  --rb-select-font: 11px;
+  --rb-group-title: 9px;
+  --rb-sep-h: 40px;
+  --rb-tab-py: 4px;
+  --rb-tab-px: 12px;
+  --rb-qat-w: 24px;
+  --rb-qat-h: 22px;
+  --rb-qat-icon: 13px;
+  --rb-qat-svg: 14px;
+  --rb-theme-w: 40px;
+  --rb-theme-h: 26px;
+}
+
+:root[data-density="nano"] {
+  --rb-page-h: 58px;
+  --rb-large-w: 40px;
+  --rb-large-h: 36px;
+  --rb-large-icon: 15px;
+  --rb-large-label: 9px;
+  --rb-ctl-h: 21px;
+  --rb-medium-px: 5px;
+  --rb-medium-icon: 12px;
+  --rb-small-icon: 12px;
+  --rb-svg: 14px;
+  --rb-font: 11px;
+  --rb-select-font: 10.5px;
+  --rb-group-title: 8.5px;
+  --rb-sep-h: 32px;
+  --rb-tab-py: 3px;
+  --rb-tab-px: 10px;
+  --rb-qat-w: 22px;
+  --rb-qat-h: 20px;
+  --rb-qat-icon: 12px;
+  --rb-qat-svg: 13px;
+  --rb-theme-w: 32px;
+  --rb-theme-h: 20px;
+}
+
 .workbench-ribbon {
   display: flex;
   flex-direction: column;
@@ -41,8 +121,8 @@
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  width: 26px;
-  height: 24px;
+  width: var(--rb-qat-w);
+  height: var(--rb-qat-h);
   padding: 0;
   border: 1px solid transparent;
   border-radius: 4px;
@@ -73,19 +153,19 @@
   display: flex;
   align-items: center;
   justify-content: center;
-  font-size: 14px;
+  font-size: var(--rb-qat-icon);
   line-height: 1;
 }
 
 .ribbon-qat-icon svg {
-  width: 15px;
-  height: 15px;
+  width: var(--rb-qat-svg);
+  height: var(--rb-qat-svg);
   fill: currentColor;
 }
 
 .ribbon-btn-icon svg {
-  width: 18px;
-  height: 18px;
+  width: var(--rb-svg);
+  height: var(--rb-svg);
   fill: currentColor;
 }
 
@@ -96,13 +176,13 @@
 }
 
 .ribbon-tab-btn {
-  padding: 6px 14px;
+  padding: var(--rb-tab-py) var(--rb-tab-px);
   background: transparent;
   border: none;
   border-top-left-radius: 4px;
   border-top-right-radius: 4px;
   color: var(--muted, #9aa0a6);
-  font-size: 12px;
+  font-size: var(--rb-font);
   font-weight: 500;
   cursor: pointer;
   transition: all 0.15s ease;
@@ -141,7 +221,7 @@
 }
 
 .ribbon-page-row {
-  height: 84px;
+  height: var(--rb-page-h);
   padding: 4px 10px;
   background: var(--panel-alt, #2d2d30);
   overflow-x: auto;
@@ -177,7 +257,7 @@
 }
 
 .ribbon-group-title {
-  font-size: 9.5px;
+  font-size: var(--rb-group-title);
   text-align: center;
   color: var(--faint, #6b7178);
   margin-top: 2px;
@@ -212,45 +292,45 @@
 
 .ribbon-btn-large {
   flex-direction: column;
-  width: 56px;
-  height: 52px;
+  width: var(--rb-large-w);
+  height: var(--rb-large-h);
   gap: 2px;
   padding: 3px 2px;
   flex-shrink: 0;
 }
 
 .ribbon-btn-large .ribbon-btn-icon {
-  font-size: 20px;
+  font-size: var(--rb-large-icon);
 }
 
 .ribbon-btn-large .ribbon-btn-label {
-  font-size: 10px;
+  font-size: var(--rb-large-label);
   text-align: center;
   line-height: 1.1;
   white-space: nowrap;
   text-overflow: ellipsis;
   overflow: hidden;
-  max-width: 52px;
+  max-width: calc(var(--rb-large-w) - 4px);
 }
 
 .ribbon-btn-medium {
-  height: 28px;
-  padding: 0 8px;
-  font-size: 12px;
+  height: var(--rb-ctl-h);
+  padding: 0 var(--rb-medium-px);
+  font-size: var(--rb-font);
   gap: 6px;
   white-space: nowrap;
   flex-shrink: 0;
 }
 
 .ribbon-btn-medium .ribbon-btn-icon {
-  font-size: 14px;
+  font-size: var(--rb-medium-icon);
 }
 
 .ribbon-btn-small {
-  width: 28px;
-  height: 28px;
-  min-width: 28px;
-  font-size: 15px;
+  width: var(--rb-ctl-h);
+  height: var(--rb-ctl-h);
+  min-width: var(--rb-ctl-h);
+  font-size: var(--rb-small-icon);
   padding: 0;
   flex-shrink: 0;
   display: inline-flex;
@@ -269,7 +349,7 @@
   display: flex;
   align-items: center;
   gap: 6px;
-  font-size: 11.5px;
+  font-size: var(--rb-select-font);
   color: var(--muted, #9aa0a6);
 }
 
@@ -279,12 +359,12 @@
   border: 1px solid var(--border, #3a3a3c);
   border-radius: 4px;
   padding: 3px 6px;
-  font-size: 11.5px;
+  font-size: var(--rb-select-font);
 }
 
 .ribbon-separator {
   width: 1px;
-  height: 48px;
+  height: var(--rb-sep-h);
   background: var(--line, #3a3a3c);
   margin: 0 3px;
   align-self: center;
@@ -506,8 +586,8 @@
 }
 
 .ribbon-theme-preview {
-  width: 48px;
-  height: 32px;
+  width: var(--rb-theme-w);
+  height: var(--rb-theme-h);
   border-radius: 4px;
   border: 1px solid var(--border);
   background: var(--bg);

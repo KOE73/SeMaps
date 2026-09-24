@@ -23,6 +23,7 @@ export interface UiDictionary {
       readonly view: string;
       readonly formatBlock: string;
       readonly formatEdge: string;
+      readonly settings: string;
       readonly help: string;
     };
     readonly groups: {
@@ -32,6 +33,7 @@ export interface UiDictionary {
       readonly file: string;
       readonly panels: string;
       readonly appearance: string;
+      readonly interface: string;
       readonly zoom: string;
       readonly perspectives: string;
       readonly edgeFamilies: string;
@@ -53,6 +55,11 @@ export interface UiDictionary {
       readonly portsUniform: string;
       readonly portsDiscrete: string;
       readonly portsCenter: string;
+      readonly density: string;
+      readonly strokeScaling: string;
+      readonly strokeScalingZoom: string;
+      readonly strokeScalingSoft: string;
+      readonly strokeScalingFixed: string;
     };
   };
   readonly commands: {
@@ -83,6 +90,8 @@ export interface UiDictionary {
     readonly copyJson: { readonly title: string; readonly desc: string };
     readonly applyJson: { readonly title: string; readonly desc: string };
     readonly portsSet: { readonly title: string; readonly desc: string };
+    readonly densitySet: { readonly title: string; readonly desc: string };
+    readonly strokeScalingSet: { readonly title: string; readonly desc: string };
     readonly toggleStructureEdges: { readonly title: string; readonly desc: string };
     readonly toggleGrid: { readonly title: string; readonly desc: string };
     readonly toggleSnap: { readonly title: string; readonly desc: string };

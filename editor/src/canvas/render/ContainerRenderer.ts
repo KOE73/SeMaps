@@ -66,6 +66,7 @@ export class ContainerRenderer implements ElementRenderer {
         fill: ctx.paints.fill(style.fill),
         stroke: style.border.color,
         "stroke-width": style.border.width,
+        style: `--sw: ${style.border.width}`,
         // Collapsed, the box *is* the header: a dashed outline round a title
         // bar reads as a placeholder rather than as a folded zone.
         "stroke-dasharray": collapsed ? null : dashArray(style.border.dash),
