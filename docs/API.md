@@ -273,7 +273,7 @@ the file through the YAML tree: comments and key order survive.
 | `workspace` | `docs/diagrams` | served at `/`; the only place `/api/save` writes to |
 | `source_root` | `.` | what `codeRef` and `/api/source*` resolve against |
 | `port` | `8777` | if busy, the next free port is taken |
-| `extractors` | — | list; each: `id` (lowercase, digits, `-`), `language`, `project` (model project under `projects/`), `root` (default `.`), `include`, `exclude`, `command` (replaces the found extractor; written by hand only) |
+| `extractors` | — | list; each: `id` (lowercase, digits, `-`), `language`, `project` (model project under `projects/`), `root` (default `.`), `include`, `exclude`, `edges` (optional list: `holds`, `uses`, `injects`), `command` (replaces the found extractor; written by hand only) |
 
 ### Resolution order
 
@@ -311,7 +311,7 @@ The command line of an extractor cannot be set through the API — only in the f
 | `/api/tools` | `GET` | → `{projectFile, shipped: [language], runtimes: [{name, ok, version?, hint?}], extractors: [Extractor]}` |
 | `/api/setup` | `GET` | → `{projectFile, name, workspace, sourceRoot, port, extractors: [Extractor], languages}` — keys as written |
 | `/api/setup` | `PUT` | `{name?, workspace?, sourceRoot?, port?}` → setup. Workspace, source root and port apply after a restart |
-| `/api/setup/extractors/{id}` | `PUT` | `{language?, project?, root?, include?, exclude?}` → setup; adds the entry when missing. Any other field (`command`) → `400` |
+| `/api/setup/extractors/{id}` | `PUT` | `{language?, project?, root?, include?, exclude?, edges?}` → setup; adds the entry when missing. Any other field (`command`) → `400` |
 | `/api/setup/extractors/{id}` | `DELETE` | → setup |
 | `/api/runs?extractor=<id>` | `GET` | → `[Run]`, newest first; five kept per extractor |
 | `/api/runs` | `POST` | `{extractor}` → `202` `Run` (`state: running`) |
@@ -319,7 +319,7 @@ The command line of an extractor cannot be set through the API — only in the f
 | `/api/runs/{id}/log?offset=<n>` | `GET` | → `{text, offset, state}`: the log from byte `n`; ask again with the new `offset` while `state` is `running` |
 | `/api/runs/{id}/sync` | `POST` | `{dryRun, noRenames}` → `{report, exitCode, empty}`; the report is `core.SyncReport`. Applies the facts of that run, never extracts again |
 
-`Extractor`: `{id, language, project, root, include, exclude, command?, tool: {language, found,
+`Extractor`: `{id, language, project, root, include, exclude, edges, command?, tool: {language, found,
 source?: command|bundled|path, where?, runtime?, problem?}, lastRun?: Run}`.
 `Run`: `{id, extractor, project, language, started, finished?, seconds?, state: running|done|failed,
 exitCode, error?, stats?: {symbols, edges, symbolKinds, edgeKinds, language}}`.

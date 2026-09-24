@@ -77,6 +77,7 @@ type extractorView struct {
 	Root     string        `json:"root"`
 	Include  []string      `json:"include"`
 	Exclude  []string      `json:"exclude"`
+	Edges    []string      `json:"edges"`
 	Command  string        `json:"command,omitempty"` // shown, never written through the API
 	Tool     extractorTool `json:"tool"`
 	LastRun  *runInfo      `json:"lastRun,omitempty"`
@@ -87,7 +88,7 @@ func (api *toolAPI) extractorViews(list []extractorConf) []extractorView {
 	for _, e := range list {
 		v := extractorView{
 			ID: e.ID, Language: e.Language, Project: e.Project, Root: e.Root,
-			Include: nonNil(e.Include), Exclude: nonNil(e.Exclude), Command: e.Command,
+			Include: nonNil(e.Include), Exclude: nonNil(e.Exclude), Edges: nonNil(e.Edges), Command: e.Command,
 			Tool: resolveExtractor(e),
 		}
 		// Absolute paths of this machine stay here (ADR_20260924-3 §6).
@@ -184,6 +185,7 @@ func (api *toolAPI) putExtractor(w http.ResponseWriter, r *http.Request) {
 		Root     *string   `json:"root"`
 		Include  *[]string `json:"include"`
 		Exclude  *[]string `json:"exclude"`
+		Edges    *[]string `json:"edges"`
 	}
 	dec := json.NewDecoder(io.LimitReader(r.Body, 1<<20))
 	dec.DisallowUnknownFields()
@@ -196,7 +198,7 @@ func (api *toolAPI) putExtractor(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "id: lowercase letters, digits and `-`", http.StatusBadRequest)
 		return
 	}
-	patch := extractorPatch{Language: body.Language, Project: body.Project, Root: body.Root, Include: body.Include, Exclude: body.Exclude}
+	patch := extractorPatch{Language: body.Language, Project: body.Project, Root: body.Root, Include: body.Include, Exclude: body.Exclude, Edges: body.Edges}
 	if err := patchExtractor(api.file, id, patch); err != nil {
 		http.Error(w, err.Error(), http.StatusBadRequest)
 		return

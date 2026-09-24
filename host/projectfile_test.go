@@ -41,6 +41,7 @@ func TestLoadProjectRejects(t *testing.T) {
 		"extractors:\n  - id: a\n    language: csharp\n",
 		"extractors:\n  - {id: a, language: csharp, project: p}\n  - {id: a, language: typescript, project: p}\n",
 		"extractors:\n  - {id: a, language: csharp, project: p, root: C:/src}\n",
+		"extractors:\n  - {id: a, language: csharp, project: p, edges: [holds, invalid]}\n",
 	} {
 		if _, err := loadProject(writeProject(t, text)); err == nil {
 			t.Errorf("accepted: %q", text)
@@ -86,5 +87,66 @@ extractors:
 	}
 	if after, _ := os.ReadFile(file); string(after) != text {
 		t.Error("file changed by a refused patch")
+	}
+}
+
+func TestLoadProjectWithEdges(t *testing.T) {
+	file := writeProject(t, `extractors:
+  - id: backend
+    language: csharp
+    project: core
+    edges: [holds, injects]
+`)
+	p, err := loadProject(file)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(p.Extractors) != 1 || len(p.Extractors[0].Edges) != 2 {
+		t.Errorf("%+v", p.Extractors)
+	}
+	if p.Extractors[0].Edges[0] != "holds" || p.Extractors[0].Edges[1] != "injects" {
+		t.Errorf("edges mismatch: %v", p.Extractors[0].Edges)
+	}
+}
+
+func TestPatchExtractorWithEdges(t *testing.T) {
+	file := writeProject(t, `extractors:
+  - id: backend
+    language: csharp
+    project: core
+`)
+	edges := []string{"holds", "uses"}
+	if err := patchExtractor(file, "backend", extractorPatch{Edges: &edges}); err != nil {
+		t.Fatal(err)
+	}
+	p, err := loadProject(file)
+	if err != nil || len(p.Extractors[0].Edges) != 2 {
+		t.Errorf("%v %+v", err, p.Extractors)
+	}
+}
+
+func TestEdgesRoundTrip(t *testing.T) {
+	file := writeProject(t, `extractors:
+  - id: api
+    language: csharp
+    project: core
+    edges: [holds, injects]
+`)
+	data1, _ := os.ReadFile(file)
+	p, err := loadProject(file)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(p.Extractors[0].Edges) != 2 {
+		t.Errorf("lost edges on load: %v", p.Extractors[0].Edges)
+	}
+	// Patch with same edges
+	edges := p.Extractors[0].Edges
+	if err := patchExtractor(file, "api", extractorPatch{Edges: &edges}); err != nil {
+		t.Fatal(err)
+	}
+	data2, _ := os.ReadFile(file)
+	if string(data1) != string(data2) {
+		t.Errorf("content changed by patch with same edges:\n%s\nvs\n%s", string(data1), string(data2))
 	}
 }

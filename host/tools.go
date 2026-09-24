@@ -209,5 +209,16 @@ func extractorArgs(t extractorTool, e extractorConf, projectRoot string) []strin
 	for _, g := range e.Exclude {
 		args = append(args, "--exclude", g)
 	}
+	if len(e.Edges) > 0 {
+		// Join edge kinds with commas, no spaces (ADR_20260924-4 §5)
+		var edges strings.Builder
+		for i, edge := range e.Edges {
+			if i > 0 {
+				edges.WriteString(",")
+			}
+			edges.WriteString(edge)
+		}
+		args = append(args, "--edges", edges.String())
+	}
 	return args
 }

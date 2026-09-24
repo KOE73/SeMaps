@@ -38,6 +38,7 @@ type extractorConf struct {
 	Root     string   `yaml:"root,omitempty"`
 	Include  []string `yaml:"include,omitempty"`
 	Exclude  []string `yaml:"exclude,omitempty"`
+	Edges    []string `yaml:"edges,omitempty"` // optional edge kinds: holds, uses, injects
 	// Command replaces the found extractor. Only ever written by hand in the
 	// file: nothing from outside sets it (ADR_20260924-3 §5).
 	Command string `yaml:"command,omitempty"`
@@ -83,6 +84,7 @@ func loadProject(file string) (project, error) {
 }
 
 func validateExtractors(list []extractorConf) error {
+	validEdges := map[string]bool{"holds": true, "uses": true, "injects": true}
 	var problems []string
 	seen := map[string]bool{}
 	for i, e := range list {
@@ -106,6 +108,11 @@ func validateExtractors(list []extractorConf) error {
 				problems = append(problems, fmt.Sprintf("%s: %q must be relative to the project root", where, path))
 			}
 		}
+		for _, edge := range e.Edges {
+			if !validEdges[edge] {
+				problems = append(problems, fmt.Sprintf("%s: edge kind %q must be holds, uses, or injects", where, edge))
+			}
+		}
 	}
 	if len(problems) > 0 {
 		return errors.New(strings.Join(problems, "; "))
@@ -121,6 +128,7 @@ type extractorPatch struct {
 	Root     *string
 	Include  *[]string
 	Exclude  *[]string
+	Edges    *[]string
 }
 
 // patchExtractor changes, or adds, one entry of `extractors:`. The file is
@@ -163,6 +171,7 @@ func patchExtractor(file, id string, patch extractorPatch) error {
 		setString("root", patch.Root)
 		setList("include", patch.Include)
 		setList("exclude", patch.Exclude)
+		setList("edges", patch.Edges)
 		return nil
 	})
 }

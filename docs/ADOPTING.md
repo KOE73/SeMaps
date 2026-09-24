@@ -66,6 +66,7 @@ extractors:
     project: core             # a folder under <workspace>/projects/
     root: .
     include: [src]
+    edges: [holds, injects]   # optional: which member-relation edge kinds to extract
 ```
 
 Then, from anywhere inside the project:

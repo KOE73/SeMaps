@@ -49,6 +49,7 @@ export interface ExtractorView {
   root: string;
   include: string[];
   exclude: string[];
+  edges: string[];
   command?: string;
   tool: ExtractorTool;
   lastRun?: RunInfo;
@@ -98,6 +99,7 @@ export interface ExtractorPatch {
   root?: string;
   include?: string[];
   exclude?: string[];
+  edges?: string[];
 }
 
 export interface SettingsPatch {

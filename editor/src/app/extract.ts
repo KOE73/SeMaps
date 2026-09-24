@@ -96,6 +96,15 @@ function extractorCard(e: ExtractorView, inner: HTMLElement): HTMLElement {
   const include = el("input", { value: listValue(e.include), placeholder: t.listHint });
   const exclude = el("input", { value: listValue(e.exclude), placeholder: t.listHint });
 
+  const edgeKinds = ["holds", "uses", "injects"];
+  const edgeChecks: Record<string, HTMLInputElement> = {};
+  const edgeCheckboxes: HTMLElement[] = [];
+  for (const kind of edgeKinds) {
+    const cb = el("input", { type: "checkbox", checked: e.edges.includes(kind) }) as HTMLInputElement;
+    edgeChecks[kind] = cb;
+    edgeCheckboxes.push(el("label", { class: "tool-check" }, [cb, kind]));
+  }
+
   const formRows = [
     el("label", { text: t.language }),
     language,
@@ -107,6 +116,8 @@ function extractorCard(e: ExtractorView, inner: HTMLElement): HTMLElement {
     include,
     el("label", { text: t.exclude }),
     exclude,
+    el("label", { text: t.edgeKinds }),
+    el("div", { class: "tool-checks" }, edgeCheckboxes),
   ];
   if (e.command) {
     const cmd = el("input", { value: e.command });
@@ -119,12 +130,14 @@ function extractorCard(e: ExtractorView, inner: HTMLElement): HTMLElement {
   save.addEventListener("click", async () => {
     save.disabled = true;
     try {
+      const edges = edgeKinds.filter((k) => edgeChecks[k].checked);
       const next = await toolApi.saveExtractor(e.id, {
         language: language.value,
         project: project.value,
         root: root.value.trim(),
         include: parseList(include.value),
         exclude: parseList(exclude.value),
+        edges: edges.length > 0 ? edges : undefined,
       });
       render(inner, next);
     } catch (err) {
