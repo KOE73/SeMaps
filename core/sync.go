@@ -535,7 +535,8 @@ func Sync(workspace string, facts *Facts, opt SyncOptions) (*SyncReport, error) 
 			// organic relation: always marked as missing if not confirmed
 			isCovered = true
 		} else {
-			continue
+			// Unknown/legacy types (e.g. old "references") should be marked missing
+			isCovered = true
 		}
 
 		if !isCovered {

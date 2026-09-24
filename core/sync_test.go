@@ -719,6 +719,34 @@ func TestMemberRelationRenameCandidate(t *testing.T) {
 	}
 }
 
+func TestLegacyReferencesRelationBecomesMissing(t *testing.T) {
+	// When old code relations (e.g. "references" from previous extractor version)
+	// are not confirmed by new facts, they should be marked as missing.
+	// This tests the fix for the bug where legacy relations would stay present forever.
+	ws, dir := workspace(t, adoptProject, `{"entities":[
+    {"id":"e_a","name":"A","kind":"class","origin":"code","symbol":"N.A","codeRef":"src/A.cs"},
+    {"id":"e_b","name":"B","kind":"class","origin":"code","symbol":"N.B","codeRef":"src/B.cs"}
+  ]}`, `{"contractVersion":3,"relations":[
+    {"id":"r_a_b_references","from":"e_a","to":"e_b","type":"references","origin":"code","status":"present"}
+  ]}`, "")
+
+	// First sync: establish the entities and legacy relation
+	sync(t, ws, facts(t, `{"language":"csharp","root":".","edgeKinds":["extends","implements","contains","depends","holds","uses"],
+  "symbols":[
+    {"id":"N.A","kind":"type","nativeKind":"class","name":"A","namespace":"N","file":"src/A.cs"},
+    {"id":"N.B","kind":"type","nativeKind":"class","name":"B","namespace":"N","file":"src/B.cs"}
+  ],"edges":[]}`), SyncOptions{})
+
+	v := load(t, dir)
+	ref := find(v.Relations, "r_a_b_references")
+	if ref == nil {
+		t.Fatal("legacy references relation not found")
+	}
+	if ref["status"] != "missing" {
+		t.Errorf("legacy references relation should be marked missing, got status: %v", ref["status"])
+	}
+}
+
 func TestSlug(t *testing.T) {
 	for in, want := range map[string]string{
 		"NeuroModFlowNet.ONNX": "neuromodflownet_onnx",
