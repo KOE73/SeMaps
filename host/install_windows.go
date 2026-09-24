@@ -108,6 +108,19 @@ func install() error {
 			return fmt.Errorf("copy to %s: %w", exe, err)
 		}
 		fmt.Printf("Copied to %s\n", exe)
+		// The extractors travel with the exe (ADR_20260924-3 §1): replaced as
+		// a whole, so no file of an older version stays behind.
+		from := filepath.Join(filepath.Dir(self), "extractors")
+		if st, err := os.Stat(from); err == nil && st.IsDir() {
+			to := filepath.Join(installDir(), "extractors")
+			if err := os.RemoveAll(to); err != nil {
+				return fmt.Errorf("remove %s: %w", to, err)
+			}
+			if err := os.CopyFS(to, os.DirFS(from)); err != nil {
+				return fmt.Errorf("copy extractors to %s: %w", to, err)
+			}
+			fmt.Printf("Extractors copied to %s\n", to)
+		}
 	}
 
 	dir := installDir()

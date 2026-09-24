@@ -55,17 +55,37 @@ sync with the code.
 ## Sync with code: `semaps sync`
 
 An extractor prints facts; `semaps sync` turns them into `entities.json`, `relations.json` and
-`relation-types.json` of **one** project ([EXTRACTOR.md](EXTRACTOR.md) §5 has the rules).
+`relation-types.json` of a project ([EXTRACTOR.md](EXTRACTOR.md) §5 has the rules). The
+extractors ship beside `semaps` and are listed in the `.semaps` file — which code, into which
+model project:
+
+```yaml
+extractors:
+  - id: backend
+    language: csharp          # or typescript
+    project: core             # a folder under <workspace>/projects/
+    root: .
+    include: [src]
+```
+
+Then, from anywhere inside the project:
 
 ```
-semaps-extract-csharp --root . --include src > facts.json     # or semaps-extract-typescript
-semaps sync --facts facts.json --dry-run                      # report only
-semaps sync --facts facts.json                                # write the registry
-semaps sync --facts facts.json --project <id> path\to\x.semaps   # several projects in the workspace
+semaps doctor                 # which extractors and runtimes are found; what is missing
+semaps sync --dry-run         # extract and show the report, write nothing
+semaps sync                   # extract and write the registry
+semaps sync --extractor backend   # only one of them
 ```
 
-- Flags go **before** the project argument. `--facts -` reads stdin. Keep `facts.json` out of the
-  workspace and out of git: it is regenerated on every run.
+The human does the same on the **Экстракторы** page of the editor (`/extract`): extract, read the
+report, write. `semaps extract` only runs the extractors and prints each run's id;
+`semaps sync --run <id>` writes the facts of that run.
+
+- `doctor` says what is missing: an extractor (install SeMaps again with `host\install.cmd` or take
+  the archive from Releases) or a runtime (.NET SDK for C#, Node 24+ for TypeScript). Do not work
+  around it — tell the human.
+- Flags go **before** the project argument. `--facts <file>` still takes facts made by hand
+  (`--facts -` reads stdin); keep such files out of the workspace and out of git.
 - Only symbols under `project.json → sources.include` enter the project.
 - The first run **adopts** entities you already have (for example the assemblies from the
   section above): same `codeRef` and `name`, or same `namespace`, `name` and `kind`. Generic

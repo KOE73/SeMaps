@@ -42,20 +42,20 @@ func (e *UsageError) Error() string { return e.msg }
 
 // SyncReport is what sync found and, unless DryRun, did.
 type SyncReport struct {
-	Project  string
-	Language string
-	Symbols  int // after the project's sources.include filter
-	Edges    int
-	DryRun   bool
+	Project  string `json:"project"`
+	Language string `json:"language"`
+	Symbols  int    `json:"symbols"` // after the project's sources.include filter
+	Edges    int    `json:"edges"`
+	DryRun   bool   `json:"dryRun"`
 
-	Broken    []string // сломано: the registry contradicts itself; nothing is written
-	Ambiguous []string // неоднозначно: an entity without `symbol` fits several symbols, or the reverse
-	Renames   []string // переименование?: gone and new in one file, same kind
-	Gone      []string // лишнее: marked `status: missing`
-	Added     []string // не хватает: new entities, relations, relation types
-	Changed   []string // изменилось: fields updated, entities adopted, returned from missing
+	Broken    []string `json:"broken"`    // сломано: the registry contradicts itself; nothing is written
+	Ambiguous []string `json:"ambiguous"` // неоднозначно: an entity without `symbol` fits several symbols, or the reverse
+	Renames   []string `json:"renames"`   // переименование?: gone and new in one file, same kind
+	Gone      []string `json:"gone"`      // лишнее: marked `status: missing`
+	Added     []string `json:"added"`     // не хватает: new entities, relations, relation types
+	Changed   []string `json:"changed"`   // изменилось: fields updated, entities adopted, returned from missing
 
-	Written []string // files written, workspace-relative
+	Written []string `json:"written"` // files written, workspace-relative
 }
 
 // Empty is true when the registry already matches the code.

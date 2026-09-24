@@ -37,11 +37,18 @@ semaps --workspace <dir> --source-root <dir> --port 9000 --no-browser
 semaps --here                                  # keep the server in this console
 semaps install                                 # Windows: copy to a stable folder, PATH, *.semaps
 semaps check [dir | file.semaps]               # model check, exit 1 on findings
+semaps doctor [dir | file.semaps]              # extractors and runtimes found for the .semaps file
+semaps extract [--extractor <id>] [dir | file.semaps]
+                                               # run the extractors, keep the runs
+semaps sync [--extractor <id>] [--run <id>] [--dry-run] [--no-renames] [dir | file.semaps]
+                                               # extract and reconcile the registry (docs/EXTRACTOR.md §5)
 semaps sync --facts facts.json [--project <id>] [--dry-run] [--no-renames] [dir | file.semaps]
-                                               # registry from extractor facts (docs/EXTRACTOR.md §5)
+                                               # the same from a facts file made by hand
 ```
 
-`sync` flags go before the project argument; `--facts -` reads stdin.
+Flags go before the project argument; `--facts -` reads stdin. Extractors are found beside the
+binary in `extractors/<language>/` (ADR_20260924-3); `install.cmd` builds them there. The pages
+`/extract` and `/setup` do the same from the browser (docs/API.md §5).
 
 ## Development
 

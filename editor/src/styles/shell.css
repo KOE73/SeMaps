@@ -1,0 +1,276 @@
+/*
+ * The tool pages: the top bar every page carries (editor, extractors,
+ * settings) and the plain forms of /setup and /extract. Colours come from the
+ * theme tokens of editor.css.
+ */
+
+.shell-topbar {
+  display: flex;
+  align-items: center;
+  gap: 16px;
+  height: 34px;
+  padding: 0 14px;
+  flex-shrink: 0;
+  background: var(--panel);
+  border-bottom: 1px solid var(--line);
+  color: var(--text);
+  z-index: 60;
+}
+
+.shell-brand {
+  font-weight: 700;
+  letter-spacing: 0.02em;
+  color: var(--accent);
+}
+
+.shell-project {
+  color: var(--muted);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  max-width: 40vw;
+}
+
+.shell-nav {
+  display: flex;
+  gap: 2px;
+  margin-left: auto;
+}
+
+.shell-nav-link {
+  padding: 5px 10px;
+  border-radius: 6px;
+  color: var(--muted);
+  text-decoration: none;
+}
+
+.shell-nav-link:hover {
+  background: var(--hover);
+  color: var(--text);
+}
+
+.shell-nav-link.is-active {
+  background: var(--accent-soft);
+  color: var(--accent);
+}
+
+/* The area under the bar: the editor's workbench, or a tool page. */
+.shell-body {
+  flex: 1;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+}
+
+.tool-page {
+  flex: 1;
+  min-height: 0;
+  overflow: auto;
+  user-select: text;
+}
+
+.tool-page-inner {
+  max-width: 980px;
+  margin: 0 auto;
+  padding: 20px 20px 48px;
+}
+
+.tool-page h1 {
+  font-size: 18px;
+  margin: 0 0 4px;
+}
+
+.tool-page h2 {
+  font-size: 14px;
+  margin: 0;
+}
+
+.tool-hint {
+  color: var(--muted);
+  margin: 0 0 16px;
+  line-height: 1.5;
+}
+
+.tool-card {
+  background: var(--panel);
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  padding: 14px 16px;
+  margin-bottom: 14px;
+}
+
+.tool-card-head {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin-bottom: 10px;
+}
+
+.tool-card-head .spacer {
+  flex: 1;
+}
+
+.tool-form {
+  display: grid;
+  grid-template-columns: 160px 1fr;
+  gap: 8px 12px;
+  align-items: center;
+}
+
+.tool-form label {
+  color: var(--muted);
+}
+
+.tool-form input,
+.tool-form select,
+.tool-new input {
+  width: 100%;
+  padding: 5px 8px;
+  border: 1px solid var(--line);
+  border-radius: 6px;
+  background: var(--input-bg);
+  color: var(--text);
+  font: inherit;
+}
+
+.tool-form input[readonly] {
+  color: var(--muted);
+}
+
+.tool-actions {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+  margin-top: 12px;
+}
+
+.tool-btn {
+  padding: 5px 12px;
+  border: 1px solid var(--line);
+  border-radius: 6px;
+  background: var(--panel-alt);
+  color: var(--text);
+  font: inherit;
+  cursor: pointer;
+}
+
+.tool-btn:hover:not(:disabled) {
+  border-color: var(--accent);
+}
+
+.tool-btn.is-primary {
+  background: var(--accent);
+  border-color: var(--accent);
+  color: #fff;
+}
+
+.tool-btn.is-danger:hover:not(:disabled) {
+  border-color: var(--danger);
+  color: var(--danger);
+}
+
+.tool-btn:disabled {
+  opacity: 0.45;
+  cursor: default;
+}
+
+.tool-badge {
+  padding: 1px 7px;
+  border-radius: 10px;
+  font-size: 11px;
+  background: var(--panel-alt);
+  color: var(--muted);
+}
+
+.tool-badge.is-ok {
+  color: var(--success);
+}
+
+.tool-badge.is-bad {
+  color: var(--danger);
+}
+
+.tool-muted {
+  color: var(--muted);
+}
+
+.tool-error {
+  color: var(--danger);
+  white-space: pre-wrap;
+}
+
+.tool-log {
+  margin: 10px 0 0;
+  max-height: 260px;
+  overflow: auto;
+  padding: 8px 10px;
+  border-radius: 6px;
+  background: var(--input-bg);
+  border: 1px solid var(--line);
+  font: 12px/1.45 ui-monospace, "Cascadia Mono", Consolas, monospace;
+  white-space: pre-wrap;
+  word-break: break-all;
+}
+
+.tool-stats {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin-top: 8px;
+}
+
+.tool-report {
+  margin-top: 10px;
+}
+
+.tool-report details {
+  margin: 4px 0;
+}
+
+.tool-report summary {
+  cursor: pointer;
+}
+
+.tool-report ul {
+  margin: 4px 0 8px;
+  padding-left: 22px;
+  max-height: 220px;
+  overflow: auto;
+  font: 12px/1.5 ui-monospace, "Cascadia Mono", Consolas, monospace;
+}
+
+.tool-new {
+  display: flex;
+  gap: 8px;
+}
+
+.tool-new input {
+  max-width: 320px;
+}
+
+.tool-table {
+  width: 100%;
+  border-collapse: collapse;
+}
+
+.tool-table td {
+  padding: 4px 8px 4px 0;
+  vertical-align: top;
+}
+
+.tool-actions .spacer {
+  flex: 1;
+}
+
+.tool-check {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  color: var(--muted);
+}
+
+.tool-check input {
+  width: auto;
+  margin: 0;
+}

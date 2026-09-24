@@ -89,6 +89,8 @@ func validateExtractors(list []extractorConf) error {
 		where := fmt.Sprintf("extractors[%d]", i)
 		if e.ID == "" {
 			problems = append(problems, where+": id is required")
+		} else if !validRunID(e.ID) {
+			problems = append(problems, fmt.Sprintf("%s: id %q — lowercase letters, digits and `-` only", where, e.ID))
 		} else if seen[e.ID] {
 			problems = append(problems, fmt.Sprintf("%s: id %q repeats", where, e.ID))
 		}
@@ -124,6 +126,112 @@ type extractorPatch struct {
 // patchExtractor changes, or adds, one entry of `extractors:`. The file is
 // edited as a YAML tree, so comments, key order and untouched entries survive.
 func patchExtractor(file, id string, patch extractorPatch) error {
+	return editProjectFile(file, func(top *yaml.Node) error {
+		list := mapValue(top, "extractors")
+		if list == nil || list.Kind != yaml.SequenceNode {
+			list = &yaml.Node{Kind: yaml.SequenceNode}
+			setMapValue(top, "extractors", list)
+		}
+		var entry *yaml.Node
+		for _, item := range list.Content {
+			if v := mapValue(item, "id"); v != nil && v.Value == id {
+				entry = item
+			}
+		}
+		if entry == nil {
+			entry = &yaml.Node{Kind: yaml.MappingNode}
+			setMapValue(entry, "id", scalar(id))
+			list.Content = append(list.Content, entry)
+		}
+		setString := func(key string, v *string) {
+			if v != nil {
+				setMapValue(entry, key, scalar(*v))
+			}
+		}
+		setList := func(key string, v *[]string) {
+			if v == nil {
+				return
+			}
+			seq := &yaml.Node{Kind: yaml.SequenceNode, Style: yaml.FlowStyle}
+			for _, s := range *v {
+				seq.Content = append(seq.Content, scalar(s))
+			}
+			setMapValue(entry, key, seq)
+		}
+		setString("language", patch.Language)
+		setString("project", patch.Project)
+		setString("root", patch.Root)
+		setList("include", patch.Include)
+		setList("exclude", patch.Exclude)
+		return nil
+	})
+}
+
+// removeExtractor drops one entry of `extractors:`; a missing one is an error.
+func removeExtractor(file, id string) error {
+	return editProjectFile(file, func(top *yaml.Node) error {
+		list := mapValue(top, "extractors")
+		if list != nil {
+			for i, item := range list.Content {
+				if v := mapValue(item, "id"); v != nil && v.Value == id {
+					list.Content = append(list.Content[:i], list.Content[i+1:]...)
+					return nil
+				}
+			}
+		}
+		return fmt.Errorf("no extractor %q", id)
+	})
+}
+
+// settingsPatch: the top-level keys that may change from outside the file.
+// Nil leaves a key as it is.
+type settingsPatch struct {
+	Name       *string `json:"name"`
+	Workspace  *string `json:"workspace"`
+	SourceRoot *string `json:"sourceRoot"`
+	Port       *int    `json:"port"`
+}
+
+func patchSettings(file string, patch settingsPatch) error {
+	return editProjectFile(file, func(top *yaml.Node) error {
+		if patch.Name != nil {
+			setMapValue(top, "name", scalar(*patch.Name))
+		}
+		for key, v := range map[string]*string{"workspace": patch.Workspace, "source_root": patch.SourceRoot} {
+			if v == nil {
+				continue
+			}
+			if filepath.IsAbs(filepath.FromSlash(*v)) || filepath.VolumeName(filepath.FromSlash(*v)) != "" {
+				return fmt.Errorf("%s must be relative to the project root", key)
+			}
+			setMapValue(top, key, scalar(*v))
+		}
+		if patch.Port != nil {
+			if *patch.Port < 1 || *patch.Port > 65535 {
+				return errors.New("port must be 1..65535")
+			}
+			setMapValue(top, "port", &yaml.Node{Kind: yaml.ScalarNode, Tag: "!!int", Value: fmt.Sprint(*patch.Port)})
+		}
+		return nil
+	})
+}
+
+// readProjectFile: the keys as written, paths not resolved.
+func readProjectFile(file string) (projectFile, error) {
+	var f projectFile
+	data, err := os.ReadFile(file)
+	if err != nil {
+		return f, err
+	}
+	if err := yaml.Unmarshal(data, &f); err != nil {
+		return f, fmt.Errorf("%s: %v", file, err)
+	}
+	return f, nil
+}
+
+// editProjectFile applies `edit` to the file's YAML tree and writes it back,
+// unless the result would not load: then the file is left as it was.
+func editProjectFile(file string, edit func(top *yaml.Node) error) error {
 	data, err := os.ReadFile(file)
 	if err != nil {
 		return err
@@ -139,44 +247,9 @@ func patchExtractor(file, id string, patch extractorPatch) error {
 	if top.Kind != yaml.MappingNode {
 		return fmt.Errorf("%s: expected a mapping at the top", file)
 	}
-	list := mapValue(top, "extractors")
-	if list == nil || list.Kind != yaml.SequenceNode {
-		list = &yaml.Node{Kind: yaml.SequenceNode}
-		setMapValue(top, "extractors", list)
+	if err := edit(top); err != nil {
+		return err
 	}
-	var entry *yaml.Node
-	for _, item := range list.Content {
-		if v := mapValue(item, "id"); v != nil && v.Value == id {
-			entry = item
-		}
-	}
-	if entry == nil {
-		entry = &yaml.Node{Kind: yaml.MappingNode}
-		setMapValue(entry, "id", scalar(id))
-		list.Content = append(list.Content, entry)
-	}
-	setString := func(key string, v *string) {
-		if v != nil {
-			setMapValue(entry, key, scalar(*v))
-		}
-	}
-	setList := func(key string, v *[]string) {
-		if v == nil {
-			return
-		}
-		seq := &yaml.Node{Kind: yaml.SequenceNode, Style: yaml.FlowStyle}
-		for _, s := range *v {
-			seq.Content = append(seq.Content, scalar(s))
-		}
-		setMapValue(entry, key, seq)
-	}
-	setString("language", patch.Language)
-	setString("project", patch.Project)
-	setString("root", patch.Root)
-	setList("include", patch.Include)
-	setList("exclude", patch.Exclude)
-
-	// Check the result as loadProject would before touching the file.
 	var check projectFile
 	if err := doc.Decode(&check); err != nil {
 		return err

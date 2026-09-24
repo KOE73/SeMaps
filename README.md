@@ -30,7 +30,7 @@ sync with code (in progress, see below) will show where the code has moved away 
 | Editor (`editor/`) | works: canvas, views, styles, content templates, texts with provenance |
 | Host (`host/`) | works: one binary, `*.semaps` project files, save, source viewer |
 | `semaps check` (`core/`) | works: stale texts, views without an axis, broken `codeRef`, … |
-| Sync with code (`core/`) | works from a facts file: `semaps sync --facts facts.json`; extractors run by `semaps.exe`, `/setup` in the editor — [**planned**](docs/plans/PLAN_20260924_host_setup-and-extract.md) |
+| Sync with code (`core/`) | works: `semaps sync` runs the extractors of the `.semaps` file; `/extract` and `/setup` pages in the editor — [`PLAN_20260924_host_setup-and-extract`](docs/plans/PLAN_20260924_host_setup-and-extract.md) |
 | Extractor for TypeScript (`extractors/typescript/`) | **in progress** — [`PLAN_20260923_extractors_typescript`](docs/plans/PLAN_20260923_extractors_typescript.md) |
 | Extractor for C# (`extractors/csharp/`) | **in progress** — [`PLAN_20260923_extractors_csharp`](docs/plans/PLAN_20260923_extractors_csharp.md) |
 | JSON schema of extractor facts (`schemas/`) | works: [`extractor-facts.schema.json`](schemas/extractor-facts.schema.json) |
@@ -39,11 +39,12 @@ sync with code (in progress, see below) will show where the code has moved away 
 
 ### 1. Install — once per machine
 
-**Without Node or Go:** download `semaps.exe` from
-[Releases](https://github.com/KOE73/SeMaps/releases) and double-click it. It asks whether to
-install for the current user and then copies itself to `%LOCALAPPDATA%\Programs\SeMaps`, adds
-that folder to your `PATH` and associates `*.semaps` files with itself. No admin rights. The same
-from a console: `semaps.exe install`.
+**Without Node or Go:** download `semaps-windows-amd64.zip` from
+[Releases](https://github.com/KOE73/SeMaps/releases), unpack it and double-click `semaps.exe`. It
+asks whether to install for the current user and then copies itself and its `extractors\` folder to
+`%LOCALAPPDATA%\Programs\SeMaps`, adds that folder to your `PATH` and associates `*.semaps` files
+with itself. No admin rights. The same from a console: `semaps.exe install`. A bare `semaps.exe`
+from the same page works too, without the extractors.
 
 **From source** (needs Go 1.26+ and Node 24+, the editor is built and embedded):
 
@@ -52,14 +53,14 @@ git clone https://github.com/KOE73/SeMaps.git
 SeMaps\host\install.cmd
 ```
 
-This builds the editor and `semaps.exe`, then runs the same `install`.
+This builds the editor, `semaps.exe` and the extractors (C# when `dotnet` is there, TypeScript when
+`npm` is), then runs the same `install`.
 
 Check: open a new console and type `semaps --help`.
 
-**Extractor for C#** (optional, needs the .NET SDK): download `SeMaps.Extract.CSharp.<version>.nupkg`
-from the same Release into a folder and run
-`dotnet tool install -g --add-source <that folder> SeMaps.Extract.CSharp`. Check:
-`semaps-extract-csharp --root <your repo> --include src > facts.json`.
+**Extractors** come in the same folder (`extractors\csharp`, `extractors\typescript`). They need
+the runtime of their language: the .NET SDK for C#, Node 24+ for TypeScript. `semaps doctor` in a
+project says what is found and what is missing.
 
 ### 2. Add a project file — once per project
 
@@ -77,8 +78,9 @@ All paths are relative to the folder of this file. All keys are optional — the
 the defaults. The file is YAML: comments stay when SeMaps edits it.
 
 `extractors:` lists what to read from the code and into which model project; a repository may
-have several (C# and TypeScript side by side). Running them from `semaps.exe` is
-[planned](docs/plans/PLAN_20260924_host_setup-and-extract.md); the key is already read and checked.
+have several (C# and TypeScript side by side). `semaps sync` runs them and updates the registry;
+in the editor the same is on the **Экстракторы** page, and the settings of this file on
+**Настройки**.
 
 ```yaml
 extractors:

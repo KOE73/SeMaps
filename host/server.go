@@ -184,7 +184,12 @@ func main() {
 	// `semaps sync --facts f.json ...`: the same roots, the registry is
 	// reconciled with extractor facts (docs/EXTRACTOR.md §5).
 	syncMode := len(os.Args) > 1 && os.Args[1] == "sync"
-	if checkMode || syncMode {
+	// `semaps doctor` and `semaps extract`: the extractors of the .semaps
+	// file (ADR_20260924-3).
+	doctorMode := len(os.Args) > 1 && os.Args[1] == "doctor"
+	extractMode := len(os.Args) > 1 && os.Args[1] == "extract"
+	toolMode := doctorMode || extractMode
+	if checkMode || syncMode || toolMode {
 		os.Args = append(os.Args[:1], os.Args[2:]...)
 	}
 	// `semaps install`: copy to a stable folder, PATH, *.semaps association.
@@ -207,22 +212,34 @@ func main() {
 	var sync struct {
 		facts, project    string
 		dryRun, noRenames bool
+		extractor, run    string
+	}
+	if syncMode || extractMode {
+		flag.StringVar(&sync.extractor, "extractor", "", "Extractor id from the .semaps file (default: all of them)")
 	}
 	if syncMode {
-		flag.StringVar(&sync.facts, "facts", "", "Extractor facts (EXTRACTOR.md §2); `-` reads stdin. Required")
+		flag.StringVar(&sync.facts, "facts", "", "Extractor facts (EXTRACTOR.md §2); `-` reads stdin. Default: run the extractors of the .semaps file")
+		flag.StringVar(&sync.run, "run", "", "Use the facts of this run (`semaps extract` prints its id) instead of extracting again")
 		flag.StringVar(&sync.project, "project", "", "Project id under projects/ (default: the only one there is)")
 		flag.BoolVar(&sync.dryRun, "dry-run", false, "Report only, write nothing; exit 1 when anything would change")
 		flag.BoolVar(&sync.noRenames, "no-renames", false, "Treat rename candidates as one entity gone and one new")
 	}
 	flag.Usage = func() {
-		fmt.Fprintln(os.Stderr, "usage: semaps [flags] [dir | file.semaps]\n       semaps check [flags] [dir | file.semaps]\n       semaps sync --facts <file.json> [flags] [dir | file.semaps]\n\nWith no arguments, finds a *.semaps project file upward from the current directory.\n`check` reports stale texts, views without an axis, broken codeRef and the like;\nexit code 1 when anything is found.\n`sync` reconciles entities.json and relations.json with extractor facts; flags go\nbefore the project argument. `semaps sync --help` lists its flags.")
+		fmt.Fprintln(os.Stderr, "usage: semaps [flags] [dir | file.semaps]\n       semaps check [flags] [dir | file.semaps]\n       semaps sync [--extractor <id>] [--run <id> | --facts <file.json>] [flags] [dir | file.semaps]\n       semaps extract [--extractor <id>] [dir | file.semaps]\n       semaps doctor [dir | file.semaps]\n\nWith no arguments, finds a *.semaps project file upward from the current directory.\n`check` reports stale texts, views without an axis, broken codeRef and the like;\nexit code 1 when anything is found.\n`sync` reconciles entities.json and relations.json with extractor facts; without\n--facts it runs the extractors listed in the .semaps file. `extract` only runs them;\n`doctor` shows which extractors and runtimes are found. Flags go\nbefore the project argument. `semaps sync --help` lists its flags.")
 		flag.PrintDefaults()
 	}
 	flag.Parse()
-	if syncMode && sync.facts == "" {
-		fmt.Fprintln(os.Stderr, "semaps sync: --facts <file.json> is required")
+	if sync.facts != "" && (sync.run != "" || sync.extractor != "") {
+		fmt.Fprintln(os.Stderr, "semaps sync: --facts goes alone, without --run or --extractor")
 		os.Exit(2)
 	}
+	// Extractors are listed in the .semaps file: without --facts there must be one.
+	needProject := toolMode || (syncMode && sync.facts == "")
+	if needProject && workspaceDir != "" {
+		fmt.Fprintln(os.Stderr, "semaps: extractors come from a .semaps file; --workspace has none")
+		os.Exit(2)
+	}
+	var proj project
 
 	portSet := false
 	flag.Visit(func(f *flag.Flag) { portSet = portSet || f.Name == "port" })
@@ -244,14 +261,15 @@ func main() {
 		if file == "" {
 			// A downloaded exe started by a double click lands here: nothing
 			// to open, not installed. Offer the install instead of vanishing.
-			if flag.NArg() == 0 && !checkMode && !syncMode && !installed() {
+			if flag.NArg() == 0 && !checkMode && !syncMode && !toolMode && !installed() {
 				offerInstall()
 				return
 			}
 			fmt.Fprintf(os.Stderr, "No *%s found from %s upward. Create one (see docs/ADOPTING.md) or pass --workspace.\n", ProjectExt, absArg)
 			os.Exit(2)
 		}
-		proj, err := loadProject(file)
+		var err error
+		proj, err = loadProject(file)
 		if err != nil {
 			log.Fatalf("Project file: %v", err)
 		}
@@ -281,11 +299,20 @@ func main() {
 		fmt.Printf("  workspace:   %s\n  source root: %s\n\n", absWorkspace, absRoot)
 		os.Exit(core.Report(os.Stdout, core.Check(absWorkspace, absRoot)))
 	}
+	if doctorMode {
+		os.Exit(runDoctor(os.Stdout, proj))
+	}
+	if extractMode {
+		_, code := runExtract(proj, sync.extractor)
+		os.Exit(code)
+	}
 	if syncMode {
 		fmt.Printf("  workspace:   %s\n\n", absWorkspace)
-		os.Exit(runSync(absWorkspace, sync.facts, core.SyncOptions{
-			Project: sync.project, DryRun: sync.dryRun, NoRenames: sync.noRenames,
-		}))
+		opt := core.SyncOptions{Project: sync.project, DryRun: sync.dryRun, NoRenames: sync.noRenames}
+		if sync.facts != "" {
+			os.Exit(runSync(absWorkspace, sync.facts, opt))
+		}
+		os.Exit(runSyncProject(proj, absWorkspace, sync.extractor, sync.run, opt))
 	}
 
 	// Already serving this workspace? Just show it.
@@ -333,6 +360,11 @@ func main() {
 
 	http.Handle("/app/", noCacheHandler(http.StripPrefix("/app/", http.FileServer(http.FS(appFS)))))
 	http.Handle("/", noCacheHandler(workspaceHandler(absWorkspace, defaultsFS)))
+	registerToolAPI(http.DefaultServeMux, proj.File, absWorkspace)
+	// Short addresses of the tool pages (ADR_20260924-3 §4).
+	for short, page := range map[string]string{"/setup": "/app/setup.html", "/extract": "/app/extract.html"} {
+		http.Handle("GET "+short, http.RedirectHandler(page, http.StatusFound))
+	}
 	http.HandleFunc("/api/info", func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "application/json; charset=utf-8")
 		_ = json.NewEncoder(w).Encode(map[string]string{"workspace": absWorkspace, "sourceRoot": absRoot})

@@ -50,8 +50,8 @@ jobs:
         with:
           dotnet-version: 10.0.x
 
-      - name: Extractor C# — tests and pack
+      - name: Extractor C# — tests and publish
         working-directory: extractors/csharp
         run: |
           dotnet test
-          dotnet pack src/SeMaps.Extract.CSharp -c Release -o ../../dist/nupkg
+          dotnet publish src/SeMaps.Extract.CSharp -c Release -p:UseAppHost=false -o ../../stage/extractors/csharp

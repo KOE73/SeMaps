@@ -44,9 +44,32 @@ jobs:
         with:
           dotnet-version: 10.0.x
 
-      - name: Pack the C# extractor as a dotnet tool
+      - name: Test the C# extractor
         working-directory: extractors/csharp
-        run: dotnet test && dotnet pack src/SeMaps.Extract.CSharp -c Release -o ../../out
+        run: dotnet test
+
+      # Extractors ship beside semaps (ADR_20260924-3 §1). Both are portable:
+      # the C# one as a framework-dependent dll (`dotnet` runs it), the
+      # TypeScript one as its dist plus its runtime dependency (node runs it).
+      - name: Stage the extractors
+        run: |
+          dotnet publish extractors/csharp/src/SeMaps.Extract.CSharp -c Release -p:UseAppHost=false -o stage/extractors/csharp
+          (cd extractors/typescript && npm ci && npm run build)
+          mkdir -p stage/extractors/typescript
+          cp -r extractors/typescript/dist stage/extractors/typescript/dist
+          rm -rf stage/extractors/typescript/dist/test
+          cp extractors/typescript/package.json extractors/typescript/package-lock.json stage/extractors/typescript/
+          (cd stage/extractors/typescript && npm ci --omit=dev --ignore-scripts)
+
+      - name: One archive per platform — semaps with its extractors
+        run: |
+          for bin in semaps.exe semaps-linux-amd64 semaps-darwin-arm64; do
+            name="${bin%.exe}"; [ "$bin" = semaps.exe ] && name=semaps-windows-amd64
+            rm -rf "pkg/$name" && mkdir -p "pkg/$name"
+            cp "out/$bin" "pkg/$name/"
+            cp -r stage/extractors "pkg/$name/extractors"
+            (cd pkg && zip -qr "../out/$name.zip" "$name")
+          done
 
       - uses: softprops/action-gh-release@v2
         with:

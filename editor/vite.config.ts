@@ -49,6 +49,14 @@ export default defineConfig(({ mode }) => {
           // The app build is committed so that run.cmd works without a Node
           // toolchain; a source map would add ~190 kB of churn per rebuild.
           sourcemap: false,
+          // The editor and the tool pages (ADR_20260924-3 §4), one top bar.
+          rollupOptions: {
+            input: {
+              main: fileURLToPath(new URL("index.html", import.meta.url)),
+              setup: fileURLToPath(new URL("setup.html", import.meta.url)),
+              extract: fileURLToPath(new URL("extract.html", import.meta.url)),
+            },
+          },
         }
       : {
           lib: {

@@ -229,11 +229,15 @@ Any host fulfilling these three interfaces will provide complete visualizer and 
 ```
 semaps [flags] [dir | file.semaps]
 semaps check [flags] [dir | file.semaps]
+semaps sync [--extractor <id>] [--run <id>] [--dry-run] [--no-renames] [flags] [dir | file.semaps]
 semaps sync --facts <file.json | -> [--project <id>] [--dry-run] [--no-renames] [flags] [dir | file.semaps]
+semaps extract [--extractor <id>] [dir | file.semaps]
+semaps doctor [dir | file.semaps]
 semaps install
 ```
 
-`install` (Windows) copies the exe to `%LOCALAPPDATA%\Programs\SeMaps`, adds it to the user PATH and
+`install` (Windows) copies the exe — and the `extractors\` folder beside it, replaced as a whole —
+to `%LOCALAPPDATA%\Programs\SeMaps`, adds it to the user PATH and
 registers the `*.semaps` association under HKCU; started with nothing to open and not installed, the exe
 offers the same interactively.
 
@@ -241,14 +245,26 @@ offers the same interactively.
 exits with `1` when anything is found. It does not serve.
 
 `sync` resolves the roots the same way and reconciles one project's registry with extractor facts;
-rules, report and exit codes — [`EXTRACTOR.md`](EXTRACTOR.md) §5. It does not serve.
+rules, report and exit codes — [`EXTRACTOR.md`](EXTRACTOR.md) §5. It does not serve. Without
+`--facts` it runs the extractors of the `.semaps` file (all, or the one named by `--extractor`) and
+syncs each into its `project`; `--run <id>` syncs the facts of an earlier run instead of extracting.
+
+`extract` only runs the extractors; each run is kept (facts, log, statistics) in the temp directory
+and printed with its id. `doctor` shows which extractor and runtime each entry resolves to; exit `1`
+when one of them cannot run.
+
+**Finding an extractor** (ADR_20260924-3 §1): the entry's `command` → `extractors/<language>/`
+beside the running `semaps` (`csharp`: `semaps-extract-csharp[.exe]` or `semaps-extract-csharp.dll`
+run by `dotnet`; `typescript`: `dist/cli.js` run by `node`) → `semaps-extract-<language>` on PATH.
+It is started without a shell, in the project root, with `--root <root> --include … --exclude …`
+([`EXTRACTOR.md`](EXTRACTOR.md) §1).
 
 ### Project file `*.semaps`
 
 Lives in the project root; that folder is the project root, and every path in the file is relative
-to it. Flat `key: value` lines (a YAML subset). A `#` at the start of a line or after a space is a
-comment; a `#` glued to text is part of the value. Unknown keys are an error, and so are two
-`*.semaps` files in one directory.
+to it. YAML; a `#` at the start of a line or after a space is a comment (quote a value that needs
+` #`). Unknown keys are an error, and so are two `*.semaps` files in one directory. The host edits
+the file through the YAML tree: comments and key order survive.
 
 | Key | Default | Meaning |
 |---|---|---|
@@ -257,6 +273,7 @@ comment; a `#` glued to text is part of the value. Unknown keys are an error, an
 | `workspace` | `docs/diagrams` | served at `/`; the only place `/api/save` writes to |
 | `source_root` | `.` | what `codeRef` and `/api/source*` resolve against |
 | `port` | `8777` | if busy, the next free port is taken |
+| `extractors` | — | list; each: `id` (lowercase, digits, `-`), `language`, `project` (model project under `projects/`), `root` (default `.`), `include`, `exclude`, `command` (replaces the found extractor; written by hand only) |
 
 ### Resolution order
 
@@ -280,3 +297,33 @@ itself: the host listens on localhost, but any page open in the same browser cou
 to it. Requests without `Origin` (curl, agents) pass. Directories are never listed.
 
 The editor bundle (`app/`) and the defaults (`defaults/`) are embedded into the binary, never taken from the workspace.
+
+## 5. Tool API: settings, extractors, runs
+
+Served only when the host was started from a `.semaps` file; with `--workspace` every endpoint
+answers `409`. Every request passes one check (`guard`): anything but `GET` is refused with `403`
+when its `Origin` is not the host itself, as for `/api/save`. Paths in requests and answers are
+relative to the project root; absolute paths of the machine are not handed out (ADR_20260924-3 §6).
+The command line of an extractor cannot be set through the API — only in the file.
+
+| Path | Method | Body → answer |
+|---|---|---|
+| `/api/tools` | `GET` | → `{projectFile, shipped: [language], runtimes: [{name, ok, version?, hint?}], extractors: [Extractor]}` |
+| `/api/setup` | `GET` | → `{projectFile, name, workspace, sourceRoot, port, extractors: [Extractor], languages}` — keys as written |
+| `/api/setup` | `PUT` | `{name?, workspace?, sourceRoot?, port?}` → setup. Workspace, source root and port apply after a restart |
+| `/api/setup/extractors/{id}` | `PUT` | `{language?, project?, root?, include?, exclude?}` → setup; adds the entry when missing. Any other field (`command`) → `400` |
+| `/api/setup/extractors/{id}` | `DELETE` | → setup |
+| `/api/runs?extractor=<id>` | `GET` | → `[Run]`, newest first; five kept per extractor |
+| `/api/runs` | `POST` | `{extractor}` → `202` `Run` (`state: running`) |
+| `/api/runs/{id}` | `GET` | → `Run` |
+| `/api/runs/{id}/log?offset=<n>` | `GET` | → `{text, offset, state}`: the log from byte `n`; ask again with the new `offset` while `state` is `running` |
+| `/api/runs/{id}/sync` | `POST` | `{dryRun, noRenames}` → `{report, exitCode, empty}`; the report is `core.SyncReport`. Applies the facts of that run, never extracts again |
+
+`Extractor`: `{id, language, project, root, include, exclude, command?, tool: {language, found,
+source?: command|bundled|path, where?, runtime?, problem?}, lastRun?: Run}`.
+`Run`: `{id, extractor, project, language, started, finished?, seconds?, state: running|done|failed,
+exitCode, error?, stats?: {symbols, edges, symbolKinds, edgeKinds, language}}`.
+
+A run's facts never enter the workspace; they stay in the temp directory beside its log.
+
+Short addresses of the tool pages: `/setup` → `/app/setup.html`, `/extract` → `/app/extract.html`.

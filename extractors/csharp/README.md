@@ -13,24 +13,23 @@ resolved symbols, not text/regex matching. Target framework: `net10.0`.
 
 ## Install
 
-### From a `.nupkg` in GitHub Releases
+It ships with `semaps` in `extractors/csharp/` and is run by `semaps sync` / `semaps extract`
+([ADR_20260924-3](../../docs/adr/ADR_20260924-3_host_tools-beside-the-binary-and-setup.md)):
+`host/install.cmd` publishes it there, the release archives carry it. Nothing to install by hand.
 
-Until the package is published on nuget.org, download the `.nupkg` attached to a
-[GitHub Release](../../../../releases) next to `semaps.exe`, then install from that local folder:
+It stays a program of its own — facts on stdout — and can be run alone:
 
 ```sh
-dotnet tool install -g --add-source <folder with the .nupkg> SeMaps.Extract.CSharp
+dotnet publish src/SeMaps.Extract.CSharp -c Release -o <folder>
+<folder>/semaps-extract-csharp --root <dir> --include src > facts.json
 ```
 
-### From source
+As a global dotnet tool, if you want the command on PATH (`semaps` finds it there too):
 
 ```sh
-cd extractors/csharp
 dotnet pack src/SeMaps.Extract.CSharp -c Release -o ./nupkg
 dotnet tool install -g --add-source ./nupkg SeMaps.Extract.CSharp
 ```
-
-Either way this installs the `semaps-extract-csharp` command.
 
 ## Run without installing
 
