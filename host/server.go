@@ -188,8 +188,10 @@ func main() {
 	// file (ADR_20260924-3).
 	doctorMode := len(os.Args) > 1 && os.Args[1] == "doctor"
 	extractMode := len(os.Args) > 1 && os.Args[1] == "extract"
+	// `semaps mcp`: MCP server over stdio (ADR_20260924-5).
+	mcpMode := len(os.Args) > 1 && os.Args[1] == "mcp"
 	toolMode := doctorMode || extractMode
-	if checkMode || syncMode || toolMode {
+	if checkMode || syncMode || toolMode || mcpMode {
 		os.Args = append(os.Args[:1], os.Args[2:]...)
 	}
 	// `semaps install`: copy to a stable folder, PATH, *.semaps association.
@@ -234,7 +236,7 @@ func main() {
 		os.Exit(2)
 	}
 	// Extractors are listed in the .semaps file: without --facts there must be one.
-	needProject := toolMode || (syncMode && sync.facts == "")
+	needProject := toolMode || (syncMode && sync.facts == "") || mcpMode
 	if needProject && workspaceDir != "" {
 		fmt.Fprintln(os.Stderr, "semaps: extractors come from a .semaps file; --workspace has none")
 		os.Exit(2)
@@ -305,6 +307,9 @@ func main() {
 	if extractMode {
 		_, code := runExtract(proj, sync.extractor)
 		os.Exit(code)
+	}
+	if mcpMode {
+		os.Exit(runMCP(absWorkspace, absRoot))
 	}
 	if syncMode {
 		fmt.Printf("  workspace:   %s\n\n", absWorkspace)
