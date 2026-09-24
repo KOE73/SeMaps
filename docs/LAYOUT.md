@@ -56,6 +56,36 @@ Without such a request an agent does not write geometry at all
 - A collapsed zone (in the editor) shows as its caption strip; lines to its nodes then end at the
   zone.
 
+## Text: captions, descriptions, languages
+
+No text lives in a view. Everything a human reads is in `text.<lang>.json`, keyed by the id of
+what it describes (CONTRACT §7):
+
+- **One file per language** listed in `project.json → languages` (`text.ru.json`,
+  `text.en.json`, …). The editor shows one language at a time and switches between them.
+- **A text is expected in every one of those languages**, not only the one you write in. The
+  usual shape: one language `authored`, the others `translated` from it, with `fromHash`
+  computed as CONTRACT §7.3 says. A caption present in one file and missing in another is
+  reported by `semaps check` for that language.
+- **Every value carries its provenance**: `{ "v", "at", "origin" }`, `at` in UTC with `Z`.
+  `origin: "authored"` is written by someone; `origin: "translated"` also names its source
+  language in `from` and the source text's hash in `fromHash` (CONTRACT §7.3). Two languages both
+  `authored` for one field are a conflict `semaps check` reports; a translation whose source
+  changed is stale.
+- **Fields**:
+  - `name` — the caption. Zones (`z_…`), views, containers, relation types and relations have
+    one. An entity does not: its name is the code's, in `entities.json`, never translated.
+  - `description` — one or two lines: what it is. Shown as the tooltip.
+  - `doc` — the long text, **Markdown**: why it exists, invariants, what breaks, links. Not drawn
+    on the canvas: hovering the 📄 button of a box (or of a line) shows the description with the
+    rendered Markdown under it; clicking it, or F2, opens the description window to edit both.
+- **A frame's caption** is `name` under the zone's own id (`z_tracking`), or, failing that, under
+  the container `c_tracking`. A frame with `container: null` is captioned the same way; without
+  any text it shows its bare id.
+- Relations with `origin: "code"` carry no text at all; their meaning is their type.
+- `semaps check` reports a zone, view, container or relation type without a `name` as
+  `недостача`, per language.
+
 ## Lines
 
 Lines are not stored in the view — every repaint computes them from the boxes.

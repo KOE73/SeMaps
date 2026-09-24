@@ -266,6 +266,8 @@ func Check(workspace, sourceRoot string) []Finding {
 		// Containers, views and relation types are named by a human, so
 		// silence there is a real gap.
 		mustBeNamed := map[string]bool{}
+		// Zone id -> the keys its caption may live under, first match wins.
+		zoneNames := map[string][]string{}
 		for id := range declared {
 			mustBeNamed[id] = true
 		}
@@ -287,14 +289,16 @@ func Check(workspace, sourceRoot string) []Finding {
 					id = strings.TrimSuffix(f.Name(), ".view.json")
 				}
 				mustBeNamed[id] = true
-				// A zone id is `z_<x>` for the container `c_<x>` it renders; its
-				// text is keyed to the container. Same shim as in ProjectStore.
+				// A zone is named under its own id; failing that, under the
+				// container `c_<x>` a zone `z_<x>` renders — the same two keys,
+				// in the same order, the editor reads (CONTRACT §8.4). A frame
+				// with no container is named like any other zone.
 				for _, z := range v.Zones {
+					keys := []string{z.ID}
 					if strings.HasPrefix(z.ID, "z_") {
-						mustBeNamed["c_"+z.ID[2:]] = true
-					} else {
-						mustBeNamed[z.ID] = true
+						keys = append(keys, "c_"+z.ID[2:])
 					}
+					zoneNames[z.ID] = keys
 				}
 			}
 		}
@@ -307,6 +311,18 @@ func Check(workspace, sourceRoot string) []Finding {
 				record, ok := catalogues[lang][key]
 				if !ok || (record["name"] == nil && record["title"] == nil) {
 					report(project, "недостача", fmt.Sprintf("%s: нет имени в %s", key, lang))
+				}
+			}
+			for _, id := range sortedKeys(zoneNames) {
+				named := false
+				for _, key := range zoneNames[id] {
+					if record, ok := catalogues[lang][key]; ok && (record["name"] != nil || record["title"] != nil) {
+						named = true
+						break
+					}
+				}
+				if !named {
+					report(project, "недостача", fmt.Sprintf("%s: нет имени в %s", id, lang))
 				}
 			}
 		}
