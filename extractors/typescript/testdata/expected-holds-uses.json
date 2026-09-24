@@ -332,6 +332,35 @@
       "kind": "contains"
     },
     {
+      "from": "a#Registry.Entry",
+      "to": "a#Box",
+      "kind": "holds",
+      "via": {
+        "member": "box",
+        "memberKind": "property",
+        "text": "Box",
+        "cardinality": "one"
+      }
+    },
+    {
+      "from": "a#Registry.Store",
+      "to": "a#Registry.Entry",
+      "kind": "holds",
+      "via": {
+        "member": "items",
+        "memberKind": "field",
+        "modifiers": [
+          "public"
+        ],
+        "text": "Entry[]",
+        "path": [
+          "item"
+        ],
+        "cardinality": "many",
+        "mutability": "mutable"
+      }
+    },
+    {
       "from": "a#Widget",
       "to": "a#Base",
       "kind": "extends"
@@ -342,9 +371,71 @@
       "kind": "implements"
     },
     {
+      "from": "a#build",
+      "to": "a#Widget",
+      "kind": "uses",
+      "via": {
+        "memberKind": "return",
+        "text": "Widget",
+        "cardinality": "one"
+      }
+    },
+    {
+      "from": "a#helper",
+      "to": "a#Box",
+      "kind": "uses",
+      "via": {
+        "memberKind": "return",
+        "text": "Box",
+        "cardinality": "one"
+      }
+    },
+    {
+      "from": "a#helper",
+      "to": "a#Box",
+      "kind": "uses",
+      "via": {
+        "member": "x",
+        "memberKind": "parameter",
+        "text": "Box",
+        "cardinality": "one"
+      }
+    },
+    {
+      "from": "a#makeWidget",
+      "to": "a#Widget",
+      "kind": "uses",
+      "via": {
+        "memberKind": "return",
+        "text": "Widget",
+        "cardinality": "one"
+      }
+    },
+    {
       "from": "b",
       "to": "b#Consumer",
       "kind": "contains"
+    },
+    {
+      "from": "b#Consumer",
+      "to": "a#Widget",
+      "kind": "holds",
+      "via": {
+        "member": "widget",
+        "memberKind": "field",
+        "modifiers": [
+          "public"
+        ],
+        "text": "Widget",
+        "cardinality": "one"
+      }
     }
+  ],
+  "edgeKinds": [
+    "contains",
+    "extends",
+    "holds",
+    "implements",
+    "uses"
   ]
 }

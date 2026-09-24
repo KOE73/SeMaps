@@ -1,6 +1,6 @@
 import ts from "typescript";
 import { declId, moduleId } from "./id.js";
-import type { EdgeKind, EdgeRecord, MemberRecord, SymbolKind, SymbolRecord } from "./types.js";
+import type { EdgeKind, EdgeRecord, MemberRecord, SymbolKind, SymbolRecord, ViaRecord } from "./types.js";
 
 export interface SourceFileEntry {
   sourceFile: ts.SourceFile;
@@ -53,29 +53,138 @@ function resolveAlias(checker: ts.TypeChecker, symbol: ts.Symbol): ts.Symbol {
   return symbol;
 }
 
-/** Walk a type node's AST and collect the ids (from idBySymbol) of every referenced type. */
-function collectReferencedIds(
+interface TypePath {
+  symbol?: ts.Symbol;
+  path: string[];
+  cardinality?: "one" | "optional" | "many" | "keyed";
+  mutability?: "mutable" | "readonly";
+  deferred?: boolean;
+}
+
+/** Walk a type node's AST and collect all referenced types with their paths and features. */
+function collectTypePaths(
   typeNode: ts.TypeNode | undefined,
   checker: ts.TypeChecker,
   idBySymbol: Map<ts.Symbol, string>,
-): Set<string> {
-  const found = new Set<string>();
+): TypePath[] {
+  const found: TypePath[] = [];
   if (!typeNode) return found;
 
-  const visit = (node: ts.Node): void => {
+  const visit = (node: ts.Node, currentPath: string[], currentCardinal?: string, currentMutability?: string, currentDeferred?: boolean): void => {
+    // Array types: T[]
+    if (ts.isArrayTypeNode(node)) {
+      const elemType = node.elementType;
+      const hasReadonly = hasModifier(node, ts.SyntaxKind.ReadonlyKeyword);
+      visit(elemType, [...currentPath, "item"], "many", hasReadonly ? "readonly" : "mutable", currentDeferred);
+      return;
+    }
+
+    // Type references like Array<T>, Set<T>, Map<K,V>, etc.
     if (ts.isTypeReferenceNode(node)) {
       const nameNode = ts.isQualifiedName(node.typeName) ? node.typeName.right : node.typeName;
       const symbol = checker.getSymbolAtLocation(nameNode);
+      const typeName = nameNode.text;
+
+      // Handle generic collections
+      const typeArgs = node.typeArguments ?? [];
+
+      if (typeName === "Array" && typeArgs[0]) {
+        visit(typeArgs[0], [...currentPath, "item"], "many", "mutable", currentDeferred);
+        return;
+      } else if (typeName === "ReadonlyArray" && typeArgs[0]) {
+        visit(typeArgs[0], [...currentPath, "item"], "many", "readonly", currentDeferred);
+        return;
+      } else if (typeName === "Set" && typeArgs[0]) {
+        visit(typeArgs[0], [...currentPath, "item"], "many", "mutable", currentDeferred);
+        return;
+      } else if (typeName === "ReadonlySet" && typeArgs[0]) {
+        visit(typeArgs[0], [...currentPath, "item"], "many", "readonly", currentDeferred);
+        return;
+      } else if (typeName === "Map" && typeArgs[0] && typeArgs[1]) {
+        visit(typeArgs[0], [...currentPath, "key"], "keyed", "mutable", currentDeferred);
+        visit(typeArgs[1], [...currentPath, "value"], "keyed", "mutable", currentDeferred);
+        return;
+      } else if (typeName === "ReadonlyMap" && typeArgs[0] && typeArgs[1]) {
+        visit(typeArgs[0], [...currentPath, "key"], "keyed", "readonly", currentDeferred);
+        visit(typeArgs[1], [...currentPath, "value"], "keyed", "readonly", currentDeferred);
+        return;
+      } else if (typeName === "Record" && typeArgs[0] && typeArgs[1]) {
+        visit(typeArgs[1], [...currentPath, "value"], "keyed", undefined, currentDeferred);
+        return;
+      } else if (typeName === "Promise" && typeArgs[0]) {
+        visit(typeArgs[0], [...currentPath, "result"], currentCardinal, currentMutability, true);
+        return;
+      } else if (typeName === "Awaited" && typeArgs[0]) {
+        visit(typeArgs[0], [...currentPath, "result"], currentCardinal, currentMutability, true);
+        return;
+      }
+
+      // Regular type reference
       if (symbol) {
         const resolved = resolveAlias(checker, symbol);
         const id = idBySymbol.get(resolved);
-        if (id) found.add(id);
+        if (id) {
+          found.push({
+            symbol: resolved,
+            path: currentPath,
+            cardinality: (currentCardinal as any) || "one",
+            ...(currentMutability ? { mutability: currentMutability as "mutable" | "readonly" } : {}),
+            ...(currentDeferred ? { deferred: true } : {}),
+          });
+        }
       }
+      return;
     }
-    node.forEachChild(visit);
+
+    // Tuple types: [T1, T2, ...]
+    if (ts.isTupleTypeNode(node)) {
+      for (let i = 0; i < node.elements.length; i++) {
+        const elem = node.elements[i];
+        if (ts.isNamedTupleMember(elem)) {
+          const name = (elem.name as any).text ?? `element:${i}`;
+          visit(elem.type, [...currentPath, `element:${name}`], "one", undefined, currentDeferred);
+        } else {
+          visit(elem, [...currentPath, `element:${i}`], "one", undefined, currentDeferred);
+        }
+      }
+      return;
+    }
+
+    // Union types: T1 | T2 | ...
+    if (ts.isUnionTypeNode(node)) {
+      for (const t of node.types) {
+        visit(t, currentPath, "one", undefined, currentDeferred);
+      }
+      return;
+    }
+
+    // Index signature type
+    if (ts.isIndexSignatureDeclaration(node) && node.type) {
+      const hasReadonly = hasModifier(node, ts.SyntaxKind.ReadonlyKeyword);
+      visit(node.type, [...currentPath, "value"], "keyed", hasReadonly ? "readonly" : undefined, currentDeferred);
+      return;
+    }
+
+    // Parenthesized type: (T)
+    if (ts.isParenthesizedTypeNode(node)) {
+      visit(node.type, currentPath, currentCardinal, currentMutability, currentDeferred);
+      return;
+    }
+
+    // Unknown/generic parameters: collect as-is without features
+    if (ts.isTypeParameterDeclaration(node)) {
+      // Skip type parameters
+      return;
+    }
+
+    // Base case: direct type reference
+    if (ts.isTypeReferenceNode(node)) {
+      // Already handled above
+      return;
+    }
   };
 
-  visit(typeNode);
+  visit(typeNode, []);
   return found;
 }
 
@@ -99,6 +208,15 @@ function memberName(nameNode: ts.PropertyName | undefined): string | undefined {
   return undefined;
 }
 
+function parameterName(bindingName: ts.BindingName | undefined): string | undefined {
+  if (!bindingName) return undefined;
+  if (ts.isIdentifier(bindingName)) {
+    return bindingName.text;
+  }
+  // For destructuring patterns, we skip them (not supported)
+  return undefined;
+}
+
 function makeMember(kind: string, name: string, type: string | undefined, visibility: string | undefined): MemberRecord {
   const m: MemberRecord = { kind, name };
   if (type !== undefined) m.type = type;
@@ -109,15 +227,22 @@ function makeMember(kind: string, name: string, type: string | undefined, visibi
 export function collectFacts(
   checker: ts.TypeChecker,
   files: SourceFileEntry[],
+  edgeFilter?: string[],
 ): { symbols: SymbolRecord[]; edges: EdgeRecord[] } {
   const symbols: SymbolRecord[] = [];
   const edgeMap = new Map<string, EdgeRecord>();
   const idBySymbol = new Map<ts.Symbol, string>();
   const declEntries: DeclEntry[] = [];
 
-  const addEdge = (from: string, to: string, kind: EdgeKind): void => {
+  const wantEdge = (kind: string): boolean => {
+    if (!edgeFilter) return false;
+    return edgeFilter.includes(kind);
+  };
+
+  const addEdge = (from: string, to: string, kind: EdgeKind, via?: ViaRecord): void => {
     if (from === to) return;
-    edgeMap.set(`${from}\u0000${to}\u0000${kind}`, { from, to, kind });
+    const key = `${from}\u0000${to}\u0000${kind}\u0000${via?.member ?? ""}\u0000${JSON.stringify(via?.path ?? [])}`;
+    edgeMap.set(key, { from, to, kind, ...(via ? { via } : {}) });
   };
 
   const pushSymbol = (
@@ -339,6 +464,42 @@ export function collectFacts(
           if (targetId) addEdge(entry.id, targetId, edgeKind);
         }
       }
+
+      // Handle constructor parameters (holds/uses with memberKind: constructor)
+      for (const member of classDecl.members) {
+        if (ts.isConstructorDeclaration(member)) {
+          for (const param of member.parameters) {
+            const paramType = param.type;
+            if (paramType) {
+              const paths = collectTypePaths(paramType, checker, validIds);
+              for (const tp of paths) {
+                if (tp.symbol) {
+                  const targetId = validIds.get(tp.symbol);
+                  if (targetId && wantEdge("uses")) {
+                    const paramName = parameterName(param.name);
+                    const modifiers = [];
+                    if (ts.getModifiers(param)?.some(m => m.kind === ts.SyntaxKind.ReadonlyKeyword)) {
+                      modifiers.push("readonly");
+                    }
+                    const via: ViaRecord = {
+                      ...(paramName ? { member: paramName } : {}),
+                      memberKind: "constructor",
+                      ...(modifiers.length > 0 ? { modifiers } : {}),
+                      text: checker.typeToString(checker.getTypeAtLocation(param)),
+                      ...(tp.path.length > 0 ? { path: tp.path } : {}),
+                      ...(tp.cardinality ? { cardinality: tp.cardinality } : {}),
+                      ...(tp.mutability ? { mutability: tp.mutability } : {}),
+                      ...(tp.deferred ? { deferred: true } : {}),
+                    };
+                    addEdge(entry.id, targetId, "uses", via);
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+
       for (const member of classDecl.members) {
         if (ts.isConstructorDeclaration(member)) continue;
         const name = memberName((member as ts.PropertyDeclaration | ts.MethodDeclaration).name);
@@ -346,6 +507,13 @@ export function collectFacts(
         const visibility = classMemberVisibility(member);
         let kind: string | undefined;
         let typeNode: ts.TypeNode | undefined;
+        const modifiers: string[] = [];
+        if (hasModifier(member, ts.SyntaxKind.ReadonlyKeyword)) modifiers.push("readonly");
+        if (hasModifier(member, ts.SyntaxKind.StaticKeyword)) modifiers.push("static");
+        if (visibility === "public") modifiers.push("public");
+        if (visibility === "protected") modifiers.push("protected");
+        if (visibility === "private") modifiers.push("private");
+
         if (ts.isPropertyDeclaration(member)) {
           kind = "field";
           typeNode = member.type;
@@ -358,15 +526,72 @@ export function collectFacts(
         if (!kind) continue;
         const typeStr = memberTypeString(checker, member);
         members.push(makeMember(kind, name, typeStr, visibility));
-        if (typeNode) {
-          for (const id of collectReferencedIds(typeNode, checker, validIds)) addEdge(entry.id, id, "references");
+
+        if (typeNode && wantEdge("holds")) {
+          const paths = collectTypePaths(typeNode, checker, validIds);
+          for (const tp of paths) {
+            if (tp.symbol) {
+              const targetId = validIds.get(tp.symbol);
+              if (targetId) {
+                const via: ViaRecord = {
+                  member: name,
+                  memberKind: kind as "field" | "property",
+                  ...(modifiers.length > 0 ? { modifiers } : {}),
+                  text: typeStr,
+                  ...(tp.path.length > 0 ? { path: tp.path } : {}),
+                  ...(tp.cardinality ? { cardinality: tp.cardinality } : {}),
+                  ...(tp.mutability ? { mutability: tp.mutability } : {}),
+                  ...(tp.deferred ? { deferred: true } : {}),
+                };
+                addEdge(entry.id, targetId, "holds", via);
+              }
+            }
+          }
         }
-        if (ts.isMethodDeclaration(member) || ts.isGetAccessor(member) || ts.isSetAccessor(member)) {
+
+        if ((ts.isMethodDeclaration(member) || ts.isGetAccessor(member) || ts.isSetAccessor(member)) && wantEdge("uses")) {
           for (const param of member.parameters) {
-            for (const id of collectReferencedIds(param.type, checker, validIds)) addEdge(entry.id, id, "references");
+            if (param.type) {
+              const paths = collectTypePaths(param.type, checker, validIds);
+              for (const tp of paths) {
+                if (tp.symbol) {
+                  const targetId = validIds.get(tp.symbol);
+                  if (targetId) {
+                    const paramName = parameterName(param.name);
+                    const via: ViaRecord = {
+                      ...(paramName ? { member: paramName } : {}),
+                      memberKind: "parameter",
+                      text: checker.typeToString(checker.getTypeAtLocation(param)),
+                      ...(tp.path.length > 0 ? { path: tp.path } : {}),
+                      ...(tp.cardinality ? { cardinality: tp.cardinality } : {}),
+                      ...(tp.mutability ? { mutability: tp.mutability } : {}),
+                      ...(tp.deferred ? { deferred: true } : {}),
+                    };
+                    addEdge(entry.id, targetId, "uses", via);
+                  }
+                }
+              }
+            }
           }
           if (ts.isMethodDeclaration(member) && member.type) {
-            for (const id of collectReferencedIds(member.type, checker, validIds)) addEdge(entry.id, id, "references");
+            const paths = collectTypePaths(member.type, checker, validIds);
+            for (const tp of paths) {
+              if (tp.symbol) {
+                const targetId = validIds.get(tp.symbol);
+                if (targetId) {
+                  const via: ViaRecord = {
+                    member: name,
+                    memberKind: "return",
+                    text: checker.typeToString(checker.getTypeAtLocation(member)),
+                    ...(tp.path.length > 0 ? { path: tp.path } : {}),
+                    ...(tp.cardinality ? { cardinality: tp.cardinality } : {}),
+                    ...(tp.mutability ? { mutability: tp.mutability } : {}),
+                    ...(tp.deferred ? { deferred: true } : {}),
+                  };
+                  addEdge(entry.id, targetId, "uses", via);
+                }
+              }
+            }
           }
         }
       }
@@ -391,19 +616,75 @@ export function collectFacts(
           if (!name) continue;
           const typeStr = memberTypeString(checker, member);
           members.push(makeMember("property", name, typeStr, undefined));
-          if (member.type) {
-            for (const id of collectReferencedIds(member.type, checker, validIds)) addEdge(entry.id, id, "references");
+          if (member.type && wantEdge("holds")) {
+            const paths = collectTypePaths(member.type, checker, validIds);
+            for (const tp of paths) {
+              if (tp.symbol) {
+                const targetId = validIds.get(tp.symbol);
+                if (targetId) {
+                  const via: ViaRecord = {
+                    member: name,
+                    memberKind: "property",
+                    text: typeStr,
+                    ...(tp.path.length > 0 ? { path: tp.path } : {}),
+                    ...(tp.cardinality ? { cardinality: tp.cardinality } : {}),
+                    ...(tp.mutability ? { mutability: tp.mutability } : {}),
+                    ...(tp.deferred ? { deferred: true } : {}),
+                  };
+                  addEdge(entry.id, targetId, "holds", via);
+                }
+              }
+            }
           }
         } else if (ts.isMethodSignature(member)) {
           const name = memberName(member.name);
           if (!name) continue;
           const typeStr = memberTypeString(checker, member);
           members.push(makeMember("method", name, typeStr, undefined));
-          for (const param of member.parameters) {
-            for (const id of collectReferencedIds(param.type, checker, validIds)) addEdge(entry.id, id, "references");
-          }
-          if (member.type) {
-            for (const id of collectReferencedIds(member.type, checker, validIds)) addEdge(entry.id, id, "references");
+          if (wantEdge("uses")) {
+            for (const param of member.parameters) {
+              if (param.type) {
+                const paths = collectTypePaths(param.type, checker, validIds);
+                for (const tp of paths) {
+                  if (tp.symbol) {
+                    const targetId = validIds.get(tp.symbol);
+                    if (targetId) {
+                      const paramName = parameterName(param.name);
+                      const via: ViaRecord = {
+                        ...(paramName ? { member: paramName } : {}),
+                        memberKind: "parameter",
+                        text: checker.typeToString(checker.getTypeAtLocation(param)),
+                        ...(tp.path.length > 0 ? { path: tp.path } : {}),
+                        ...(tp.cardinality ? { cardinality: tp.cardinality } : {}),
+                        ...(tp.mutability ? { mutability: tp.mutability } : {}),
+                        ...(tp.deferred ? { deferred: true } : {}),
+                      };
+                      addEdge(entry.id, targetId, "uses", via);
+                    }
+                  }
+                }
+              }
+            }
+            if (member.type) {
+              const paths = collectTypePaths(member.type, checker, validIds);
+              for (const tp of paths) {
+                if (tp.symbol) {
+                  const targetId = validIds.get(tp.symbol);
+                  if (targetId) {
+                    const via: ViaRecord = {
+                      member: name,
+                      memberKind: "return",
+                      text: checker.typeToString(checker.getTypeAtLocation(member)),
+                      ...(tp.path.length > 0 ? { path: tp.path } : {}),
+                      ...(tp.cardinality ? { cardinality: tp.cardinality } : {}),
+                      ...(tp.mutability ? { mutability: tp.mutability } : {}),
+                      ...(tp.deferred ? { deferred: true } : {}),
+                    };
+                    addEdge(entry.id, targetId, "uses", via);
+                  }
+                }
+              }
+            }
           }
         }
       }
@@ -423,14 +704,92 @@ export function collectFacts(
       symbolRecord.members = members;
     } else if (entry.kind === "typeAlias") {
       const aliasDecl = entry.node as ts.TypeAliasDeclaration;
-      for (const id of collectReferencedIds(aliasDecl.type, checker, validIds)) addEdge(entry.id, id, "references");
-    } else if (entry.kind === "function") {
-      for (const param of entry.parameters ?? []) {
-        for (const id of collectReferencedIds(param.type, checker, validIds)) addEdge(entry.id, id, "references");
+      if (wantEdge("uses")) {
+        const paths = collectTypePaths(aliasDecl.type, checker, validIds);
+        for (const tp of paths) {
+          if (tp.symbol) {
+            const targetId = validIds.get(tp.symbol);
+            if (targetId) {
+              const typeStr = checker.typeToString(checker.getTypeAtLocation(aliasDecl));
+              const via: ViaRecord = {
+                member: aliasDecl.name.text,
+                memberKind: "self",
+                text: typeStr,
+                ...(tp.path.length > 0 ? { path: tp.path } : {}),
+                ...(tp.cardinality ? { cardinality: tp.cardinality } : {}),
+                ...(tp.mutability ? { mutability: tp.mutability } : {}),
+                ...(tp.deferred ? { deferred: true } : {}),
+              };
+              addEdge(entry.id, targetId, "uses", via);
+            }
+          }
+        }
       }
-      for (const id of collectReferencedIds(entry.returnType, checker, validIds)) addEdge(entry.id, id, "references");
+    } else if (entry.kind === "function") {
+      if (wantEdge("uses")) {
+        for (const param of entry.parameters ?? []) {
+          if (param.type) {
+            const paths = collectTypePaths(param.type, checker, validIds);
+            for (const tp of paths) {
+              if (tp.symbol) {
+                const targetId = validIds.get(tp.symbol);
+                if (targetId) {
+                  const paramName = parameterName(param.name);
+                  const via: ViaRecord = {
+                    ...(paramName ? { member: paramName } : {}),
+                    memberKind: "parameter",
+                    text: checker.typeToString(checker.getTypeAtLocation(param)),
+                    ...(tp.path.length > 0 ? { path: tp.path } : {}),
+                    ...(tp.cardinality ? { cardinality: tp.cardinality } : {}),
+                    ...(tp.mutability ? { mutability: tp.mutability } : {}),
+                    ...(tp.deferred ? { deferred: true } : {}),
+                  };
+                  addEdge(entry.id, targetId, "uses", via);
+                }
+              }
+            }
+          }
+        }
+        const paths = collectTypePaths(entry.returnType, checker, validIds);
+        for (const tp of paths) {
+          if (tp.symbol) {
+            const targetId = validIds.get(tp.symbol);
+            if (targetId) {
+              const typeStr = entry.returnType ? checker.typeToString(checker.getTypeAtLocation(entry.returnType)) : "unknown";
+              const via: ViaRecord = {
+                memberKind: "return",
+                text: typeStr,
+                ...(tp.path.length > 0 ? { path: tp.path } : {}),
+                ...(tp.cardinality ? { cardinality: tp.cardinality } : {}),
+                ...(tp.mutability ? { mutability: tp.mutability } : {}),
+                ...(tp.deferred ? { deferred: true } : {}),
+              };
+              addEdge(entry.id, targetId, "uses", via);
+            }
+          }
+        }
+      }
     } else if (entry.kind === "value") {
-      for (const id of collectReferencedIds(entry.typeNode, checker, validIds)) addEdge(entry.id, id, "references");
+      if (wantEdge("uses")) {
+        const paths = collectTypePaths(entry.typeNode, checker, validIds);
+        for (const tp of paths) {
+          if (tp.symbol) {
+            const targetId = validIds.get(tp.symbol);
+            if (targetId) {
+              const typeStr = entry.typeNode ? checker.typeToString(checker.getTypeAtLocation(entry.typeNode)) : "unknown";
+              const via: ViaRecord = {
+                memberKind: "self",
+                text: typeStr,
+                ...(tp.path.length > 0 ? { path: tp.path } : {}),
+                ...(tp.cardinality ? { cardinality: tp.cardinality } : {}),
+                ...(tp.mutability ? { mutability: tp.mutability } : {}),
+                ...(tp.deferred ? { deferred: true } : {}),
+              };
+              addEdge(entry.id, targetId, "uses", via);
+            }
+          }
+        }
+      }
     }
   }
 

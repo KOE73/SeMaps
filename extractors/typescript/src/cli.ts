@@ -5,12 +5,14 @@ interface ParsedArgs {
   root: string;
   include: string[];
   exclude: string[];
+  edges?: string[];
 }
 
 function parseArgs(argv: string[]): ParsedArgs | undefined {
   let root = ".";
   const include: string[] = [];
   const exclude: string[] = [];
+  const edges: string[] = [];
 
   for (let i = 0; i < argv.length; i++) {
     const arg = argv[i];
@@ -26,18 +28,22 @@ function parseArgs(argv: string[]): ParsedArgs | undefined {
       const value = argv[++i];
       if (value === undefined) return undefined;
       exclude.push(value);
+    } else if (arg === "--edges") {
+      const value = argv[++i];
+      if (value === undefined) return undefined;
+      edges.push(...value.split(","));
     } else {
       return undefined;
     }
   }
 
-  return { root, include, exclude };
+  return { root, include, exclude, ...(edges.length > 0 ? { edges } : {}) };
 }
 
 function main(): void {
   const parsed = parseArgs(process.argv.slice(2));
   if (!parsed) {
-    process.stderr.write("usage: semaps-extract-typescript [--root <dir>] [--include <path>]... [--exclude <glob>]...\n");
+    process.stderr.write("usage: semaps-extract-typescript [--root <dir>] [--include <path>]... [--exclude <glob>]... [--edges <kind>,...]\n");
     process.exitCode = 2;
     return;
   }

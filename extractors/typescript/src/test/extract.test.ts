@@ -14,11 +14,18 @@ const testdataRootAbs = path.join(packageRoot, "testdata", "project");
 // so the output's `root` field matches testdata/expected.json byte for byte.
 const testdataRoot = path.relative(process.cwd(), testdataRootAbs).split(path.sep).join("/") || ".";
 const expectedPath = path.join(packageRoot, "testdata", "expected.json");
+const expectedHoldsUsesPath = path.join(packageRoot, "testdata", "expected-holds-uses.json");
 const schemaPath = path.resolve(packageRoot, "..", "..", "schemas", "extractor-facts.schema.json");
 
 test("matches testdata/expected.json", () => {
   const facts = extract({ root: testdataRoot, include: [], exclude: [] });
   const expected = JSON.parse(fs.readFileSync(expectedPath, "utf8"));
+  assert.deepStrictEqual(facts, expected);
+});
+
+test("matches testdata/expected-holds-uses.json with --edges holds,uses", () => {
+  const facts = extract({ root: testdataRoot, include: [], exclude: [], edges: ["holds", "uses"] });
+  const expected = JSON.parse(fs.readFileSync(expectedHoldsUsesPath, "utf8"));
   assert.deepStrictEqual(facts, expected);
 });
 
@@ -37,10 +44,10 @@ test("two runs produce byte-identical output", () => {
   assert.equal(JSON.stringify(a, null, 2), JSON.stringify(b, null, 2));
 });
 
-test("symbols are sorted by id and edges by (from, to, kind)", () => {
+test("symbols are sorted by id and edges by (from, to, kind, member, path)", () => {
   const facts = extract({ root: testdataRoot, include: [], exclude: [] });
   const ids = facts.symbols.map((s) => s.id);
   assert.deepStrictEqual(ids, [...ids].sort());
-  const edgeKeys = facts.edges.map((e) => `${e.from}\u0000${e.to}\u0000${e.kind}`);
+  const edgeKeys = facts.edges.map((e) => `${e.from}\u0000${e.to}\u0000${e.kind}\u0000${e.via?.member ?? ""}\u0000${JSON.stringify(e.via?.path ?? [])}`);
   assert.deepStrictEqual(edgeKeys, [...edgeKeys].sort());
 });

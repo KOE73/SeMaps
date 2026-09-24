@@ -4,12 +4,13 @@ import ts from "typescript";
 import { discoverFiles } from "./discovery.js";
 import { collectFacts, type SourceFileEntry } from "./collect.js";
 import { stripExtension } from "./id.js";
-import type { EdgeRecord, FactsOutput, SymbolRecord } from "./types.js";
+import type { EdgeKind, EdgeRecord, FactsOutput, SymbolRecord } from "./types.js";
 
 export interface ExtractOptions {
   root: string;
   include: string[];
   exclude: string[];
+  edges?: string[];
 }
 
 export class ExtractError extends Error {}
@@ -48,6 +49,12 @@ function edgeSortKey(a: EdgeRecord, b: EdgeRecord): number {
   if (a.from !== b.from) return a.from < b.from ? -1 : 1;
   if (a.to !== b.to) return a.to < b.to ? -1 : 1;
   if (a.kind !== b.kind) return a.kind < b.kind ? -1 : 1;
+  const aMember = a.via?.member ?? "";
+  const bMember = b.via?.member ?? "";
+  if (aMember !== bMember) return aMember < bMember ? -1 : 1;
+  const aPath = JSON.stringify(a.via?.path ?? []);
+  const bPath = JSON.stringify(b.via?.path ?? []);
+  if (aPath !== bPath) return aPath < bPath ? -1 : 1;
   return 0;
 }
 
@@ -77,14 +84,22 @@ export function extract(options: ExtractOptions): FactsOutput {
     files.push({ sourceFile, relNoExt: stripExtension(relWithExt), relWithExt });
   }
 
-  const { symbols, edges } = collectFacts(checker, files);
+  const { symbols, edges } = collectFacts(checker, files, options.edges);
   symbols.sort(symbolSortKey);
   edges.sort(edgeSortKey);
 
-  return {
+  const result: FactsOutput = {
     language: "typescript",
     root: options.root,
     symbols,
     edges,
   };
+
+  if (options.edges && options.edges.length > 0) {
+    const baseKinds: EdgeKind[] = ["extends", "implements", "contains"];
+    result.edgeKinds = [...new Set([...baseKinds, ...options.edges as EdgeKind[]])];
+    result.edgeKinds.sort();
+  }
+
+  return result;
 }
