@@ -120,18 +120,20 @@ internal static class ReferenceEdgeCollector
         HashSet<EdgeWithVia> edges,
         HashSet<string>? requestedEdgeKinds)
     {
-        // Return type: uses
-        AddForParameter(fromId, method.ReturnType, "return", "return", method, outputIds, edges, requestedEdgeKinds);
+        var methodName = method.Name;
 
-        // Parameters
+        // Return type: uses with method name as member
+        AddForMethodParameter(fromId, method.ReturnType, methodName, "return", method, outputIds, edges, requestedEdgeKinds);
+
+        // Parameters: uses with parameter name as member
         foreach (var param in method.Parameters)
         {
             var memberKindStr = method.MethodKind == MethodKind.Constructor ? "constructor" : "parameter";
-            AddForParameter(fromId, param.Type, param.Name, memberKindStr, method, outputIds, edges, requestedEdgeKinds);
+            AddForMethodParameter(fromId, param.Type, param.Name, memberKindStr, method, outputIds, edges, requestedEdgeKinds);
         }
     }
 
-    private static void AddForParameter(
+    private static void AddForMethodParameter(
         string fromId,
         ITypeSymbol type,
         string paramName,
@@ -203,102 +205,144 @@ internal static class ReferenceEdgeCollector
         List<AnalyzedSymbol> results,
         HashSet<INamedTypeSymbol> visited)
     {
-        // Unwrap deferred types
-        var unwrapped = type;
-        var isDeferred = false;
-        if (type is INamedTypeSymbol namedType && TryUnwrapDeferred(namedType, out var unwrappedDeferred))
+        // Handle arrays: T[] -> item path
+        if (type is IArrayTypeSymbol array)
         {
-            unwrapped = unwrappedDeferred;
-            isDeferred = true;
+            var itemPath = new List<string>(path) { "item" };
+            AnalyzeTypeRecursive(array.ElementType, itemPath, results, visited);
+            return;
         }
 
-        // Handle collections
-        if (TryClassifyCollection(unwrapped, out var cardinality, out var mutability, out var items))
+        if (type is not INamedTypeSymbol named)
         {
-            foreach (var item in items)
+            return;
+        }
+
+        var name = named.Name;
+
+        // Unwrap deferred types: Task<T>, ValueTask<T>, Lazy<T>, Func<T>, IObservable<T>
+        // These have path ["result"] and deferred=true
+        if ((name == "Task" || name == "ValueTask" || name == "Lazy" || name == "Func" || name == "IObservable")
+            && named.TypeArguments.Length > 0)
+        {
+            var resultType = named.TypeArguments[^1];  // Last type arg is result
+            var resultPath = new List<string>(path) { "result" };
+            var features = new SymbolFeatures
             {
-                var itemType = item.Type;
-                var slot = item.Slot;
-                var newPath = new List<string>(path) { slot };
+                Deferred = true,
+                Path = resultPath,
+            };
 
-                // If itemType is a named type, add it
-                if (itemType is INamedTypeSymbol itemNamed && visited.Add(itemNamed))
-                {
-                    results.Add(new AnalyzedSymbol
-                    {
-                        ReferencedType = itemNamed,
-                        Features = new SymbolFeatures
-                        {
-                            Cardinality = cardinality,
-                            Mutability = mutability,
-                            Deferred = isDeferred,
-                            Path = newPath,
-                        }
-                    });
-                }
-
-                // Recursively analyze
-                AnalyzeTypeRecursive(itemType, newPath, results, visited);
+            // Add the result type with features
+            if (resultType is INamedTypeSymbol resultNamed && visited.Add(resultNamed))
+            {
+                features.Cardinality = GetCardinality(resultNamed);
+                results.Add(new AnalyzedSymbol { ReferencedType = resultNamed, Features = features });
             }
+
+            // Recurse into result type to find nested symbols
+            AnalyzeTypeRecursive(resultType, resultPath, results, visited);
+            return;
+        }
+
+        // Handle Task without result type
+        if (name == "Task" && named.TypeArguments.Length == 0)
+        {
+            // Task with no result type - no symbol dependency
             return;
         }
 
         // Handle Nullable<T>
-        if (TryUnwrapNullable(unwrapped, out var innerType))
+        if (named.OriginalDefinition.SpecialType == SpecialType.System_Nullable_T && named.TypeArguments.Length == 1)
         {
+            var innerType = named.TypeArguments[0];
+            var features = new SymbolFeatures { Cardinality = "optional", Path = new List<string>(path) };
+
             if (innerType is INamedTypeSymbol innerNamed && visited.Add(innerNamed))
             {
-                results.Add(new AnalyzedSymbol
-                {
-                    ReferencedType = innerNamed,
-                    Features = new SymbolFeatures
-                    {
-                        Cardinality = "optional",
-                        Deferred = isDeferred,
-                        Path = new List<string>(path),
-                    }
-                });
+                results.Add(new AnalyzedSymbol { ReferencedType = innerNamed, Features = features });
             }
             AnalyzeTypeRecursive(innerType, path, results, visited);
             return;
         }
 
-        // Plain type
-        if (unwrapped is INamedTypeSymbol named && visited.Add(named))
+        // Handle collections: List<T>, IReadOnlyList<T>, Dictionary<K,V>, etc.
+        if (TryClassifyCollection(named, out var cardinality, out var mutability, out var items))
         {
-            results.Add(new AnalyzedSymbol
+            foreach (var item in items)
             {
-                ReferencedType = named,
-                Features = new SymbolFeatures
+                var itemType = item.Type;
+                var slot = item.Slot;
+                var slotPath = new List<string>(path) { slot };
+
+                if (itemType is INamedTypeSymbol itemNamed && visited.Add(itemNamed))
                 {
-                    Cardinality = "one",
-                    Deferred = isDeferred,
-                    Path = new List<string>(path),
+                    var features = new SymbolFeatures
+                    {
+                        Cardinality = cardinality,
+                        Mutability = mutability,
+                        Path = slotPath,
+                    };
+                    results.Add(new AnalyzedSymbol { ReferencedType = itemNamed, Features = features });
                 }
-            });
+
+                // Recurse to handle generic type arguments
+                AnalyzeTypeRecursive(itemType, slotPath, results, visited);
+            }
+            return;
+        }
+
+        // Handle generic type arguments for symbol that is in output
+        if (named.TypeArguments.Length > 0)
+        {
+            // Add the symbol itself if in output
+            if (visited.Add(named))
+            {
+                var features = new SymbolFeatures { Path = new List<string>(path) };
+                results.Add(new AnalyzedSymbol { ReferencedType = named, Features = features });
+            }
+
+            // Add generic type arguments
+            for (int i = 0; i < named.TypeArguments.Length; i++)
+            {
+                var argType = named.TypeArguments[i];
+                var argPath = new List<string>(path) { $"arg:{i}" };
+
+                if (argType is INamedTypeSymbol argNamed)
+                {
+                    if (visited.Add(argNamed))
+                    {
+                        // If argument is in output, add it
+                        var features = new SymbolFeatures { Path = argPath };
+                        results.Add(new AnalyzedSymbol { ReferencedType = argNamed, Features = features });
+                    }
+                    else
+                    {
+                        // Already visited - add with arg path
+                        var features = new SymbolFeatures { Path = argPath };
+                        results.Add(new AnalyzedSymbol { ReferencedType = argNamed, Features = features });
+                    }
+                }
+
+                // Recurse to find nested symbols
+                AnalyzeTypeRecursive(argType, argPath, results, visited);
+            }
+            return;
+        }
+
+        // Plain type reference
+        if (visited.Add(named))
+        {
+            var features = new SymbolFeatures { Path = new List<string>(path) };
+            results.Add(new AnalyzedSymbol { ReferencedType = named, Features = features });
         }
     }
 
-    private static bool TryUnwrapDeferred(INamedTypeSymbol type, out ITypeSymbol result)
+    private static string? GetCardinality(INamedTypeSymbol type)
     {
-        result = type;
-        var name = type.Name;
-
-        // Task<T>, ValueTask<T>, Lazy<T>, Func<T>, IObservable<T>
-        if ((name == "Task" || name == "ValueTask" || name == "Lazy" || name == "Func" || name == "IObservable")
-            && type.TypeArguments.Length > 0)
-        {
-            result = type.TypeArguments[^1];
-            return true;
-        }
-
-        // Task without result
-        if (name == "Task" && type.TypeArguments.Length == 0)
-        {
-            return true;
-        }
-
-        return false;
+        // For types inside deferred wrappers, return appropriate cardinality
+        // This is mainly "one" for simple types
+        return "one";
     }
 
     private sealed class CollectionItem
@@ -307,21 +351,19 @@ internal static class ReferenceEdgeCollector
         public required string Slot { get; set; }
     }
 
-    private static bool TryClassifyCollection(ITypeSymbol type, out string? cardinality, out string? mutability, out List<CollectionItem> items)
+    private static bool TryClassifyCollection(INamedTypeSymbol type, out string? cardinality, out string? mutability, out List<CollectionItem> items)
     {
         cardinality = null;
         mutability = null;
         items = [];
 
-        if (type is not INamedTypeSymbol named) return false;
-
-        var name = named.Name;
-        var tyargCount = named.TypeArguments.Length;
+        var name = type.Name;
+        var tyargCount = type.TypeArguments.Length;
 
         // Collections with single type parameter
         if (tyargCount == 1)
         {
-            var itemType = named.TypeArguments[0];
+            var itemType = type.TypeArguments[0];
 
             switch (name)
             {
@@ -374,20 +416,11 @@ internal static class ReferenceEdgeCollector
             }
         }
 
-        // T[] array
-        if (type is IArrayTypeSymbol array)
-        {
-            cardinality = "many";
-            mutability = "mutable";
-            items.Add(new CollectionItem { Type = array.ElementType, Slot = "item" });
-            return true;
-        }
-
         // Dictionary with two type parameters
         if (tyargCount == 2)
         {
-            var keyType = named.TypeArguments[0];
-            var valueType = named.TypeArguments[1];
+            var keyType = type.TypeArguments[0];
+            var valueType = type.TypeArguments[1];
 
             switch (name)
             {
@@ -410,21 +443,6 @@ internal static class ReferenceEdgeCollector
                     items.Add(new CollectionItem { Type = valueType, Slot = "value" });
                     return true;
             }
-        }
-
-        return false;
-    }
-
-    private static bool TryUnwrapNullable(ITypeSymbol type, out ITypeSymbol result)
-    {
-        result = null!;
-
-        if (type is not INamedTypeSymbol named) return false;
-
-        if (named.OriginalDefinition.SpecialType == SpecialType.System_Nullable_T && named.TypeArguments.Length == 1)
-        {
-            result = named.TypeArguments[0];
-            return true;
         }
 
         return false;

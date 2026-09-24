@@ -104,7 +104,7 @@
       "name": "Features",
       "namespace": "Sample.Core",
       "file": "Sample.Core/Features.cs",
-      "line": 9,
+      "line": 10,
       "visibility": "public",
       "members": [
         {
@@ -127,8 +127,26 @@
         },
         {
           "kind": "property",
+          "name": "StatusArray",
+          "type": "Status[]",
+          "visibility": "public"
+        },
+        {
+          "kind": "property",
           "name": "OptionalStatus",
           "type": "Status?",
+          "visibility": "public"
+        },
+        {
+          "kind": "property",
+          "name": "StatusFactory",
+          "type": "Func<Status>",
+          "visibility": "public"
+        },
+        {
+          "kind": "property",
+          "name": "LazyStatus",
+          "type": "Lazy<Status>",
           "visibility": "public"
         }
       ]

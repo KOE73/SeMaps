@@ -106,7 +106,7 @@
       "name": "Features",
       "namespace": "Sample.Core",
       "file": "Sample.Core/Features.cs",
-      "line": 9,
+      "line": 10,
       "visibility": "public",
       "members": [
         {
@@ -129,8 +129,26 @@
         },
         {
           "kind": "property",
+          "name": "StatusArray",
+          "type": "Status[]",
+          "visibility": "public"
+        },
+        {
+          "kind": "property",
           "name": "OptionalStatus",
           "type": "Status?",
+          "visibility": "public"
+        },
+        {
+          "kind": "property",
+          "name": "StatusFactory",
+          "type": "Func<Status>",
+          "visibility": "public"
+        },
+        {
+          "kind": "property",
+          "name": "LazyStatus",
+          "type": "Lazy<Status>",
           "visibility": "public"
         }
       ]
@@ -372,10 +390,9 @@
       "to": "Sample.Core.Repo`1",
       "kind": "uses",
       "via": {
-        "member": "return",
+        "member": "Snapshot",
         "memberKind": "return",
-        "text": "Repo<Status>",
-        "cardinality": "one"
+        "text": "Repo<Status>"
       }
     },
     {
@@ -388,8 +405,20 @@
         "modifiers": [
           "public"
         ],
-        "text": "Status",
-        "cardinality": "one"
+        "text": "Status"
+      }
+    },
+    {
+      "from": "Sample.App.AdvancedRepetitionGuard",
+      "to": "Sample.Core.Status",
+      "kind": "uses",
+      "via": {
+        "member": "Snapshot",
+        "memberKind": "return",
+        "text": "Repo<Status>",
+        "path": [
+          "arg:0"
+        ]
       }
     },
     {
@@ -452,8 +481,7 @@
         "modifiers": [
           "private"
         ],
-        "text": "Status",
-        "cardinality": "one"
+        "text": "Status"
       }
     },
     {
@@ -472,6 +500,24 @@
         ],
         "cardinality": "keyed",
         "mutability": "mutable"
+      }
+    },
+    {
+      "from": "Sample.Core.Features",
+      "to": "Sample.Core.Status",
+      "kind": "holds",
+      "via": {
+        "member": "LazyStatus",
+        "memberKind": "property",
+        "modifiers": [
+          "public"
+        ],
+        "text": "Lazy<Status>",
+        "path": [
+          "result"
+        ],
+        "cardinality": "one",
+        "deferred": true
       }
     },
     {
@@ -511,6 +557,40 @@
       "to": "Sample.Core.Status",
       "kind": "holds",
       "via": {
+        "member": "StatusArray",
+        "memberKind": "property",
+        "modifiers": [
+          "public"
+        ],
+        "text": "Status[]",
+        "path": [
+          "item"
+        ]
+      }
+    },
+    {
+      "from": "Sample.Core.Features",
+      "to": "Sample.Core.Status",
+      "kind": "holds",
+      "via": {
+        "member": "StatusFactory",
+        "memberKind": "property",
+        "modifiers": [
+          "public"
+        ],
+        "text": "Func<Status>",
+        "path": [
+          "result"
+        ],
+        "cardinality": "one",
+        "deferred": true
+      }
+    },
+    {
+      "from": "Sample.Core.Features",
+      "to": "Sample.Core.Status",
+      "kind": "holds",
+      "via": {
         "member": "StatusMap",
         "memberKind": "property",
         "modifiers": [
@@ -522,6 +602,23 @@
         ],
         "cardinality": "keyed",
         "mutability": "mutable"
+      }
+    },
+    {
+      "from": "Sample.Core.Features",
+      "to": "Sample.Core.Status",
+      "kind": "holds",
+      "via": {
+        "member": "StatusMap",
+        "memberKind": "property",
+        "modifiers": [
+          "public"
+        ],
+        "text": "Dictionary<Status, Repo<Status>>",
+        "path": [
+          "value",
+          "arg:0"
+        ]
       }
     },
     {
@@ -547,10 +644,14 @@
       "to": "Sample.Core.Status",
       "kind": "uses",
       "via": {
-        "member": "initialStatus",
-        "memberKind": "constructor",
-        "text": "Status",
-        "cardinality": "one"
+        "member": "GetStatusAsync",
+        "memberKind": "return",
+        "text": "Task<Status>",
+        "path": [
+          "result"
+        ],
+        "cardinality": "one",
+        "deferred": true
       }
     },
     {
@@ -558,11 +659,9 @@
       "to": "Sample.Core.Status",
       "kind": "uses",
       "via": {
-        "member": "return",
-        "memberKind": "return",
-        "text": "Task<Status>",
-        "cardinality": "one",
-        "deferred": true
+        "member": "initialStatus",
+        "memberKind": "constructor",
+        "text": "Status"
       }
     },
     {
@@ -580,8 +679,7 @@
         "modifiers": [
           "public"
         ],
-        "text": "Notify",
-        "cardinality": "one"
+        "text": "Notify"
       }
     },
     {
@@ -589,10 +687,9 @@
       "to": "Sample.Core.Repo`1",
       "kind": "uses",
       "via": {
-        "member": "return",
+        "member": "Snapshot",
         "memberKind": "return",
-        "text": "Repo<Status>",
-        "cardinality": "one"
+        "text": "Repo<Status>"
       }
     },
     {
@@ -606,8 +703,20 @@
           "public",
           "readonly"
         ],
-        "text": "Status",
-        "cardinality": "one"
+        "text": "Status"
+      }
+    },
+    {
+      "from": "Sample.Core.IRepository",
+      "to": "Sample.Core.Status",
+      "kind": "uses",
+      "via": {
+        "member": "Snapshot",
+        "memberKind": "return",
+        "text": "Repo<Status>",
+        "path": [
+          "arg:0"
+        ]
       }
     },
     {
@@ -617,8 +726,7 @@
       "via": {
         "member": "status",
         "memberKind": "parameter",
-        "text": "Status",
-        "cardinality": "one"
+        "text": "Status"
       }
     },
     {
