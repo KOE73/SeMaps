@@ -1,4 +1,5 @@
 # ADR_20260924-2_core — Сверка пишет `references` связями
+Статус: **заменено** [`ADR_20260924-4`](ADR_20260924-4_contract_member-relations-from-code.md).
 
 Статус: **принято**. Заменяет [`ADR_20260923-9`](ADR_20260923-9_core_sync-symbol-mapping-and-containment.md)
 §5 в части `references` и строку «Политика видимости `byType`» таблицы отвергнутого
