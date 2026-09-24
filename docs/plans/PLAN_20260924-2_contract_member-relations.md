@@ -1,6 +1,6 @@
 # PLAN_20260924-2_contract — Членские связи из кода
 
-Статус: **в работе** — не начат.
+Статус: **закрыт** — шаги 1–10 сделаны; после прогона старые `references` (643) стали `missing` (fix 3e8033f).
 
 Решение: [`ADR_20260924-4`](../adr/ADR_20260924-4_contract_member-relations-from-code.md).
 Следом — [`PLAN_20260924-3_host_mcp-server`](PLAN_20260924-3_host_mcp-server.md): он ложится
