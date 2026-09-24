@@ -168,6 +168,17 @@ export function createBuiltinCommands(): CommandDefinition[] {
       },
     },
     {
+      id: "view.routing.debug",
+      get title() { return i18n.d.commands.routingDebug.title; },
+      get description() { return i18n.d.commands.routingDebug.desc; },
+      icon: "🧭",
+      category: "View",
+      isChecked: (ctx) => ctx.canvas.debugRouting,
+      execute: (ctx) => {
+        ctx.canvas.debugRouting = !ctx.canvas.debugRouting;
+      },
+    },
+    {
       id: "view.snap.toggle",
       get title() { return i18n.d.commands.toggleSnap.title; },
       get description() { return i18n.d.commands.toggleSnap.desc; },
@@ -358,6 +369,17 @@ export function createBuiltinCommands(): CommandDefinition[] {
       keyTip: "P6",
       isChecked: (ctx) => ctx.panels.isOpen("base"),
       execute: (ctx) => ctx.panels.toggle("base"),
+    },
+    {
+      id: "panel.neighbourhood.toggle",
+      get title() { return i18n.d.panels.neighbourhood.title; },
+      get description() { return i18n.d.commands.toggleNeighbourhood.desc; },
+      icon: "🕸️",
+      category: "Panels",
+      shortcut: "Alt+7",
+      keyTip: "P7",
+      isChecked: (ctx) => ctx.panels.isOpen("neighbourhood"),
+      execute: (ctx) => ctx.panels.toggle("neighbourhood"),
     },
 
     // ------------------------------------------------------------ Workspace

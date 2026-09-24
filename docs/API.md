@@ -229,6 +229,7 @@ Any host fulfilling these three interfaces will provide complete visualizer and 
 ```
 semaps [flags] [dir | file.semaps]
 semaps check [flags] [dir | file.semaps]
+semaps sync --facts <file.json | -> [--project <id>] [--dry-run] [--no-renames] [flags] [dir | file.semaps]
 semaps install
 ```
 
@@ -238,6 +239,9 @@ offers the same interactively.
 
 `check` resolves the roots exactly as the server does, runs the model check from `core/` and
 exits with `1` when anything is found. It does not serve.
+
+`sync` resolves the roots the same way and reconciles one project's registry with extractor facts;
+rules, report and exit codes — [`EXTRACTOR.md`](EXTRACTOR.md) §5. It does not serve.
 
 ### Project file `*.semaps`
 

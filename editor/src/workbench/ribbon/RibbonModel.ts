@@ -67,6 +67,7 @@ export function createDefaultRibbonSpec(): RibbonSpec {
             get title() { return i18n.d.ribbon.groups.panels; },
             items: [
               { type: "button", command: "panel.base.toggle", size: "large" },
+              { type: "button", command: "panel.neighbourhood.toggle", size: "large" },
               { type: "button", command: "panel.catalog.toggle", size: "large" },
             ],
           },
@@ -123,6 +124,7 @@ export function createDefaultRibbonSpec(): RibbonSpec {
               { type: "toggle", command: "view.shadows.global.toggle", size: "medium" },
               { type: "toggle", command: "view.grid.toggle", size: "small" },
               { type: "toggle", command: "view.snap.toggle", size: "small" },
+              { type: "toggle", command: "view.routing.debug", size: "small" },
             ],
           },
           {
@@ -183,6 +185,7 @@ export function createDefaultRibbonSpec(): RibbonSpec {
               { type: "toggle", command: "panel.styles.toggle", size: "small" },
               { type: "toggle", command: "panel.catalog.toggle", size: "small" },
               { type: "toggle", command: "panel.base.toggle", size: "small" },
+              { type: "toggle", command: "panel.neighbourhood.toggle", size: "small" },
               { type: "separator" },
               { type: "button", command: "workspace.layout.reset", size: "small" },
             ],

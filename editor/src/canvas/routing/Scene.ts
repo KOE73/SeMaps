@@ -37,6 +37,12 @@ export interface RouteZone {
    * the list per edge.
    */
   readonly ownerId: string;
+  /**
+   * A line already drawn, not a shape. Its flanks are worth a grid line only
+   * when the budget has room after the shapes' own — a detour around a block
+   * matters more than a lane next to another line.
+   */
+  readonly lane?: boolean;
 }
 
 export interface RouteScene {
@@ -57,6 +63,42 @@ const BORDER_WEIGHT = 6;
 
 /** Spacing between routes that end up sharing a corridor. */
 export const LANE_GAP = 10;
+
+/** Cost of running along a line already drawn, per unit length. Crossing it costs almost nothing. */
+const LANE_WEIGHT = 3;
+
+/**
+ * Width of that band. Wider than the separation pass's gap on purpose: two
+ * lines 10 units apart are one stroke at the zoom a whole view is read at,
+ * and "separate but indistinguishable" is the same failure as merged.
+ */
+const LANE_WIDTH = 24;
+
+/**
+ * A finished route as a band around each of its segments, for the routes
+ * found after it: following it until the two are one stroke is expensive,
+ * crossing it is nearly free. The same pricing that keeps lines off a
+ * container's frame keeps them off each other — which matters most at the
+ * ends, where the separation pass may not move anything.
+ */
+export function laneZones(points: readonly Point[], ownerId: string): RouteZone[] {
+  const half = LANE_WIDTH / 2;
+  const out: RouteZone[] = [];
+  for (let i = 0; i < points.length - 1; i++) {
+    const a = points[i]!;
+    const b = points[i + 1]!;
+    if (!Number.isFinite(a.x) || !Number.isFinite(a.y) || !Number.isFinite(b.x) || !Number.isFinite(b.y)) continue;
+    const vertical = Math.abs(a.x - b.x) < 0.01;
+    const horizontal = Math.abs(a.y - b.y) < 0.01;
+    if (!vertical && !horizontal) continue;
+    const rect = vertical
+      ? { x: a.x - half, y: Math.min(a.y, b.y), width: LANE_WIDTH, height: Math.abs(a.y - b.y) }
+      : { x: Math.min(a.x, b.x), y: a.y - half, width: Math.abs(a.x - b.x), height: LANE_WIDTH };
+    if (rect.width < 0.5 || rect.height < 0.5) continue;
+    out.push({ rect, weight: LANE_WEIGHT, ownerId, lane: true });
+  }
+  return out;
+}
 
 /**
  * Blocks become forbidden rectangles, grown by the clearance so that a line

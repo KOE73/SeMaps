@@ -26,7 +26,8 @@ Format details live in [CONTRACT.md](CONTRACT.md); this file only lists the step
    - `project.json`: `id` = folder name, `title`, `contractVersion: 3`, `defaultAxis`,
      `languages`, `sources.include`; optional `subtitle`, `icon`, `theme`, `order` for the catalogue.
    - `entities.json`: `e_` ids, `kind`, `origin: code` for anything read from the code, and `codeRef`
-     relative to `source_root`.
+     relative to `source_root`. With an extractor for the language, let `semaps sync` write it
+     (see below) instead.
    - `relations.json` + `relation-types.json`: every `type` used must be in the dictionary.
      For a derived relation, the id is `r_<from>_<to>_<type>` without the `e_` prefix.
    - `text.<lang>.json`: descriptions for `e_`, names for `rt_`/`v_`. Every value is
@@ -46,10 +47,46 @@ entries give you relations of type `references`, with the `.csproj` as `evidence
 with a short script instead of writing them by hand. This is enough to open the editor and drag
 entities from the registry panel.
 
-Deeper than assemblies (types, inheritance, calls) is the job of `extractors/csharp`
-([plan](plans/PLAN_20260923_extractors_csharp.md)). Do not parse the code with regexes to fill
-`entities.json` by hand: ids and relations produced that way are not reproducible, and nothing
-will keep them in sync with the code.
+Deeper than assemblies (types, inheritance, containment) is the job of an extractor and
+`semaps sync` (next section). Do not parse the code with regexes to fill `entities.json` by
+hand: ids and relations produced that way are not reproducible, and nothing will keep them in
+sync with the code.
+
+## Sync with code: `semaps sync`
+
+An extractor prints facts; `semaps sync` turns them into `entities.json`, `relations.json` and
+`relation-types.json` of **one** project ([EXTRACTOR.md](EXTRACTOR.md) §5 has the rules).
+
+```
+semaps-extract-csharp --root . --include src > facts.json     # or semaps-extract-typescript
+semaps sync --facts facts.json --dry-run                      # report only
+semaps sync --facts facts.json                                # write the registry
+semaps sync --facts facts.json --project <id> path\to\x.semaps   # several projects in the workspace
+```
+
+- Flags go **before** the project argument. `--facts -` reads stdin. Keep `facts.json` out of the
+  workspace and out of git: it is regenerated on every run.
+- Only symbols under `project.json → sources.include` enter the project.
+- The first run **adopts** entities you already have (for example the assemblies from the
+  section above): same `codeRef` and `name`, or same `namespace`, `name` and `kind`. Generic
+  parameter lists in names (`IRunner<in TIn, out TOut>`) and modifiers in kinds (`class` vs
+  `abstract-class`) do not get in the way. They keep their ids, names and kinds and get a
+  `symbol` field — that is the key for every later run; do not remove it.
+  An entity that fits several symbols (or the reverse) is reported as `неоднозначно`: set its
+  `symbol` by hand.
+- `authored` entities, texts and views are never written. A class gone from the code gets
+  `status: missing`, never deleted.
+- `переименование?` in the report: an entity vanished and a new symbol of the same kind
+  appeared in the same file. Nothing is decided. If it is a rename, set the old entity's
+  `symbol` to the new symbol id (and `name`, if you want) and run again; if not, run with
+  `--no-renames`. Decide with the human when the entity sits on views.
+- `extends`, `implements`, `contains` become relations (`origin: code`) and their types are
+  added to `relation-types.json`. Give each new type a name in `text.<lang>.json`
+  (`rt_contains`, …), or `semaps check` reports it. `references` are only counted in the report.
+- Exit code: `--dry-run` gives 1 when anything would change — use it in CI next to
+  `semaps check`. Without it, 1 means something is left for a human (`неоднозначно`,
+  `переименование?`) or the registry contradicts itself (`сломано`, nothing written); 2 is a
+  usage mistake.
 
 ## Two languages: link them or `check` fails
 
@@ -67,9 +104,11 @@ whichever language you wrote first as the source.
 An empty canvas looks like a failure, so say where the registry went. In the editor the right
 panel **«База сущностей»** (entity base) sits collapsed next to «Свойства» and «Фильтры»;
 entities are dragged from it onto the canvas. Relations appear as soon as both ends are on the
-view. Placing the first nodes is the human's job, not yours — including a "starter" layout
-(CONTRACT §8.2 rule 3, §9.6): a view with nodes an agent wrote is a contract violation, not a
-favour.
+view. Next to it, **«Окрестность»** (neighbourhood) shows the relations of the selected box as a
+tree, by type and direction, to expand and pull onto the canvas. Right click on a box adds its
+ancestors, descendants, interfaces, implementations or contents in one go, and lists every other
+relation type with who is at the other end. Placing nodes is the human's job unless they ask you
+for it — no "starter" layout nobody requested (CONTRACT §8.2 rule 3, §9.6).
 
 ## Verifying that the editor opened the model
 
@@ -87,12 +126,16 @@ file of the project (`views/…`, `project.json`, `entities.json`, `relations.js
 - **No `*.semaps`, no server.** The host no longer looks for a workspace by itself; the project file
   is required (or `--workspace`).
 
-- **Geometry is not yours.** An agent never writes `x/y/width/height`, zones or nodes
-  (CONTRACT §8.2, §9.6). Create the view empty; the human places the nodes.
+- **Geometry only on request.** Unasked, an agent never writes `x/y/width/height`, zones or
+  nodes (CONTRACT §8.2, §9.6): create the view empty and let the human place the nodes. When the
+  human explicitly asks for help with a view ("spread these subclasses into frames by meaning"),
+  do what was asked and nothing more. [LAYOUT.md](LAYOUT.md) explains how a view works — sizes,
+  frames, lines — and the two things that are not optional: the view must not be open unsaved in
+  the editor, and geometry outside the request stays put.
 - **Judge `semaps check` by its exit code**: 0 is clean, 1 means findings (listed on stdout).
   Do not match the output text.
 - **A stale `semaps` binary in `PATH`** (for example `~/go/bin/semaps` from an older `go install`)
-  may not know `check`. It treats the argument as a project and starts or reuses the server
+  may not know `check` or `sync`. It treats the argument as a project and starts or reuses the server
   ("Already running: …"), still with exit 0. That looks like a pass, but nothing was checked.
   Run `where semaps` (Windows) / `which -a semaps` and `semaps --help`; if `check` is missing or
   another copy shadows the installed one, update from Releases and remove the stale copy.

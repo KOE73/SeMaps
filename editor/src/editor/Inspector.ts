@@ -17,6 +17,8 @@ export interface InspectorHost {
   dataLang: string;
   editField(apply: () => void, options?: { rerender?: boolean; reselect?: boolean }): void;
   deleteSelection(): void;
+  /** Set a content template on boxes, growing them to fit (null — the style's). */
+  applyTemplate(ids: readonly string[], template: string | null): void;
   addEdgeFromSelection(targetId: string, type: string, label: string): void;
   deleteEdge(edgeId: string): void;
   /** Switch the right-hand panel to the Styles tab with this style open. */
@@ -518,13 +520,7 @@ export class Inspector {
       field(
         i18n.d.panels.properties.templateTitle,
         select(options, override ?? "", (value) => {
-          this.host.editField(
-            () => {
-              if (value === "") delete element.metadata.template;
-              else element.metadata.template = value;
-            },
-            { rerender: true },
-          );
+          this.host.applyTemplate([element.id], value === "" ? null : value);
         }),
       ),
     ]);

@@ -251,15 +251,21 @@ export class OrthogonalRouter implements EdgeRouter {
       fromSide: req.fromSide,
       toSide: req.toSide,
       zones: req.zones ?? [],
+      ...(req.fromSlide ? { fromSlide: req.fromSlide } : {}),
+      ...(req.toSlide ? { toSlide: req.toSlide } : {}),
+      ...(req.onGrid ? { onGrid: req.onGrid } : {}),
     });
     const points = searched ?? simplify(ladder(pFrom, req.fromSide, pTo, req.toSide));
+    // The search may have slid the ends along their sides; labels follow the real ends.
+    const start = points[0] ?? pFrom;
+    const end = points[points.length - 1] ?? pTo;
 
     return {
       path: filletedPath(points),
       points,
       corners: "rounded",
       labelAt: labelOnLongestSegment(points),
-      ...endLabels(pFrom, req.fromSide, pTo, req.toSide),
+      ...endLabels(start, req.fromSide, end, req.toSide),
     };
   }
 }

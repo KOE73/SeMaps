@@ -75,6 +75,8 @@ export interface UiDictionary {
     readonly toggleFilters: { readonly title: string; readonly desc: string };
     readonly toggleStyles: { readonly title: string; readonly desc: string };
     readonly toggleBase: { readonly title: string; readonly desc: string };
+    readonly routingDebug: { readonly title: string; readonly desc: string };
+    readonly toggleNeighbourhood: { readonly title: string; readonly desc: string };
     readonly toggleCatalog: { readonly title: string; readonly desc: string };
     readonly resetLayout: { readonly title: string; readonly desc: string };
     readonly openJson: { readonly title: string; readonly desc: string };
@@ -250,6 +252,28 @@ export interface UiDictionary {
       readonly kindHint: string;
       readonly noMatches: string;
     };
+    readonly neighbourhood: {
+      readonly title: string;
+      readonly emptyNoModel: string;
+      readonly empty: string;
+      readonly pin: string;
+      readonly unpin: string;
+      readonly typeHint: string;
+      readonly outgoing: string;
+      readonly outgoingHint: string;
+      readonly incoming: string;
+      readonly incomingHint: string;
+      readonly addGroup: string;
+      readonly allPlaced: string;
+      readonly add: string;
+      readonly placed: string;
+      readonly selectHint: string;
+      readonly dragHint: string;
+      readonly reroot: string;
+      readonly cycle: string;
+      /** Readable names of the two arms of a known relation type. */
+      readonly arms: Readonly<Record<string, { readonly out: string; readonly in: string }>>;
+    };
     readonly templates: {
       readonly title: string;
       readonly listTitle: string;
@@ -306,6 +330,51 @@ export interface UiDictionary {
     readonly iconCustom: string;
     readonly colorLabel: string;
     readonly noColor: string;
+  };
+  readonly canvasMenu: {
+    readonly template: string;
+    readonly templateFromStyle: string;
+    readonly style: string;
+    readonly styleDefault: string;
+    readonly styleByType: string;
+    readonly describe: string;
+    readonly code: string;
+    readonly properties: string;
+    readonly blockStyle: string;
+    readonly edgeStyle: string;
+    readonly neighbourhood: string;
+    readonly remove: string;
+    readonly lineShape: string;
+    readonly inherited: string;
+    readonly resetShape: string;
+    readonly resetShapeHint: string;
+    readonly viewShape: string;
+    readonly byType: string;
+    readonly byTypeHint: string;
+    readonly modes: {
+      readonly orthogonal: string;
+      readonly bezier: string;
+      readonly treeVertical: string;
+      readonly treeHorizontal: string;
+    };
+  };
+  readonly entityMenu: {
+    readonly kin: string;
+    readonly ancestors: string;
+    readonly descendants: string;
+    readonly interfaces: string;
+    readonly implementations: string;
+    readonly contents: string;
+    readonly containers: string;
+    readonly other: string;
+    readonly addAll: string;
+    /** "1 уровень", "2 уровня"… — up to and including that ring. */
+    readonly levels: (n: number) => string;
+    readonly allLevels: string;
+    readonly allPlaced: string;
+    readonly onView: string;
+    readonly nothing: string;
+    readonly openNeighbourhood: string;
   };
   readonly help: {
     readonly title: string;

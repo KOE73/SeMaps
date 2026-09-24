@@ -1,4 +1,7 @@
+import type { RoutingMode } from "../model/style-types.js";
 import { DiagramCanvas, type Selection } from "../canvas/DiagramCanvas.js";
+import { layoutFreeKey } from "../util/keys.js";
+import { placeEntities } from "./placeEntity.js";
 import {
   CenterPortAssigner,
   DiscretePortAssigner,
@@ -610,7 +613,7 @@ export class DiagramEditor implements InspectorHost, StylePanelHost, DiagramEdit
       }
 
       const mod = e.ctrlKey || e.metaKey;
-      const key = e.key.toLowerCase();
+      const key = layoutFreeKey(e);
 
       if (mod && key === "z") {
         e.preventDefault();
@@ -660,30 +663,8 @@ export class DiagramEditor implements InspectorHost, StylePanelHost, DiagramEdit
           const payload = JSON.parse(entityData);
           if (payload && payload.id) {
             const at = this.canvas.toModel(e.clientX, e.clientY);
-            const doc = this.canvas.model;
-            if (!doc) return;
-            const id = payload.id;
-            const name = payload.textEntry?.name || payload.entity.name || id;
-            const elToAdd = {
-              id,
-              kind: "node" as const,
-              type: payload.entity.kind,
-              label: name,
-              tags: [],
-              metadata: { description: payload.textEntry?.description, codeRef: payload.entity.codeRef },
-              x: at.x,
-              y: at.y,
-              width: 180,
-              height: 60,
-              parent: null as any,
-              children: [],
-              wireOrder: Infinity,
-              raw: {}
-            };
-            const target = doc.containerAt({ x: at.x + 90, y: at.y + 30 });
-            doc.add(elToAdd, target);
-            this.commit("place-entity");
-            this.canvas.select(id);
+            const [id] = placeEntities(this, [payload.entity], at);
+            if (id !== undefined) this.canvas.select(id);
             this.basePanel.render();
           }
         } catch (err) {}
@@ -1196,6 +1177,66 @@ export class DiagramEditor implements InspectorHost, StylePanelHost, DiagramEdit
     this.styleList.setActive(id);
     this.styleEditor.open(id);
     this.onOpenStyle?.(id);
+  }
+
+  /**
+   * Draw these boxes with a content template (`null` — back to the style's),
+   * one undo step. A box too short for its new content grows to fit: picking
+   * "class" and getting members painted over the neighbours below is no use.
+   * Boxes never shrink here; a height someone chose stays theirs.
+   */
+  applyTemplate(ids: readonly string[], template: string | null): void {
+    const doc = this.canvas.model;
+    if (!doc) return;
+    for (const id of ids) {
+      const el = doc.element(id);
+      if (!el || el.kind === "zone") continue;
+      if (template === null) delete el.metadata.template;
+      else el.metadata.template = template;
+      const need = this.canvas.contentHeight(el);
+      if (need !== null && need > el.height) el.height = need;
+    }
+    this.commit("template");
+    this.inspector.render(this.canvas.selected);
+  }
+
+  /** Give these boxes (or these edges) a named style, one undo step; `null` — back to the default. */
+  applyStyle(ids: readonly string[], styleId: string | null): void {
+    const doc = this.canvas.model;
+    if (!doc) return;
+    for (const id of ids) {
+      const target = doc.element(id) ?? doc.edge(id);
+      if (!target) continue;
+      target.styleId = styleId ?? undefined;
+      const el = doc.element(id);
+      const need = el ? this.canvas.contentHeight(el) : null;
+      if (el && need !== null && need > el.height) el.height = need;
+    }
+    this.commit("style");
+    this.inspector.render(this.canvas.selected);
+  }
+
+  /** Line shape of these edges alone (`null` — back to the view's / type's), one undo step. */
+  setEdgeRouting(ids: readonly string[], mode: RoutingMode | null): void {
+    const doc = this.canvas.model;
+    if (!doc) return;
+    for (const id of ids) {
+      const edge = doc.edge(id);
+      if (!edge) continue;
+      if (mode === null) delete edge.routing;
+      else edge.routing = mode;
+    }
+    this.commit("edge-routing");
+  }
+
+  /** Line shape for the whole view (`null` — each relation type's own), one undo step. */
+  setViewRouting(mode: RoutingMode | null): void {
+    const doc = this.canvas.model;
+    if (!doc) return;
+    const meta = doc.metadata as { routing?: RoutingMode };
+    if (mode === null) delete meta.routing;
+    else meta.routing = mode;
+    this.commit("view-routing");
   }
 
   /** From the inspector's "править стиль" button. */

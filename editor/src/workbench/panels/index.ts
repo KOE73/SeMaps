@@ -6,3 +6,4 @@ export * from "./StylesPanel.js";
 export * from "./TemplatesPanel.js";
 export * from "./CatalogPanel.js";
 export * from "./BasePanel.js";
+export * from "./NeighbourhoodPanel.js";

@@ -4,7 +4,7 @@ import type { DiagramDocument } from "../model/document.js";
 import { StyleLibrary } from "../model/StyleLibrary.js";
 import { builtinStyleSheet } from "../model/style-defaults.js";
 import { PaintRegistry } from "./render/PaintRegistry.js";
-import type { Point, Rect } from "../geometry/types.js";
+import type { Point, Rect, Side } from "../geometry/types.js";
 import { Emitter } from "../util/emitter.js";
 import { createDefs } from "./defs.js";
 import { clear, setAttrs, svg, text } from "./svg.js";
@@ -15,7 +15,7 @@ import type { ElementRenderer, RenderContext, ResolvedContent } from "./render/E
 import { ActorRenderer, CylinderRenderer, DiamondRenderer, EllipseRenderer, HexagonRenderer } from "./render/shapes.js";
 import { TemplateLibrary } from "../content/TemplateLibrary.js";
 import { AssetRegistry } from "../assets/AssetRegistry.js";
-import type { MemberView } from "../content/ContentRenderer.js";
+import { renderContent, type MemberView } from "../content/ContentRenderer.js";
 import { TypeRegistry } from "./render/TypeRegistry.js";
 import { DIM } from "./render/styles.js";
 import { dashArray, textAttrs } from "./render/textAttrs.js";
@@ -23,6 +23,7 @@ import { marquee, resizeHandles, selectionOutline } from "./render/handles.js";
 import { UniformPortAssigner } from "./ports/assigners.js";
 import { portKey, type PortAssigner, type PortRequest } from "./ports/PortAssigner.js";
 import { BezierRouter, type EdgeRouter, type Route } from "./routing/EdgeRouter.js";
+import type { Slide } from "./routing/VisibilityGraph.js";
 import {
   OrthogonalRouter,
   TreeHorizontalRouter,
@@ -30,7 +31,7 @@ import {
   filletedPath,
   polylinePath,
 } from "./routing/routers.js";
-import { borderZones, solidZone, nudgeWalls, zonesFor, LANE_GAP, type RouteScene, type RouteZone } from "./routing/Scene.js";
+import { borderZones, laneZones, solidZone, nudgeWalls, zonesFor, LANE_GAP, SOLID, type RouteScene, type RouteZone } from "./routing/Scene.js";
 import { nudgeRoutes } from "./routing/nudge.js";
 import type { ResolvedEdgeStyle } from "../model/StyleLibrary.js";
 import type { RoutingMode } from "../model/style-types.js";
@@ -63,6 +64,8 @@ export interface CanvasEvents {
   collapse: { id: string; collapsed: boolean };
   openDocEditor: { id: string; kind?: "node" | "zone" | "edge" };
   openCodeViewer: { id: string; codeRef: string; label?: string };
+  /** Right click on a box, a line or the empty canvas: whoever owns menus decides what to offer. */
+  contextmenu: { target: "element" | "edge" | "canvas"; id: string | null; clientX: number; clientY: number };
 }
 
 export interface DiagramCanvasOptions {
@@ -113,6 +116,23 @@ export class DiagramCanvas {
   private readonly edgesLayer: SVGGElement;
   private readonly nodesLayer: SVGGElement;
   private readonly overlayLayer: SVGGElement;
+  /** Routing debug picture: what the search sees. Empty unless `debugRouting`. */
+  private readonly debugLayer: SVGGElement;
+
+  /**
+   * Draw what the line search sees: forbidden block zones, priced bands along
+   * containers and along lines already drawn, and — for the selected line —
+   * its search grid, how far its ends may slide and the spots already taken.
+   * A developer's view; nothing in it is saved.
+   */
+  get debugRouting(): boolean {
+    return this._debugRouting;
+  }
+  set debugRouting(on: boolean) {
+    this._debugRouting = on;
+    this.render();
+  }
+  private _debugRouting = false;
 
   private readonly interaction: InteractionController;
 
@@ -191,9 +211,11 @@ export class DiagramCanvas {
     this.edgesLayer = svg("g", { class: "semaps-layer-edges" });
     this.nodesLayer = svg("g", { class: "semaps-layer-nodes" });
     this.overlayLayer = svg("g", { class: "semaps-layer-overlay" });
+    this.debugLayer = svg("g", { class: "semaps-layer-debug", "pointer-events": "none" });
 
     this.viewportGroup = svg("g", { class: "semaps-viewport" }, [
       this.zonesLayer,
+      this.debugLayer,
       this.edgesLayer,
       this.nodesLayer,
       this.overlayLayer,
@@ -418,6 +440,8 @@ export class DiagramCanvas {
     }
     this.render();
     this.events.emit("select", this.selection);
+    // Undo and redo land here: every list built from the model must redraw.
+    this.events.emit("modelchange", { reason: "replace" });
     this.validateModelCodeRefs(doc);
   }
 
@@ -731,6 +755,7 @@ export class DiagramCanvas {
   render(): void {
     clear(this.zonesLayer);
     clear(this.edgesLayer);
+    clear(this.debugLayer);
     clear(this.nodesLayer);
     clear(this.overlayLayer);
     if (this.doc === null) return;
@@ -891,6 +916,217 @@ export class DiagramCanvas {
   }
 
   /**
+   * "Rip up and reroute": the lines that cross or crowd others are laid again,
+   * each seeing every other line. A new route is kept only when it has
+   * strictly fewer conflicts, so the passes always settle.
+   *
+   * One line at a time is not always enough: two lines can hold each other in
+   * place — each would move if the other were not there, neither can while it
+   * is. So when laying one line again does not help, it and each line it
+   * conflicts with are ripped up together and laid in both orders; the pair
+   * is kept if the two of them end up with fewer conflicts than before.
+   *
+   * Bounded by passes, not by time: a time limit would make the picture depend
+   * on how fast the machine is. The clock is only a fuse for a huge view.
+   */
+  private rerouteConflicts(
+    order: readonly string[],
+    jobs: ReadonlyMap<string, (lanes: readonly RouteZone[], taken: ReadonlyMap<string, number[]>) => Route>,
+    routes: Map<string, Route>,
+    lanesOf: Map<string, RouteZone[]>,
+    endsOf: Map<string, { fromKey: string; from: number; toKey: string; to: number }>,
+    record: (id: string, route: Route, fromKey: string, fromSide: Side, toKey: string, toSide: Side) => void,
+  ): void {
+    const MAX_PASSES = 3;
+    const FUSE_MS = 40;
+    const started = performance.now();
+    const sideOf = (key: string) => key.slice(key.lastIndexOf("#") + 1) as Side;
+    const along = (side: Side, p: Point) => (side === "north" || side === "south" ? p.x : p.y);
+
+    /** Conflicts of `pts` with every line except those in `skip`, with some lines replaced. */
+    const score = (
+      id: string,
+      pts: readonly Point[] | undefined,
+      replaced: ReadonlyMap<string, readonly Point[] | undefined> = new Map(),
+    ): number => {
+      if (!pts || pts.length < 2) return 0;
+      let n = 0;
+      for (const other of order) {
+        if (other === id) continue;
+        const theirs = replaced.has(other) ? replaced.get(other) : routes.get(other)?.points;
+        if (theirs && theirs.length >= 2) n += conflicts(pts, theirs);
+      }
+      return n;
+    };
+
+    /** The lanes and taken spots of every line except the ones being laid again. */
+    const surroundings = (without: ReadonlySet<string>) => {
+      const lanes: RouteZone[] = [];
+      for (const [other, zones] of lanesOf) if (!without.has(other)) lanes.push(...zones);
+      const takenNow = new Map<string, number[]>();
+      for (const [other, e] of endsOf) {
+        if (without.has(other)) continue;
+        pushTaken(takenNow, e.fromKey, e.from);
+        pushTaken(takenNow, e.toKey, e.to);
+      }
+      return { lanes, takenNow };
+    };
+
+    const keep = (id: string, route: Route) => {
+      const ends = endsOf.get(id);
+      if (!ends) return;
+      record(id, route, ends.fromKey, sideOf(ends.fromKey), ends.toKey, sideOf(ends.toKey));
+    };
+
+    /** Lay `first` then `second` from scratch; both ripped up, the rest in place. */
+    const layPair = (first: string, second: string): [Route, Route] | null => {
+      const jobA = jobs.get(first);
+      const jobB = jobs.get(second);
+      const endsA = endsOf.get(first);
+      if (!jobA || !jobB || !endsA) return null;
+      const { lanes, takenNow } = surroundings(new Set([first, second]));
+      const a = jobA(lanes, takenNow);
+      const pa = a.points;
+      if (pa && pa.length >= 2) {
+        lanes.push(...laneZones(pa, `lane:${first}`));
+        pushTaken(takenNow, endsA.fromKey, along(sideOf(endsA.fromKey), pa[0]!));
+        pushTaken(takenNow, endsA.toKey, along(sideOf(endsA.toKey), pa[pa.length - 1]!));
+      }
+      return [a, jobB(lanes, takenNow)];
+    };
+
+    for (let pass = 0; pass < MAX_PASSES; pass++) {
+      let improved = false;
+      for (const id of order) {
+        if (performance.now() - started > FUSE_MS) return;
+        const job = jobs.get(id);
+        const mine = routes.get(id)?.points;
+        const before = score(id, mine);
+        if (!job || !endsOf.has(id) || before === 0) continue;
+
+        // Alone first: the cheap move that usually suffices.
+        const { lanes, takenNow } = surroundings(new Set([id]));
+        const next = job(lanes, takenNow);
+        if (score(id, next.points) < before) {
+          keep(id, next);
+          improved = true;
+          continue;
+        }
+
+        // Then together with each line it is stuck against, in both orders.
+        for (const other of order) {
+          if (other === id || !endsOf.has(other)) continue;
+          const theirs = routes.get(other)?.points;
+          if (!mine || !theirs || conflicts(mine, theirs) === 0) continue;
+          const pairBefore = before + score(other, theirs) - conflicts(mine, theirs);
+          let done = false;
+          for (const [first, second] of [[id, other], [other, id]] as const) {
+            const laid = layPair(first, second);
+            if (!laid) continue;
+            const [a, b] = laid;
+            const replaced = new Map([[first, a.points], [second, b.points]]);
+            const after =
+              score(first, a.points, replaced) + score(second, b.points, replaced) -
+              (a.points && b.points ? conflicts(a.points, b.points) : 0);
+            if (after < pairBefore) {
+              keep(first, a);
+              keep(second, b);
+              improved = done = true;
+              break;
+            }
+          }
+          if (done) break;
+        }
+      }
+      if (!improved) return;
+    }
+  }
+
+  /**
+   * The routing debug picture. Colours carry the meaning, the tooltip of each
+   * shape its price: red — may not enter; orange — a container's frame band;
+   * blue — a band along a line already drawn; for the selected line, grey
+   * grid lines, green slide ranges on its two sides and black ticks where
+   * other lines already meet those sides.
+   */
+  private drawRoutingDebug(scene: RouteScene, lanes: readonly RouteZone[], edge: DebugEdge | null): void {
+    const scale = this.viewport.zoom || 1;
+    const px = (n: number) => n / scale;
+    const rect = (z: RouteZone, fill: string, stroke: string, title: string) => {
+      const r = svg("rect", {
+        x: z.rect.x, y: z.rect.y, width: z.rect.width, height: z.rect.height,
+        fill, stroke, "stroke-width": px(1), "stroke-dasharray": `${px(4)} ${px(3)}`,
+      });
+      const t = svg("title");
+      t.textContent = title;
+      r.appendChild(t);
+      this.debugLayer.appendChild(r);
+    };
+    for (const z of scene.zones) {
+      if (z.weight === SOLID) rect(z, "rgba(220,38,38,0.10)", "rgba(220,38,38,0.7)", `нельзя: ${z.ownerId}`);
+      else rect(z, "rgba(234,88,12,0.14)", "rgba(234,88,12,0.6)", `рамка ${z.ownerId}: вес ${z.weight} за единицу длины`);
+    }
+    for (const z of lanes) rect(z, "rgba(37,99,235,0.10)", "rgba(37,99,235,0.45)", `линия ${z.ownerId.replace(/^lane:/, "")}: вес ${z.weight} вдоль`);
+
+    if (edge === null) return;
+    if (edge.grid) {
+      const all = [...scene.zones, ...lanes].map((z) => z.rect);
+      const x0 = Math.min(edge.fromRect.x, edge.toRect.x, ...all.map((r) => r.x)) - 40;
+      const x1 = Math.max(edge.fromRect.x + edge.fromRect.width, edge.toRect.x + edge.toRect.width, ...all.map((r) => r.x + r.width)) + 40;
+      const y0 = Math.min(edge.fromRect.y, edge.toRect.y, ...all.map((r) => r.y)) - 40;
+      const y1 = Math.max(edge.fromRect.y + edge.fromRect.height, edge.toRect.y + edge.toRect.height, ...all.map((r) => r.y + r.height)) + 40;
+      const line = (xa: number, ya: number, xb: number, yb: number) =>
+        this.debugLayer.appendChild(svg("line", { x1: xa, y1: ya, x2: xb, y2: yb, stroke: "rgba(100,116,139,0.45)", "stroke-width": px(0.75) }));
+      for (const x of edge.grid.xs) line(x, y0, x, y1);
+      for (const y of edge.grid.ys) line(x0, y, x1, y);
+    }
+    const side = (r: Rect, s: Side, slide: Slide | undefined) => {
+      if (!slide) return;
+      const horizontal = s === "north" || s === "south";
+      const fixed = s === "north" ? r.y : s === "south" ? r.y + r.height : s === "west" ? r.x : r.x + r.width;
+      const seg = horizontal
+        ? { x1: slide.lo, y1: fixed, x2: slide.hi, y2: fixed }
+        : { x1: fixed, y1: slide.lo, x2: fixed, y2: slide.hi };
+      const g = svg("line", { ...seg, stroke: "rgba(22,163,74,0.9)", "stroke-width": px(4), "stroke-linecap": "round" });
+      const t = svg("title");
+      t.textContent = `конец может скользить: ${Math.round(slide.lo)}…${Math.round(slide.hi)}`;
+      g.appendChild(t);
+      this.debugLayer.appendChild(g);
+      for (const v of slide.taken ?? []) {
+        const tick = horizontal
+          ? { x1: v, y1: fixed - px(8), x2: v, y2: fixed + px(8) }
+          : { x1: fixed - px(8), y1: v, x2: fixed + px(8), y2: v };
+        this.debugLayer.appendChild(svg("line", { ...tick, stroke: "#111", "stroke-width": px(2) }));
+      }
+    };
+    side(edge.fromRect, edge.fromSide, edge.fromSlide);
+    side(edge.toRect, edge.toSide, edge.toSlide);
+  }
+
+  /**
+   * How far an end may slide along its block's side: the side minus its
+   * rounded corners. Rectangles only — on an ellipse or a diamond a point
+   * moved along the bounding side is no longer on the outline.
+   */
+  private slidesFor(
+    owner: DiagramElement,
+    rect: Rect,
+    side: Side,
+    inset: number,
+    key: "fromSlide" | "toSlide",
+    taken: ReadonlyMap<string, number[]>,
+  ): Partial<Record<"fromSlide" | "toSlide", Slide>> {
+    const shape = this.styleLibrary.blockStyle(owner).shape ?? "rect";
+    if (shape !== "rect") return {};
+    const margin = Math.max(inset, 0) + 6;
+    const horizontal = side === "north" || side === "south";
+    const lo = (horizontal ? rect.x : rect.y) + margin;
+    const hi = (horizontal ? rect.x + rect.width : rect.y + rect.height) - margin;
+    if (!(lo <= hi)) return {};
+    return { [key]: { lo, hi, taken: taken.get(`${owner.id}#${side}`) ?? [] } };
+  }
+
+  /**
    * Pull apart routes that ended up in the same corridor.
    *
    * Each route was found on its own and knows nothing of its neighbours, so two
@@ -961,6 +1197,70 @@ export class DiagramCanvas {
    * "Nothing" is a real answer and the common one: a workspace with no
    * `templates.json` keeps the caption-and-subtitle look it always had.
    */
+  /**
+   * How tall the box must be for its content template to fit inside it, or
+   * null when it draws no template. Measured, not guessed: the same renderer
+   * that paints the box lays the rows out, off-screen.
+   */
+  contentHeight(el: DiagramElement): number | null {
+    const content = this.resolveContent(el);
+    if (content === null) return null;
+    const style = this.styleLibrary.blockStyle(el);
+    const box = { x: el.x, y: el.y, width: el.width, height: el.height };
+    const drawn = renderContent(content.tree, box, style, content.data, {
+      x: DIAGRAM_CONFIG.node.padX,
+      top: DIAGRAM_CONFIG.node.contentTop,
+    });
+    return Math.ceil(drawn.usedHeight + DIAGRAM_CONFIG.node.padX);
+  }
+
+  /**
+   * A small picture of this box as it would look with another template
+   * (`null` — the style's) or another style, for menus to show before anyone
+   * commits to it. Drawn by the same renderer, on a copy; the model is untouched.
+   */
+  previewElement(el: DiagramElement, change: { template?: string | null; styleId?: string | null }): SVGSVGElement {
+    const copy: DiagramElement = {
+      ...el,
+      x: 0,
+      y: 0,
+      children: [],
+      parent: null,
+      metadata: { ...el.metadata },
+    };
+    if (change.template !== undefined) {
+      if (change.template === null) delete copy.metadata.template;
+      else copy.metadata.template = change.template;
+    }
+    if (change.styleId !== undefined) copy.styleId = change.styleId ?? undefined;
+    copy.height = Math.max(el.height, this.contentHeight(copy) ?? 0);
+
+    const renderer = this.rendererFor(copy);
+    const base = this.context();
+    const ctx: RenderContext = {
+      ...base,
+      selectedId: null,
+      dropTargetId: null,
+      ghostNodeId: null,
+      isSelected: () => false,
+      isCollapsed: () => false,
+      opacity: () => 1,
+      isHidden: () => false,
+      // The copy's style: `styleOf` resolves by element, and the copy may wear another.
+      styleOf: (e) => this.styleLibrary.blockStyle(e),
+    };
+    const g = renderer.create(copy, ctx);
+    const pad = 3;
+    const out = svg("svg", {
+      class: "semaps-mini",
+      viewBox: `${-pad} ${-pad} ${copy.width + pad * 2} ${copy.height + pad * 2}`,
+      width: String(Math.round(copy.width * 0.6)),
+      height: String(Math.round(copy.height * 0.6)),
+    });
+    out.appendChild(g);
+    return out as SVGSVGElement;
+  }
+
   private resolveContent(el: DiagramElement): ResolvedContent | null {
     const placement = typeof el.metadata.template === "string" ? el.metadata.template : undefined;
     const id = placement ?? this.styleLibrary.blockStyle(el).template ?? null;
@@ -1177,6 +1477,25 @@ export class DiagramCanvas {
     // several routes at once — no amount of improving one route in isolation
     // can stop two of them from merging into one stroke.
     const routes = new Map<string, Route>();
+    // Where lines already meet each block side, so the next one does not land on top of them.
+    const taken = new Map<string, number[]>();
+    // Lines already drawn, as bands the next ones would rather not follow — kept per line,
+    // so that a line being laid again sees everyone but itself.
+    const lanesOf = new Map<string, RouteZone[]>();
+    const endsOf = new Map<string, { fromKey: string; from: number; toKey: string; to: number }>();
+    const jobs = new Map<string, (lanes: readonly RouteZone[], taken: ReadonlyMap<string, number[]>) => Route>();
+    const order: string[] = [];
+    let debugEdge: DebugEdge | null = null;
+
+    const record = (id: string, route: Route, fromKey: string, fromSide: Side, toKey: string, toSide: Side) => {
+      routes.set(id, route);
+      const pts = route.points;
+      if (!pts || pts.length < 2) return;
+      const along = (side: Side, p: Point) => (side === "north" || side === "south" ? p.x : p.y);
+      endsOf.set(id, { fromKey, from: along(fromSide, pts[0]!), toKey, to: along(toSide, pts[pts.length - 1]!) });
+      lanesOf.set(id, laneZones(pts, `lane:${id}`));
+    };
+
     for (const r of resolved) {
       const fromSlot = ports.get(portKey(r.edge.id, "from"));
       const toSlot = ports.get(portKey(r.edge.id, "to"));
@@ -1188,7 +1507,11 @@ export class DiagramCanvas {
       const toInset = this.rendererFor(r.to.owner).cornerInset?.(toSlot.side, toStyle) ?? toStyle.radius;
 
       const edgeStyle = this.styleLibrary.edgeStyle(r.edge);
-      routes.set(r.edge.id, this.routerFor(r.edge, edgeStyle).route({
+      const router = this.routerFor(r.edge, edgeStyle);
+      const watched = this._debugRouting && this.selection?.kind === "edge" && this.selection.id === r.edge.id;
+      const fromKey = `${r.from.owner.id}#${fromSlot.side}`;
+      const toKey = `${r.to.owner.id}#${toSlot.side}`;
+      const base = {
         from: this.rendererFor(r.from.owner).pointAt(r.from.rect, fromSlot),
         to: this.rendererFor(r.to.owner).pointAt(r.to.rect, toSlot),
         fromSide: fromSlot.side, toSide: toSlot.side,
@@ -1196,10 +1519,46 @@ export class DiagramCanvas {
         fromInset, toInset,
         fromMarkerOffset: getMarkerOffset(edgeStyle.source.shape, edgeStyle.source.size ?? DIAGRAM_CONFIG.routing.defaultMarkerSize),
         toMarkerOffset: getMarkerOffset(edgeStyle.target.shape, edgeStyle.target.size ?? DIAGRAM_CONFIG.routing.defaultMarkerSize),
-        zones: zonesFor(scene, this.exclusionsFor(r.from.owner, r.to.owner)),
-      }));
+      };
+      const own = zonesFor(scene, this.exclusionsFor(r.from.owner, r.to.owner));
+      const job = (lanes: readonly RouteZone[], takenNow: ReadonlyMap<string, number[]>): Route => {
+        const fromSlide = this.slidesFor(r.from.owner, r.from.rect, fromSlot.side, fromInset, "fromSlide", takenNow);
+        const toSlide = this.slidesFor(r.to.owner, r.to.rect, toSlot.side, toInset, "toSlide", takenNow);
+        if (watched) {
+          debugEdge = {
+            fromRect: r.from.rect, toRect: r.to.rect,
+            fromSide: fromSlot.side, toSide: toSlot.side,
+            fromSlide: fromSlide.fromSlide, toSlide: toSlide.toSlide,
+            grid: null,
+          };
+        }
+        return router.route({
+          ...base,
+          zones: [...own, ...lanesNear(lanes, r.from.rect, r.to.rect)],
+          ...fromSlide,
+          ...toSlide,
+          ...(watched ? { onGrid: (xs: readonly number[], ys: readonly number[]) => { if (debugEdge) debugEdge.grid = { xs, ys }; } } : {}),
+        });
+      };
+      jobs.set(r.edge.id, job);
+      order.push(r.edge.id);
+
+      // First pass: in order, each line seeing only the ones before it.
+      const route = job([...lanesOf.values()].flat(), taken);
+      record(r.edge.id, route, fromKey, fromSlot.side, toKey, toSlot.side);
+      const ends = endsOf.get(r.edge.id);
+      if (ends) {
+        pushTaken(taken, ends.fromKey, ends.from);
+        pushTaken(taken, ends.toKey, ends.to);
+      }
     }
+
+    // Later passes: lay again every line that crosses or crowds another, now
+    // seeing all the others, not only the ones laid before it. The first pass
+    // depends on order; this is what takes the order out of it.
+    this.rerouteConflicts(order, jobs, routes, lanesOf, endsOf, record);
     this.separateSharedCorridors(routes, scene);
+    if (this._debugRouting) this.drawRoutingDebug(scene, [...lanesOf.values()].flat(), debugEdge);
 
     for (const r of resolved) {
       const fromSlot = ports.get(portKey(r.edge.id, "from"));
@@ -1402,3 +1761,76 @@ export function defaultRegistry(): TypeRegistry {
 }
 
 export { setAttrs };
+
+/**
+ * How badly two polylines get in each other's way: a crossing counts once, a
+ * stretch where they run side by side closer than a lane counts twice — that
+ * one reads as a single line. Touching at an end does not count: lines into
+ * the same side of a block meet it, they do not cross.
+ */
+function conflicts(a: readonly Point[], b: readonly Point[]): number {
+  const NEAR = 12;
+  const MIN_RUN = 20;
+  let n = 0;
+  for (let i = 0; i < a.length - 1; i++) {
+    const p = a[i]!;
+    const q = a[i + 1]!;
+    const pv = Math.abs(p.x - q.x) < 0.5;
+    const ph = Math.abs(p.y - q.y) < 0.5;
+    if (!pv && !ph) continue;
+    for (let j = 0; j < b.length - 1; j++) {
+      const r = b[j]!;
+      const t = b[j + 1]!;
+      const rv = Math.abs(r.x - t.x) < 0.5;
+      const rh = Math.abs(r.y - t.y) < 0.5;
+      if (pv && rh) n += crosses(p, q, r, t) ? 1 : 0;
+      else if (ph && rv) n += crosses(r, t, p, q) ? 1 : 0;
+      else if (pv && rv && Math.abs(p.x - r.x) < NEAR) n += overlap(p.y, q.y, r.y, t.y) > MIN_RUN ? 2 : 0;
+      else if (ph && rh && Math.abs(p.y - r.y) < NEAR) n += overlap(p.x, q.x, r.x, t.x) > MIN_RUN ? 2 : 0;
+    }
+  }
+  return n;
+}
+
+/** Does vertical p–q cross horizontal r–t strictly inside both? */
+function crosses(p: Point, q: Point, r: Point, t: Point): boolean {
+  const x = p.x;
+  const y = r.y;
+  const e = 1;
+  return (
+    x > Math.min(r.x, t.x) + e && x < Math.max(r.x, t.x) - e &&
+    y > Math.min(p.y, q.y) + e && y < Math.max(p.y, q.y) - e
+  );
+}
+
+function overlap(a1: number, a2: number, b1: number, b2: number): number {
+  return Math.min(Math.max(a1, a2), Math.max(b1, b2)) - Math.max(Math.min(a1, a2), Math.min(b1, b2));
+}
+
+function pushTaken(taken: Map<string, number[]>, key: string, value: number): void {
+  const list = taken.get(key);
+  if (list) list.push(value);
+  else taken.set(key, [value]);
+}
+
+/** Only the lanes a route between these two boxes could meet: the search never looks further. */
+function lanesNear(lanes: readonly RouteZone[], a: Rect, b: Rect): RouteZone[] {
+  const margin = 260;
+  const x0 = Math.min(a.x, b.x) - margin;
+  const y0 = Math.min(a.y, b.y) - margin;
+  const x1 = Math.max(a.x + a.width, b.x + b.width) + margin;
+  const y1 = Math.max(a.y + a.height, b.y + b.height) + margin;
+  return lanes.filter((z) =>
+    z.rect.x <= x1 && z.rect.x + z.rect.width >= x0 && z.rect.y <= y1 && z.rect.y + z.rect.height >= y0);
+}
+
+/** What the routing debug picture shows about the selected line. */
+interface DebugEdge {
+  fromRect: Rect;
+  toRect: Rect;
+  fromSide: Side;
+  toSide: Side;
+  fromSlide: Slide | undefined;
+  toSlide: Slide | undefined;
+  grid: { xs: readonly number[]; ys: readonly number[] } | null;
+}

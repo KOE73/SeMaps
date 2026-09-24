@@ -1,6 +1,7 @@
 import type { Point, Rect, Side } from "../../geometry/types.js";
 import { DIAGRAM_CONFIG } from "../../constants/diagram-constants.js";
 import type { RouteZone } from "./Scene.js";
+import type { Slide } from "./VisibilityGraph.js";
 
 export interface RouteRequest {
   readonly from: Point;
@@ -29,6 +30,15 @@ export interface RouteRequest {
    * nothing to say leaves it out.
    */
   readonly zones?: readonly RouteZone[];
+  /**
+   * How far each end may slide along its side (rectangular blocks only). A
+   * router that searches may move the port to where the line runs straight;
+   * one that does not simply ignores this and uses `from`/`to`.
+   */
+  readonly fromSlide?: Slide;
+  readonly toSlide?: Slide;
+  /** Debugging only: a searching router hands over the grid it searched. */
+  readonly onGrid?: (xs: readonly number[], ys: readonly number[]) => void;
 }
 
 export interface Route {

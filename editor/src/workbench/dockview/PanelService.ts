@@ -81,7 +81,7 @@ export class PanelService implements IPanelService {
       return;
     }
 
-    const rightPanels = ["properties", "relations", "filters", "styles", "base"];
+    const rightPanels = ["properties", "relations", "filters", "styles", "base", "neighbourhood"];
     let existingRight: IDockviewPanel | undefined;
     for (const pid of rightPanels) {
       const p = this.dockview.getPanel(pid);
@@ -163,7 +163,7 @@ export class PanelService implements IPanelService {
   }
 
   toggleRightSidebar(): void {
-    const rightPanels = ["properties", "relations", "filters", "styles", "base"];
+    const rightPanels = ["properties", "relations", "filters", "styles", "base", "neighbourhood"];
     const anyOpen = rightPanels.some((pid) => this.isOpen(pid));
     if (anyOpen) {
       for (const pid of rightPanels) {

@@ -18,7 +18,9 @@
       "lines": [
         "@Name",
         "@Members([name, type], where=kind:field)",
-        "@Members([name], where=kind:method)"
+        "@Members([name, type], where=kind:property)",
+        "@Members([name], where=kind:method)",
+        "@Members([name], where=kind:value)"
       ]
     },
     {

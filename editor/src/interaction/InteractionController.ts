@@ -78,6 +78,10 @@ export class InteractionController {
   private gesture: Gesture | null = null;
   private readonly abort = new AbortController();
   private edgeControlsHideTimer: number | null = null;
+  /** Pending show of the bubble, and the edge it is for. */
+  private edgeControlsShowTimer: number | null = null;
+  private pendingEdgeControlId: string | null = null;
+  private lastPointer = { x: 0, y: 0 };
   private currentEdgeControlId: string | null = null;
   private isOverEdgeControls = false;
 
@@ -89,6 +93,7 @@ export class InteractionController {
     host.addEventListener("mousedown", this.onMouseDown, { signal });
     host.addEventListener("mouseup", this.onMouseUpTarget, { signal });
     host.addEventListener("dblclick", this.onDoubleClick, { signal });
+    host.addEventListener("contextmenu", this.onContextMenu, { signal });
     host.addEventListener("wheel", this.onWheel, { passive: false, signal });
     host.addEventListener("mouseleave", () => {
       if (!this.isOverEdgeControls) {
@@ -145,7 +150,29 @@ export class InteractionController {
     }
   }
 
+  private cancelEdgeControlsShow(): void {
+    if (this.edgeControlsShowTimer !== null) {
+      window.clearTimeout(this.edgeControlsShowTimer);
+      this.edgeControlsShowTimer = null;
+    }
+    this.pendingEdgeControlId = null;
+  }
+
+  /** Show the bubble once the mouse has rested on the edge; crossing lines shows nothing. */
+  private scheduleEdgeControlsShow(edgeId: string): void {
+    if (this.pendingEdgeControlId === edgeId) return;
+    this.cancelEdgeControlsShow();
+    this.pendingEdgeControlId = edgeId;
+    this.edgeControlsShowTimer = window.setTimeout(() => {
+      this.edgeControlsShowTimer = null;
+      this.pendingEdgeControlId = null;
+      this.currentEdgeControlId = edgeId;
+      this.canvas.showEdgeControls(edgeId, this.lastPointer.x, this.lastPointer.y);
+    }, DIAGRAM_CONFIG.interaction.edgeControlsShowDelayMs);
+  }
+
   private scheduleEdgeControlsHide(): void {
+    this.cancelEdgeControlsShow();
     this.clearEdgeControlsHideTimer();
     this.edgeControlsHideTimer = window.setTimeout(() => {
       if (!this.isOverEdgeControls) {
@@ -159,6 +186,7 @@ export class InteractionController {
   destroy(): void {
     this.abort.abort();
     this.clearEdgeControlsHideTimer();
+    this.cancelEdgeControlsShow();
     this.canvas.hideAllTooltips();
     this.canvas.hideEdgeControls();
     this.currentEdgeControlId = null;
@@ -174,6 +202,7 @@ export class InteractionController {
     }
     this.canvas.hideAllTooltips();
     this.canvas.hideEdgeControls();
+    this.cancelEdgeControlsShow();
     this.currentEdgeControlId = null;
     this.isOverEdgeControls = false;
     if (e.button !== 0) return;
@@ -339,6 +368,7 @@ export class InteractionController {
 
     this.canvas.hideAllTooltips();
     this.canvas.hideEdgeControls();
+    this.cancelEdgeControlsShow();
 
     switch (gesture.kind) {
       case "pan": {
@@ -496,10 +526,8 @@ export class InteractionController {
 
         // Show floating edge control bar with Doc button (stable position once per edge)
         this.clearEdgeControlsHideTimer();
-        if (this.currentEdgeControlId !== edgeId) {
-          this.currentEdgeControlId = edgeId;
-          this.canvas.showEdgeControls(edgeId, e.clientX, e.clientY);
-        }
+        this.lastPointer = { x: e.clientX, y: e.clientY };
+        if (this.currentEdgeControlId !== edgeId) this.scheduleEdgeControlsShow(edgeId);
         return;
       }
     }
@@ -643,6 +671,30 @@ export class InteractionController {
     el.width = fitted;
     this.canvas.notifyModelChanged("fit-width");
     this.canvas.emitGestureEnd("fit-width");
+  };
+
+  /**
+   * Right click asks for a menu: on a box (selecting it, unless it is already
+   * part of the selection), on a line, or on the empty canvas.
+   */
+  private readonly onContextMenu = (e: MouseEvent): void => {
+    const target = e.target as HTMLElement | null;
+    if (target && this.canvas.edgeControlsEl.contains(target)) return;
+    e.preventDefault();
+    this.canvas.hideAllTooltips();
+    this.canvas.hideEdgeControls();
+    this.cancelEdgeControlsShow();
+    const hit = hitTest(e.target);
+    const at = { clientX: e.clientX, clientY: e.clientY };
+    if (hit?.edgeId) {
+      if (!this.canvas.selectedIds.has(hit.edgeId)) this.canvas.select(hit.edgeId);
+      this.canvas.events.emit("contextmenu", { target: "edge", id: hit.edgeId, ...at });
+    } else if (hit?.elementId) {
+      if (!this.canvas.selectedIds.has(hit.elementId)) this.canvas.select(hit.elementId);
+      this.canvas.events.emit("contextmenu", { target: "element", id: hit.elementId, ...at });
+    } else {
+      this.canvas.events.emit("contextmenu", { target: "canvas", id: null, ...at });
+    }
   };
 
   private readonly onWheel = (e: WheelEvent): void => {

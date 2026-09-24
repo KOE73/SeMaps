@@ -30,7 +30,7 @@ sync with code (in progress, see below) will show where the code has moved away 
 | Editor (`editor/`) | works: canvas, views, styles, content templates, texts with provenance |
 | Host (`host/`) | works: one binary, `*.semaps` project files, save, source viewer |
 | `semaps check` (`core/`) | works: stale texts, views without an axis, broken `codeRef`, … |
-| Sync with code (`core/`) | **planned** — [`PLAN_20260923_core_sync-with-code`](docs/plans/PLAN_20260923_core_sync-with-code.md) |
+| Sync with code (`core/`) | works from a facts file: `semaps sync --facts facts.json`; running the extractor from the host and the editor button — [**planned**](docs/plans/PLAN_20260923_core_sync-with-code.md) |
 | Extractor for TypeScript (`extractors/typescript/`) | **in progress** — [`PLAN_20260923_extractors_typescript`](docs/plans/PLAN_20260923_extractors_typescript.md) |
 | Extractor for C# (`extractors/csharp/`) | **in progress** — [`PLAN_20260923_extractors_csharp`](docs/plans/PLAN_20260923_extractors_csharp.md) |
 | JSON schema of extractor facts (`schemas/`) | works: [`extractor-facts.schema.json`](schemas/extractor-facts.schema.json) |
@@ -151,7 +151,7 @@ If you want an extractor for your language, take one of the two as a template an
 |---|---|
 | `editor/` | canvas editor, TypeScript (`@semaps/editor`) |
 | `host/` | `semaps` binary, Go: serves the editor and a workspace |
-| `core/` | language-neutral check and (planned) sync, Go, part of the `semaps` binary |
+| `core/` | language-neutral check and sync, Go, part of the `semaps` binary |
 | `extractors/<lang>/` | one process per language, prints code facts as JSON (planned) |
 | `schemas/` | JSON schemas: workspace contract, extractor facts (planned) |
 | `docs/` | CONTRACT, API, EXTRACTOR, ADR, plans |

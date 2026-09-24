@@ -1,6 +1,7 @@
 import { el, replaceChildren } from "../util/dom.js";
 import { i18n } from "../workbench/i18n/I18nService.js";
 import type { DiagramEditor } from "./DiagramEditor.js";
+import { placeEntities } from "./placeEntity.js";
 
 export class BasePanel {
   /** Kinds the list is narrowed to; empty means every kind. */
@@ -110,7 +111,7 @@ export class BasePanel {
           const btn = el("button", { 
             text: "+",
             title: "Добавить на вид",
-            on: { click: () => this.placeEntity(e, texts[e.id]) }
+            on: { click: () => this.placeEntity(e) }
           });
           btn.style.padding = "2px 6px";
           btn.style.fontSize = "12px";
@@ -161,36 +162,9 @@ export class BasePanel {
     );
   }
 
-  private placeEntity(entity: any, textEntry: any): void {
-    const doc = this.editor.canvas.model;
-    if (!doc) return;
-    
-    const at = this.editor.canvas.viewCenter();
-    const id = entity.id;
-    const name = textEntry?.name || entity.name || id;
-    
-    const elToAdd = {
-      id,
-      kind: "node" as const,
-      type: entity.kind,
-      label: name,
-      tags: [],
-      metadata: { description: textEntry?.description, codeRef: entity.codeRef },
-      x: at.x,
-      y: at.y,
-      width: 180,
-      height: 60,
-      parent: null,
-      children: [],
-      wireOrder: Number.POSITIVE_INFINITY,
-      raw: { _entity: entity },
-    };
-
-    const target = doc.containerAt({ x: at.x + 90, y: at.y + 30 });
-    doc.add(elToAdd, target);
-    
-    (this.editor as any).commit("place-entity");
-    this.editor.canvas.select(id);
+  private placeEntity(entity: any): void {
+    const [id] = placeEntities(this.editor, [entity]);
+    if (id !== undefined) this.editor.canvas.select(id);
     this.render();
   }
 }

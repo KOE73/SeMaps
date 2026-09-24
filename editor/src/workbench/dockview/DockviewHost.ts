@@ -11,6 +11,7 @@ import {
   TemplatesPanel,
   CatalogPanel,
   BasePanel,
+  NeighbourhoodPanel,
 } from "../panels/index.js";
 import { i18n } from "../i18n/I18nService.js";
 
@@ -88,6 +89,7 @@ export class DockviewHost {
       styles: i18n.d.panels.styles.title,
       templates: i18n.d.panels.templates.title,
       base: i18n.d.panels.base.title,
+      neighbourhood: i18n.d.panels.neighbourhood.title,
     };
 
     for (const [id, title] of Object.entries(titles)) {
@@ -161,6 +163,14 @@ export class DockviewHost {
       minWidth: 100,
       minHeight: 80,
       createRenderer: () => new BasePanel(this.editor),
+    });
+
+    this.panelService.register({
+      id: "neighbourhood",
+      get title() { return i18n.d.panels.neighbourhood.title; },
+      minWidth: 100,
+      minHeight: 80,
+      createRenderer: () => new NeighbourhoodPanel(this.editor),
     });
   }
 
@@ -257,6 +267,18 @@ export class DockviewHost {
       id: "base",
       component: "base",
       title: "База сущностей",
+      position: {
+        direction: "within",
+        referencePanel: rightGroup,
+      },
+      minimumWidth: 100,
+      minimumHeight: 80,
+    });
+
+    this.dockview.addPanel({
+      id: "neighbourhood",
+      component: "neighbourhood",
+      title: "Окрестность",
       position: {
         direction: "within",
         referencePanel: rightGroup,

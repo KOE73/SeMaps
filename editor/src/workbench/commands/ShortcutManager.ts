@@ -1,4 +1,5 @@
 import type { CommandRegistry } from "./CommandRegistry.js";
+import { layoutFreeKey } from "../../util/keys.js";
 import type { CommandContext, IDisposable } from "./types.js";
 
 export class ShortcutManager implements IDisposable {
@@ -68,8 +69,7 @@ export class ShortcutManager implements IDisposable {
   }
 
   private normalizeKey(e: KeyboardEvent): string {
-    const key = e.key.toLowerCase();
-    return key;
+    return layoutFreeKey(e);
   }
 
   private matchesShortcut(
@@ -142,6 +142,7 @@ export class ShortcutManager implements IDisposable {
 
     // Direct key match
     if (eventKey === reqKey) return true;
+    // A key with a letter under Shift ("+" on "="), matched by what it types.
     if (rawKey.toLowerCase() === reqKey) return true;
 
     return false;

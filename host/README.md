@@ -1,7 +1,8 @@
 # host
 
 `semaps` — one binary: the editor (`app/`) and the defaults (`defaults/`) are embedded into it.
-The check in [`../core`](../core) is part of the same binary (`semaps check`).
+The check and the sync with code in [`../core`](../core) are part of the same binary
+(`semaps check`, `semaps sync`).
 
 ## Everyday use
 
@@ -36,7 +37,11 @@ semaps --workspace <dir> --source-root <dir> --port 9000 --no-browser
 semaps --here                                  # keep the server in this console
 semaps install                                 # Windows: copy to a stable folder, PATH, *.semaps
 semaps check [dir | file.semaps]               # model check, exit 1 on findings
+semaps sync --facts facts.json [--project <id>] [--dry-run] [--no-renames] [dir | file.semaps]
+                                               # registry from extractor facts (docs/EXTRACTOR.md §5)
 ```
+
+`sync` flags go before the project argument; `--facts -` reads stdin.
 
 ## Development
 

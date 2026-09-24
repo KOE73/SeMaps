@@ -1,4 +1,5 @@
 import type { DiagramEditor } from "../DiagramEditor.js";
+import { layoutFreeKey } from "../../util/keys.js";
 import { i18n } from "../../workbench/i18n/I18nService.js";
 import { renderMarkdown } from "./MarkdownRenderer.js";
 import { isContainer } from "../../model/types.js";
@@ -387,13 +388,13 @@ export class DocEditorDialog {
       ta.value = ta.value.substring(0, start) + "  " + ta.value.substring(end);
       ta.selectionStart = ta.selectionEnd = start + 2;
       this.updatePreview();
-    } else if (e.key === "b" && (e.ctrlKey || e.metaKey)) {
+    } else if (layoutFreeKey(e) === "b" && (e.ctrlKey || e.metaKey)) {
       e.preventDefault();
       this.insertMarkdown("**", "**", "жирный");
-    } else if (e.key === "i" && (e.ctrlKey || e.metaKey)) {
+    } else if (layoutFreeKey(e) === "i" && (e.ctrlKey || e.metaKey)) {
       e.preventDefault();
       this.insertMarkdown("*", "*", "курсив");
-    } else if (e.key === "k" && (e.ctrlKey || e.metaKey)) {
+    } else if (layoutFreeKey(e) === "k" && (e.ctrlKey || e.metaKey)) {
       e.preventDefault();
       this.insertMarkdown("[", "](https://...)", "ссылка");
     }

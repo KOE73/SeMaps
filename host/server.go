@@ -248,7 +248,10 @@ func main() {
 	// `semaps check ...` takes the same roots as the server and runs the
 	// model check on them instead of serving.
 	checkMode := len(os.Args) > 1 && os.Args[1] == "check"
-	if checkMode {
+	// `semaps sync --facts f.json ...`: the same roots, the registry is
+	// reconciled with extractor facts (docs/EXTRACTOR.md §5).
+	syncMode := len(os.Args) > 1 && os.Args[1] == "sync"
+	if checkMode || syncMode {
 		os.Args = append(os.Args[:1], os.Args[2:]...)
 	}
 	// `semaps install`: copy to a stable folder, PATH, *.semaps association.
@@ -268,11 +271,25 @@ func main() {
 	var here bool
 	flag.BoolVar(&noBrowser, "no-browser", false, "Do not open a browser")
 	flag.BoolVar(&here, "here", false, "Run the server in this console instead of a new window")
+	var sync struct {
+		facts, project    string
+		dryRun, noRenames bool
+	}
+	if syncMode {
+		flag.StringVar(&sync.facts, "facts", "", "Extractor facts (EXTRACTOR.md §2); `-` reads stdin. Required")
+		flag.StringVar(&sync.project, "project", "", "Project id under projects/ (default: the only one there is)")
+		flag.BoolVar(&sync.dryRun, "dry-run", false, "Report only, write nothing; exit 1 when anything would change")
+		flag.BoolVar(&sync.noRenames, "no-renames", false, "Treat rename candidates as one entity gone and one new")
+	}
 	flag.Usage = func() {
-		fmt.Fprintln(os.Stderr, "usage: semaps [flags] [dir | file.semaps]\n       semaps check [flags] [dir | file.semaps]\n\nWith no arguments, finds a *.semaps project file upward from the current directory.\n`check` reports stale texts, views without an axis, broken codeRef and the like;\nexit code 1 when anything is found.")
+		fmt.Fprintln(os.Stderr, "usage: semaps [flags] [dir | file.semaps]\n       semaps check [flags] [dir | file.semaps]\n       semaps sync --facts <file.json> [flags] [dir | file.semaps]\n\nWith no arguments, finds a *.semaps project file upward from the current directory.\n`check` reports stale texts, views without an axis, broken codeRef and the like;\nexit code 1 when anything is found.\n`sync` reconciles entities.json and relations.json with extractor facts; flags go\nbefore the project argument. `semaps sync --help` lists its flags.")
 		flag.PrintDefaults()
 	}
 	flag.Parse()
+	if syncMode && sync.facts == "" {
+		fmt.Fprintln(os.Stderr, "semaps sync: --facts <file.json> is required")
+		os.Exit(2)
+	}
 
 	portSet := false
 	flag.Visit(func(f *flag.Flag) { portSet = portSet || f.Name == "port" })
@@ -294,7 +311,7 @@ func main() {
 		if file == "" {
 			// A downloaded exe started by a double click lands here: nothing
 			// to open, not installed. Offer the install instead of vanishing.
-			if flag.NArg() == 0 && !checkMode && !installed() {
+			if flag.NArg() == 0 && !checkMode && !syncMode && !installed() {
 				offerInstall()
 				return
 			}
@@ -330,6 +347,12 @@ func main() {
 	if checkMode {
 		fmt.Printf("  workspace:   %s\n  source root: %s\n\n", absWorkspace, absRoot)
 		os.Exit(core.Report(os.Stdout, core.Check(absWorkspace, absRoot)))
+	}
+	if syncMode {
+		fmt.Printf("  workspace:   %s\n\n", absWorkspace)
+		os.Exit(runSync(absWorkspace, sync.facts, core.SyncOptions{
+			Project: sync.project, DryRun: sync.dryRun, NoRenames: sync.noRenames,
+		}))
 	}
 
 	// Already serving this workspace? Just show it.
@@ -568,6 +591,38 @@ func main() {
 	})
 
 	log.Fatal(http.Serve(listener, nil))
+}
+
+// runSync reads the facts and reconciles the registry. Exit codes: 0 in sync
+// (or applied with nothing left to decide), 1 findings or unreadable facts,
+// 2 a usage mistake.
+func runSync(workspace, factsPath string, opt core.SyncOptions) int {
+	var in io.Reader = os.Stdin
+	if factsPath != "-" {
+		f, err := os.Open(factsPath)
+		if err != nil {
+			fmt.Fprintf(os.Stderr, "semaps sync: %v\n", err)
+			return 2
+		}
+		defer f.Close()
+		in = f
+	}
+	facts, err := core.ReadFacts(in)
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "semaps sync: %v\n", err)
+		return 1
+	}
+	report, err := core.Sync(workspace, facts, opt)
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "semaps sync: %v\n", err)
+		var usage *core.UsageError
+		if errors.As(err, &usage) {
+			return 2
+		}
+		return 1
+	}
+	report.Print(os.Stdout)
+	return report.ExitCode()
 }
 
 func openBrowser(url string) {

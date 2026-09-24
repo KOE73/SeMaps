@@ -1,4 +1,5 @@
 import type { CommandRegistry } from "../commands/CommandRegistry.js";
+import { layoutFreeKey } from "../../util/keys.js";
 import type { Ribbon } from "./Ribbon.js";
 import { el } from "../../util/dom.js";
 
@@ -56,7 +57,7 @@ export class KeyTipsManager {
         return;
       }
 
-      const key = e.key.toUpperCase();
+      const key = layoutFreeKey(e).toUpperCase();
       const match = this.activeBadges.find((b) => b.key.toUpperCase() === key);
 
       if (match) {

@@ -1,4 +1,5 @@
 import { el } from "../util/dom.js";
+import { openCanvasMenu, type MenuHost } from "./menus/CanvasMenus.js";
 import { DiagramEditor, type DiagramEditorOptions } from "../editor/DiagramEditor.js";
 import { CommandRegistry } from "./commands/CommandRegistry.js";
 import { createBuiltinCommands } from "./commands/builtinCommands.js";
@@ -116,6 +117,19 @@ export class Workbench {
   }
 
   private bindEvents(): void {
+    // Right click: a box's family and look, a line's shape and style, the view's line shape.
+    const panels = this.dockviewHost.panelService;
+    const menuHost: MenuHost = {
+      openPanel: (id) => panels.open(id),
+      openStyleEditor: (styleId) => {
+        panels.open("styles");
+        this.editor.openStyle(styleId);
+      },
+    };
+    this.editor.canvas.events.on("contextmenu", ({ target, id, clientX, clientY }) => {
+      openCanvasMenu(this.editor, menuHost, target, id, clientX, clientY);
+    });
+
     // Re-evaluate ribbon and commands on selection change
     this.editor.canvas.events.on("select", () => {
       this.commands.notifyStateChanged();

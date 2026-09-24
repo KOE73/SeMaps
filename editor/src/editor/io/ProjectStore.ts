@@ -16,6 +16,7 @@ import type {
   WireDocument,
 } from "../../model/wire-types.js";
 import type { ModelStore, SaveTarget } from "./types.js";
+import type { RoutingMode } from "../../model/style-types.js";
 
 /**
  * Reads and writes multi-file project models over HTTP.
@@ -297,7 +298,9 @@ export class HttpProjectStore implements ModelStore {
       ...(bundle.view.icon === undefined ? {} : { icon: bundle.view.icon }),
       ...(bundle.view.theme === undefined ? {} : { theme: bundle.view.theme }),
       ...(bundle.view.order === undefined ? {} : { order: bundle.view.order }),
-      ...(bundle.view.routing === undefined ? {} : { routing: bundle.view.routing }),
+      // The document's metadata, not the bundle: that is where the editor sets
+      // or clears the view's line shape, and where undo can reach it.
+      ...(wire.metadata?.routing === undefined ? {} : { routing: wire.metadata.routing as RoutingMode }),
       ...(bundle.view.relations ? { relations: bundle.view.relations } : {}),
       zones,
       nodes,

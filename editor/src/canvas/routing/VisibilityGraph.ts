@@ -40,13 +40,42 @@ const SEARCH_MARGIN = 240;
  */
 const MAX_LINES_PER_AXIS = 64;
 
+/**
+ * How far an end may slide along its side, and what is already there.
+ *
+ * `lo`/`hi` bound the end's coordinate *along* the side (x on a top or bottom
+ * side, y on a left or right one). The assigned port stays the cheapest spot;
+ * moving away from it costs a little per pixel, so the end only moves when the
+ * move buys something — a straight run instead of a staircase.
+ */
+export interface Slide {
+  readonly lo: number;
+  readonly hi: number;
+  /** Where other lines already meet this side; landing next to one is priced, not forbidden. */
+  readonly taken?: readonly number[];
+}
+
 export interface RouteQuery {
   readonly from: Point;
   readonly to: Point;
   readonly fromSide: Side;
   readonly toSide: Side;
   readonly zones: readonly RouteZone[];
+  /** Absent: the end is the port and nothing else, as before. */
+  readonly fromSlide?: Slide;
+  readonly toSlide?: Slide;
+  /** Debugging only: receives the grid the search ran on. */
+  readonly onGrid?: (xs: readonly number[], ys: readonly number[]) => void;
 }
+
+/** What one pixel of sliding away from the assigned port costs. */
+const SLIDE_COST = 0.2;
+
+/** Landing this close to a line already on the side counts as sharing its spot. */
+const TAKEN_GAP = 20;
+
+/** What sharing a spot costs: more than a bend, so a second line takes the next free spot. */
+const TAKEN_COST = 60;
 
 /**
  * The polyline through the ports, or null when nothing gets through — in which
@@ -55,6 +84,7 @@ export interface RouteQuery {
 export function findRoute(query: RouteQuery): Point[] | null {
   const { from, to, fromSide, toSide, zones } = query;
   if (!finite(from) || !finite(to)) return null;
+  if (query.fromSlide || query.toSlide) return findSlidingRoute(query);
 
   const enter = stubPoint(from, fromSide, STUB);
   const exit = stubPoint(to, toSide, STUB);
@@ -64,6 +94,7 @@ export function findRoute(query: RouteQuery): Point[] | null {
   // A single line on one axis is not a degenerate grid, it is a straight
   // corridor — which is exactly the case of two ports facing each other on the
   // same row. Refusing it sent the commonest route of all down the fallback.
+  query.onGrid?.(xs, ys);
   if (xs.length === 0 || ys.length === 0) return null;
 
   // The stub's own coordinates are seeded above, so both ends land on their
@@ -77,6 +108,111 @@ export function findRoute(query: RouteQuery): Point[] | null {
   if (middle === null) return null;
 
   return simplify([from, ...middle, to]);
+}
+
+/**
+ * The same search with ends that may slide along their sides: every grid point
+ * on the start's stub line is a possible start, every one on the goal's a
+ * possible goal. Each start and goal carries its own price — the slide, the
+ * crowding, and a bend when the route does not leave or arrive straight — so
+ * one search picks the ports and the path together. That is what turns
+ * "exit the middle, dodge, jog back to the assigned entry" into a single
+ * straight run whenever a straight run exists, at either end or both.
+ */
+function findSlidingRoute(query: RouteQuery): Point[] | null {
+  const { from, to, fromSide, toSide, zones } = query;
+  const enter = stubPoint(from, fromSide, STUB);
+  const exit = stubPoint(to, toSide, STUB);
+  const fromAxis = alongAxis(fromSide);
+  const toAxis = alongAxis(toSide);
+
+  // Extra lines worth having: where the other end sits, pulled onto this side,
+  // and the middle of the overlap when both slide the same way — the spots a
+  // straight run would use.
+  const extra: Record<"x" | "y", number[]> = { x: [], y: [] };
+  const fromSpan = spanOf(query.fromSlide, from, fromAxis);
+  const toSpan = spanOf(query.toSlide, to, toAxis);
+  extra[fromAxis].push(clamp(to[fromAxis], fromSpan), fromSpan.lo, fromSpan.hi);
+  extra[toAxis].push(clamp(from[toAxis], toSpan), toSpan.lo, toSpan.hi);
+  if (fromAxis === toAxis) {
+    const lo = Math.max(fromSpan.lo, toSpan.lo);
+    const hi = Math.min(fromSpan.hi, toSpan.hi);
+    if (lo <= hi) extra[fromAxis].push((lo + hi) / 2);
+  }
+
+  const xs = axisLines("x", [from.x, to.x, enter.x, exit.x, ...extra.x], zones, from, to);
+  const ys = axisLines("y", [from.y, to.y, enter.y, exit.y, ...extra.y], zones, from, to);
+  query.onGrid?.(xs, ys);
+  if (xs.length === 0 || ys.length === 0) return null;
+
+  const starts = endChoices(xs, ys, from, fromSide, enter, fromSpan, query.fromSlide?.taken, zones);
+  const goals = endChoices(xs, ys, to, toSide, exit, toSpan, query.toSlide?.taken, zones);
+  if (starts.length === 0 || goals.length === 0) return null;
+
+  const found = searchMany(xs, ys, starts, goals, outward(fromSide), inward(toSide), zones);
+  if (found === null) return null;
+  return simplify([found.startPort, ...found.middle, found.goalPort]);
+}
+
+interface EndChoice {
+  /** Grid node of the stub point. */
+  readonly node: number;
+  /** The point on the block's side the line touches. */
+  readonly port: Point;
+  /** Slide and crowding, before any bend. */
+  readonly cost: number;
+}
+
+/** The slide range along the side, or just the port itself when the end may not slide. */
+function spanOf(slide: Slide | undefined, port: Point, axis: "x" | "y"): { lo: number; hi: number } {
+  if (!slide || !(slide.lo <= slide.hi)) return { lo: port[axis], hi: port[axis] };
+  return { lo: Math.min(slide.lo, port[axis]), hi: Math.max(slide.hi, port[axis]) };
+}
+
+function endChoices(
+  xs: readonly number[],
+  ys: readonly number[],
+  port: Point,
+  side: Side,
+  stub: Point,
+  span: { lo: number; hi: number },
+  taken: readonly number[] | undefined,
+  zones: readonly RouteZone[],
+): EndChoice[] {
+  const axis = alongAxis(side);
+  const lines = axis === "x" ? xs : ys;
+  const out: EndChoice[] = [];
+  for (const v of lines) {
+    if (v < round(span.lo) || v > round(span.hi)) continue;
+    const p = axis === "x" ? { x: v, y: port.y } : { x: port.x, y: v };
+    const s = axis === "x" ? { x: v, y: stub.y } : { x: stub.x, y: v };
+    // The short run from the side to the stub must itself be clear.
+    const penalty = segmentPenalty(p, s, zones);
+    if (penalty === null) continue;
+    const node = index(xs, ys, s);
+    if (node === null) continue;
+    const crowd = (taken ?? []).some((t) => Math.abs(t - v) < TAKEN_GAP) ? TAKEN_COST : 0;
+    out.push({ node, port: p, cost: Math.abs(v - port[axis]) * SLIDE_COST + crowd + penalty });
+  }
+  return out;
+}
+
+function alongAxis(side: Side): "x" | "y" {
+  return side === "north" || side === "south" ? "x" : "y";
+}
+
+function clamp(v: number, span: { lo: number; hi: number }): number {
+  return Math.min(Math.max(v, span.lo), span.hi);
+}
+
+/** The direction of travel leaving a side. */
+function outward(side: Side): Dir {
+  return side === "north" ? Dir.North : side === "south" ? Dir.South : side === "west" ? Dir.West : Dir.East;
+}
+
+/** The direction of travel arriving at a side. */
+function inward(side: Side): Dir {
+  return side === "north" ? Dir.South : side === "south" ? Dir.North : side === "west" ? Dir.East : Dir.West;
 }
 
 function index(xs: readonly number[], ys: readonly number[], p: Point): number | null {
@@ -109,22 +245,25 @@ function axisLines(
   const required = new Set<number>();
   for (const seed of seeds) if (Number.isFinite(seed)) required.add(round(seed));
 
+  // Shapes first, lanes beside other lines only with what budget is left.
   const optional = new Set<number>();
+  const lanes = new Set<number>();
   for (const zone of zones) {
     const near = axis === "x" ? zone.rect.x : zone.rect.y;
     const far = axis === "x" ? right(zone.rect) : bottom(zone.rect);
     for (const v of [near - CLEARANCE / 2, far + CLEARANCE / 2]) {
       const r = round(v);
-      if (r >= lo && r <= hi && !required.has(r)) optional.add(r);
+      if (r >= lo && r <= hi && !required.has(r)) (zone.lane ? lanes : optional).add(r);
     }
   }
 
+  const byCentre = (a: number, b: number) => Math.abs(a - centre) - Math.abs(b - centre) || a - b;
   const budget = Math.max(MAX_LINES_PER_AXIS - required.size, 0);
-  const kept = [...optional]
-    .sort((a, b) => Math.abs(a - centre) - Math.abs(b - centre) || a - b)
-    .slice(0, budget);
+  const kept = [...optional].sort(byCentre).slice(0, budget);
+  const keptSet = new Set(kept);
+  const laneKept = [...lanes].filter((v) => !keptSet.has(v)).sort(byCentre).slice(0, Math.max(budget - kept.length, 0));
 
-  return [...required, ...kept].sort((a, b) => a - b);
+  return [...required, ...kept, ...laneKept].sort((a, b) => a - b);
 }
 
 /** Half-pixel grid: keeps coordinate identity exact without float surprises. */
@@ -204,6 +343,103 @@ function search(
       cameFrom.set(nextKey, key);
       const heuristic = Math.abs(goalPoint.x - there.x) + Math.abs(goalPoint.y - there.y);
       open.push(nextKey, nextCost, nextCost + heuristic);
+    }
+  }
+  return null;
+}
+
+/**
+ * A* from several starts to several goals. Starts are entered already
+ * travelling outward, so a route that turns at once pays for the bend like any
+ * other; a goal is only reached through a virtual last step that charges the
+ * goal's own cost plus a bend when the route does not arrive head-on.
+ */
+function searchMany(
+  xs: readonly number[],
+  ys: readonly number[],
+  starts: readonly EndChoice[],
+  goals: readonly EndChoice[],
+  startDir: Dir,
+  goalDir: Dir,
+  zones: readonly RouteZone[],
+): { startPort: Point; goalPort: Point; middle: Point[] } | null {
+  const height = ys.length;
+  const at = (node: number): Point => ({ x: xs[Math.floor(node / height)]!, y: ys[node % height]! });
+  const FINISH = -1;
+
+  const goalAt = new Map<number, EndChoice>();
+  for (const g of goals) {
+    const had = goalAt.get(g.node);
+    if (!had || g.cost < had.cost) goalAt.set(g.node, g);
+  }
+  const goalPoints = [...goalAt.keys()].map(at);
+  const heuristic = (p: Point): number => {
+    let h = Infinity;
+    for (const g of goalPoints) h = Math.min(h, Math.abs(g.x - p.x) + Math.abs(g.y - p.y));
+    return h;
+  };
+
+  const best = new Map<number, number>();
+  const cameFrom = new Map<number, number>();
+  const startOf = new Map<number, EndChoice>();
+  let finishFrom: number | null = null;
+  const open = new Heap();
+  for (const s of starts) {
+    const key = s.node * 5 + startDir;
+    if (s.cost >= (best.get(key) ?? Infinity)) continue;
+    best.set(key, s.cost);
+    startOf.set(key, s);
+    open.push(key, s.cost, s.cost + heuristic(at(s.node)));
+  }
+
+  while (!open.empty) {
+    const { key, cost } = open.pop();
+    if (key === FINISH) {
+      if (finishFrom === null) return null;
+      const middle = rebuild(cameFrom, finishFrom, at);
+      let first = finishFrom;
+      while (cameFrom.has(first)) first = cameFrom.get(first)!;
+      const start = startOf.get(first);
+      const goal = goalAt.get(Math.floor(finishFrom / 5));
+      if (!start || !goal) return null;
+      return { startPort: start.port, goalPort: goal.port, middle };
+    }
+    if ((best.get(key) ?? Infinity) < cost) continue;
+    const node = Math.floor(key / 5);
+    const dir = (key % 5) as Dir;
+
+    const goal = goalAt.get(node);
+    if (goal) {
+      const total = cost + goal.cost + (dir === goalDir ? 0 : BEND_COST);
+      if (total < (best.get(FINISH) ?? Infinity)) {
+        best.set(FINISH, total);
+        finishFrom = key;
+        open.push(FINISH, total, total);
+      }
+    }
+
+    const here = at(node);
+    const gx = Math.floor(node / height);
+    const gy = node % height;
+    for (const step of [Dir.North, Dir.East, Dir.South, Dir.West]) {
+      const nx = gx + (step === Dir.East ? 1 : step === Dir.West ? -1 : 0);
+      const ny = gy + (step === Dir.South ? 1 : step === Dir.North ? -1 : 0);
+      if (nx < 0 || ny < 0 || nx >= xs.length || ny >= height) continue;
+
+      const next = nx * height + ny;
+      const there = at(next);
+      const penalty = segmentPenalty(here, there, zones);
+      if (penalty === null) continue;
+
+      const length = Math.abs(there.x - here.x) + Math.abs(there.y - here.y);
+      const turn = dir === step ? 0 : BEND_COST;
+      const nextCost = cost + length + penalty + turn;
+      const nextKey = next * 5 + step;
+      if (nextCost >= (best.get(nextKey) ?? Infinity)) continue;
+
+      best.set(nextKey, nextCost);
+      cameFrom.set(nextKey, key);
+      open.push(nextKey, nextCost, nextCost + heuristic(there));
     }
   }
   return null;
