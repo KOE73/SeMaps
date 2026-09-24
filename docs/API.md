@@ -327,3 +327,41 @@ exitCode, error?, stats?: {symbols, edges, symbolKinds, edgeKinds, language}}`.
 A run's facts never enter the workspace; they stay in the temp directory beside its log.
 
 Short addresses of the tool pages: `/setup` → `/app/setup.html`, `/extract` → `/app/extract.html`.
+
+## 6. MCP Tool API: Agent access via tools
+
+An MCP server (`semaps mcp` on stdio, JSON-RPC 2.0) gives agents access to the same `core/` functions that HTTP and CLI use. The server enforces the same rules: `id` generation, record validation, text provenance, deletion prevention, view writes only by explicit request.
+
+**Read tools** (no restrictions):
+- `list_projects`: projects and their views in the workspace (same as `GET /api/workspace`)
+- `list_views`: views of a project
+- `get_entity`: entity by id
+- `find_entities`: search by name/symbol/module/kind
+- `get_relations`: relations of an entity, filtered by type/direction/visibility
+- `get_text`: text field (name, description, etc.) for an entity or type, by language
+- `sync_preview`: dry-run report of what sync would do (see §5)
+- `doctor`: diagnostic findings of the project (see §5)
+
+**Write tools** (all enforce contract rules):
+- `set_text`: create or update a text field with `origin: authored`, `at` UTC ISO-8601
+- `add_relation`: create an authored relation between two entities (generates id)
+- `add_relation_type`: add a new type to the relation vocabulary
+- `set_relation_visible`: set a type's visibility on a view
+- `confirm_rename`: confirm an entity symbol rename or member rename (for sync candidates)
+- `extract`: run the extractors of the project (see §5)
+- `sync`: apply facts to the registry; with `--dry-run` flag
+- `place_entities`: place entities on a view (only with `requested_by_human: true`, ADR_20260924_contract §8.2)
+
+**Entry:** In the consuming project, `.mcp.json`:
+```json
+{
+  "mcpServers": {
+    "semaps": {
+      "command": "semaps",
+      "args": ["mcp"],
+      "env": {}
+    }
+  }
+}
+```
+Roots (workspace, source root) are found the same way as `semaps` without arguments: from `.semaps` file upward from the current directory, or via `--workspace` / `--source-root` flags.

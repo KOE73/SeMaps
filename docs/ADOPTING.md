@@ -4,6 +4,34 @@ For an agent working in **another** repository that wants a SeMaps map there. It
 installed `semaps` binary (see [README](../README.md#getting-started)), not the SeMaps source.
 Format details live in [CONTRACT.md](CONTRACT.md); this file only lists the steps and the traps.
 
+## Primary path: through MCP
+
+An agent reads and writes the registry through MCP tools (API.md §6), never parsing files directly. Set up once, use everywhere:
+
+1. **Project file** (same as below)
+2. **MCP server configuration** in the consuming project root: `.mcp.json`
+   ```json
+   {
+     "mcpServers": {
+       "semaps": {
+         "command": "semaps",
+         "args": ["mcp"],
+         "env": {}
+       }
+     }
+   }
+   ```
+3. **Use the tools**: `list_projects`, `get_entity`, `set_text`, `add_relation`, `sync_preview`, `sync`, etc.
+   The agent does not read `entities.json` or write files by hand — all changes go through tools,
+   which enforce rules (id generation, provenance, deletion prevention, view restrictions).
+
+For the first model, the steps below still apply (project file, workspace folder, entities.json),
+but the agent uses tools instead of hand-editing JSON.
+
+## Fallback path: by files
+
+When working with the registry files directly (not recommended for agents; useful for hand edits):
+
 ## Steps
 
 1. **Project file** in the consuming repo root, next to `.git`: `<name>.semaps`.
