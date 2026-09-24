@@ -3,6 +3,7 @@ import { el, replaceChildren } from "../util/dom.js";
 import { select } from "./fields.js";
 import { SearchableSelect, type SearchableOption } from "./SearchableSelect.js";
 import { resolveElementRelations, type ResolvedRelation } from "../model/relations-resolver.js";
+import { cardinalityToLabel } from "../model/viaLabel.js";
 import type { DiagramEditor } from "./DiagramEditor.js";
 import { i18n } from "../workbench/i18n/I18nService.js";
 
@@ -283,14 +284,26 @@ export class EdgesPanel {
         change: (e) => {
           const checked = (e.target as HTMLInputElement).checked;
           if (checked) {
-            doc.addEdge({
+            const edgeData: Partial<DiagramEdge> = {
               id: item.id,
               from: item.from,
               to: item.to,
               type: item.type,
               label: item.label,
               styleId: item.styleId,
-            });
+            };
+
+            // For code-origin relations, preserve via and set toLabel from cardinality if needed
+            if (item.raw && item.raw.origin === "code" && item.raw.via) {
+              edgeData.origin = "code";
+              edgeData.via = item.raw.via;
+              // Set toLabel from cardinality if no authored toLabel
+              if (!item.raw.toLabel && item.raw.via.cardinality) {
+                edgeData.toLabel = cardinalityToLabel(item.raw.via.cardinality);
+              }
+            }
+
+            doc.addEdge(edgeData as DiagramEdge);
             (this.host as any).commit("show-edge");
           } else {
             doc.removeEdge(item.id);
@@ -316,6 +329,7 @@ export class EdgesPanel {
       el("span", { class: "mono", text: isOutgoing ? "➔" : "⬅", attrs: { style: "opacity: 0.7; font-size: 10px;" } }),
       el("span", { class: "input-strong", text: otherName }),
       item.label ? el("span", { class: "muted mono", text: `«${item.label}»`, attrs: { style: "font-size: 10px;" } }) : null,
+      item.raw?.via?.text ? el("span", { class: "muted mono", text: item.raw.via.text, attrs: { style: "font-size: 9px; opacity: 0.7;" }, title: `Member type: ${item.raw.via.text}` }) : null,
     ]);
 
     const typeCol = el("div", { class: "edge-col-type" }, [
