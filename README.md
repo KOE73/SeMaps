@@ -74,7 +74,21 @@ port: 8777
 ```
 
 All paths are relative to the folder of this file. All keys are optional — the values above are
-the defaults. Commit the file: everyone who clones the project gets the same environment.
+the defaults. The file is YAML: comments stay when SeMaps edits it.
+
+`extractors:` lists what to read from the code and into which model project; a repository may
+have several (C# and TypeScript side by side). Running them from `semaps.exe` is
+[planned](docs/plans/PLAN_20260924_host_setup-and-extract.md); the key is already read and checked.
+
+```yaml
+extractors:
+  - id: backend
+    language: csharp
+    project: core            # model project in the workspace
+    root: .
+    include: [src]
+    exclude: ["**/*.Tests/**"]
+``` Commit the file: everyone who clones the project gets the same environment.
 
 The workspace folder may start empty: create projects and diagrams in the editor (**Вставка →
 Проекты и схемы**), or copy [`examples/workspace`](examples/workspace). There is no list of
