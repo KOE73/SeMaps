@@ -728,11 +728,17 @@ func (s *mcpServer) setText(projectID, id, field, value, language string) error 
 		texts[id] = make(map[string]interface{})
 	}
 
-	// Create text value with origin: authored
+	// Create text value with origin: authored, at: ISO8601
 	texts[id][field] = map[string]interface{}{
 		"v":      value,
 		"origin": "authored",
 		"at":     formatISO8601(),
+	}
+
+	// Ensure parent directory exists
+	dir := filepath.Dir(path)
+	if err := os.MkdirAll(dir, 0755); err != nil {
+		return err
 	}
 
 	return saveJSON(path, texts)
@@ -774,20 +780,23 @@ func formatISO8601() string {
 
 // findEntities searches for entities matching the query
 func (s *mcpServer) findEntities(projectID, query string) ([]interface{}, error) {
-	var entities map[string]interface{}
+	var entities map[string]json.RawMessage
 	path := filepath.Join(s.workspace, "projects", projectID, "entities.json")
 	if err := loadJSON(path, &entities); err != nil {
 		return nil, fmt.Errorf("failed to load entities: %v", err)
 	}
 
-	// Simple search by matching query in entity IDs
+	// Search by entity ID and other fields
 	var result []interface{}
-	for id, data := range entities {
-		if strings.Contains(id, query) {
-			result = append(result, map[string]interface{}{
-				"id": id,
-				"data": data,
-			})
+	for id, rawData := range entities {
+		if strings.Contains(strings.ToLower(id), strings.ToLower(query)) {
+			var ent map[string]interface{}
+			if err := json.Unmarshal(rawData, &ent); err == nil {
+				result = append(result, map[string]interface{}{
+					"id":   id,
+					"data": ent,
+				})
+			}
 		}
 	}
 	return result, nil
@@ -795,7 +804,7 @@ func (s *mcpServer) findEntities(projectID, query string) ([]interface{}, error)
 
 // getRelations gets relations for an entity
 func (s *mcpServer) getRelations(projectID, entityID, relType, direction string) ([]interface{}, error) {
-	var relations map[string]interface{}
+	var relations map[string]json.RawMessage
 	path := filepath.Join(s.workspace, "projects", projectID, "relations.json")
 	if err := loadJSON(path, &relations); err != nil {
 		return nil, fmt.Errorf("failed to load relations: %v", err)
@@ -803,15 +812,27 @@ func (s *mcpServer) getRelations(projectID, entityID, relType, direction string)
 
 	// Filter relations by entity and other criteria
 	var result []interface{}
-	for id, data := range relations {
-		// Basic filtering - in production this would be more sophisticated
-		if strings.Contains(id, entityID) {
-			if relType == "" || strings.Contains(id, relType) {
-				result = append(result, map[string]interface{}{
-					"id": id,
-					"data": data,
-				})
-			}
+	for id, rawData := range relations {
+		var rel map[string]interface{}
+		if err := json.Unmarshal(rawData, &rel); err != nil {
+			continue
+		}
+
+		// Check if entity is from or to
+		from, _ := rel["from"].(string)
+		to, _ := rel["to"].(string)
+		relatedType, _ := rel["type"].(string)
+
+		matchesEntity := (from == entityID && (direction == "" || direction == "out")) ||
+			(to == entityID && (direction == "" || direction == "in"))
+
+		matchesType := relType == "" || relatedType == relType
+
+		if matchesEntity && matchesType {
+			result = append(result, map[string]interface{}{
+				"id":   id,
+				"data": rel,
+			})
 		}
 	}
 	return result, nil
@@ -833,23 +854,43 @@ func (s *mcpServer) syncPreview(projectID, extractorID string) (interface{}, err
 // addRelation adds an authored relation
 func (s *mcpServer) addRelation(projectID, fromID, toID, relType string) error {
 	path := filepath.Join(s.workspace, "projects", projectID, "relations.json")
-	var relations map[string]interface{}
+	var relations map[string]json.RawMessage
 	if err := loadJSON(path, &relations); err != nil {
-		relations = make(map[string]interface{})
+		relations = make(map[string]json.RawMessage)
 	}
 
-	// Create relation ID and entry
-	relID := fmt.Sprintf("r_%s_%s_%s", fromID, toID, relType)
-	if relations[relID] == nil {
-		relations[relID] = map[string]interface{}{
+	// Extract base IDs for relation ID (e.g., e_foo -> foo)
+	fromBase := strings.TrimPrefix(fromID, "e_")
+	toBase := strings.TrimPrefix(toID, "e_")
+	relID := fmt.Sprintf("r_%s_%s_%s", fromBase, toBase, relType)
+
+	if _, exists := relations[relID]; !exists {
+		relEntry := map[string]interface{}{
 			"from":   fromID,
 			"to":     toID,
 			"type":   relType,
 			"origin": "authored",
+			"at":     formatISO8601(),
 		}
+		data, _ := json.Marshal(relEntry)
+		relations[relID] = data
 	}
 
-	return saveJSON(path, relations)
+	// Ensure parent directory exists
+	dir := filepath.Dir(path)
+	if err := os.MkdirAll(dir, 0755); err != nil {
+		return err
+	}
+
+	// Convert back to regular map for saving
+	result := make(map[string]interface{})
+	for k, v := range relations {
+		var obj interface{}
+		json.Unmarshal(v, &obj)
+		result[k] = obj
+	}
+
+	return saveJSON(path, result)
 }
 
 // addRelationType adds a new relation type
@@ -861,13 +902,18 @@ func (s *mcpServer) addRelationType(projectID, relType, visibility string) error
 	}
 
 	if types[relType] == nil {
-		visibility := visibility
 		if visibility == "" {
 			visibility = "visible"
 		}
 		types[relType] = map[string]interface{}{
 			"visibility": visibility,
 		}
+	}
+
+	// Ensure parent directory exists
+	dir := filepath.Dir(path)
+	if err := os.MkdirAll(dir, 0755); err != nil {
+		return err
 	}
 
 	return saveJSON(path, types)
