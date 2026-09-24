@@ -219,6 +219,9 @@ func main() {
 	if syncMode || extractMode {
 		flag.StringVar(&sync.extractor, "extractor", "", "Extractor id from the .semaps file (default: all of them)")
 	}
+	if mcpMode {
+		flag.StringVar(&sync.project, "project", "", "Project id under projects/ (default: the only one there is)")
+	}
 	if syncMode {
 		flag.StringVar(&sync.facts, "facts", "", "Extractor facts (EXTRACTOR.md §2); `-` reads stdin. Default: run the extractors of the .semaps file")
 		flag.StringVar(&sync.run, "run", "", "Use the facts of this run (`semaps extract` prints its id) instead of extracting again")
@@ -227,7 +230,7 @@ func main() {
 		flag.BoolVar(&sync.noRenames, "no-renames", false, "Treat rename candidates as one entity gone and one new")
 	}
 	flag.Usage = func() {
-		fmt.Fprintln(os.Stderr, "usage: semaps [flags] [dir | file.semaps]\n       semaps check [flags] [dir | file.semaps]\n       semaps sync [--extractor <id>] [--run <id> | --facts <file.json>] [flags] [dir | file.semaps]\n       semaps extract [--extractor <id>] [dir | file.semaps]\n       semaps doctor [dir | file.semaps]\n\nWith no arguments, finds a *.semaps project file upward from the current directory.\n`check` reports stale texts, views without an axis, broken codeRef and the like;\nexit code 1 when anything is found.\n`sync` reconciles entities.json and relations.json with extractor facts; without\n--facts it runs the extractors listed in the .semaps file. `extract` only runs them;\n`doctor` shows which extractors and runtimes are found. Flags go\nbefore the project argument. `semaps sync --help` lists its flags.")
+		fmt.Fprintln(os.Stderr, "usage: semaps [flags] [dir | file.semaps]\n       semaps check [flags] [dir | file.semaps]\n       semaps sync [--extractor <id>] [--run <id> | --facts <file.json>] [flags] [dir | file.semaps]\n       semaps extract [--extractor <id>] [dir | file.semaps]\n       semaps doctor [dir | file.semaps]\n       semaps mcp [--project <id>] [dir | file.semaps]\n\nWith no arguments, finds a *.semaps project file upward from the current directory.\n`check` reports stale texts, views without an axis, broken codeRef and the like;\nexit code 1 when anything is found.\n`sync` reconciles entities.json and relations.json with extractor facts; without\n--facts it runs the extractors listed in the .semaps file. `extract` only runs them;\n`doctor` shows which extractors and runtimes are found;\n`mcp` serves the registry as MCP tools on stdio (docs/API.md §6). Flags go\nbefore the project argument. `semaps sync --help` lists its flags.")
 		flag.PrintDefaults()
 	}
 	flag.Parse()
@@ -275,7 +278,12 @@ func main() {
 		if err != nil {
 			log.Fatalf("Project file: %v", err)
 		}
-		fmt.Printf("Project %s (%s)\n", proj.Name, proj.File)
+		// stdout of `semaps mcp` is the protocol.
+		if mcpMode {
+			fmt.Fprintf(os.Stderr, "Project %s (%s)\n", proj.Name, proj.File)
+		} else {
+			fmt.Printf("Project %s (%s)\n", proj.Name, proj.File)
+		}
 		workspaceDir = proj.Workspace
 		if sourceDir == "" {
 			sourceDir = proj.SourceRoot
@@ -309,7 +317,7 @@ func main() {
 		os.Exit(code)
 	}
 	if mcpMode {
-		os.Exit(runMCP(absWorkspace, absRoot))
+		os.Exit(runMCP(proj, absWorkspace, absRoot, sync.project))
 	}
 	if syncMode {
 		fmt.Printf("  workspace:   %s\n\n", absWorkspace)

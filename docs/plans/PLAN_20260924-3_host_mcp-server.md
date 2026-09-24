@@ -1,6 +1,7 @@
 # PLAN_20260924-3_host — MCP-сервер `semaps mcp`
 
-Статус: **в работе** — шаги 1–5 готовы; шаг 6 открыт (проверка на живом проекте); после
+Статус: **в работе** — шаги 1–5 сделаны (правила — `core/edit.go`, сервер — `host/mcp.go` на
+официальном SDK; чтение проверено по stdio на NeuroModFlowNet.ONNX); шаг 6 открыт. После
 [`PLAN_20260924-2_contract_member-relations`](PLAN_20260924-2_contract_member-relations.md).
 
 Решение: [`ADR_20260924-5`](../adr/ADR_20260924-5_host_mcp-server.md).

@@ -328,40 +328,56 @@ A run's facts never enter the workspace; they stay in the temp directory beside 
 
 Short addresses of the tool pages: `/setup` → `/app/setup.html`, `/extract` → `/app/extract.html`.
 
-## 6. MCP Tool API: Agent access via tools
+## 6. MCP: `semaps mcp`
 
-An MCP server (`semaps mcp` on stdio, JSON-RPC 2.0) gives agents access to the same `core/` functions that HTTP and CLI use. The server enforces the same rules: `id` generation, record validation, text provenance, deletion prevention, view writes only by explicit request.
+`semaps mcp [--project <id>] [dir | file.semaps]` serves the registry as MCP tools over stdio
+(official Go SDK, [`ADR_20260924-5`](adr/ADR_20260924-5_host_mcp-server.md)). Roots are found as
+for `semaps` without arguments: a `.semaps` file upward from the current directory. stdout is the
+protocol; the project banner and extractor logs go to stderr. `--project` picks the model project
+when the workspace has several; every tool also takes `project`.
 
-**Read tools** (no restrictions):
-- `list_projects`: projects and their views in the workspace (same as `GET /api/workspace`)
-- `list_views`: views of a project
-- `get_entity`: entity by id
-- `find_entities`: search by name/symbol/module/kind
-- `get_relations`: relations of an entity, filtered by type/direction/visibility
-- `get_text`: text field (name, description, etc.) for an entity or type, by language
-- `sync_preview`: dry-run report of what sync would do (see §5)
-- `doctor`: diagnostic findings of the project (see §5)
+The tools are thin: every rule of writing is a function of `core/` (`core/edit.go`), and a broken
+rule comes back as a tool error (`isError: true`) whose text names the rule. Nothing was written
+then.
 
-**Write tools** (all enforce contract rules):
-- `set_text`: create or update a text field with `origin: authored`, `at` UTC ISO-8601
-- `add_relation`: create an authored relation between two entities (generates id)
-- `add_relation_type`: add a new type to the relation vocabulary
-- `set_relation_visible`: set a type's visibility on a view
-- `confirm_rename`: confirm an entity symbol rename or member rename (for sync candidates)
-- `extract`: run the extractors of the project (see §5)
-- `sync`: apply facts to the registry; with `--dry-run` flag
-- `place_entities`: place entities on a view (only with `requested_by_human: true`, ADR_20260924_contract §8.2)
+**Promises.**
+- `id`s are minted by `core`, never passed in: `r_<from>_<to>_<type>` for an authored relation,
+  `_2` on collision.
+- Texts are written `origin: authored`, `at` = now in UTC; `from`/`fromHash` of a translation go.
+  A relation with `origin: code` takes no text (CONTRACT §4); an entity takes no `name`.
+- **Nothing is deleted**: there is no tool for it.
+- Geometry of a view is written only by `place_entities` with `requestedByHuman: true`, and an
+  entity already on the view is refused, not moved (CONTRACT §8.2 p. 3).
+- Files keep every key they had, in the order they had it.
 
-**Entry:** In the consuming project, `.mcp.json`:
+**Reading**
+
+| Tool | Input | Answer |
+|---|---|---|
+| `list_projects` | — | `core.Index` of the workspace: projects and their views |
+| `list_views` | `project?` | views of the project |
+| `get_entity` | `id` \| `symbol` | the entity as in `entities.json` |
+| `find_entities` | `query?` (substring of name, symbol, namespace, id), `kind?`, `status?`, `limit?` = 50 | `{total, entities}` |
+| `get_relations` | `entity?`, `direction?` = `both` \| `out` \| `in`, `type?` (a prefix ending with `.` matches `holds.`), `status?`, `limit?` = 200 | `{total, relations}` |
+| `get_relation_types` | — | the vocabulary with `visibility` |
+| `get_text` | `lang`, `key` | the entry of `key` in `text.<lang>.json`, `{}` when none |
+| `doctor` | — | `{extractors, extractorsOK, findings}`: `semaps doctor` and `semaps check` |
+| `sync_preview` | as `sync` | as `sync`, writing nothing |
+
+**Writing**
+
+| Tool | Input | Effect |
+|---|---|---|
+| `set_text` | `lang`, `key`, `field` (`name`, `title`, `description`, `doc`, `fromLabel`, `toLabel`), `value` | one field, authored |
+| `add_relation` | `from`, `to`, `type` | authored relation; both entities and the type must exist; the id comes back |
+| `add_relation_type` | `id`, `visibility?`, `styleId?` | authored type; its name goes by `set_text` under `rt_<id>` |
+| `set_relation_visible` | `view`, `relation`, `visible` | the relation into or out of `relations.except` against the default (CONTRACT §8.5) |
+| `confirm_rename` | `entity` + `symbol` \| `relation` + `member` | answers «переименование?» of sync: the old entity takes the new `symbol`, the old member relation the new `via.member`; then `sync` again |
+| `extract` | `extractor?` | runs the extractors of the `.semaps` file one by one → `[{run, extractor, project}]` |
+| `sync` | `extractor?`, `run?`, `noRenames?` | extracts (or takes the facts of `run`) and reconciles; the text answer is the sync report, the structured one `[core.SyncReport]` |
+| `place_entities` | `view`, `entities: [{entity, zone?, x, y, width?, height?}]`, `requestedByHuman` | puts entities on a view |
+
+**Entry** in the consuming project, `.mcp.json` at its root:
 ```json
-{
-  "mcpServers": {
-    "semaps": {
-      "command": "semaps",
-      "args": ["mcp"],
-      "env": {}
-    }
-  }
-}
+{ "mcpServers": { "semaps": { "command": "semaps", "args": ["mcp"] } } }
 ```
-Roots (workspace, source root) are found the same way as `semaps` without arguments: from `.semaps` file upward from the current directory, or via `--workspace` / `--source-root` flags.
