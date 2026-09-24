@@ -612,8 +612,8 @@ func TestMemberRelationVisibility(t *testing.T) {
 	sync(t, ws, facts(t, factSet), SyncOptions{})
 	v := load(t, dir)
 	for _, tc := range []struct {
-		typeID      string
-		wantVisib   string
+		typeID    string
+		wantVisib string
 	}{
 		{"holds.one", "visible"},
 		{"holds.one.internal", "hidden"},

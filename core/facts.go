@@ -47,14 +47,14 @@ type Edge struct {
 // Via is the signature of a member relation: docs/EXTRACTOR.md §2.2a.
 // All fields are optional: absent means "not known".
 type Via struct {
-	Member     string   `json:"member,omitempty"`     // name of the member
-	MemberKind string   `json:"memberKind,omitempty"` // field, property, event, indexer, parameter, return, constructor, self
-	Modifiers  []string `json:"modifiers,omitempty"`  // public, private, readonly, static, …
-	Text       string   `json:"text,omitempty"`       // the member type as written in code
-	Path       []string `json:"path,omitempty"`       // path inside the member type to the target symbol
+	Member      string   `json:"member,omitempty"`      // name of the member
+	MemberKind  string   `json:"memberKind,omitempty"`  // field, property, event, indexer, parameter, return, constructor, self
+	Modifiers   []string `json:"modifiers,omitempty"`   // public, private, readonly, static, …
+	Text        string   `json:"text,omitempty"`        // the member type as written in code
+	Path        []string `json:"path,omitempty"`        // path inside the member type to the target symbol
 	Cardinality string   `json:"cardinality,omitempty"` // one, optional, many, keyed
-	Mutability string   `json:"mutability,omitempty"` // mutable, readonly
-	Deferred   bool     `json:"deferred,omitempty"`   // true if the object comes later
+	Mutability  string   `json:"mutability,omitempty"`  // mutable, readonly
+	Deferred    bool     `json:"deferred,omitempty"`    // true if the object comes later
 }
 
 // SymbolKinds and EdgeKinds are the closed vocabularies of EXTRACTOR.md §2.2–2.3.

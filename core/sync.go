@@ -433,14 +433,14 @@ func Sync(workspace string, facts *Facts, opt SyncOptions) (*SyncReport, error) 
 	memberRenameHolds := map[int]bool{} // relations held due to rename candidate
 	if !opt.NoRenames {
 		type memberKey struct {
-			from     string
-			to       string
-			path     string
-			relType  string // include type to distinguish holds from uses
+			from    string
+			to      string
+			path    string
+			relType string // include type to distinguish holds from uses
 		}
-		missingMembers := make(map[memberKey][]int)   // key -> missing relation indices
-		newMembers := make(map[memberKey][]string)    // key -> new member names
-		confirmedMembers := make(map[memberKey]bool)  // key -> any confirmed
+		missingMembers := make(map[memberKey][]int)  // key -> missing relation indices
+		newMembers := make(map[memberKey][]string)   // key -> new member names
+		confirmedMembers := make(map[memberKey]bool) // key -> any confirmed
 
 		// Collect missing member relations
 		for i, r := range rels.items {
