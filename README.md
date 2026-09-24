@@ -30,7 +30,7 @@ sync with code (in progress, see below) will show where the code has moved away 
 | Editor (`editor/`) | works: canvas, views, styles, content templates, texts with provenance |
 | Host (`host/`) | works: one binary, `*.semaps` project files, save, source viewer |
 | `semaps check` (`core/`) | works: stale texts, views without an axis, broken `codeRef`, … |
-| Sync with code (`core/`) | works from a facts file: `semaps sync --facts facts.json`; running the extractor from the host and the editor button — [**planned**](docs/plans/PLAN_20260923_core_sync-with-code.md) |
+| Sync with code (`core/`) | works from a facts file: `semaps sync --facts facts.json`; extractors run by `semaps.exe`, `/setup` in the editor — [**planned**](docs/plans/PLAN_20260924_host_setup-and-extract.md) |
 | Extractor for TypeScript (`extractors/typescript/`) | **in progress** — [`PLAN_20260923_extractors_typescript`](docs/plans/PLAN_20260923_extractors_typescript.md) |
 | Extractor for C# (`extractors/csharp/`) | **in progress** — [`PLAN_20260923_extractors_csharp`](docs/plans/PLAN_20260923_extractors_csharp.md) |
 | JSON schema of extractor facts (`schemas/`) | works: [`extractor-facts.schema.json`](schemas/extractor-facts.schema.json) |
