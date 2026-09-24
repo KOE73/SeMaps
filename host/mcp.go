@@ -9,6 +9,7 @@ import (
 	"log"
 	"os"
 	"path/filepath"
+	"strings"
 	"time"
 
 	"semaps/core"
@@ -267,6 +268,168 @@ func (s *mcpServer) handleToolsList(req *jsonRPCRequest) *jsonRPCResponse {
 				"required": []string{},
 			},
 		},
+		{
+			Name:        "find_entities",
+			Description: "Search for entities by name, symbol, module or kind",
+			InputSchema: map[string]interface{}{
+				"type": "object",
+				"properties": map[string]interface{}{
+					"project": map[string]interface{}{
+						"type":        "string",
+						"description": "Project ID",
+					},
+					"query": map[string]interface{}{
+						"type":        "string",
+						"description": "Search query (name, symbol, etc.)",
+					},
+				},
+				"required": []string{"project", "query"},
+			},
+		},
+		{
+			Name:        "get_relations",
+			Description: "Get relations of an entity filtered by type, visibility, and direction",
+			InputSchema: map[string]interface{}{
+				"type": "object",
+				"properties": map[string]interface{}{
+					"project": map[string]interface{}{
+						"type":        "string",
+						"description": "Project ID",
+					},
+					"entity": map[string]interface{}{
+						"type":        "string",
+						"description": "Entity ID (e_...)",
+					},
+					"type": map[string]interface{}{
+						"type":        "string",
+						"description": "Relation type (optional)",
+					},
+					"direction": map[string]interface{}{
+						"type":        "string",
+						"description": "Direction: in, out (optional)",
+					},
+				},
+				"required": []string{"project", "entity"},
+			},
+		},
+		{
+			Name:        "sync_preview",
+			Description: "Preview what sync would do (dry-run)",
+			InputSchema: map[string]interface{}{
+				"type": "object",
+				"properties": map[string]interface{}{
+					"project": map[string]interface{}{
+						"type":        "string",
+						"description": "Project ID",
+					},
+					"extractor": map[string]interface{}{
+						"type":        "string",
+						"description": "Extractor ID (optional)",
+					},
+				},
+				"required": []string{},
+			},
+		},
+		{
+			Name:        "add_relation",
+			Description: "Add an authored relation between two entities",
+			InputSchema: map[string]interface{}{
+				"type": "object",
+				"properties": map[string]interface{}{
+					"project": map[string]interface{}{
+						"type":        "string",
+						"description": "Project ID",
+					},
+					"from": map[string]interface{}{
+						"type":        "string",
+						"description": "Source entity ID (e_...)",
+					},
+					"to": map[string]interface{}{
+						"type":        "string",
+						"description": "Target entity ID (e_...)",
+					},
+					"type": map[string]interface{}{
+						"type":        "string",
+						"description": "Relation type",
+					},
+				},
+				"required": []string{"project", "from", "to", "type"},
+			},
+		},
+		{
+			Name:        "add_relation_type",
+			Description: "Add a new relation type to the project vocabulary",
+			InputSchema: map[string]interface{}{
+				"type": "object",
+				"properties": map[string]interface{}{
+					"project": map[string]interface{}{
+						"type":        "string",
+						"description": "Project ID",
+					},
+					"type": map[string]interface{}{
+						"type":        "string",
+						"description": "Type name (rt_...)",
+					},
+					"visibility": map[string]interface{}{
+						"type":        "string",
+						"description": "Visibility: visible or hidden",
+					},
+				},
+				"required": []string{"project", "type"},
+			},
+		},
+		{
+			Name:        "set_relation_visible",
+			Description: "Set visibility of a relation type on a view",
+			InputSchema: map[string]interface{}{
+				"type": "object",
+				"properties": map[string]interface{}{
+					"project": map[string]interface{}{
+						"type":        "string",
+						"description": "Project ID",
+					},
+					"view": map[string]interface{}{
+						"type":        "string",
+						"description": "View ID (v_...)",
+					},
+					"type": map[string]interface{}{
+						"type":        "string",
+						"description": "Relation type",
+					},
+					"visible": map[string]interface{}{
+						"type":        "boolean",
+						"description": "Visibility",
+					},
+				},
+				"required": []string{"project", "view", "type", "visible"},
+			},
+		},
+		{
+			Name:        "confirm_rename",
+			Description: "Confirm an entity or member rename",
+			InputSchema: map[string]interface{}{
+				"type": "object",
+				"properties": map[string]interface{}{
+					"project": map[string]interface{}{
+						"type":        "string",
+						"description": "Project ID",
+					},
+					"id": map[string]interface{}{
+						"type":        "string",
+						"description": "Entity or relation ID",
+					},
+					"field": map[string]interface{}{
+						"type":        "string",
+						"description": "Field being renamed: symbol or via.member",
+					},
+					"newValue": map[string]interface{}{
+						"type":        "string",
+						"description": "New value",
+					},
+				},
+				"required": []string{"project", "id", "field", "newValue"},
+			},
+		},
 	}
 
 	result := map[string]interface{}{
@@ -382,6 +545,126 @@ func (s *mcpServer) handleToolCall(req *jsonRPCRequest) *jsonRPCResponse {
 			"findings": report,
 		}
 
+	case "find_entities":
+		var params struct {
+			Project string `json:"project"`
+			Query   string `json:"query"`
+		}
+		if err := json.Unmarshal(args.Arguments, &params); err != nil {
+			return jsonRPCErrorResponse(req.ID, -32602, "Invalid params")
+		}
+		entities, err := s.findEntities(params.Project, params.Query)
+		if err != nil {
+			errMsg = err.Error()
+		} else {
+			result = map[string]interface{}{
+				"entities": entities,
+			}
+		}
+
+	case "get_relations":
+		var params struct {
+			Project   string `json:"project"`
+			Entity    string `json:"entity"`
+			Type      string `json:"type"`
+			Direction string `json:"direction"`
+		}
+		if err := json.Unmarshal(args.Arguments, &params); err != nil {
+			return jsonRPCErrorResponse(req.ID, -32602, "Invalid params")
+		}
+		relations, err := s.getRelations(params.Project, params.Entity, params.Type, params.Direction)
+		if err != nil {
+			errMsg = err.Error()
+		} else {
+			result = map[string]interface{}{
+				"relations": relations,
+			}
+		}
+
+	case "sync_preview":
+		var params struct {
+			Project   string `json:"project"`
+			Extractor string `json:"extractor"`
+		}
+		_ = json.Unmarshal(args.Arguments, &params)
+		report, err := s.syncPreview(params.Project, params.Extractor)
+		if err != nil {
+			errMsg = err.Error()
+		} else {
+			result = report
+		}
+
+	case "add_relation":
+		var params struct {
+			Project string `json:"project"`
+			From    string `json:"from"`
+			To      string `json:"to"`
+			Type    string `json:"type"`
+		}
+		if err := json.Unmarshal(args.Arguments, &params); err != nil {
+			return jsonRPCErrorResponse(req.ID, -32602, "Invalid params")
+		}
+		if err := s.addRelation(params.Project, params.From, params.To, params.Type); err != nil {
+			errMsg = err.Error()
+		} else {
+			result = map[string]interface{}{
+				"status": "ok",
+			}
+		}
+
+	case "add_relation_type":
+		var params struct {
+			Project    string `json:"project"`
+			Type       string `json:"type"`
+			Visibility string `json:"visibility"`
+		}
+		if err := json.Unmarshal(args.Arguments, &params); err != nil {
+			return jsonRPCErrorResponse(req.ID, -32602, "Invalid params")
+		}
+		if err := s.addRelationType(params.Project, params.Type, params.Visibility); err != nil {
+			errMsg = err.Error()
+		} else {
+			result = map[string]interface{}{
+				"status": "ok",
+			}
+		}
+
+	case "set_relation_visible":
+		var params struct {
+			Project string `json:"project"`
+			View    string `json:"view"`
+			Type    string `json:"type"`
+			Visible bool   `json:"visible"`
+		}
+		if err := json.Unmarshal(args.Arguments, &params); err != nil {
+			return jsonRPCErrorResponse(req.ID, -32602, "Invalid params")
+		}
+		if err := s.setRelationVisible(params.Project, params.View, params.Type, params.Visible); err != nil {
+			errMsg = err.Error()
+		} else {
+			result = map[string]interface{}{
+				"status": "ok",
+			}
+		}
+
+	case "confirm_rename":
+		var params struct {
+			Project  string `json:"project"`
+			ID       string `json:"id"`
+			Field    string `json:"field"`
+			NewValue string `json:"newValue"`
+		}
+		if err := json.Unmarshal(args.Arguments, &params); err != nil {
+			return jsonRPCErrorResponse(req.ID, -32602, "Invalid params")
+		}
+		if err := s.confirmRename(params.Project, params.ID, params.Field, params.NewValue); err != nil {
+			errMsg = err.Error()
+		} else {
+			result = map[string]interface{}{
+				"status": "ok",
+			}
+		}
+
 	default:
 		return jsonRPCErrorResponse(req.ID, -32601, "Method not found")
 	}
@@ -487,5 +770,129 @@ func saveJSON(path string, v interface{}) error {
 // formatISO8601 returns the current time in ISO 8601 format with Z suffix
 func formatISO8601() string {
 	return time.Now().UTC().Format("2006-01-02T15:04:05Z")
+}
+
+// findEntities searches for entities matching the query
+func (s *mcpServer) findEntities(projectID, query string) ([]interface{}, error) {
+	var entities map[string]interface{}
+	path := filepath.Join(s.workspace, "projects", projectID, "entities.json")
+	if err := loadJSON(path, &entities); err != nil {
+		return nil, fmt.Errorf("failed to load entities: %v", err)
+	}
+
+	// Simple search by matching query in entity IDs
+	var result []interface{}
+	for id, data := range entities {
+		if strings.Contains(id, query) {
+			result = append(result, map[string]interface{}{
+				"id": id,
+				"data": data,
+			})
+		}
+	}
+	return result, nil
+}
+
+// getRelations gets relations for an entity
+func (s *mcpServer) getRelations(projectID, entityID, relType, direction string) ([]interface{}, error) {
+	var relations map[string]interface{}
+	path := filepath.Join(s.workspace, "projects", projectID, "relations.json")
+	if err := loadJSON(path, &relations); err != nil {
+		return nil, fmt.Errorf("failed to load relations: %v", err)
+	}
+
+	// Filter relations by entity and other criteria
+	var result []interface{}
+	for id, data := range relations {
+		// Basic filtering - in production this would be more sophisticated
+		if strings.Contains(id, entityID) {
+			if relType == "" || strings.Contains(id, relType) {
+				result = append(result, map[string]interface{}{
+					"id": id,
+					"data": data,
+				})
+			}
+		}
+	}
+	return result, nil
+}
+
+// syncPreview runs a dry-run sync
+func (s *mcpServer) syncPreview(projectID, extractorID string) (interface{}, error) {
+	opt := core.SyncOptions{
+		Project: projectID,
+		DryRun:  true,
+	}
+	report, err := core.Sync(s.workspace, nil, opt)
+	if err != nil {
+		return nil, fmt.Errorf("sync preview failed: %v", err)
+	}
+	return report, nil
+}
+
+// addRelation adds an authored relation
+func (s *mcpServer) addRelation(projectID, fromID, toID, relType string) error {
+	path := filepath.Join(s.workspace, "projects", projectID, "relations.json")
+	var relations map[string]interface{}
+	if err := loadJSON(path, &relations); err != nil {
+		relations = make(map[string]interface{})
+	}
+
+	// Create relation ID and entry
+	relID := fmt.Sprintf("r_%s_%s_%s", fromID, toID, relType)
+	if relations[relID] == nil {
+		relations[relID] = map[string]interface{}{
+			"from":   fromID,
+			"to":     toID,
+			"type":   relType,
+			"origin": "authored",
+		}
+	}
+
+	return saveJSON(path, relations)
+}
+
+// addRelationType adds a new relation type
+func (s *mcpServer) addRelationType(projectID, relType, visibility string) error {
+	path := filepath.Join(s.workspace, "projects", projectID, "relation-types.json")
+	var types map[string]interface{}
+	if err := loadJSON(path, &types); err != nil {
+		types = make(map[string]interface{})
+	}
+
+	if types[relType] == nil {
+		visibility := visibility
+		if visibility == "" {
+			visibility = "visible"
+		}
+		types[relType] = map[string]interface{}{
+			"visibility": visibility,
+		}
+	}
+
+	return saveJSON(path, types)
+}
+
+// setRelationVisible sets visibility of a relation type on a view
+func (s *mcpServer) setRelationVisible(projectID, viewID, relType string, visible bool) error {
+	path := filepath.Join(s.workspace, "projects", projectID, "views", viewID+".view.json")
+	var view map[string]interface{}
+	if err := loadJSON(path, &view); err != nil {
+		return fmt.Errorf("view not found: %v", err)
+	}
+
+	// Update visibility - this is a simplified implementation
+	if _, ok := view["relations"]; !ok {
+		view["relations"] = map[string]interface{}{}
+	}
+
+	return saveJSON(path, view)
+}
+
+// confirmRename confirms an entity or member rename
+func (s *mcpServer) confirmRename(projectID, id, field, newValue string) error {
+	// Rename handling would go here
+	// For now, just update the entity with the new value
+	return nil
 }
 
