@@ -58,7 +58,7 @@ static async Task<int> Run(string[] args)
         .ToList();
     var pathFilter = new PathFilter(includeRelative, options.Excludes);
 
-    var extractor = new FactsExtractor(options.Root, rootFullPath, pathFilter);
+    var extractor = new FactsExtractor(options.Root, rootFullPath, pathFilter, options.EdgeKinds);
     var loadedAny = false;
 
     foreach (var project in projects)

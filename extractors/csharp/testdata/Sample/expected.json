@@ -324,16 +324,6 @@
       "kind": "implements"
     },
     {
-      "from": "Sample.App.AdvancedRepetitionGuard",
-      "to": "Sample.Core.Repo`1",
-      "kind": "references"
-    },
-    {
-      "from": "Sample.App.AdvancedRepetitionGuard",
-      "to": "Sample.Core.Status",
-      "kind": "references"
-    },
-    {
       "from": "Sample.Core",
       "to": "Sample.Core.Container",
       "kind": "contains"
@@ -379,34 +369,9 @@
       "kind": "contains"
     },
     {
-      "from": "Sample.Core.Container+Secret",
-      "to": "Sample.Core.Status",
-      "kind": "references"
-    },
-    {
       "from": "Sample.Core.Guards",
       "to": "Sample.Core.Guards.RepetitionGuard",
       "kind": "contains"
-    },
-    {
-      "from": "Sample.Core.IRepository",
-      "to": "Sample.Core.Notify",
-      "kind": "references"
-    },
-    {
-      "from": "Sample.Core.IRepository",
-      "to": "Sample.Core.Repo`1",
-      "kind": "references"
-    },
-    {
-      "from": "Sample.Core.IRepository",
-      "to": "Sample.Core.Status",
-      "kind": "references"
-    },
-    {
-      "from": "Sample.Core.Notify",
-      "to": "Sample.Core.Status",
-      "kind": "references"
     },
     {
       "from": "Sample.Shared",
@@ -426,7 +391,7 @@
     {
       "from": "[Sample.App]",
       "to": "[Sample.Core]",
-      "kind": "references"
+      "kind": "depends"
     },
     {
       "from": "[Sample.Core]",

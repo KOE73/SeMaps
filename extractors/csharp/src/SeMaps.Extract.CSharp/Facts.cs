@@ -9,6 +9,7 @@ internal sealed class FactsDocument
 {
     [JsonPropertyName("language")] public string Language { get; set; } = "csharp";
     [JsonPropertyName("root")] public string Root { get; set; } = ".";
+    [JsonPropertyName("edgeKinds")] public List<string>? EdgeKinds { get; set; }
     [JsonPropertyName("symbols")] public List<SymbolFact> Symbols { get; set; } = [];
     [JsonPropertyName("edges")] public List<EdgeFact> Edges { get; set; } = [];
 }
@@ -40,4 +41,17 @@ internal sealed class EdgeFact
     [JsonPropertyName("from")] public string From { get; set; } = "";
     [JsonPropertyName("to")] public string To { get; set; } = "";
     [JsonPropertyName("kind")] public string Kind { get; set; } = "";
+    [JsonPropertyName("via")] public ViaFact? Via { get; set; }
+}
+
+internal sealed class ViaFact
+{
+    [JsonPropertyName("member")] public string? Member { get; set; }
+    [JsonPropertyName("memberKind")] public string? MemberKind { get; set; }
+    [JsonPropertyName("modifiers")] public List<string>? Modifiers { get; set; }
+    [JsonPropertyName("text")] public string? Text { get; set; }
+    [JsonPropertyName("path")] public List<string>? Path { get; set; }
+    [JsonPropertyName("cardinality")] public string? Cardinality { get; set; }
+    [JsonPropertyName("mutability")] public string? Mutability { get; set; }
+    [JsonPropertyName("deferred")] public bool? Deferred { get; set; }
 }

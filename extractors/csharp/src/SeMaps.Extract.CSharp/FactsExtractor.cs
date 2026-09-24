@@ -36,6 +36,17 @@ internal sealed class FactsExtractor(string rootArgument, string rootFullPath, P
         public int? Line;
     }
 
+    private readonly HashSet<string>? _requestedEdgeKinds;
+
+    /// <summary>
+    /// Constructor that accepts options for edge kinds filtering.
+    /// </summary>
+    internal FactsExtractor(string rootArgument, string rootFullPath, PathFilter pathFilter, HashSet<string>? requestedEdgeKinds = null)
+        : this(rootArgument, rootFullPath, pathFilter)
+    {
+        _requestedEdgeKinds = requestedEdgeKinds?.Count > 0 ? requestedEdgeKinds : null;
+    }
+
     /// <summary>
     /// Processes one loaded project. The project itself becomes a <c>module</c>/<c>assembly</c>
     /// symbol (ADR_20260923-9) when its .csproj lies under the root and passes the path filter;
@@ -221,7 +232,7 @@ internal sealed class FactsExtractor(string rootArgument, string rootFullPath, P
 
         var outputIds = new HashSet<string>(_types.Keys, StringComparer.Ordinal);
         var symbols = new List<SymbolFact>();
-        var edges = new HashSet<(string From, string To, string Kind)>();
+        var edges = new HashSet<EdgeWithVia>();
 
         foreach (var (nsId, entry) in _namespaces)
         {
@@ -239,7 +250,7 @@ internal sealed class FactsExtractor(string rootArgument, string rootFullPath, P
         }
 
         // Assembly (project) symbols: assembly -> top-level type "contains", assembly -> assembly
-        // "references" for a ProjectReference between two projects in this output.
+        // "depends" for a ProjectReference between two projects in this output.
         foreach (var (asmId, entry) in _assemblies)
         {
             symbols.Add(new SymbolFact
@@ -255,14 +266,14 @@ internal sealed class FactsExtractor(string rootArgument, string rootFullPath, P
 
             foreach (var typeId in entry.TopLevelTypes)
             {
-                edges.Add((asmId, typeId, "contains"));
+                edges.Add(new EdgeWithVia { From = asmId, To = typeId, Kind = "contains" });
             }
 
             foreach (var targetId in entry.ReferencedAssemblies)
             {
                 if (targetId != asmId && _assemblies.ContainsKey(targetId))
                 {
-                    edges.Add((asmId, targetId, "references"));
+                    edges.Add(new EdgeWithVia { From = asmId, To = targetId, Kind = "depends" });
                 }
             }
         }
@@ -274,14 +285,14 @@ internal sealed class FactsExtractor(string rootArgument, string rootFullPath, P
             if (symbol.ContainingType is null && !symbol.ContainingNamespace.IsGlobalNamespace)
             {
                 var nsId = SymbolIds.NamespaceId(symbol.ContainingNamespace);
-                edges.Add((nsId, id, "contains"));
+                edges.Add(new EdgeWithVia { From = nsId, To = id, Kind = "contains" });
             }
             else if (symbol.ContainingType is not null)
             {
                 var outerId = SymbolIds.TypeId(symbol.ContainingType);
                 if (outputIds.Contains(outerId))
                 {
-                    edges.Add((outerId, id, "contains"));
+                    edges.Add(new EdgeWithVia { From = outerId, To = id, Kind = "contains" });
                 }
             }
         }
@@ -295,16 +306,45 @@ internal sealed class FactsExtractor(string rootArgument, string rootFullPath, P
         symbols.Sort((a, b) => string.CompareOrdinal(a.Id, b.Id));
 
         var edgeFacts = edges
-            .Select(e => new EdgeFact { From = e.From, To = e.To, Kind = e.Kind })
             .OrderBy(e => e.From, StringComparer.Ordinal)
             .ThenBy(e => e.To, StringComparer.Ordinal)
             .ThenBy(e => e.Kind, StringComparer.Ordinal)
+            .ThenBy(e => e.Via?.Member ?? "", StringComparer.Ordinal)
+            .ThenBy(e => string.Join("/", e.Via?.Path ?? []), StringComparer.Ordinal)
+            .Select(e => new EdgeFact
+            {
+                From = e.From,
+                To = e.To,
+                Kind = e.Kind,
+                Via = e.Via,
+            })
             .ToList();
+
+        // Determine edge kinds to report
+        List<string>? edgeKinds = null;
+        if (_requestedEdgeKinds is not null && _requestedEdgeKinds.Count > 0)
+        {
+            edgeKinds = new List<string> { "extends", "implements", "contains", "depends" };
+            if (_requestedEdgeKinds.Contains("holds"))
+            {
+                edgeKinds.Add("holds");
+            }
+            if (_requestedEdgeKinds.Contains("uses"))
+            {
+                edgeKinds.Add("uses");
+            }
+            if (_requestedEdgeKinds.Contains("injects"))
+            {
+                edgeKinds.Add("injects");
+            }
+            edgeKinds.Sort();
+        }
 
         return new FactsDocument
         {
             Language = "csharp",
             Root = rootArgument,
+            EdgeKinds = edgeKinds,
             Symbols = symbols,
             Edges = edgeFacts,
         };
@@ -369,19 +409,19 @@ internal sealed class FactsExtractor(string rootArgument, string rootFullPath, P
         }
     }
 
-    private static SymbolFact BuildTypeSymbolFact(
+    private SymbolFact BuildTypeSymbolFact(
         string id,
         INamedTypeSymbol symbol,
         string file,
         int line,
         HashSet<string> outputIds,
-        HashSet<(string From, string To, string Kind)> edges)
+        HashSet<EdgeWithVia> edges)
     {
         var (kind, nativeKind) = ClassifyType(symbol);
         var members = MembersBuilder.Build(symbol, kind);
 
         AddStructuralEdges(id, symbol, outputIds, edges);
-        ReferenceEdgeCollector.Collect(id, symbol, outputIds, edges);
+        ReferenceEdgeCollector.Collect(id, symbol, outputIds, edges, _requestedEdgeKinds);
 
         return new SymbolFact
         {
@@ -401,14 +441,14 @@ internal sealed class FactsExtractor(string rootArgument, string rootFullPath, P
         string id,
         INamedTypeSymbol symbol,
         HashSet<string> outputIds,
-        HashSet<(string From, string To, string Kind)> edges)
+        HashSet<EdgeWithVia> edges)
     {
         if (symbol.TypeKind == TypeKind.Class && symbol.BaseType is { } baseType && IsExtendableBase(baseType))
         {
             var baseId = SymbolIds.TypeId(baseType);
             if (outputIds.Contains(baseId) && baseId != id)
             {
-                edges.Add((id, baseId, "extends"));
+                edges.Add(new EdgeWithVia { From = id, To = baseId, Kind = "extends" });
             }
         }
 
@@ -417,7 +457,7 @@ internal sealed class FactsExtractor(string rootArgument, string rootFullPath, P
             var ifaceId = SymbolIds.TypeId(iface);
             if (outputIds.Contains(ifaceId) && ifaceId != id)
             {
-                edges.Add((id, ifaceId, "implements"));
+                edges.Add(new EdgeWithVia { From = id, To = ifaceId, Kind = "implements" });
             }
         }
     }

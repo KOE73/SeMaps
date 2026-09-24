@@ -6,6 +6,7 @@ internal sealed class Options
     public string Root { get; init; } = ".";
     public List<string> Includes { get; init; } = [];
     public List<string> Excludes { get; init; } = [];
+    public HashSet<string> EdgeKinds { get; init; } = [];  // holds, uses, injects (subset of holds+uses)
 }
 
 internal static class ArgsParser
@@ -19,6 +20,7 @@ internal static class ArgsParser
         var root = ".";
         var includes = new List<string>();
         var excludes = new List<string>();
+        var edgeKinds = new HashSet<string>();
 
         for (var i = 0; i < args.Length; i++)
         {
@@ -52,6 +54,25 @@ internal static class ArgsParser
                     excludes.Add(excludeValue);
                     break;
 
+                case "--edges":
+                    if (!TryTakeValue(args, ref i, out var edgesValue))
+                    {
+                        error = "--edges requires a value";
+                        return null;
+                    }
+                    foreach (var kind in edgesValue.Split(','))
+                    {
+                        var trimmed = kind.Trim();
+                        if (trimmed.Length == 0) continue;
+                        if (!IsValidEdgeKind(trimmed))
+                        {
+                            error = $"unknown edge kind: {trimmed}";
+                            return null;
+                        }
+                        edgeKinds.Add(trimmed);
+                    }
+                    break;
+
                 default:
                     error = $"unknown argument: {arg}";
                     return null;
@@ -59,8 +80,10 @@ internal static class ArgsParser
         }
 
         error = null;
-        return new Options { Root = root, Includes = includes, Excludes = excludes };
+        return new Options { Root = root, Includes = includes, Excludes = excludes, EdgeKinds = edgeKinds };
     }
+
+    private static bool IsValidEdgeKind(string kind) => kind is "holds" or "uses" or "injects";
 
     private static bool TryTakeValue(string[] args, ref int i, out string value)
     {
