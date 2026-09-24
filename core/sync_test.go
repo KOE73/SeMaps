@@ -642,7 +642,19 @@ func TestMemberRelationMissingByEdgeKinds(t *testing.T) {
       {"from":"A","to":"B","kind":"holds","via":{"member":"field1","memberKind":"field"}},
       {"from":"A","to":"B","kind":"uses","via":{"member":"Method","memberKind":"parameter"}}
     ]}`
-	sync(t, ws, facts(t, facts1), SyncOptions{})
+	rep1 := sync(t, ws, facts(t, facts1), SyncOptions{})
+	if len(rep1.Added) == 0 {
+		t.Fatalf("first sync did not create relations: %v", rep1)
+	}
+
+	// Verify relations were created
+	v1 := load(t, ws+"/projects/p")
+	if find(v1.Relations, "r_a_b_field1") == nil {
+		t.Fatalf("holds relation not created in first sync: %v", v1.Relations)
+	}
+	if find(v1.Relations, "r_a_b_method") == nil {
+		t.Fatalf("uses relation not created in first sync: %v", v1.Relations)
+	}
 
 	// Second run: extract holds, and say we cover uses too (but find nothing)
 	facts2 := `{"language":"csharp","root":".","edgeKinds":["holds","uses"],"symbols":[
@@ -663,6 +675,47 @@ func TestMemberRelationMissingByEdgeKinds(t *testing.T) {
 	}
 	if !hasUsesGone {
 		t.Errorf("uses edge (r_a_b_method) should be marked missing: gone=%v", rep.Gone)
+	}
+}
+
+// Rename candidates for member relations: same (from, to, path), different member.
+func TestMemberRelationRenameCandidate(t *testing.T) {
+	ws, _ := workspace(t, `{"id":"p","contractVersion":3}`, "", "", "")
+
+	// First run: create a member relation
+	facts1 := `{"language":"csharp","root":".","edgeKinds":["holds"],"symbols":[
+    {"id":"A","kind":"type","nativeKind":"class","name":"A","file":"a.cs"},
+    {"id":"B","kind":"type","nativeKind":"class","name":"B","file":"b.cs"}],
+    "edges":[
+      {"from":"A","to":"B","kind":"holds","via":{"member":"oldName","memberKind":"field"}}
+    ]}`
+	sync(t, ws, facts(t, facts1), SyncOptions{})
+
+	// Second run: member renamed in code
+	facts2 := `{"language":"csharp","root":".","edgeKinds":["holds"],"symbols":[
+    {"id":"A","kind":"type","nativeKind":"class","name":"A","file":"a.cs"},
+    {"id":"B","kind":"type","nativeKind":"class","name":"B","file":"b.cs"}],
+    "edges":[
+      {"from":"A","to":"B","kind":"holds","via":{"member":"newName","memberKind":"field"}}
+    ]}`
+	rep := sync(t, ws, facts(t, facts2), SyncOptions{DryRun: true})
+
+	// Should report as rename candidate
+	if len(rep.Renames) != 1 || !strings.Contains(rep.Renames[0], "oldName") || !strings.Contains(rep.Renames[0], "newName") {
+		t.Errorf("rename candidate not reported: %v", rep.Renames)
+	}
+	if rep.ExitCode() != 1 {
+		t.Errorf("should have exit code 1 for rename candidate, got %d", rep.ExitCode())
+	}
+
+	// With --no-renames, should apply both gone and new
+	sync(t, ws, facts(t, facts2), SyncOptions{NoRenames: true})
+	v := load(t, ws+"/projects/p")
+	if find(v.Relations, "r_a_b_oldname")["status"] != "missing" {
+		t.Error("old relation should be marked missing after --no-renames")
+	}
+	if find(v.Relations, "r_a_b_newname") == nil {
+		t.Error("new relation should be created after --no-renames")
 	}
 }
 

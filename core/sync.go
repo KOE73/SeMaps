@@ -117,7 +117,10 @@ func (r *SyncReport) Print(w io.Writer) {
 		fmt.Fprintf(w, "Записано: %s\n", strings.Join(r.Written, ", "))
 	}
 	if len(r.Renames) > 0 {
-		fmt.Fprintln(w, "Переименование: поставьте старой сущности `symbol` нового символа (и `name`, если имя сменилось); не переименование — повторите с --no-renames.")
+		fmt.Fprintln(w, "Переименование:")
+		fmt.Fprintln(w, "  Сущность: поставьте старой сущности `symbol` нового символа (и `name`, если имя сменилось).")
+		fmt.Fprintln(w, "  Членская связь: установите `via.member` старой связи на новое имя члена и повторите сверку.")
+		fmt.Fprintln(w, "  Не переименование — повторите с --no-renames.")
 	}
 }
 
@@ -426,9 +429,95 @@ func Sync(workspace string, facts *Facts, opt SyncOptions) (*SyncReport, error) 
 		}
 	}
 
+	// Detect member relation rename candidates: same (from, to, path, type) but different member
+	memberRenameHolds := map[int]bool{} // relations held due to rename candidate
+	if !opt.NoRenames {
+		type memberKey struct {
+			from     string
+			to       string
+			path     string
+			relType  string // include type to distinguish holds from uses
+		}
+		missingMembers := make(map[memberKey][]int)   // key -> missing relation indices
+		newMembers := make(map[memberKey][]string)    // key -> new member names
+		confirmedMembers := make(map[memberKey]bool)  // key -> any confirmed
+
+		// Collect missing member relations
+		for i, r := range rels.items {
+			if confirmed[i] || r.str("origin") != "code" {
+				continue
+			}
+			relType := relationType(r)
+			if !(strings.HasPrefix(relType, "holds") || relType == "uses" || relType == "injects") {
+				continue // not a member relation
+			}
+			from, to := r.str("from"), r.str("to")
+			if !(inCode[from] || gone[from]) || !(inCode[to] || gone[to]) {
+				continue
+			}
+			// This is a missing member relation
+			via, hasVia := r.vals["via"]
+			if !hasVia || len(via) == 0 || string(via) == "null" {
+				continue
+			}
+			var v Via
+			if err := json.Unmarshal(via, &v); err != nil {
+				continue
+			}
+			path := strings.Join(v.Path, ",")
+			key := memberKey{from, to, path, relType}
+			missingMembers[key] = append(missingMembers[key], i)
+		}
+
+		// Collect new confirmed member relations
+		for i, r := range rels.items {
+			if !confirmed[i] || r.str("origin") != "code" {
+				continue
+			}
+			relType := relationType(r)
+			if !(strings.HasPrefix(relType, "holds") || relType == "uses" || relType == "injects") {
+				continue
+			}
+			from, to := r.str("from"), r.str("to")
+			via, hasVia := r.vals["via"]
+			if !hasVia || len(via) == 0 || string(via) == "null" {
+				continue
+			}
+			var v Via
+			if err := json.Unmarshal(via, &v); err != nil {
+				continue
+			}
+			path := strings.Join(v.Path, ",")
+			key := memberKey{from, to, path, relType}
+			confirmedMembers[key] = true
+			newMembers[key] = append(newMembers[key], v.Member)
+		}
+
+		// Report rename candidates
+		for key, missingIndices := range missingMembers {
+			if confirmedMembers[key] && len(newMembers[key]) > 0 {
+				// Potential rename: same (from, to, path, type) but different member name
+				for _, mi := range missingIndices {
+					r := rels.items[mi]
+					via, _ := r.vals["via"]
+					var v Via
+					json.Unmarshal(via, &v)
+					memberRenameHolds[mi] = true
+					oldMember := v.Member
+					for _, newMember := range newMembers[key] {
+						if oldMember != newMember {
+							rep.Renames = append(rep.Renames, fmt.Sprintf("%s (%s) → %s", r.str("id"), oldMember, newMember))
+							break
+						}
+					}
+				}
+			}
+		}
+	}
+
 	// Mark relations as missing if they're not in the facts
 	for i, r := range rels.items {
-		if confirmed[i] || r.str("origin") != "code" {
+		if confirmed[i] || r.str("origin") != "code" || memberRenameHolds[i] {
 			continue
 		}
 		relType := relationType(r)
@@ -880,10 +969,13 @@ func deriveRelationType(kind string, via *Via) string {
 	return base
 }
 
-// isPublicMember checks if a member is public (has "public" modifier or no private markers).
+// isPublicMember checks if a member is public (has "public" modifier or no access-limiting modifiers).
+// Extractors emit effective accessibility: C# emits DeclaredAccessibility, so all members have
+// an accessibility modifier in the list. Empty/nil modifiers shouldn't happen, but we default
+// to public for defensive reasons.
 func isPublicMember(via *Via) bool {
 	if via == nil || len(via.Modifiers) == 0 {
-		return true // no modifiers means public
+		return true // no modifiers declared; assume public
 	}
 	hasPublic := false
 	hasPrivate := false
@@ -901,7 +993,7 @@ func isPublicMember(via *Via) bool {
 	if hasPrivate {
 		return false
 	}
-	return true // no explicit access modifier means public
+	return true // no access modifier found; assume public
 }
 
 // mintMemberRelationID creates an ID for a new member relation.
