@@ -1,6 +1,12 @@
 {
   "language": "typescript",
   "root": "testdata/project",
+  "edgeKinds": [
+    "contains",
+    "depends",
+    "extends",
+    "implements"
+  ],
   "symbols": [
     {
       "id": "a",
@@ -258,6 +264,433 @@
           "visibility": "public"
         }
       ]
+    },
+    {
+      "id": "comprehensive",
+      "kind": "module",
+      "nativeKind": "file",
+      "name": "comprehensive",
+      "namespace": "",
+      "file": "comprehensive.ts"
+    },
+    {
+      "id": "comprehensive#Async",
+      "kind": "type",
+      "nativeKind": "class",
+      "name": "Async",
+      "namespace": "",
+      "file": "comprehensive.ts",
+      "line": 48,
+      "visibility": "exported",
+      "members": [
+        {
+          "kind": "field",
+          "name": "pending",
+          "type": "Promise<Item>",
+          "visibility": "public"
+        },
+        {
+          "kind": "field",
+          "name": "awaited",
+          "type": "Container",
+          "visibility": "public"
+        }
+      ]
+    },
+    {
+      "id": "comprehensive#Box",
+      "kind": "type",
+      "nativeKind": "class",
+      "name": "Box",
+      "namespace": "",
+      "file": "comprehensive.ts",
+      "line": 6,
+      "visibility": "exported",
+      "members": []
+    },
+    {
+      "id": "comprehensive#Collections",
+      "kind": "type",
+      "nativeKind": "class",
+      "name": "Collections",
+      "namespace": "",
+      "file": "comprehensive.ts",
+      "line": 9,
+      "visibility": "exported",
+      "members": [
+        {
+          "kind": "field",
+          "name": "mutableArray",
+          "type": "Item[]",
+          "visibility": "public"
+        },
+        {
+          "kind": "field",
+          "name": "readonlyArrayType",
+          "type": "readonly Item[]",
+          "visibility": "public"
+        },
+        {
+          "kind": "field",
+          "name": "readonlyArrayBuiltin",
+          "type": "readonly Item[]",
+          "visibility": "public"
+        }
+      ]
+    },
+    {
+      "id": "comprehensive#Constructor",
+      "kind": "type",
+      "nativeKind": "class",
+      "name": "Constructor",
+      "namespace": "",
+      "file": "comprehensive.ts",
+      "line": 72,
+      "visibility": "exported",
+      "members": []
+    },
+    {
+      "id": "comprehensive#Container",
+      "kind": "type",
+      "nativeKind": "class",
+      "name": "Container",
+      "namespace": "",
+      "file": "comprehensive.ts",
+      "line": 4,
+      "visibility": "exported",
+      "members": []
+    },
+    {
+      "id": "comprehensive#ContainerBox",
+      "kind": "type",
+      "nativeKind": "type-alias",
+      "name": "ContainerBox",
+      "namespace": "",
+      "file": "comprehensive.ts",
+      "line": 69,
+      "visibility": "exported"
+    },
+    {
+      "id": "comprehensive#Generic",
+      "kind": "type",
+      "nativeKind": "class",
+      "name": "Generic",
+      "namespace": "",
+      "file": "comprehensive.ts",
+      "line": 95,
+      "visibility": "exported",
+      "members": [
+        {
+          "kind": "field",
+          "name": "boxed",
+          "type": "Box<Widget>",
+          "visibility": "public"
+        },
+        {
+          "kind": "field",
+          "name": "boxedMultiple",
+          "type": "Box<Item | Widget>",
+          "visibility": "public"
+        }
+      ]
+    },
+    {
+      "id": "comprehensive#IReadable",
+      "kind": "interface",
+      "nativeKind": "interface",
+      "name": "IReadable",
+      "namespace": "",
+      "file": "comprehensive.ts",
+      "line": 87,
+      "visibility": "exported",
+      "members": [
+        {
+          "kind": "property",
+          "name": "item",
+          "type": "Item"
+        },
+        {
+          "kind": "property",
+          "name": "container",
+          "type": "Container"
+        },
+        {
+          "kind": "property",
+          "name": "items",
+          "type": "Item[]"
+        },
+        {
+          "kind": "property",
+          "name": "itemsByKey",
+          "type": "Record<string, Item>"
+        }
+      ]
+    },
+    {
+      "id": "comprehensive#Indexed",
+      "kind": "type",
+      "nativeKind": "class",
+      "name": "Indexed",
+      "namespace": "",
+      "file": "comprehensive.ts",
+      "line": 35,
+      "visibility": "exported",
+      "members": []
+    },
+    {
+      "id": "comprehensive#Item",
+      "kind": "type",
+      "nativeKind": "class",
+      "name": "Item",
+      "namespace": "",
+      "file": "comprehensive.ts",
+      "line": 3,
+      "visibility": "exported",
+      "members": []
+    },
+    {
+      "id": "comprehensive#ItemAlias",
+      "kind": "type",
+      "nativeKind": "type-alias",
+      "name": "ItemAlias",
+      "namespace": "",
+      "file": "comprehensive.ts",
+      "line": 67,
+      "visibility": "exported"
+    },
+    {
+      "id": "comprehensive#ItemArray",
+      "kind": "type",
+      "nativeKind": "type-alias",
+      "name": "ItemArray",
+      "namespace": "",
+      "file": "comprehensive.ts",
+      "line": 68,
+      "visibility": "exported"
+    },
+    {
+      "id": "comprehensive#Maps",
+      "kind": "type",
+      "nativeKind": "class",
+      "name": "Maps",
+      "namespace": "",
+      "file": "comprehensive.ts",
+      "line": 22,
+      "visibility": "exported",
+      "members": [
+        {
+          "kind": "field",
+          "name": "byId",
+          "type": "Map<string, Item>",
+          "visibility": "public"
+        },
+        {
+          "kind": "field",
+          "name": "byWidget",
+          "type": "Map<Widget, Container>",
+          "visibility": "public"
+        },
+        {
+          "kind": "field",
+          "name": "readonlyMap",
+          "type": "ReadonlyMap<string, Item>",
+          "visibility": "public"
+        }
+      ]
+    },
+    {
+      "id": "comprehensive#Methods",
+      "kind": "type",
+      "nativeKind": "class",
+      "name": "Methods",
+      "namespace": "",
+      "file": "comprehensive.ts",
+      "line": 106,
+      "visibility": "exported",
+      "members": [
+        {
+          "kind": "method",
+          "name": "getItem",
+          "type": "() => Item",
+          "visibility": "public"
+        },
+        {
+          "kind": "method",
+          "name": "processItems",
+          "type": "(items: Item[]) => Container",
+          "visibility": "public"
+        },
+        {
+          "kind": "method",
+          "name": "getBox",
+          "type": "(widget: Widget) => Box<Widget>",
+          "visibility": "public"
+        }
+      ]
+    },
+    {
+      "id": "comprehensive#Optional",
+      "kind": "type",
+      "nativeKind": "class",
+      "name": "Optional",
+      "namespace": "",
+      "file": "comprehensive.ts",
+      "line": 41,
+      "visibility": "exported",
+      "members": [
+        {
+          "kind": "field",
+          "name": "optionalField",
+          "type": "Item",
+          "visibility": "public"
+        },
+        {
+          "kind": "field",
+          "name": "nullableField",
+          "type": "Container",
+          "visibility": "public"
+        },
+        {
+          "kind": "field",
+          "name": "nullableField2",
+          "type": "Widget",
+          "visibility": "public"
+        }
+      ]
+    },
+    {
+      "id": "comprehensive#ParameterProperty",
+      "kind": "type",
+      "nativeKind": "class",
+      "name": "ParameterProperty",
+      "namespace": "",
+      "file": "comprehensive.ts",
+      "line": 78,
+      "visibility": "exported",
+      "members": []
+    },
+    {
+      "id": "comprehensive#Records",
+      "kind": "type",
+      "nativeKind": "class",
+      "name": "Records",
+      "namespace": "",
+      "file": "comprehensive.ts",
+      "line": 29,
+      "visibility": "exported",
+      "members": [
+        {
+          "kind": "field",
+          "name": "itemsByKey",
+          "type": "Record<string, Item>",
+          "visibility": "public"
+        },
+        {
+          "kind": "field",
+          "name": "readonlyRecord",
+          "type": "Readonly<Record<string, Container>>",
+          "visibility": "public"
+        }
+      ]
+    },
+    {
+      "id": "comprehensive#Sets",
+      "kind": "type",
+      "nativeKind": "class",
+      "name": "Sets",
+      "namespace": "",
+      "file": "comprehensive.ts",
+      "line": 16,
+      "visibility": "exported",
+      "members": [
+        {
+          "kind": "field",
+          "name": "items",
+          "type": "Set<Item>",
+          "visibility": "public"
+        },
+        {
+          "kind": "field",
+          "name": "readonlyItems",
+          "type": "ReadonlySet<Item>",
+          "visibility": "public"
+        }
+      ]
+    },
+    {
+      "id": "comprehensive#Tuples",
+      "kind": "type",
+      "nativeKind": "class",
+      "name": "Tuples",
+      "namespace": "",
+      "file": "comprehensive.ts",
+      "line": 60,
+      "visibility": "exported",
+      "members": [
+        {
+          "kind": "field",
+          "name": "pair",
+          "type": "[Item, Container]",
+          "visibility": "public"
+        },
+        {
+          "kind": "field",
+          "name": "triple",
+          "type": "[Item, Container, Widget]",
+          "visibility": "public"
+        },
+        {
+          "kind": "field",
+          "name": "namedTuple",
+          "type": "[first: Item, second: Container]",
+          "visibility": "public"
+        }
+      ]
+    },
+    {
+      "id": "comprehensive#Union",
+      "kind": "type",
+      "nativeKind": "class",
+      "name": "Union",
+      "namespace": "",
+      "file": "comprehensive.ts",
+      "line": 54,
+      "visibility": "exported",
+      "members": [
+        {
+          "kind": "field",
+          "name": "either",
+          "type": "Item | Container",
+          "visibility": "public"
+        },
+        {
+          "kind": "field",
+          "name": "multiple",
+          "type": "Item | Widget | Container",
+          "visibility": "public"
+        }
+      ]
+    },
+    {
+      "id": "comprehensive#Widget",
+      "kind": "type",
+      "nativeKind": "class",
+      "name": "Widget",
+      "namespace": "",
+      "file": "comprehensive.ts",
+      "line": 5,
+      "visibility": "exported",
+      "members": []
+    },
+    {
+      "id": "comprehensive#process",
+      "kind": "function",
+      "nativeKind": "function",
+      "name": "process",
+      "namespace": "",
+      "file": "comprehensive.ts",
+      "line": 101,
+      "visibility": "exported"
     }
   ],
   "edges": [
@@ -344,6 +777,116 @@
     {
       "from": "b",
       "to": "b#Consumer",
+      "kind": "contains"
+    },
+    {
+      "from": "comprehensive",
+      "to": "comprehensive#Async",
+      "kind": "contains"
+    },
+    {
+      "from": "comprehensive",
+      "to": "comprehensive#Box",
+      "kind": "contains"
+    },
+    {
+      "from": "comprehensive",
+      "to": "comprehensive#Collections",
+      "kind": "contains"
+    },
+    {
+      "from": "comprehensive",
+      "to": "comprehensive#Constructor",
+      "kind": "contains"
+    },
+    {
+      "from": "comprehensive",
+      "to": "comprehensive#Container",
+      "kind": "contains"
+    },
+    {
+      "from": "comprehensive",
+      "to": "comprehensive#ContainerBox",
+      "kind": "contains"
+    },
+    {
+      "from": "comprehensive",
+      "to": "comprehensive#Generic",
+      "kind": "contains"
+    },
+    {
+      "from": "comprehensive",
+      "to": "comprehensive#IReadable",
+      "kind": "contains"
+    },
+    {
+      "from": "comprehensive",
+      "to": "comprehensive#Indexed",
+      "kind": "contains"
+    },
+    {
+      "from": "comprehensive",
+      "to": "comprehensive#Item",
+      "kind": "contains"
+    },
+    {
+      "from": "comprehensive",
+      "to": "comprehensive#ItemAlias",
+      "kind": "contains"
+    },
+    {
+      "from": "comprehensive",
+      "to": "comprehensive#ItemArray",
+      "kind": "contains"
+    },
+    {
+      "from": "comprehensive",
+      "to": "comprehensive#Maps",
+      "kind": "contains"
+    },
+    {
+      "from": "comprehensive",
+      "to": "comprehensive#Methods",
+      "kind": "contains"
+    },
+    {
+      "from": "comprehensive",
+      "to": "comprehensive#Optional",
+      "kind": "contains"
+    },
+    {
+      "from": "comprehensive",
+      "to": "comprehensive#ParameterProperty",
+      "kind": "contains"
+    },
+    {
+      "from": "comprehensive",
+      "to": "comprehensive#Records",
+      "kind": "contains"
+    },
+    {
+      "from": "comprehensive",
+      "to": "comprehensive#Sets",
+      "kind": "contains"
+    },
+    {
+      "from": "comprehensive",
+      "to": "comprehensive#Tuples",
+      "kind": "contains"
+    },
+    {
+      "from": "comprehensive",
+      "to": "comprehensive#Union",
+      "kind": "contains"
+    },
+    {
+      "from": "comprehensive",
+      "to": "comprehensive#Widget",
+      "kind": "contains"
+    },
+    {
+      "from": "comprehensive",
+      "to": "comprehensive#process",
       "kind": "contains"
     }
   ]

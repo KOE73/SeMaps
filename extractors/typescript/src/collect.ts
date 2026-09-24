@@ -12,6 +12,7 @@ export interface SourceFileEntry {
 
 interface DeclEntry {
   id: string;
+  name?: string;
   kind: "class" | "interface" | "enum" | "typeAlias" | "function" | "value";
   /** Declaration node; for class/interface/enum/typeAlias this is walked for members. */
   node: ts.Node;
@@ -382,7 +383,7 @@ export function collectFacts(
         const id = declId(relNoExt, nsPath, exportName);
         pushSymbol(id, "function", "function", localName ?? "default", nsPath, relWithExt, lineOf(stmt, stmt.getSourceFile()), isExported ? "exported" : "file");
         if (symbol) idBySymbol.set(symbol, id);
-        declEntries.push({ id, kind: "function", node: stmt, parameters: stmt.parameters, returnType: stmt.type });
+        declEntries.push({ id, name: localName ?? "default", kind: "function", node: stmt, parameters: stmt.parameters, returnType: stmt.type });
         addEdge(containerId, id, "contains");
         continue;
       }
@@ -429,10 +430,10 @@ export function collectFacts(
             const fn = init as ts.ArrowFunction | ts.FunctionExpression;
             const nativeKind = ts.isArrowFunction(fn) ? "arrow-function" : "function-expression";
             pushSymbol(id, "function", nativeKind, localName, nsPath, relWithExt, lineOf(decl, stmt.getSourceFile()), visibility);
-            declEntries.push({ id, kind: "function", node: decl, parameters: fn.parameters, returnType: fn.type });
+            declEntries.push({ id, name: localName, kind: "function", node: decl, parameters: fn.parameters, returnType: fn.type });
           } else {
             pushSymbol(id, "value", declKeyword, localName, nsPath, relWithExt, lineOf(decl, stmt.getSourceFile()), visibility);
-            declEntries.push({ id, kind: "value", node: decl, typeNode: decl.type });
+            declEntries.push({ id, name: localName, kind: "value", node: decl, typeNode: decl.type });
           }
           if (symbol) idBySymbol.set(symbol, id);
           addEdge(containerId, id, "contains");
@@ -510,9 +511,9 @@ export function collectFacts(
         const modifiers: string[] = [];
         if (hasModifier(member, ts.SyntaxKind.ReadonlyKeyword)) modifiers.push("readonly");
         if (hasModifier(member, ts.SyntaxKind.StaticKeyword)) modifiers.push("static");
-        if (visibility === "public") modifiers.push("public");
-        if (visibility === "protected") modifiers.push("protected");
-        if (visibility === "private") modifiers.push("private");
+        if (hasModifier(member, ts.SyntaxKind.ProtectedKeyword)) modifiers.push("protected");
+        if (hasModifier(member, ts.SyntaxKind.PrivateKeyword)) modifiers.push("private");
+        if (hasModifier(member, ts.SyntaxKind.PublicKeyword)) modifiers.push("public");
 
         if (ts.isPropertyDeclaration(member)) {
           kind = "field";
@@ -757,6 +758,7 @@ export function collectFacts(
             if (targetId) {
               const typeStr = entry.returnType ? checker.typeToString(checker.getTypeAtLocation(entry.returnType)) : "unknown";
               const via: ViaRecord = {
+                ...(entry.name ? { member: entry.name } : {}),
                 memberKind: "return",
                 text: typeStr,
                 ...(tp.path.length > 0 ? { path: tp.path } : {}),

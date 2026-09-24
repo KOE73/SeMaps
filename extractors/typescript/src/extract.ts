@@ -88,18 +88,17 @@ export function extract(options: ExtractOptions): FactsOutput {
   symbols.sort(symbolSortKey);
   edges.sort(edgeSortKey);
 
+  const baseKinds: EdgeKind[] = ["contains", "depends", "extends", "implements"];
+  const edgeKinds = [...new Set([...baseKinds, ...(options.edges as EdgeKind[]) ?? []])];
+  edgeKinds.sort();
+
   const result: FactsOutput = {
     language: "typescript",
     root: options.root,
+    edgeKinds,
     symbols,
     edges,
   };
-
-  if (options.edges && options.edges.length > 0) {
-    const baseKinds: EdgeKind[] = ["extends", "implements", "contains"];
-    result.edgeKinds = [...new Set([...baseKinds, ...options.edges as EdgeKind[]])];
-    result.edgeKinds.sort();
-  }
 
   return result;
 }
