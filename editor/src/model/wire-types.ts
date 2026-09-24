@@ -151,6 +151,26 @@ export interface RelationEvidence {
   line?: number;
 }
 
+export interface RelationVia {
+  /** The member name (field, property, etc.) that this relation comes through. */
+  member?: string;
+  /** `field`, `property`, `event`, `indexer`, `parameter`, `return`, `constructor`, `self`. */
+  memberKind?: string;
+  /** Visibility modifiers from the code. */
+  modifiers?: string[];
+  /** The type text as written in code, e.g. "ConcurrentDictionary<long, Task<VmRunOutcome>>". */
+  text?: string;
+  /** Path from the outer type to the target class, e.g. ["value", "result"]. */
+  path?: string[];
+  /** Cardinality: one, optional, many, keyed. */
+  cardinality?: "one" | "optional" | "many" | "keyed";
+  /** Whether the collection content is mutable through this member. */
+  mutability?: "mutable" | "readonly";
+  /** True if the value is deferred: Task, Promise, Lazy, Func, IObservable, etc. */
+  deferred?: boolean;
+  [key: string]: unknown;
+}
+
 export interface RelationEntry {
   id: string;
   from: string;
@@ -164,6 +184,11 @@ export interface RelationEntry {
   styleId?: string;
   origin?: "code" | "authored";
   status?: "present" | "missing";
+  /**
+   * Member relation signature (ADR_20260924-4): present only for member relations from code.
+   * The edge label is derived from this when `origin: "code"` and no authored text exists.
+   */
+  via?: RelationVia;
   evidence?: RelationEvidence[];
   points?: Array<{ x: number; y: number }>;
   [key: string]: unknown;

@@ -1,6 +1,6 @@
 import type { Rect } from "../geometry/types.js";
 import type { RoutingMode } from "./style-types.js";
-import type { EntityEntry, WireMetadata } from "./wire-types.js";
+import type { EntityEntry, WireMetadata, RelationVia } from "./wire-types.js";
 
 /**
  * The in-memory model: one element shape, one containment tree.
@@ -99,6 +99,11 @@ export interface DiagramEdge {
    * `fromLabel` or `toLabel` on one.
    */
   origin?: "code" | "authored";
+  /**
+   * Member relation signature (ADR_20260924-4): present only for member relations from code.
+   * The edge label is derived from this when `origin: "code"` and no authored text exists.
+   */
+  via?: RelationVia;
   /**
    * Line shape for this one edge, overriding the view's and the type's choice.
    *
