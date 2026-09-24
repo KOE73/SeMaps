@@ -59,7 +59,7 @@ static async Task<int> Run(string[] args)
         }
 
         loadedAny = true;
-        extractor.ProcessCompilation(compilation);
+        extractor.ProcessProject(project, compilation);
     }
 
     if (!loadedAny)

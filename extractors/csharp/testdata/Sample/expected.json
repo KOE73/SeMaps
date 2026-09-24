@@ -262,6 +262,49 @@
           "type": "2"
         }
       ]
+    },
+    {
+      "id": "Sample.Shared",
+      "kind": "module",
+      "nativeKind": "namespace",
+      "name": "Shared",
+      "namespace": "",
+      "file": "Shared/BuildInfo.cs",
+      "line": 1
+    },
+    {
+      "id": "Sample.Shared.BuildInfo",
+      "kind": "type",
+      "nativeKind": "static-class",
+      "name": "BuildInfo",
+      "namespace": "Sample.Shared",
+      "file": "Shared/BuildInfo.cs",
+      "line": 5,
+      "visibility": "internal",
+      "members": [
+        {
+          "kind": "field",
+          "name": "Product",
+          "type": "string",
+          "visibility": "public"
+        }
+      ]
+    },
+    {
+      "id": "[Sample.App]",
+      "kind": "module",
+      "nativeKind": "assembly",
+      "name": "Sample.App",
+      "namespace": "",
+      "file": "Sample.App/Sample.App.csproj"
+    },
+    {
+      "id": "[Sample.Core]",
+      "kind": "module",
+      "nativeKind": "assembly",
+      "name": "Sample.Core",
+      "namespace": "",
+      "file": "Sample.Core/Sample.Core.csproj"
     }
   ],
   "edges": [
@@ -364,6 +407,71 @@
       "from": "Sample.Core.Notify",
       "to": "Sample.Core.Status",
       "kind": "references"
+    },
+    {
+      "from": "Sample.Shared",
+      "to": "Sample.Shared.BuildInfo",
+      "kind": "contains"
+    },
+    {
+      "from": "[Sample.App]",
+      "to": "Sample.App.AdvancedRepetitionGuard",
+      "kind": "contains"
+    },
+    {
+      "from": "[Sample.App]",
+      "to": "Sample.Shared.BuildInfo",
+      "kind": "contains"
+    },
+    {
+      "from": "[Sample.App]",
+      "to": "[Sample.Core]",
+      "kind": "references"
+    },
+    {
+      "from": "[Sample.Core]",
+      "to": "Sample.Core.Container",
+      "kind": "contains"
+    },
+    {
+      "from": "[Sample.Core]",
+      "to": "Sample.Core.Guards.RepetitionGuard",
+      "kind": "contains"
+    },
+    {
+      "from": "[Sample.Core]",
+      "to": "Sample.Core.IRepository",
+      "kind": "contains"
+    },
+    {
+      "from": "[Sample.Core]",
+      "to": "Sample.Core.Logger",
+      "kind": "contains"
+    },
+    {
+      "from": "[Sample.Core]",
+      "to": "Sample.Core.Notify",
+      "kind": "contains"
+    },
+    {
+      "from": "[Sample.Core]",
+      "to": "Sample.Core.Point",
+      "kind": "contains"
+    },
+    {
+      "from": "[Sample.Core]",
+      "to": "Sample.Core.Repo`1",
+      "kind": "contains"
+    },
+    {
+      "from": "[Sample.Core]",
+      "to": "Sample.Core.Status",
+      "kind": "contains"
+    },
+    {
+      "from": "[Sample.Core]",
+      "to": "Sample.Shared.BuildInfo",
+      "kind": "contains"
     }
   ]
 }

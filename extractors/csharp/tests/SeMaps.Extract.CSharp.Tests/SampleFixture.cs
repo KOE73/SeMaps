@@ -20,6 +20,10 @@ public sealed class SampleFixture : IAsyncLifetime
         };
         psi.ArgumentList.Add("restore");
         psi.ArgumentList.Add("Sample.slnx");
+        // A reused MSBuild node outlives restore and inherits the redirected stdout, so
+        // ReadToEndAsync below would never see EOF.
+        psi.ArgumentList.Add("-nodeReuse:false");
+        psi.Environment["MSBUILDDISABLENODEREUSE"] = "1";
 
         using var process = Process.Start(psi)!;
         var stdOut = await process.StandardOutput.ReadToEndAsync();

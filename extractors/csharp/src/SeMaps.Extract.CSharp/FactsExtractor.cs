@@ -12,6 +12,15 @@ internal sealed class FactsExtractor(string rootArgument, string rootFullPath, P
 {
     private readonly Dictionary<string, TypeEntry> _types = new(StringComparer.Ordinal);
     private readonly Dictionary<string, NamespaceEntry> _namespaces = new(StringComparer.Ordinal);
+    private readonly Dictionary<string, AssemblyEntry> _assemblies = new(StringComparer.Ordinal);
+
+    private sealed class AssemblyEntry
+    {
+        public required string Name;
+        public required string File;
+        public readonly HashSet<string> TopLevelTypes = new(StringComparer.Ordinal);
+        public readonly HashSet<string> ReferencedAssemblies = new(StringComparer.Ordinal);
+    }
 
     private sealed class TypeEntry
     {
@@ -27,8 +36,15 @@ internal sealed class FactsExtractor(string rootArgument, string rootFullPath, P
         public int? Line;
     }
 
-    public void ProcessCompilation(Compilation compilation)
+    /// <summary>
+    /// Processes one loaded project. The project itself becomes a <c>module</c>/<c>assembly</c>
+    /// symbol (ADR_20260923-9) when its .csproj lies under the root and passes the path filter;
+    /// multi-targeted projects (one Roslyn project per TFM) merge into one symbol by assembly name.
+    /// </summary>
+    public void ProcessProject(Project project, Compilation compilation)
     {
+        var assembly = ConsiderAssembly(project);
+
         foreach (var tree in compilation.SyntaxTrees)
         {
             if (tree.FilePath.Length == 0)
@@ -61,8 +77,55 @@ internal sealed class FactsExtractor(string rootArgument, string rootFullPath, P
 
                 var line = node.GetLocation().GetLineSpan().StartLinePosition.Line + 1;
                 Consider(symbol, relPath, line);
+
+                // A top-level type declared in this project's sources: the project contains it.
+                // A linked file compiled into two projects gives "contains" from both.
+                if (assembly is not null && symbol.ContainingType is null)
+                {
+                    var typeId = SymbolIds.TypeId(symbol);
+                    if (_types.ContainsKey(typeId))
+                    {
+                        assembly.TopLevelTypes.Add(typeId);
+                    }
+                }
             }
         }
+    }
+
+    private AssemblyEntry? ConsiderAssembly(Project project)
+    {
+        if (project.FilePath is null || project.AssemblyName.Length == 0)
+        {
+            return null;
+        }
+
+        var relPath = RelativePath(project.FilePath);
+        if (relPath is null || !pathFilter.IsIncluded(relPath) || pathFilter.IsExcluded(relPath, null))
+        {
+            return null;
+        }
+
+        var id = SymbolIds.AssemblyId(project.AssemblyName);
+        if (!_assemblies.TryGetValue(id, out var entry))
+        {
+            entry = new AssemblyEntry { Name = project.AssemblyName, File = relPath };
+            _assemblies[id] = entry;
+        }
+        else if (string.CompareOrdinal(relPath, entry.File) < 0)
+        {
+            entry.File = relPath;
+        }
+
+        foreach (var reference in project.ProjectReferences)
+        {
+            var target = project.Solution.GetProject(reference.ProjectId);
+            if (target is not null && target.AssemblyName.Length > 0)
+            {
+                entry.ReferencedAssemblies.Add(SymbolIds.AssemblyId(target.AssemblyName));
+            }
+        }
+
+        return entry;
     }
 
     private void Consider(INamedTypeSymbol symbol, string relPath, int line)
@@ -173,6 +236,35 @@ internal sealed class FactsExtractor(string rootArgument, string rootFullPath, P
                 Line = entry.Line,
                 Members = null,
             });
+        }
+
+        // Assembly (project) symbols: assembly -> top-level type "contains", assembly -> assembly
+        // "references" for a ProjectReference between two projects in this output.
+        foreach (var (asmId, entry) in _assemblies)
+        {
+            symbols.Add(new SymbolFact
+            {
+                Id = asmId,
+                Kind = "module",
+                NativeKind = "assembly",
+                Name = entry.Name,
+                Namespace = "",
+                File = entry.File,
+                Members = null,
+            });
+
+            foreach (var typeId in entry.TopLevelTypes)
+            {
+                edges.Add((asmId, typeId, "contains"));
+            }
+
+            foreach (var targetId in entry.ReferencedAssemblies)
+            {
+                if (targetId != asmId && _assemblies.ContainsKey(targetId))
+                {
+                    edges.Add((asmId, targetId, "references"));
+                }
+            }
         }
 
         // Namespace -> type, outer type -> nested type "contains" edges.

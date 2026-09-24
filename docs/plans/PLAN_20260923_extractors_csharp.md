@@ -41,6 +41,7 @@
 
 | Объявление C# | `kind` | `nativeKind` |
 |---|---|---|
+| проект (`.csproj` под `root`, прошедший фильтр путей; `id` — `[AssemblyName]`, ADR-10) | `module` | `assembly` |
 | пространство имён (каждое, в котором есть хоть один тип из вывода) | `module` | `namespace` |
 | `class`, `static class`, `abstract class` | `type` | `class` / `static-class` / `abstract-class` |
 | `struct`, `record`, `record struct` | `type` | `struct` / `record` / `record-struct` |
@@ -64,7 +65,9 @@
 
 ### Рёбра
 
-- `contains`: пространство имён → тип; внешний тип → вложенный.
+- `contains`: пространство имён → тип; сборка → тип верхнего уровня из её исходников (файл,
+  подключённый в два проекта, — от обеих); внешний тип → вложенный.
+- `references` сборка → сборка: `ProjectReference` между проектами вывода.
 - `extends`: базовый класс (кроме `object`, `ValueType`, `Enum`, `Delegate`).
 - `implements`: каждый интерфейс из `Interfaces` (прямые, не `AllInterfaces`).
 - `references`: тип поля/свойства (любой видимости), параметров и возврата методов и

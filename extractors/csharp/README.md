@@ -2,7 +2,9 @@
 
 `semaps-extract-csharp`: prints code facts for a C# workspace per
 [`docs/EXTRACTOR.md`](../../docs/EXTRACTOR.md) (output contract),
-[`ADR_20260923-5`](../../docs/adr/ADR_20260923-5_extractors_symbol-ids.md) (`id` form) and
+[`ADR_20260923-5`](../../docs/adr/ADR_20260923-5_extractors_symbol-ids.md) (`id` form),
+[`ADR_20260923-10`](../../docs/adr/ADR_20260923-10_extractors_csharp-assembly-symbol.md) (project
+symbol) and
 [`schemas/extractor-facts.schema.json`](../../schemas/extractor-facts.schema.json) (schema).
 Spec and steps: [`PLAN_20260923_extractors_csharp`](../../docs/plans/PLAN_20260923_extractors_csharp.md).
 
@@ -45,7 +47,8 @@ dotnet pack src/SeMaps.Extract.CSharp -c Release -o ./nupkg
 ```
 
 `tests/SeMaps.Extract.CSharp.Tests` builds the tool, then runs it as a subprocess against
-`testdata/Sample` (two projects joined by a `ProjectReference`) and checks: output equals
+`testdata/Sample` (two projects joined by a `ProjectReference`, plus `Shared/BuildInfo.cs`
+linked into both) and checks: output equals
 `testdata/Sample/expected.json` byte for byte, output validates against
 `schemas/extractor-facts.schema.json`, two runs produce byte-identical output, and the exit
 codes from `docs/EXTRACTOR.md` §1 (`1` for a missing `--root`, `2` for an unknown flag).
@@ -57,6 +60,26 @@ Sample.slnx`), which needs network access once; after that, `dotnet test` needs 
 Run against a real consumer solution (7 projects, ~390 types): 394 symbols, edges — 548
 `references`, 383 `contains`, 118 `extends`, 107 `implements`; exit `0` in ~7 s. `references`
 stays in the hundreds, not thousands, for a solution this size (see the plan's "Открытое" §1).
+
+## What it prints
+
+- **Project** (`.csproj` under `--root` that passes `--include`/`--exclude`): one symbol,
+  `kind: "module"`, `nativeKind: "assembly"`, `id` = `[AssemblyName]` (brackets as in IL, so it
+  never collides with a namespace of the same name), `name` = `AssemblyName`, `file` = the
+  `.csproj` path. Edges: `contains` → every top-level type declared in its sources (a file
+  linked into two projects gives `contains` from both), `references` → every
+  `ProjectReference` target that is also in the output. Multi-targeted projects merge into
+  one symbol.
+- **Namespace**: `module`/`namespace`, `contains` → its top-level types.
+- **Types** of every visibility (`type`/`interface`/`function`), `contains` outer → nested,
+  `extends`, `implements`, `references`.
+
+```json
+{ "id": "[Sample.Core]", "kind": "module", "nativeKind": "assembly", "name": "Sample.Core",
+  "namespace": "", "file": "Sample.Core/Sample.Core.csproj" }
+{ "from": "[Sample.Core]", "to": "Sample.Core.Container", "kind": "contains" }
+{ "from": "[Sample.App]", "to": "[Sample.Core]", "kind": "references" }
+```
 
 ## Scope notes
 

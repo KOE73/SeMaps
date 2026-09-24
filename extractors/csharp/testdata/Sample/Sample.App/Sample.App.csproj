@@ -2,6 +2,7 @@
 
   <ItemGroup>
     <ProjectReference Include="..\Sample.Core\Sample.Core.csproj" />
+    <Compile Include="..\Shared\BuildInfo.cs" Link="Shared\BuildInfo.cs" />
   </ItemGroup>
 
   <PropertyGroup>
