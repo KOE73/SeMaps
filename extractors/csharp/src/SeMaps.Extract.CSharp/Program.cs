@@ -12,6 +12,10 @@ if (!MSBuildLocator.IsRegistered)
     MSBuildLocator.RegisterDefaults();
 }
 
+// The log goes to stderr of a pipe (semaps reads it as UTF-8); without this a localized
+// MSBuild message arrives in the console's OEM code page and turns to mojibake.
+Console.OutputEncoding = new System.Text.UTF8Encoding(false);
+
 return await Run(args);
 
 static async Task<int> Run(string[] args)
@@ -30,7 +34,14 @@ static async Task<int> Run(string[] args)
         return 1;
     }
 
-    using var workspace = MSBuildWorkspace.Create();
+    // Design-time load only reads the code. A known vulnerability of a package (NuGet audit,
+    // NU1901-NU1904) says nothing about the types, yet the workspace reports it as a load
+    // failure on every project. The global NoWarn replaces the projects' own list; harmless
+    // here, since warnings only reach this log.
+    using var workspace = MSBuildWorkspace.Create(new Dictionary<string, string>
+    {
+        ["NoWarn"] = "NU1901;NU1902;NU1903;NU1904",
+    });
     workspace.RegisterWorkspaceFailedHandler(e => Console.Error.WriteLine($"[msbuild] {e.Diagnostic.Kind}: {e.Diagnostic.Message}"));
 
     var searchRoots = ResolveSearchRoots(options, rootFullPath);
