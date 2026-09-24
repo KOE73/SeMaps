@@ -71,7 +71,24 @@ function collectTypePaths(
   const found: TypePath[] = [];
   if (!typeNode) return found;
 
+  // Check if union type is optional (contains undefined or null)
+  const isOptionalUnion = (node: ts.Node): boolean => {
+    if (!ts.isUnionTypeNode(node)) return false;
+    return node.types.some(t =>
+      t.kind === ts.SyntaxKind.UndefinedKeyword || t.kind === ts.SyntaxKind.NullKeyword);
+  };
+
   const visit = (node: ts.Node, currentPath: string[], currentCardinal?: string, currentMutability?: string, currentDeferred?: boolean): void => {
+    // TypeOperator (e.g., readonly T[])
+    if (ts.isTypeOperatorNode(node)) {
+      if (node.operator === ts.SyntaxKind.ReadonlyKeyword) {
+        visit(node.type, currentPath, currentCardinal, "readonly", currentDeferred);
+      } else {
+        visit(node.type, currentPath, currentCardinal, currentMutability, currentDeferred);
+      }
+      return;
+    }
+
     // Array types: T[]
     if (ts.isArrayTypeNode(node)) {
       const elemType = node.elementType;
@@ -80,7 +97,7 @@ function collectTypePaths(
       return;
     }
 
-    // Type references like Array<T>, Set<T>, Map<K,V>, etc.
+    // Type references like Array<T>, Set<T>, Map<K,V>, Box<T>, etc.
     if (ts.isTypeReferenceNode(node)) {
       const nameNode = ts.isQualifiedName(node.typeName) ? node.typeName.right : node.typeName;
       const symbol = checker.getSymbolAtLocation(nameNode);
@@ -110,7 +127,7 @@ function collectTypePaths(
         visit(typeArgs[1], [...currentPath, "value"], "keyed", "readonly", currentDeferred);
         return;
       } else if (typeName === "Record" && typeArgs[0] && typeArgs[1]) {
-        visit(typeArgs[1], [...currentPath, "value"], "keyed", undefined, currentDeferred);
+        visit(typeArgs[1], [...currentPath, "value"], "keyed", "mutable", currentDeferred);
         return;
       } else if (typeName === "Promise" && typeArgs[0]) {
         visit(typeArgs[0], [...currentPath, "result"], currentCardinal, currentMutability, true);
@@ -120,7 +137,7 @@ function collectTypePaths(
         return;
       }
 
-      // Regular type reference
+      // Regular type reference - emit edge to the type itself
       if (symbol) {
         const resolved = resolveAlias(checker, symbol);
         const id = idBySymbol.get(resolved);
@@ -132,6 +149,25 @@ function collectTypePaths(
             ...(currentMutability ? { mutability: currentMutability as "mutable" | "readonly" } : {}),
             ...(currentDeferred ? { deferred: true } : {}),
           });
+        }
+      }
+
+      // Also emit edges for generic type arguments
+      for (let i = 0; i < typeArgs.length; i++) {
+        const argSymbol = checker.getSymbolAtLocation(typeArgs[i]);
+        if (argSymbol) {
+          const resolved = resolveAlias(checker, argSymbol);
+          const id = idBySymbol.get(resolved);
+          if (id) {
+            found.push({
+              symbol: resolved,
+              path: [...currentPath, `arg:${i}`],
+              cardinality: "one",
+            });
+          }
+        } else {
+          // Recursively visit the argument type
+          visit(typeArgs[i], [...currentPath, `arg:${i}`], "one", undefined, currentDeferred);
         }
       }
       return;
@@ -153,8 +189,14 @@ function collectTypePaths(
 
     // Union types: T1 | T2 | ...
     if (ts.isUnionTypeNode(node)) {
+      const isOptional = isOptionalUnion(node);
       for (const t of node.types) {
-        visit(t, currentPath, "one", undefined, currentDeferred);
+        // Skip undefined and null in optional union
+        if (isOptional &&
+            (t.kind === ts.SyntaxKind.UndefinedKeyword || t.kind === ts.SyntaxKind.NullKeyword)) {
+          continue;
+        }
+        visit(t, currentPath, isOptional ? "optional" : "one", undefined, currentDeferred);
       }
       return;
     }
@@ -162,7 +204,7 @@ function collectTypePaths(
     // Index signature type
     if (ts.isIndexSignatureDeclaration(node) && node.type) {
       const hasReadonly = hasModifier(node, ts.SyntaxKind.ReadonlyKeyword);
-      visit(node.type, [...currentPath, "value"], "keyed", hasReadonly ? "readonly" : undefined, currentDeferred);
+      visit(node.type, [...currentPath, "value"], "keyed", hasReadonly ? "readonly" : "mutable", currentDeferred);
       return;
     }
 
@@ -473,26 +515,48 @@ export function collectFacts(
             const paramType = param.type;
             if (paramType) {
               const paths = collectTypePaths(paramType, checker, validIds);
+              const paramName = parameterName(param.name);
+              const paramModifiers: string[] = [];
+              if (hasModifier(param, ts.SyntaxKind.ReadonlyKeyword)) paramModifiers.push("readonly");
+              if (hasModifier(param, ts.SyntaxKind.ProtectedKeyword)) paramModifiers.push("protected");
+              if (hasModifier(param, ts.SyntaxKind.PrivateKeyword)) paramModifiers.push("private");
+              if (hasModifier(param, ts.SyntaxKind.PublicKeyword)) paramModifiers.push("public");
+              const isParameterProperty = paramModifiers.length > 0;
+
               for (const tp of paths) {
                 if (tp.symbol) {
                   const targetId = validIds.get(tp.symbol);
-                  if (targetId && wantEdge("uses")) {
-                    const paramName = parameterName(param.name);
-                    const modifiers = [];
-                    if (ts.getModifiers(param)?.some(m => m.kind === ts.SyntaxKind.ReadonlyKeyword)) {
-                      modifiers.push("readonly");
+                  if (targetId) {
+                    const typeStr = checker.typeToString(checker.getTypeAtLocation(param));
+
+                    // If parameter property (has visibility modifier), emit holds edge
+                    if (isParameterProperty && wantEdge("holds")) {
+                      const via: ViaRecord = {
+                        ...(paramName ? { member: paramName } : {}),
+                        memberKind: "field",
+                        ...(paramModifiers.length > 0 ? { modifiers: paramModifiers } : {}),
+                        text: typeStr,
+                        ...(tp.path.length > 0 ? { path: tp.path } : {}),
+                        ...(tp.cardinality ? { cardinality: tp.cardinality } : {}),
+                        ...(tp.mutability ? { mutability: tp.mutability } : {}),
+                        ...(tp.deferred ? { deferred: true } : {}),
+                      };
+                      addEdge(entry.id, targetId, "holds", via);
                     }
-                    const via: ViaRecord = {
-                      ...(paramName ? { member: paramName } : {}),
-                      memberKind: "constructor",
-                      ...(modifiers.length > 0 ? { modifiers } : {}),
-                      text: checker.typeToString(checker.getTypeAtLocation(param)),
-                      ...(tp.path.length > 0 ? { path: tp.path } : {}),
-                      ...(tp.cardinality ? { cardinality: tp.cardinality } : {}),
-                      ...(tp.mutability ? { mutability: tp.mutability } : {}),
-                      ...(tp.deferred ? { deferred: true } : {}),
-                    };
-                    addEdge(entry.id, targetId, "uses", via);
+
+                    // Always emit uses edge for constructor
+                    if (wantEdge("uses")) {
+                      const via: ViaRecord = {
+                        ...(paramName ? { member: paramName } : {}),
+                        memberKind: "constructor",
+                        text: typeStr,
+                        ...(tp.path.length > 0 ? { path: tp.path } : {}),
+                        ...(tp.cardinality ? { cardinality: tp.cardinality } : {}),
+                        ...(tp.mutability ? { mutability: tp.mutability } : {}),
+                        ...(tp.deferred ? { deferred: true } : {}),
+                      };
+                      addEdge(entry.id, targetId, "uses", via);
+                    }
                   }
                 }
               }
