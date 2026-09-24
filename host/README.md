@@ -9,10 +9,10 @@ The check and the sync with code in [`../core`](../core) are part of the same bi
 Once per machine:
 
 ```
-host\install.cmd
+install.cmd                  # in the repository root
 ```
 
-It builds the editor bundle if it is missing (needs npm), builds `semaps.exe` and runs
+It builds the editor bundle (needs npm), `semaps.exe` and the extractors, and runs
 `semaps install`: the exe copies itself to `%LOCALAPPDATA%\Programs\SeMaps`, adds that folder to
 the user `PATH` and associates `*.semaps` with itself. A downloaded exe from GitHub Releases does
 the same when double-clicked (it asks first) or with `semaps.exe install`.
@@ -47,7 +47,7 @@ semaps sync --facts facts.json [--project <id>] [--dry-run] [--no-renames] [dir 
 ```
 
 Flags go before the project argument; `--facts -` reads stdin. Extractors are found beside the
-binary in `extractors/<language>/` (ADR_20260924-3); `install.cmd` builds them there. The pages
+binary in `extractors/<language>/` (ADR_20260924-3); `install.cmd` in the repository root builds them there. The pages
 `/extract` and `/setup` do the same from the browser (docs/API.md §5).
 
 ## Development

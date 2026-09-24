@@ -15,7 +15,7 @@ resolved symbols, not text/regex matching. Target framework: `net10.0`.
 
 It ships with `semaps` in `extractors/csharp/` and is run by `semaps sync` / `semaps extract`
 ([ADR_20260924-3](../../docs/adr/ADR_20260924-3_host_tools-beside-the-binary-and-setup.md)):
-`host/install.cmd` publishes it there, the release archives carry it. Nothing to install by hand.
+`install.cmd` in the repository root publishes it there, the release archives carry it. Nothing to install by hand.
 
 It stays a program of its own — facts on stdout — and can be run alone:
 

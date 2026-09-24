@@ -50,7 +50,7 @@ from the same page works too, without the extractors.
 
 ```
 git clone https://github.com/KOE73/SeMaps.git
-SeMaps\host\install.cmd
+SeMaps\install.cmd
 ```
 
 This builds the editor, `semaps.exe` and the extractors (C# when `dotnet` is there, TypeScript when
@@ -142,7 +142,7 @@ semaps SeMaps\examples\example.semaps
 
 ### Updating
 
-A new exe from Releases, or `git pull` and `host\install.cmd` again — the editor is inside the
+A new exe from Releases, or `git pull` and `install.cmd` again — the editor is inside the
 exe, so an old exe means an old editor.
 
 ## Extractors: one per language, yours is welcome
