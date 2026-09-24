@@ -80,9 +80,11 @@ semaps sync --facts facts.json --project <id> path\to\x.semaps   # several proje
   appeared in the same file. Nothing is decided. If it is a rename, set the old entity's
   `symbol` to the new symbol id (and `name`, if you want) and run again; if not, run with
   `--no-renames`. Decide with the human when the entity sits on views.
-- `extends`, `implements`, `contains` become relations (`origin: code`) and their types are
-  added to `relation-types.json`. Give each new type a name in `text.<lang>.json`
-  (`rt_contains`, …), or `semaps check` reports it. `references` are only counted in the report.
+- `extends`, `implements`, `contains`, `references` become relations (`origin: code`) and their
+  types are added to `relation-types.json`. Give each new type a name in `text.<lang>.json`
+  (`rt_contains`, …), or `semaps check` reports it. The `references` type is created with
+  `"visibility": "hidden"`: its relations are known but off on every view until switched on in
+  the editor (the relations panel checkbox).
 - Exit code: `--dry-run` gives 1 when anything would change — use it in CI next to
   `semaps check`. Without it, 1 means something is left for a human (`неоднозначно`,
   `переименование?`) or the registry contradicts itself (`сломано`, nothing written); 2 is a

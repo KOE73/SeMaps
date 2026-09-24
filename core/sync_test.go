@@ -228,13 +228,11 @@ func TestSyncFirstRunAdoptsHandMadeEntities(t *testing.T) {
 	if find(v.Relations, "r_x_base_extends") == nil || find(v.Relations, "r_asm_onnx_guard_2_contains") == nil {
 		t.Errorf("relations: %v", v.Relations)
 	}
-	for _, r := range v.Relations {
-		if r["type"] == "references" {
-			t.Errorf("references written: %v", r)
-		}
+	if ref := find(v.Relations, "r_x_guard_2_references"); ref == nil || ref["type"] != "references" || ref["origin"] != "code" {
+		t.Errorf("references relation: %v", v.Relations)
 	}
-	if len(rep.References) != 1 || rep.References[0] != "e_x → e_guard_2" {
-		t.Errorf("references report: %v", rep.References)
+	if rt := find(v.Types, "references"); rt == nil || rt["visibility"] != "hidden" {
+		t.Errorf("references type not declared: %v", v.Types)
 	}
 	if find(v.Relations, "r_hand") == nil {
 		t.Error("authored relation lost")

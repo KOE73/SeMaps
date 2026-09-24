@@ -55,10 +55,6 @@ type SyncReport struct {
 	Added     []string // не хватает: new entities, relations, relation types
 	Changed   []string // изменилось: fields updated, entities adopted, returned from missing
 
-	// References are `references` edges with no relation in the registry.
-	// Informational: never written, never counted in the exit code.
-	References []string
-
 	Written []string // files written, workspace-relative
 }
 
@@ -95,7 +91,6 @@ func (r *SyncReport) Print(w io.Writer) {
 		{"лишнее", r.Gone},
 		{"не хватает", r.Added},
 		{"изменилось", r.Changed},
-		{"к сведению: references без связи в реестре (не пишутся, на код выхода не влияют)", r.References},
 	}
 	for _, g := range groups {
 		if len(g.items) == 0 {
@@ -126,9 +121,9 @@ func (r *SyncReport) Print(w io.Writer) {
 	}
 }
 
-// structuralTypes are the edge kinds sync writes as relations. `references`
-// is left to the report.
-var structuralTypes = []string{"extends", "implements", "contains"}
+// structuralTypes are the edge kinds sync writes as relations: all of them.
+// Which ones a view shows is the view's decision (CONTRACT.md §8.5).
+var structuralTypes = EdgeKinds
 
 // Sync reconciles <workspace>/projects/<project> with facts.
 func Sync(workspace string, facts *Facts, opt SyncOptions) (*SyncReport, error) {
@@ -317,12 +312,6 @@ func Sync(workspace string, facts *Facts, opt SyncOptions) (*SyncReport, error) 
 		from, to := ents.items[fi].str("id"), ents.items[ti].str("id")
 		key := triple(from, to, edge.Kind)
 		existing := byTriple[key]
-		if !structural[edge.Kind] {
-			if len(existing) == 0 {
-				rep.References = append(rep.References, fmt.Sprintf("%s → %s", from, to))
-			}
-			continue
-		}
 		if len(existing) > 0 {
 			for _, ri := range existing {
 				r := rels.items[ri]
@@ -395,6 +384,10 @@ func Sync(workspace string, facts *Facts, opt SyncOptions) (*SyncReport, error) 
 			o := newObject()
 			o.set("id", t)
 			o.set("origin", "code")
+			if t == "references" {
+				// Many and rarely wanted all at once: hidden until a view asks (ADR_20260924-2).
+				o.set("visibility", "hidden")
+			}
 			types.items = append(types.items, o)
 			types.dirty = true
 			rep.Added = append(rep.Added, "relation-types.json: "+t)

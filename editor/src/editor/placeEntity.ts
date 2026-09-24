@@ -1,5 +1,6 @@
 import type { EntityEntry } from "../model/wire-types.js";
 import type { DiagramEditor } from "./DiagramEditor.js";
+import { relationShownByDefault } from "../model/relationVisibility.js";
 
 const WIDTH = 180;
 const HEIGHT = 60;
@@ -94,14 +95,13 @@ export function placeAround(
  * everything already on the view: a relation shows once both its ends do
  * (CONTRACT.md §8.5). A view saved with its own `edges` list would otherwise
  * never show a relation that reached the registry after that save.
- * `relations.default` / `except` of the view still decide.
+ * The type's `visibility` and the view's `relations.default` / `except` still decide.
  */
 function drawRelations(editor: DiagramEditor, placed: readonly string[]): void {
   const doc = editor.canvas.model;
   if (!doc) return;
   const policy = doc.bundle?.view?.relations as { default?: string; except?: string[] } | undefined;
-  const hiddenByDefault = policy?.default === "hidden";
-  const except = new Set(policy?.except ?? []);
+  const types = doc.bundle?.relationTypes;
   const fresh = new Set(placed);
   const have = new Set(doc.edges.map((e) => e.id));
 
@@ -109,7 +109,7 @@ function drawRelations(editor: DiagramEditor, placed: readonly string[]): void {
     if (!r || have.has(r.id) || r.from === r.to) continue;
     if (!fresh.has(r.from) && !fresh.has(r.to)) continue;
     if (doc.element(r.from) === undefined || doc.element(r.to) === undefined) continue;
-    if (hiddenByDefault !== except.has(r.id)) continue;
+    if (!relationShownByDefault(r, policy, types)) continue;
     doc.addEdge({
       id: r.id,
       from: r.from,

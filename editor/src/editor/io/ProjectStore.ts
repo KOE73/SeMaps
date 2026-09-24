@@ -17,6 +17,7 @@ import type {
 } from "../../model/wire-types.js";
 import type { ModelStore, SaveTarget } from "./types.js";
 import type { RoutingMode } from "../../model/style-types.js";
+import { relationShownByDefault } from "../../model/relationVisibility.js";
 
 /**
  * Reads and writes multi-file project models over HTTP.
@@ -148,9 +149,12 @@ export class HttpProjectStore implements ModelStore {
       };
     });
 
+    // No edge list of its own: the registry's relations, as the view's and
+    // the types' visibility defaults allow (CONTRACT.md §8.5).
     const rawEdges = Array.isArray(viewData.edges)
       ? viewData.edges
-      : relationsRes.relations || [];
+      : (relationsRes.relations || []).filter((r) =>
+          relationShownByDefault(r, (viewData as ViewDocument).relations as any, relationTypesRes));
 
     // A view's own edge placements don't repeat `origin` — only the relation
     // registry does — so look it up by id to know whether this edge is
