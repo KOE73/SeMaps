@@ -9,6 +9,11 @@
   "properties": {
     "language": { "type": "string", "pattern": "^[a-z][a-z0-9]*$" },
     "root": { "type": "string", "minLength": 1 },
+    "edgeKinds": {
+      "type": "array",
+      "items": { "enum": ["extends", "implements", "contains", "depends", "holds", "uses", "injects"] },
+      "description": "explicit list of edge kinds that these facts cover; sync marks missing only for listed kinds"
+    },
     "symbols": {
       "type": "array",
       "items": { "$ref": "#/$defs/symbol" }
@@ -58,7 +63,30 @@
       "properties": {
         "from": { "$ref": "#/$defs/id" },
         "to": { "$ref": "#/$defs/id" },
-        "kind": { "enum": ["extends", "implements", "references", "contains"] }
+        "kind": { "enum": ["extends", "implements", "contains", "depends", "holds", "uses", "injects"] },
+        "via": { "$ref": "#/$defs/via" }
+      }
+    },
+    "via": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "member": { "type": "string", "minLength": 1, "description": "name of the member" },
+        "memberKind": { "type": "string", "minLength": 1, "description": "field, property, event, indexer, parameter, return, constructor, self" },
+        "modifiers": {
+          "type": "array",
+          "items": { "type": "string", "minLength": 1 },
+          "description": "public, private, readonly, static, etc."
+        },
+        "text": { "type": "string", "minLength": 1, "description": "the member type as written in code" },
+        "path": {
+          "type": "array",
+          "items": { "type": "string", "minLength": 1 },
+          "description": "path inside the member type to the target symbol: item, key, value, result, arg:n, element:n, etc."
+        },
+        "cardinality": { "type": "string", "enum": ["one", "optional", "many", "keyed"], "description": "how many objects the member holds" },
+        "mutability": { "type": "string", "enum": ["mutable", "readonly"], "description": "can the collection contents be modified through this member" },
+        "deferred": { "type": "boolean", "description": "true if the object comes later (Task, Lazy, Promise, Func, IObservable)" }
       }
     }
   }

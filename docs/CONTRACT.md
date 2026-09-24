@@ -169,24 +169,34 @@ workspace (нет даже `projects/`) законен. Файл `catalog.json` 
     { "id": "r_repguard_illmmiddleware_implements",
       "from": "e_repetitionguardmiddleware", "to": "e_illmmiddleware",
       "type": "implements", "origin": "code", "status": "present",
-      "evidence": [{ "codeRef": "src/Acme.Agent/Guards/RepetitionGuardMiddleware.cs" }] }
+      "evidence": [{ "codeRef": "src/Acme.Agent/Guards/RepetitionGuardMiddleware.cs" }] },
+    { "id": "r_controller_outcome_holds_activeRuns",
+      "from": "e_vmcontroller", "to": "e_vmrunoutcome",
+      "type": "holds.many", "origin": "code", "status": "present",
+      "via": { "member": "activeRuns", "memberKind": "field", "modifiers": ["private", "readonly"],
+               "text": "ConcurrentDictionary<long, Task<VmRunOutcome>>", "path": ["value", "result"],
+               "cardinality": "keyed", "mutability": "mutable", "deferred": true },
+      "evidence": [{ "codeRef": "src/VM/VmController.cs", "symbol": "VM.VmController" }] }
   ]
 }
 ```
 
 | Поле | Обяз. | Смысл |
 |---|---|---|
-| `id` | да | префикс `r_`. Порождённая связь: `r_<from>_<to>_<type>` без префиксов `e_` |
+| `id` | да | префикс `r_`. Порождённая связь: `r_<from>_<to>_<type>` (без префиксов) для органических рёбер; членская связь: `r_<from>_<to>_<member>[_<path>]`, коллизия — `_2` |
 | `from`, `to` | да | `id` сущностей |
 | `type` | да | `id` из `relation-types.json` |
 | `origin` | нет | `code` \| `authored` |
 | `status` | нет | `present` \| `missing` |
+| `via` | нет | подпись членской связи: `member`, `memberKind`, `modifiers`, `text`, `path`, `cardinality`, `mutability`, `deferred` (все необязательны); есть только у членских связей (`kind` в фактах — `holds`, `uses`, `injects`) |
 | `evidence` | нет | `[{ codeRef, symbol?, line? }]` — проверяемое основание связи |
 
-Порождённые сверкой типы: `extends`, `implements`, `contains` (вложенность: сборка /
-пространство имён / файл содержит тип, тип — вложенный тип), `references` (тип поля,
-свойства, параметра — [`EXTRACTOR.md`](EXTRACTOR.md) §2). Реестр знает все связи; какие
-показать, решает вид (§8.5).
+Порождённые сверкой типы из органических рёбер: `extends`, `implements`, `contains`
+(вложенность: сборка / пространство имён / файл содержит тип, тип — вложенный тип),
+`depends` (сборка зависит от сборки). Членские связи: `holds.one`, `holds.optional`,
+`holds.many`, `holds.many.ro`, `holds.keyed`, `holds.keyed.ro` (через открытый член),
+те же с суффиксом `.internal` (через непубличный член), `injects` (конструктор),
+`uses` (остальное). Реестр знает все связи; какие показать, решает вид (§8.5).
 
 **`label` в v3 удалён.** Весь текст связи живёт в `text.<lang>.json` под её `id`;
 фолбэка на структуру нет. Связь без текстовой записи рисуется без подписи — это
@@ -206,18 +216,37 @@ workspace (нет даже `projects/`) законен. Файл `catalog.json` 
 {
   "contractVersion": 3,
   "relationTypes": [
-    { "id": "implements", "origin": "code" },
-    { "id": "references", "origin": "code", "visibility": "hidden" },
-    { "id": "call",       "origin": "authored" },
-    { "id": "security",   "origin": "authored", "styleId": "edge.security" }
+    { "id": "extends",       "origin": "code", "visibility": "visible" },
+    { "id": "implements",    "origin": "code", "visibility": "visible" },
+    { "id": "contains",      "origin": "code", "visibility": "visible" },
+    { "id": "depends",       "origin": "code", "visibility": "visible" },
+    { "id": "holds.one",     "origin": "code", "visibility": "visible" },
+    { "id": "holds.many",    "origin": "code", "visibility": "visible" },
+    { "id": "holds.internal", "origin": "code", "visibility": "hidden" },
+    { "id": "uses",          "origin": "code", "visibility": "hidden" },
+    { "id": "injects",       "origin": "code", "visibility": "hidden" },
+    { "id": "call",          "origin": "authored" },
+    { "id": "security",      "origin": "authored", "styleId": "edge.security" }
   ]
 }
 ```
 
 Тип связи — объект первого класса, а не свободная строка в `relations.json`.
+
+**Типы из кода.** Сверка выводит их из `kind` (органическое ребро) и признаков в `via`
+(членская связь):
+
+| Ребро в фактах | Видимость | Смысл |
+|---|---|---|
+| `extends`, `implements`, `contains`, `depends` | видим | органические связи, выводятся прямо из `kind` |
+| `holds.one`, `holds.optional`, `holds.many`, `holds.many.ro`, `holds.keyed`, `holds.keyed.ro` | видим | открытый элемент члена (публичный или по иерархии доступа). Вариант без суффикса — «не известно» не выводит отдельный тип |
+| те же с суффиксом `.internal` | скрыт | то же, но внутренний элемент (приватный или ограниченный доступ) |
+| `injects` | скрыт | ребро `uses` с `via.memberKind: constructor` |
+| `uses` | скрыт | параметр, возвращаемое значение, сигнатура или правая часть типа-псевдонима |
+
 `visibility` (`visible` \| `hidden`, необязательно) — умолчание для связей этого типа
-на виде (§8.5); нет — решает вид. Сверка ставит `hidden` типу `references`, когда
-заводит его.
+на виде (§8.5); нет — решает вид.
+
 Имя и описание — в текстах по ключу **`rt_<id>`**.
 
 Множество типов **открыто**: проверки «такого типа не бывает» нет. Но тип,
@@ -456,7 +485,15 @@ units**, результат — 8 шестнадцатеричных цифр в
 
 Умолчание типа лежит на самом типе, а не в политике вида: тип без `visibility`
 следует виду, неопределённого состояния нет
-([`ADR_20260924-2`](adr/ADR_20260924-2_core_sync-writes-references.md)).
+([`ADR_20260924-4`](adr/ADR_20260924-4_contract_member-relations-from-code.md) §4).
+
+**Что видимо по умолчанию** из членских связей и новых органических видов:
+
+| Видимо | Скрыто |
+|---|---|
+| `extends`, `implements`, `contains`, `depends` | — |
+| `holds.one`, `holds.optional`, `holds.many`, `holds.many.ro`, `holds.keyed`, `holds.keyed.ro` (открытые члены) | `holds.*.internal` (непубличные члены) |
+| — | `uses`, `injects` |
 
 **Ключ `edges` в виде.** Массив рёбер переопределяет реестр целиком: `[]`
 означает «рёбер нет», а не «взять все связи». Чтобы вид показывал связи проекта,
