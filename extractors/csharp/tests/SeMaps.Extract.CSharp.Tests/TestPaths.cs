@@ -6,6 +6,8 @@ internal static class TestPaths
 
     public static string ExpectedJsonPath => Path.Combine(SampleRoot, "expected.json");
 
+    public static string ExpectedEdgesJsonPath => Path.Combine(SampleRoot, "expected.edges.json");
+
     public static string SchemaPath => Path.Combine(RepoRoot(), "schemas", "extractor-facts.schema.json");
 
     private static string RepoRoot() =>

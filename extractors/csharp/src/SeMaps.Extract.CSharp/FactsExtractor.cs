@@ -320,11 +320,10 @@ internal sealed class FactsExtractor(string rootArgument, string rootFullPath, P
             })
             .ToList();
 
-        // Determine edge kinds to report
-        List<string>? edgeKinds = null;
+        // Always include base edge kinds plus requested member-based edges
+        var edgeKinds = new List<string> { "contains", "depends", "extends", "implements" };
         if (_requestedEdgeKinds is not null && _requestedEdgeKinds.Count > 0)
         {
-            edgeKinds = new List<string> { "extends", "implements", "contains", "depends" };
             if (_requestedEdgeKinds.Contains("holds"))
             {
                 edgeKinds.Add("holds");
@@ -337,8 +336,8 @@ internal sealed class FactsExtractor(string rootArgument, string rootFullPath, P
             {
                 edgeKinds.Add("injects");
             }
-            edgeKinds.Sort();
         }
+        edgeKinds.Sort();
 
         return new FactsDocument
         {

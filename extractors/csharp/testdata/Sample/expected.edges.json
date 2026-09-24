@@ -5,7 +5,9 @@
     "contains",
     "depends",
     "extends",
-    "implements"
+    "holds",
+    "implements",
+    "uses"
   ],
   "symbols": [
     {
@@ -366,6 +368,31 @@
       "kind": "implements"
     },
     {
+      "from": "Sample.App.AdvancedRepetitionGuard",
+      "to": "Sample.Core.Repo`1",
+      "kind": "uses",
+      "via": {
+        "member": "return",
+        "memberKind": "return",
+        "text": "Repo<Status>",
+        "cardinality": "one"
+      }
+    },
+    {
+      "from": "Sample.App.AdvancedRepetitionGuard",
+      "to": "Sample.Core.Status",
+      "kind": "holds",
+      "via": {
+        "member": "CurrentStatus",
+        "memberKind": "property",
+        "modifiers": [
+          "public"
+        ],
+        "text": "Status",
+        "cardinality": "one"
+      }
+    },
+    {
       "from": "Sample.Core",
       "to": "Sample.Core.Container",
       "kind": "contains"
@@ -416,9 +443,183 @@
       "kind": "contains"
     },
     {
+      "from": "Sample.Core.Container+Secret",
+      "to": "Sample.Core.Status",
+      "kind": "holds",
+      "via": {
+        "member": "_status",
+        "memberKind": "field",
+        "modifiers": [
+          "private"
+        ],
+        "text": "Status",
+        "cardinality": "one"
+      }
+    },
+    {
+      "from": "Sample.Core.Features",
+      "to": "Sample.Core.Repo`1",
+      "kind": "holds",
+      "via": {
+        "member": "StatusMap",
+        "memberKind": "property",
+        "modifiers": [
+          "public"
+        ],
+        "text": "Dictionary<Status, Repo<Status>>",
+        "path": [
+          "value"
+        ],
+        "cardinality": "keyed",
+        "mutability": "mutable"
+      }
+    },
+    {
+      "from": "Sample.Core.Features",
+      "to": "Sample.Core.Status",
+      "kind": "holds",
+      "via": {
+        "member": "OptionalStatus",
+        "memberKind": "property",
+        "modifiers": [
+          "public"
+        ],
+        "text": "Status?",
+        "cardinality": "optional"
+      }
+    },
+    {
+      "from": "Sample.Core.Features",
+      "to": "Sample.Core.Status",
+      "kind": "holds",
+      "via": {
+        "member": "ReadOnlyStatuses",
+        "memberKind": "property",
+        "modifiers": [
+          "public"
+        ],
+        "text": "IReadOnlyList<Status>",
+        "path": [
+          "item"
+        ],
+        "cardinality": "many",
+        "mutability": "readonly"
+      }
+    },
+    {
+      "from": "Sample.Core.Features",
+      "to": "Sample.Core.Status",
+      "kind": "holds",
+      "via": {
+        "member": "StatusMap",
+        "memberKind": "property",
+        "modifiers": [
+          "public"
+        ],
+        "text": "Dictionary<Status, Repo<Status>>",
+        "path": [
+          "key"
+        ],
+        "cardinality": "keyed",
+        "mutability": "mutable"
+      }
+    },
+    {
+      "from": "Sample.Core.Features",
+      "to": "Sample.Core.Status",
+      "kind": "holds",
+      "via": {
+        "member": "Statuses",
+        "memberKind": "property",
+        "modifiers": [
+          "public"
+        ],
+        "text": "List<Status>",
+        "path": [
+          "item"
+        ],
+        "cardinality": "many",
+        "mutability": "mutable"
+      }
+    },
+    {
+      "from": "Sample.Core.Features",
+      "to": "Sample.Core.Status",
+      "kind": "uses",
+      "via": {
+        "member": "initialStatus",
+        "memberKind": "constructor",
+        "text": "Status",
+        "cardinality": "one"
+      }
+    },
+    {
+      "from": "Sample.Core.Features",
+      "to": "Sample.Core.Status",
+      "kind": "uses",
+      "via": {
+        "member": "return",
+        "memberKind": "return",
+        "text": "Task<Status>",
+        "cardinality": "one",
+        "deferred": true
+      }
+    },
+    {
       "from": "Sample.Core.Guards",
       "to": "Sample.Core.Guards.RepetitionGuard",
       "kind": "contains"
+    },
+    {
+      "from": "Sample.Core.IRepository",
+      "to": "Sample.Core.Notify",
+      "kind": "holds",
+      "via": {
+        "member": "Changed",
+        "memberKind": "event",
+        "modifiers": [
+          "public"
+        ],
+        "text": "Notify",
+        "cardinality": "one"
+      }
+    },
+    {
+      "from": "Sample.Core.IRepository",
+      "to": "Sample.Core.Repo`1",
+      "kind": "uses",
+      "via": {
+        "member": "return",
+        "memberKind": "return",
+        "text": "Repo<Status>",
+        "cardinality": "one"
+      }
+    },
+    {
+      "from": "Sample.Core.IRepository",
+      "to": "Sample.Core.Status",
+      "kind": "holds",
+      "via": {
+        "member": "CurrentStatus",
+        "memberKind": "property",
+        "modifiers": [
+          "public",
+          "readonly"
+        ],
+        "text": "Status",
+        "cardinality": "one"
+      }
+    },
+    {
+      "from": "Sample.Core.Notify",
+      "to": "Sample.Core.Status",
+      "kind": "uses",
+      "via": {
+        "member": "status",
+        "memberKind": "parameter",
+        "text": "Status",
+        "cardinality": "one"
+      }
     },
     {
       "from": "Sample.Shared",
