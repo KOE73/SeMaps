@@ -1,13 +1,7 @@
 # PLAN_20260924-3_host — MCP-сервер `semaps mcp`
 
-Статус: **в работе** — шаги 2–5 done (basic); step 1 (core rules extraction) and step 6 (verification on live project) left; после
+Статус: **в работе** — шаги 1–5 готовы; шаг 6 открыт (проверка на живом проекте); после
 [`PLAN_20260924-2_contract_member-relations`](PLAN_20260924-2_contract_member-relations.md).
-
-**Commit log:**
-- 3edade5: feat(host): add semaps mcp command skeleton
-- 38228fe: feat(host): implement all MCP tools for read and write operations
-- d837549: docs: document MCP tools API
-- 2f2e8dd: refactor(host/mcp): improve tool implementations with proper data handling
 
 Решение: [`ADR_20260924-5`](../adr/ADR_20260924-5_host_mcp-server.md).
 
