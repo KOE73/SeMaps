@@ -100,7 +100,8 @@ function extractorCard(e: ExtractorView, inner: HTMLElement): HTMLElement {
   const edgeChecks: Record<string, HTMLInputElement> = {};
   const edgeCheckboxes: HTMLElement[] = [];
   for (const kind of edgeKinds) {
-    const cb = el("input", { type: "checkbox", checked: e.edges.includes(kind) }) as HTMLInputElement;
+    const cb = el("input", { type: "checkbox" }) as HTMLInputElement;
+    cb.checked = e.edges.includes(kind);
     edgeChecks[kind] = cb;
     edgeCheckboxes.push(el("label", { class: "tool-check" }, [cb, kind]));
   }
@@ -130,7 +131,7 @@ function extractorCard(e: ExtractorView, inner: HTMLElement): HTMLElement {
   save.addEventListener("click", async () => {
     save.disabled = true;
     try {
-      const edges = edgeKinds.filter((k) => edgeChecks[k].checked);
+      const edges = edgeKinds.filter((k) => edgeChecks[k]?.checked);
       const next = await toolApi.saveExtractor(e.id, {
         language: language.value,
         project: project.value,
