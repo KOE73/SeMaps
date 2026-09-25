@@ -138,6 +138,7 @@ export class DiagramEditor implements InspectorHost, StylePanelHost, DiagramEdit
   private readonly workspaceStore: WorkspaceStore;
   workspace: WorkspaceIndex = { projects: [] };
   currentView: ViewEntry | null = null;
+  get currentViewId(): string | null { return this.currentView?.id ?? null; }
   readonly workspaceEvents = new Emitter<{ change: null }>();
   private dirty = false;
   private readonly modelDirty = new Map<string, DirtySummary>();
