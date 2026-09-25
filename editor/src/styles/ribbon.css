@@ -30,6 +30,9 @@
   --rb-qat-svg: 15px;
   --rb-theme-w: 48px;
   --rb-theme-h: 32px;
+  --dv-density-h: 32px;
+  --dv-density-font: 12px;
+  --panel-zoom: 1;
 }
 
 :root[data-density="mini"] {
@@ -55,6 +58,9 @@
   --rb-qat-svg: 14px;
   --rb-theme-w: 40px;
   --rb-theme-h: 26px;
+  --dv-density-h: 27px;
+  --dv-density-font: 11.5px;
+  --panel-zoom: 0.9;
 }
 
 :root[data-density="nano"] {
@@ -80,6 +86,9 @@
   --rb-qat-svg: 13px;
   --rb-theme-w: 32px;
   --rb-theme-h: 20px;
+  --dv-density-h: 23px;
+  --dv-density-font: 11px;
+  --panel-zoom: 0.8;
 }
 
 .workbench-ribbon {
@@ -449,8 +458,8 @@
   --dv-drag-over-border-color: var(--accent, #4ea1ff);
   --dv-drag-over-border: 2px solid var(--accent, #4ea1ff);
   --dv-tabs-and-actions-container-background-color: var(--panel);
-  --dv-tabs-and-actions-container-font-size: 12px;
-  --dv-tabs-and-actions-container-height: 32px;
+  --dv-tabs-and-actions-container-font-size: var(--dv-density-font);
+  --dv-tabs-and-actions-container-height: var(--dv-density-h);
   --dv-activegroup-visiblepanel-tab-background-color: var(--panel-alt);
   --dv-activegroup-visiblepanel-tab-color: var(--text);
   --dv-inactivegroup-visiblepanel-tab-background-color: var(--panel);
@@ -804,3 +813,24 @@
   border-bottom: none;
   padding-bottom: 0;
 }
+
+/*
+ * Panels around the diagram follow the density as a whole: their content is
+ * scaled by --panel-zoom (CSS zoom scales type, padding and inline styles
+ * alike; percentages still fill the panel). The canvas is not scaled — it has
+ * its own zoom — only the controls floating over it.
+ */
+.workbench-dockview-host .dv-content-container > :not(.canvas-area) {
+  zoom: var(--panel-zoom);
+}
+
+/* dockview's theme class on its shell sets the tab row size; density wins. */
+.workbench-dockview-host .dv-shell {
+  --dv-tabs-and-actions-container-font-size: var(--dv-density-font);
+  --dv-tabs-and-actions-container-height: var(--dv-density-h);
+}
+
+.workbench-dockview-host .canvas-area .zoom-bar {
+  zoom: var(--panel-zoom);
+}
+
