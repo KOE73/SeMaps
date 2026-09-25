@@ -125,6 +125,16 @@ export class Workbench {
         panels.open("styles");
         this.editor.openStyle(styleId);
       },
+      command: (id) => {
+        const state = this.commands.getState(id);
+        return {
+          label: state.title,
+          icon: state.icon,
+          note: state.shortcut,
+          disabled: !state.enabled,
+          onSelect: () => void this.commands.execute(id),
+        };
+      },
     };
     this.editor.canvas.events.on("contextmenu", ({ target, id, clientX, clientY }) => {
       openCanvasMenu(this.editor, menuHost, target, id, clientX, clientY);

@@ -11,7 +11,19 @@ export interface MenuHost {
   openPanel(id: "properties" | "styles" | "neighbourhood" | "relations"): void;
   /** Open the Styles panel on this style. */
   openStyleEditor(styleId: string | null): void;
+  /** Menu entry for a registered command: its title, icon and enabled state. */
+  command(id: string): MenuItem;
 }
+
+const ALIGN_COMMANDS = [
+  "diagram.align.left", "diagram.align.right", "diagram.align.top",
+  "diagram.align.bottom", "diagram.align.width", "diagram.align.height",
+] as const;
+
+const ALIGN_EDGE_COMMANDS = [
+  "diagram.alignEdge.left", "diagram.alignEdge.right",
+  "diagram.alignEdge.top", "diagram.alignEdge.bottom",
+] as const;
 
 const MODES: readonly RoutingMode[] = ["orthogonal", "bezier", "tree-vertical", "tree-horizontal"];
 const MODE_ICON: Record<RoutingMode, string> = {
@@ -39,6 +51,7 @@ export function openCanvasMenu(
   } else if (target === "edge" && id !== null) {
     const edge = doc.edge(id);
     if (edge) items = edgeItems(editor, host, edge);
+    else if (doc.relations.some((r) => r.id === id)) items = ghostEdgeItems(editor, host, id);
   } else {
     items = [viewRoutingItem(editor)];
   }
@@ -106,6 +119,14 @@ function blockItems(editor: DiagramEditor, host: MenuHost, el: DiagramElement): 
     ],
   });
 
+  if (editor.canvas.selectedIds.size > 1) {
+    items.push({ label: t.align, icon: "⇤", submenu: () => [
+      ...ALIGN_COMMANDS.map((id) => host.command(id)),
+      { kind: "separator" },
+      ...ALIGN_EDGE_COMMANDS.map((id) => host.command(id)),
+    ] });
+  }
+
   items.push({ kind: "separator" });
   items.push({ label: t.describe, icon: "✎", onSelect: () => editor.openDocEditor(el.id, isZone ? "zone" : "node") });
   const codeRef = typeof el.metadata.codeRef === "string" ? el.metadata.codeRef : entity?.codeRef;
@@ -129,6 +150,8 @@ function edgeItems(editor: DiagramEditor, host: MenuHost, edge: DiagramEdge): Me
   const own = edges.some((e) => e.routing !== undefined);
 
   return [
+    { label: t.hideEdge, icon: "○", title: t.toggleEdgeHint, onSelect: () => editor.setEdgeShown(edge.id, false) },
+    { kind: "separator" },
     {
       label: t.lineShape,
       icon: MODE_ICON[edge.routing ?? "orthogonal"],
@@ -177,6 +200,17 @@ function edgeItems(editor: DiagramEditor, host: MenuHost, edge: DiagramEdge): Me
     { label: t.edgeStyle, icon: "→", onSelect: () => host.openStyleEditor(styles.edgeStyleIdFor(edge)) },
     { kind: "separator" },
     { label: t.remove, icon: "🗑", onSelect: () => editor.deleteSelection() },
+  ];
+}
+
+/** A ghost line: known in the registry, not on the view. */
+function ghostEdgeItems(editor: DiagramEditor, host: MenuHost, id: string): MenuItem[] {
+  const t = i18n.d.canvasMenu;
+  return [
+    { label: t.showEdge, icon: "●", title: t.toggleEdgeHint, onSelect: () => editor.setEdgeShown(id, true) },
+    { kind: "separator" },
+    { label: t.describe, icon: "✎", onSelect: () => editor.openDocEditor(id, "edge") },
+    { label: t.properties, icon: "→", onSelect: () => host.openPanel("relations") },
   ];
 }
 

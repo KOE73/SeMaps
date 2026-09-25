@@ -142,6 +142,19 @@
   vector-effect: non-scaling-stroke;
 }
 
+.semaps-resize-guide {
+  stroke: #2563eb;
+  stroke-width: 1px;
+  stroke-opacity: 0.55;
+  pointer-events: none;
+  vector-effect: non-scaling-stroke;
+}
+
+.semaps-resize-guide.is-aligned {
+  stroke: #db2777;
+  stroke-opacity: 0.9;
+}
+
 .semaps-marquee {
   fill: rgb(37 99 235 / 10%);
   stroke: #2563eb;

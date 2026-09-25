@@ -111,6 +111,10 @@ interface Snapshot {
  */
 import type { DiagramEditorFacade } from "../workbench/commands/types.js";
 
+
+export type EdgeSide = "left" | "right" | "top" | "bottom";
+export type AlignMode = "left" | "right" | "top" | "bottom" | "width" | "height";
+
 export class DiagramEditor implements InspectorHost, StylePanelHost, DiagramEditorFacade {
   readonly canvas: DiagramCanvas;
 
@@ -394,6 +398,11 @@ export class DiagramEditor implements InspectorHost, StylePanelHost, DiagramEdit
     this.canvas.events.on("collapse", () => {
       this.inspector.render(this.canvas.selected);
       this.edgesPanel.render();
+    });
+
+    // Double click on a line: a ghost comes onto the view, a shown one goes back to a ghost.
+    this.canvas.events.on("edgeToggle", ({ id }) => {
+      this.setEdgeShown(id, !this.isEdgeShown(id));
     });
 
     this.canvas.events.on("openDocEditor", (payload: { id: string; kind?: DocTargetKind }) => {
@@ -1041,6 +1050,84 @@ export class DiagramEditor implements InspectorHost, StylePanelHost, DiagramEdit
     this.canvas.select(zone.id);
   }
 
+  /**
+   * Line the selected boxes up on one edge, or give them one width or height.
+   *
+   * Edges go to the outermost selected edge; sizes follow the primary, the box
+   * touched last. A box whose container is selected too is left alone: it
+   * travels with its container, which is what moving a container does anyway.
+   */
+  alignSelection(mode: AlignMode): void {
+    const doc = this.canvas.model;
+    if (doc === null) return;
+    const selected = this.canvas.selectedElements();
+    const set = new Set(selected);
+    const boxes = selected.filter((el) => {
+      for (let p = el.parent; p !== null; p = p.parent) if (set.has(p)) return false;
+      return true;
+    });
+    if (boxes.length < 2) return;
+    const primary = this.canvas.selectedElement() ?? boxes[0]!;
+
+    const left = Math.min(...boxes.map((b) => b.x));
+    const top = Math.min(...boxes.map((b) => b.y));
+    const right = Math.max(...boxes.map((b) => b.x + b.width));
+    const bottom = Math.max(...boxes.map((b) => b.y + b.height));
+
+    for (const el of boxes) {
+      let dx = 0;
+      let dy = 0;
+      switch (mode) {
+        case "left": dx = left - el.x; break;
+        case "right": dx = right - (el.x + el.width); break;
+        case "top": dy = top - el.y; break;
+        case "bottom": dy = bottom - (el.y + el.height); break;
+        case "width": el.width = primary.width; break;
+        case "height": el.height = primary.height; break;
+      }
+      if (dx === 0 && dy === 0) continue;
+      for (const moved of [el, ...doc.descendants(el)]) {
+        moved.x += dx;
+        moved.y += dy;
+      }
+    }
+    this.commit("align");
+  }
+
+  /**
+   * Stretch one side of every selected box to the outermost such side, leaving
+   * the opposite side where it is: the boxes change size, not position.
+   * Contents of a stretched container stay put.
+   */
+  alignEdges(side: EdgeSide): void {
+    const boxes = this.canvas.selectedElements();
+    if (this.canvas.model === null || boxes.length < 2) return;
+
+    switch (side) {
+      case "left": {
+        const to = Math.min(...boxes.map((b) => b.x));
+        for (const b of boxes) { b.width += b.x - to; b.x = to; }
+        break;
+      }
+      case "right": {
+        const to = Math.max(...boxes.map((b) => b.x + b.width));
+        for (const b of boxes) b.width = to - b.x;
+        break;
+      }
+      case "top": {
+        const to = Math.min(...boxes.map((b) => b.y));
+        for (const b of boxes) { b.height += b.y - to; b.y = to; }
+        break;
+      }
+      case "bottom": {
+        const to = Math.max(...boxes.map((b) => b.y + b.height));
+        for (const b of boxes) b.height = to - b.y;
+        break;
+      }
+    }
+    this.commit("align-edges");
+  }
+
   deleteSelection(): void {
     const doc = this.canvas.model;
     const selection = this.canvas.selected;
@@ -1067,6 +1154,38 @@ export class DiagramEditor implements InspectorHost, StylePanelHost, DiagramEdit
     // inspector from binding to something that no longer exists (D-05).
     if (this.canvas.selected?.id === edgeId) this.canvas.select(null);
     this.commit("delete-edge");
+    this.inspector.render(this.canvas.selected);
+  }
+
+  /** Whether the relation `id` is drawn on this view (not only known, as a ghost). */
+  isEdgeShown(id: string): boolean {
+    return this.canvas.model?.edge(id) !== undefined;
+  }
+
+  /**
+   * Show a registry relation on the view, or hide it back to a ghost. The one
+   * way the inspector, the line's menu and a double click all go (CONTRACT.md
+   * §8.5: a view shows what its edge list holds).
+   */
+  setEdgeShown(id: string, shown: boolean): void {
+    const doc = this.canvas.model;
+    if (doc === null || this.isEdgeShown(id) === shown) return;
+    if (shown) {
+      const rel = doc.relations.find((r) => r.id === id);
+      if (rel === undefined) return;
+      doc.addEdge({
+        id: rel.id,
+        from: rel.from,
+        to: rel.to,
+        type: rel.type || (rel as { relation?: string }).relation || "relates",
+        label: (rel as { label?: string }).label || "",
+        ...(rel.styleId === undefined ? {} : { styleId: rel.styleId }),
+      });
+      this.commit("show-edge");
+    } else {
+      doc.removeEdge(id);
+      this.commit("hide-edge");
+    }
     this.inspector.render(this.canvas.selected);
   }
 

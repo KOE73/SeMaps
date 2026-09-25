@@ -1,9 +1,9 @@
-import { center, snap } from "../geometry/rect.js";
+import { center, snap, unionRect } from "../geometry/rect.js";
 import type { Rect } from "../geometry/types.js";
 import type { DiagramElement } from "../model/types.js";
 import { elementRect, isContainer } from "../model/types.js";
 import type { DiagramCanvas } from "../canvas/DiagramCanvas.js";
-import type { ResizeDirection } from "../canvas/render/handles.js";
+import type { ResizeDirection, ResizeGuide } from "../canvas/render/handles.js";
 import { Role, hitTest, type RoleHit } from "./roles.js";
 import { renderMarkdown } from "../editor/doc/MarkdownRenderer.js";
 import { SourceCodeService } from "../editor/code/SourceCodeService.js";
@@ -653,11 +653,20 @@ export class InteractionController {
     if (gesture.kind === "move") {
       this.finishMove(gesture);
     }
+    if (this.canvas.resizeGuides.length > 0) {
+      this.canvas.resizeGuides = [];
+      this.canvas.render();
+    }
     this.canvas.emitGestureEnd(gesture.kind);
   };
 
   private readonly onDoubleClick = (e: MouseEvent): void => {
     const hit = hitTest(e.target);
+    if (hit?.edgeId && hit.role !== Role.ResizeHandle) {
+      e.stopPropagation();
+      this.canvas.events.emit("edgeToggle", { id: hit.edgeId });
+      return;
+    }
     if (hit === null || hit.role !== Role.ResizeHandle) return;
 
     const elements = this.canvas.selectedElements();
@@ -779,6 +788,13 @@ export class InteractionController {
       this.canvas.setDropTarget(target?.id ?? null);
     }
 
+    let box: Rect | null = null;
+    for (const el of gesture.moved) {
+      const r = elementRect(el);
+      box = box === null ? r : unionRect(box, r);
+    }
+    this.canvas.resizeGuides = box === null ? [] : this.guidesFor(gesture.origins, box, "nsew");
+
     this.canvas.notifyModelChanged("move");
   }
 
@@ -789,6 +805,11 @@ export class InteractionController {
 
     if (doc === null) return;
     if (gesture.moved.length !== 1) return;
+    // A click without a drag never ran applyMove, so there is no drop target
+    // to speak of — and a null one would mean "the root" and lift the element
+    // out of its container just for being selected.
+    const origin = gesture.origins.get(gesture.lead);
+    if (origin !== undefined && origin.x === gesture.lead.x && origin.y === gesture.lead.y) return;
 
     const target = dropTargetId === null ? null : doc.element(dropTargetId) ?? null;
     if (target !== gesture.lead.parent) {
@@ -851,7 +872,42 @@ export class InteractionController {
       this.scaleGroup(gesture, next);
     }
 
+    this.canvas.resizeGuides = this.guidesFor(gesture.origins, next, gesture.dir);
     this.canvas.notifyModelChanged("resize");
+  }
+
+  /**
+   * Lines through the named sides of `rect` ("n", "se", "nsew"…): a side grip
+   * moves one edge, a corner grip two, a drag all four. Each is marked aligned
+   * when another element's edges on the same axis sit on it, so the author can
+   * line boxes up by eye instead of by the inspector.
+   */
+  private guidesFor(skip: ReadonlyMap<DiagramElement, unknown>, next: Rect, sides: string): ResizeGuide[] {
+    const doc = this.canvas.model;
+    const xs: number[] = [];
+    const ys: number[] = [];
+    if (doc !== null) {
+      for (const el of doc.elements()) {
+        if (skip.has(el)) continue;
+        xs.push(el.x, el.x + el.width);
+        ys.push(el.y, el.y + el.height);
+      }
+    }
+    const meets = (values: number[], at: number) => values.some((v) => Math.abs(v - at) < 0.5);
+
+    const out: ResizeGuide[] = [];
+    const dir = sides;
+    if (dir.includes("w")) out.push({ axis: "x", at: next.x, aligned: meets(xs, next.x) });
+    if (dir.includes("e")) {
+      const at = next.x + next.width;
+      out.push({ axis: "x", at, aligned: meets(xs, at) });
+    }
+    if (dir.includes("n")) out.push({ axis: "y", at: next.y, aligned: meets(ys, next.y) });
+    if (dir.includes("s")) {
+      const at = next.y + next.height;
+      out.push({ axis: "y", at, aligned: meets(ys, at) });
+    }
+    return out;
   }
 
   /**

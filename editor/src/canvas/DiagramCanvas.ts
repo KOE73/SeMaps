@@ -5,6 +5,7 @@ import { StyleLibrary } from "../model/StyleLibrary.js";
 import { builtinStyleSheet } from "../model/style-defaults.js";
 import { PaintRegistry } from "./render/PaintRegistry.js";
 import type { Point, Rect, Side } from "../geometry/types.js";
+import { unionRect } from "../geometry/rect.js";
 import { Emitter } from "../util/emitter.js";
 import { createDefs } from "./defs.js";
 import { clear, setAttrs, svg, text } from "./svg.js";
@@ -19,7 +20,7 @@ import { renderContent, type MemberView } from "../content/ContentRenderer.js";
 import { TypeRegistry } from "./render/TypeRegistry.js";
 import { DIM } from "./render/styles.js";
 import { dashArray, textAttrs } from "./render/textAttrs.js";
-import { marquee, resizeHandles, selectionOutline } from "./render/handles.js";
+import { marquee, resizeGuide, type ResizeGuide, resizeHandles, selectionOutline } from "./render/handles.js";
 import { UniformPortAssigner } from "./ports/assigners.js";
 import { portKey, type PortAssigner, type PortRequest } from "./ports/PortAssigner.js";
 import { BezierRouter, type EdgeRouter, type Route } from "./routing/EdgeRouter.js";
@@ -63,6 +64,8 @@ export interface CanvasEvents {
   viewport: ViewportState;
   collapse: { id: string; collapsed: boolean };
   openDocEditor: { id: string; kind?: "node" | "zone" | "edge" };
+  /** Double click on a line, shown or ghost: its owner decides whether to show or hide it. */
+  edgeToggle: { id: string };
   openCodeViewer: { id: string; codeRef: string; label?: string };
   /** Right click on a box, a line or the empty canvas: whoever owns menus decides what to offer. */
   contextmenu: { target: "element" | "edge" | "canvas"; id: string | null; clientX: number; clientY: number };
@@ -191,6 +194,8 @@ export class DiagramCanvas {
 
   /** Rubber band in model coordinates while a selection sweep is running. */
   marqueeRect: Rect | null = null;
+  /** Lines through the edges a resize is dragging; empty outside a resize. */
+  resizeGuides: readonly ResizeGuide[] = [];
 
   private portAssigner: PortAssigner;
   private router: EdgeRouter;
@@ -789,6 +794,9 @@ export class DiagramCanvas {
 
     if (this.marqueeRect !== null) {
       this.overlayLayer.appendChild(marquee(this.marqueeRect, scale));
+    }
+    for (const guide of this.resizeGuides) {
+      this.overlayLayer.appendChild(resizeGuide(guide, scale));
     }
 
     const elements = this.selectedElements();
@@ -1723,17 +1731,6 @@ export class DiagramCanvas {
   emitGestureEnd(reason: string): void {
     this.events.emit("gestureend", { reason });
   }
-}
-
-function unionRect(a: Rect, b: Rect): Rect {
-  const x = Math.min(a.x, b.x);
-  const y = Math.min(a.y, b.y);
-  return {
-    x,
-    y,
-    width: Math.max(a.x + a.width, b.x + b.width) - x,
-    height: Math.max(a.y + a.height, b.y + b.height) - y,
-  };
 }
 
 function escapeCanvasHtml(str: string): string {

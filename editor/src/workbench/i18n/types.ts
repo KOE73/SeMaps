@@ -37,6 +37,7 @@ export interface UiDictionary {
       readonly zoom: string;
       readonly perspectives: string;
       readonly edgeFamilies: string;
+      readonly align: string;
       readonly canvas: string;
       readonly workspace: string;
       readonly help: string;
@@ -90,6 +91,16 @@ export interface UiDictionary {
     readonly copyJson: { readonly title: string; readonly desc: string };
     readonly applyJson: { readonly title: string; readonly desc: string };
     readonly portsSet: { readonly title: string; readonly desc: string };
+    readonly alignLeft: { readonly title: string; readonly desc: string };
+    readonly alignRight: { readonly title: string; readonly desc: string };
+    readonly alignTop: { readonly title: string; readonly desc: string };
+    readonly alignBottom: { readonly title: string; readonly desc: string };
+    readonly alignWidth: { readonly title: string; readonly desc: string };
+    readonly alignHeight: { readonly title: string; readonly desc: string };
+    readonly alignEdgeLeft: { readonly title: string; readonly desc: string };
+    readonly alignEdgeRight: { readonly title: string; readonly desc: string };
+    readonly alignEdgeTop: { readonly title: string; readonly desc: string };
+    readonly alignEdgeBottom: { readonly title: string; readonly desc: string };
     readonly densitySet: { readonly title: string; readonly desc: string };
     readonly strokeScalingSet: { readonly title: string; readonly desc: string };
     readonly toggleStructureEdges: { readonly title: string; readonly desc: string };
@@ -341,6 +352,10 @@ export interface UiDictionary {
     readonly noColor: string;
   };
   readonly canvasMenu: {
+    readonly showEdge: string;
+    readonly hideEdge: string;
+    readonly toggleEdgeHint: string;
+    readonly align: string;
     readonly template: string;
     readonly templateFromStyle: string;
     readonly style: string;

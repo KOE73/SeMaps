@@ -92,6 +92,32 @@ export function selectionOutline(rect: Rect, scale: number): SVGRectElement {
   });
 }
 
+/** One edge being dragged by a resize grip, and whether it lines up with another element. */
+export interface ResizeGuide {
+  readonly axis: "x" | "y";
+  readonly at: number;
+  readonly aligned: boolean;
+}
+
+/** How far a guide runs each way: well past anything anyone draws. */
+const GUIDE_REACH = 100_000;
+
+/**
+ * A line through the dragged edge across the whole plane, so it can be read
+ * against every other element. It turns solid when it meets another edge.
+ */
+export function resizeGuide(guide: ResizeGuide, scale: number): SVGLineElement {
+  const vertical = guide.axis === "x";
+  return svg("line", {
+    class: `semaps-resize-guide${guide.aligned ? " is-aligned" : ""}`,
+    x1: vertical ? guide.at : -GUIDE_REACH,
+    x2: vertical ? guide.at : GUIDE_REACH,
+    y1: vertical ? -GUIDE_REACH : guide.at,
+    y2: vertical ? GUIDE_REACH : guide.at,
+    "stroke-dasharray": guide.aligned ? null : `${5 / scale},${4 / scale}`,
+  });
+}
+
 /** The rubber band drawn while sweeping a selection. */
 export function marquee(rect: Rect, scale: number): SVGRectElement {
   return svg("rect", {

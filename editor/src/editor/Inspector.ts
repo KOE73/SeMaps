@@ -202,18 +202,7 @@ export class Inspector {
           attrs: { style: isVisibleOnCanvas ? "font-weight: 700;" : "opacity: 0.7;" },
           on: {
             click: () => {
-              if (!isVisibleOnCanvas && doc) {
-                doc.addEdge({
-                  id: edge.id,
-                  from: edge.from,
-                  to: edge.to,
-                  type: edge.type,
-                  label: edge.label,
-                  styleId: edge.styleId,
-                });
-                (this.host as any).commit("show-edge");
-                this.renderEdge(edge, true);
-              }
+              if (!isVisibleOnCanvas && doc) (this.host as any).setEdgeShown(edge.id, true);
             },
           },
         }),
@@ -223,11 +212,7 @@ export class Inspector {
           attrs: { style: !isVisibleOnCanvas ? "font-weight: 700; border-color: var(--accent); color: var(--accent);" : "opacity: 0.7;" },
           on: {
             click: () => {
-              if (isVisibleOnCanvas && doc) {
-                doc.removeEdge(edge.id);
-                (this.host as any).commit("hide-edge");
-                this.renderEdge(edge, false);
-              }
+              if (isVisibleOnCanvas && doc) (this.host as any).setEdgeShown(edge.id, false);
             },
           },
         }),

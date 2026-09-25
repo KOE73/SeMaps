@@ -114,6 +114,8 @@ export interface DiagramEditorFacade {
   applyToggle(name: string, on: boolean): void;
   applyPortAssigner(mode: string): void;
   applyStrokeScaling(mode: string): void;
+  alignEdges(side: "left" | "right" | "top" | "bottom"): void;
+  alignSelection(mode: "left" | "right" | "top" | "bottom" | "width" | "height"): void;
   openDocEditor(targetId?: string | null): void;
   openCodeViewer?(codeRef?: string | null, label?: string): void;
   applyTheme(theme: string): void;

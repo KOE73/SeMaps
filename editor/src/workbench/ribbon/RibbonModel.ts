@@ -27,6 +27,22 @@ export function createDefaultRibbonSpec(): RibbonSpec {
             ],
           },
           {
+            id: "align",
+            get title() { return i18n.d.ribbon.groups.align; },
+            items: [
+              { type: "button", command: "diagram.align.left", size: "small" },
+              { type: "button", command: "diagram.align.right", size: "small" },
+              { type: "button", command: "diagram.align.top", size: "small" },
+              { type: "button", command: "diagram.align.bottom", size: "small" },
+              { type: "button", command: "diagram.align.width", size: "small" },
+              { type: "button", command: "diagram.align.height", size: "small" },
+              { type: "button", command: "diagram.alignEdge.left", size: "small" },
+              { type: "button", command: "diagram.alignEdge.right", size: "small" },
+              { type: "button", command: "diagram.alignEdge.top", size: "small" },
+              { type: "button", command: "diagram.alignEdge.bottom", size: "small" },
+            ],
+          },
+          {
             id: "file",
             get title() { return i18n.d.ribbon.groups.file; },
             items: [
