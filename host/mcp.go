@@ -127,6 +127,37 @@ type getViewIn struct {
 	Lang    string `json:"lang,omitempty" jsonschema:"language of names; default ru"`
 }
 
+type geomIn struct {
+	Project          string   `json:"project,omitempty"`
+	View             string   `json:"view,omitempty" jsonschema:"view id; may be left out when elements are references view#id"`
+	Elements         []string `json:"elements" jsonschema:"zone ids or entity ids of nodes, or references view#id"`
+	DX               *float64 `json:"dx,omitempty"`
+	DY               *float64 `json:"dy,omitempty"`
+	X                *float64 `json:"x,omitempty" jsonschema:"move: the top-left corner of the common box of the elements goes here"`
+	Y                *float64 `json:"y,omitempty"`
+	Width            *float64 `json:"width,omitempty"`
+	Height           *float64 `json:"height,omitempty"`
+	Zone             string   `json:"zone,omitempty" jsonschema:"set_zone: the zone to put them into; empty takes them out of any"`
+	Mode             string   `json:"mode,omitempty" jsonschema:"align: left, right, top, bottom, width or height, to the first element"`
+	RequestedByHuman bool     `json:"requestedByHuman" jsonschema:"true only when a human asked for this layout in so many words"`
+}
+
+type addZoneIn struct {
+	Project          string  `json:"project,omitempty"`
+	View             string  `json:"view"`
+	ID               string  `json:"id" jsonschema:"z_<name>"`
+	Parent           string  `json:"parent,omitempty"`
+	Container        string  `json:"container,omitempty" jsonschema:"a container id of containers.json; empty for a frame that asserts nothing"`
+	StyleID          string  `json:"styleId,omitempty"`
+	Name             string  `json:"name,omitempty" jsonschema:"caption, written as a text under the zone id"`
+	Lang             string  `json:"lang,omitempty"`
+	X                float64 `json:"x"`
+	Y                float64 `json:"y"`
+	Width            float64 `json:"width"`
+	Height           float64 `json:"height"`
+	RequestedByHuman bool    `json:"requestedByHuman"`
+}
+
 type saveIn struct {
 	Project          string `json:"project,omitempty"`
 	RequestedByHuman bool   `json:"requestedByHuman"`
@@ -173,6 +204,12 @@ func (s *mcpServer) server() *mcp.Server {
 	mcp.AddTool(srv, write("extract", "Run the extractors of the .semaps file; returns run ids."), s.extract)
 	mcp.AddTool(srv, write("sync", "Reconcile the registry with the code (extracts first unless run is given)."), s.sync)
 	mcp.AddTool(srv, write("place_entities", "Put entities on a view. Only when a human asked for it: requestedByHuman."), s.placeEntities)
+	mcp.AddTool(srv, write("move_elements", "Move nodes and zones by dx/dy or to x/y; a zone goes with its content. Only when a human asked: requestedByHuman."), s.moveElements)
+	mcp.AddTool(srv, write("resize_elements", "Set width/height of nodes and zones, not below the minimum nor, for a zone, below its content. requestedByHuman."), s.resizeElements)
+	mcp.AddTool(srv, write("set_zone", "Put nodes and zones into a zone, coordinates untouched. requestedByHuman."), s.setZone)
+	mcp.AddTool(srv, write("add_zone", "Add a zone with a rectangle, optional parent, container, style and caption. requestedByHuman."), s.addZone)
+	mcp.AddTool(srv, write("fit_zone", "Fit zones to their content (caption strip and padding); ancestors grow if they no longer hold it. requestedByHuman."), s.fitZone)
+	mcp.AddTool(srv, write("align_elements", "Align elements to the first one: left, right, top, bottom, width, height. requestedByHuman."), s.alignElements)
 	mcp.AddTool(srv, write("save", "Save all unsaved project changes only when a human explicitly requested it."), s.save)
 	mcp.AddTool(srv, write("discard", "Discard unsaved changes only when a human explicitly requested it."), s.discard)
 	return srv
@@ -635,6 +672,111 @@ func (s *mcpServer) getView(_ context.Context, _ *mcp.CallToolRequest, in getVie
 		return nil, nil, err
 	}
 	return nil, info, nil
+}
+
+// geomTarget picks the model and the view of a geometry step: view, or the view of the first reference.
+func (s *mcpServer) geomTarget(project, view string, elements []string) (*core.Model, string, error) {
+	ref := view
+	if ref == "" && len(elements) > 0 {
+		ref = elements[0]
+	}
+	if ref == "" {
+		return nil, "", errors.New("give view or elements")
+	}
+	r, err := core.ParseRef(ref)
+	if err != nil {
+		return nil, "", err
+	}
+	m, err := s.modelOfRef(project, ref)
+	return m, r.View, err
+}
+
+// geomDone answers a geometry step: what was touched, not saved, and one link that lights it up.
+func (s *mcpServer) geomDone(m *core.Model, view, project string, rep core.GeomReport) (*mcp.CallToolResult, any, error) {
+	s.changed(project, m)
+	ids := make([]string, len(rep.Touched))
+	for i, t := range rep.Touched {
+		ids[i] = t[strings.Index(t, "#")+1:]
+	}
+	link := "/app/#" + view
+	if len(ids) > 0 {
+		link += "?highlight=" + url.QueryEscape(strings.Join(ids, ","))
+	}
+	text := fmt.Sprintf("%d changed on %s, not saved; review and Save: %s", len(rep.Touched), view, link)
+	return &mcp.CallToolResult{Content: []mcp.Content{&mcp.TextContent{Text: text}}}, map[string]any{"touched": rep.Touched, "saved": false, "link": link}, nil
+}
+
+func (s *mcpServer) moveElements(_ context.Context, _ *mcp.CallToolRequest, in geomIn) (*mcp.CallToolResult, any, error) {
+	m, view, err := s.geomTarget(in.Project, in.View, in.Elements)
+	if err != nil {
+		return nil, nil, err
+	}
+	rep, err := m.MoveElements(view, in.Elements, in.DX, in.DY, in.X, in.Y, in.RequestedByHuman, "agent")
+	if err != nil {
+		return nil, nil, err
+	}
+	return s.geomDone(m, view, in.Project, rep)
+}
+
+func (s *mcpServer) resizeElements(_ context.Context, _ *mcp.CallToolRequest, in geomIn) (*mcp.CallToolResult, any, error) {
+	m, view, err := s.geomTarget(in.Project, in.View, in.Elements)
+	if err != nil {
+		return nil, nil, err
+	}
+	rep, err := m.ResizeElements(view, in.Elements, in.Width, in.Height, in.RequestedByHuman, "agent")
+	if err != nil {
+		return nil, nil, err
+	}
+	return s.geomDone(m, view, in.Project, rep)
+}
+
+func (s *mcpServer) setZone(_ context.Context, _ *mcp.CallToolRequest, in geomIn) (*mcp.CallToolResult, any, error) {
+	m, view, err := s.geomTarget(in.Project, in.View, in.Elements)
+	if err != nil {
+		return nil, nil, err
+	}
+	rep, err := m.SetZone(view, in.Elements, in.Zone, in.RequestedByHuman, "agent")
+	if err != nil {
+		return nil, nil, err
+	}
+	return s.geomDone(m, view, in.Project, rep)
+}
+
+func (s *mcpServer) fitZone(_ context.Context, _ *mcp.CallToolRequest, in geomIn) (*mcp.CallToolResult, any, error) {
+	m, view, err := s.geomTarget(in.Project, in.View, in.Elements)
+	if err != nil {
+		return nil, nil, err
+	}
+	rep, err := m.FitZone(view, in.Elements, in.RequestedByHuman, "agent")
+	if err != nil {
+		return nil, nil, err
+	}
+	return s.geomDone(m, view, in.Project, rep)
+}
+
+func (s *mcpServer) alignElements(_ context.Context, _ *mcp.CallToolRequest, in geomIn) (*mcp.CallToolResult, any, error) {
+	m, view, err := s.geomTarget(in.Project, in.View, in.Elements)
+	if err != nil {
+		return nil, nil, err
+	}
+	rep, err := m.AlignElements(view, in.Elements, in.Mode, in.RequestedByHuman, "agent")
+	if err != nil {
+		return nil, nil, err
+	}
+	return s.geomDone(m, view, in.Project, rep)
+}
+
+func (s *mcpServer) addZone(_ context.Context, _ *mcp.CallToolRequest, in addZoneIn) (*mcp.CallToolResult, any, error) {
+	m, view, err := s.geomTarget(in.Project, in.View, nil)
+	if err != nil {
+		return nil, nil, err
+	}
+	rep, err := m.AddZone(view, core.ZoneSpec{ID: in.ID, Parent: in.Parent, Container: in.Container, StyleID: in.StyleID, Name: in.Name, Lang: in.Lang,
+		Rect: core.Rect{X: in.X, Y: in.Y, Width: in.Width, Height: in.Height}}, in.RequestedByHuman, "agent")
+	if err != nil {
+		return nil, nil, err
+	}
+	return s.geomDone(m, view, in.Project, rep)
 }
 
 func orInt(n, def int) int {

@@ -72,7 +72,7 @@ func TestMCPListsAllTools(t *testing.T) {
 	}
 	for _, n := range []string{"list_projects", "list_views", "get_entity", "find_entities", "get_relations",
 		"get_text", "sync_preview", "doctor", "set_text", "add_relation", "add_relation_type",
-		"set_relation_visible", "confirm_rename", "extract", "sync", "place_entities", "get_view"} {
+		"set_relation_visible", "confirm_rename", "extract", "sync", "place_entities", "get_view", "move_elements", "resize_elements", "set_zone", "add_zone", "fit_zone", "align_elements"} {
 		if !have[n] {
 			t.Errorf("no tool %s", n)
 		}
@@ -220,5 +220,25 @@ func TestMCPGetView(t *testing.T) {
 	res, text = call(t, cs, "get_view", map[string]any{"view": "v_main#z_nope"})
 	if !res.IsError || !strings.Contains(text, "z_nope is not on view v_main") {
 		t.Fatalf("unknown object: %v %s", res.IsError, text)
+	}
+}
+
+func TestMCPGeometryTools(t *testing.T) {
+	cs, _ := mcpSession(t)
+	res, text := call(t, cs, "add_zone", map[string]any{"view": "v_main", "id": "z_a", "x": 0, "y": 0, "width": 300, "height": 200, "requestedByHuman": false})
+	if !res.IsError || !strings.Contains(text, "direct request") {
+		t.Fatalf("without requestedByHuman: %v %s", res.IsError, text)
+	}
+	res, text = call(t, cs, "add_zone", map[string]any{"view": "v_main", "id": "z_a", "x": 0, "y": 0, "width": 300, "height": 200, "requestedByHuman": true})
+	if res.IsError || !strings.Contains(text, "not saved") || !strings.Contains(text, "highlight=z_a") {
+		t.Fatalf("add_zone: %v %s", res.IsError, text)
+	}
+	res, text = call(t, cs, "move_elements", map[string]any{"elements": []string{"v_main#z_a"}, "dx": 40, "dy": 0, "requestedByHuman": true})
+	if res.IsError || !strings.Contains(text, "1 changed") {
+		t.Fatalf("move_elements by reference: %v %s", res.IsError, text)
+	}
+	_, text = call(t, cs, "get_view", map[string]any{"view": "v_main#z_a"})
+	if !strings.Contains(text, `"x":40`) {
+		t.Fatalf("get_view after move: %s", text)
 	}
 }

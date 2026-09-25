@@ -394,6 +394,14 @@ editor's sandbox land in the same file.
 | `extract` | `extractor?` | runs the extractors of the `.semaps` file one by one → `{runs: [{run, extractor, project}]}` |
 | `sync` | `extractor?`, `run?`, `noRenames?` | extracts (or takes the facts of `run`) and reconciles; the text answer is the sync report, the structured one `{reports: [core.SyncReport]}` |
 | `place_entities` | `view`, `entities: [{entity, zone?, x, y, width?, height?}]`, `requestedByHuman` | puts entities on a view |
+| `move_elements` | `view?`, `elements`, `dx`/`dy` or `x`/`y`, `requestedByHuman` | shifts nodes and zones, or puts the top-left corner of their common box at `x`,`y`; a zone goes with everything inside it; a zone that stops holding its content grows (ancestors too); snapped to the grid 10 |
+| `resize_elements` | `view?`, `elements`, `width?`, `height?`, `requestedByHuman` | node not below 100 × 40, zone not below 160 × 100 and not below its content |
+| `set_zone` | `view?`, `elements`, `zone` (empty: out of any), `requestedByHuman` | membership only, coordinates untouched; a zone cannot go into itself or its own content |
+| `add_zone` | `view`, `id` (`z_…`), `parent?`, `container?`, `styleId?`, `name?`, `lang?`, `x`, `y`, `width`, `height`, `requestedByHuman` | a new zone; `name` is written as a text under the zone id |
+| `fit_zone` | `view?`, `elements` (zones), `requestedByHuman` | zone = its content plus caption strip 28 and padding 16; ancestors grow if they stop holding it |
+| `align_elements` | `view?`, `elements`, `mode` (`left` | `right` | `top` | `bottom` | `width` | `height`), `requestedByHuman` | to the first element, as the editor's align buttons |
+
+`elements` are zone ids, entity ids of nodes, or references `view#id`; `view` may be left out when they are references. Every geometry step is one batch — a bad element applies nothing — authored `agent`, and answers `{touched:[view#id…], saved:false, link}` with the link that opens the view and highlights the touched objects.
 | `save` | `project?`, `requestedByHuman: true` | saves all dirty project files and clears the journal; refused without explicit human request |
 | `discard` | `project?`, `scope: registry \| view \| all`, `view?`, `requestedByHuman: true` | drops the requested unsaved changes; refused without explicit human request |
 
