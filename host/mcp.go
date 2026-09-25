@@ -142,6 +142,15 @@ type geomIn struct {
 	RequestedByHuman bool     `json:"requestedByHuman" jsonschema:"true only when a human asked for this layout in so many words"`
 }
 
+type arrangeIn struct {
+	Project          string   `json:"project,omitempty"`
+	Reference        string   `json:"reference" jsonschema:"the zone to copy the layout from: view#zone"`
+	Targets          []string `json:"targets,omitempty" jsonschema:"zones to lay out like the reference: references or zone ids"`
+	Parent           string   `json:"parent,omitempty" jsonschema:"instead of targets: every zone next to the reference inside this zone; they are also restacked with the reference gap"`
+	DryRun           bool     `json:"dryRun,omitempty" jsonschema:"only report what would be done; nothing is written"`
+	RequestedByHuman bool     `json:"requestedByHuman"`
+}
+
 type addZoneIn struct {
 	Project          string  `json:"project,omitempty"`
 	View             string  `json:"view"`
@@ -210,6 +219,7 @@ func (s *mcpServer) server() *mcp.Server {
 	mcp.AddTool(srv, write("add_zone", "Add a zone with a rectangle, optional parent, container, style and caption. requestedByHuman."), s.addZone)
 	mcp.AddTool(srv, write("fit_zone", "Fit zones to their content (caption strip and padding); ancestors grow if they no longer hold it. requestedByHuman."), s.fitZone)
 	mcp.AddTool(srv, write("align_elements", "Align elements to the first one: left, right, top, bottom, width, height. requestedByHuman."), s.alignElements)
+	mcp.AddTool(srv, write("arrange_like", "Lay out target zones like a reference zone: node positions and sizes, template, style, zone size; nodes are paired by their part in the inheritance and by variant words. dryRun shows the plan. requestedByHuman."), s.arrangeLike)
 	mcp.AddTool(srv, write("save", "Save all unsaved project changes only when a human explicitly requested it."), s.save)
 	mcp.AddTool(srv, write("discard", "Discard unsaved changes only when a human explicitly requested it."), s.discard)
 	return srv
@@ -777,6 +787,50 @@ func (s *mcpServer) addZone(_ context.Context, _ *mcp.CallToolRequest, in addZon
 		return nil, nil, err
 	}
 	return s.geomDone(m, view, in.Project, rep)
+}
+
+func (s *mcpServer) arrangeLike(_ context.Context, _ *mcp.CallToolRequest, in arrangeIn) (*mcp.CallToolResult, any, error) {
+	r, err := core.ParseRef(in.Reference)
+	if err != nil {
+		return nil, nil, err
+	}
+	if r.ID == "" {
+		return nil, nil, errors.New("reference must be view#zone")
+	}
+	m, err := s.modelOfRef(in.Project, in.Reference)
+	if err != nil {
+		return nil, nil, err
+	}
+	rep, err := m.ArrangeLike(r.View, core.ArrangeOptions{Reference: in.Reference, Targets: in.Targets, Parent: in.Parent, DryRun: in.DryRun}, in.RequestedByHuman, "agent")
+	if err != nil {
+		return nil, nil, err
+	}
+	var b strings.Builder
+	for _, t := range rep.Targets {
+		fmt.Fprintf(&b, "%s: %d paired", t.Zone, len(t.Pairs))
+		if len(t.Unpaired) > 0 {
+			fmt.Fprintf(&b, ", no pair for %s (put in a free row)", strings.Join(t.Unpaired, ", "))
+		}
+		if len(t.Missing) > 0 {
+			fmt.Fprintf(&b, ", nothing to pair with %s", strings.Join(t.Missing, ", "))
+		}
+		b.WriteString("\n")
+	}
+	if in.DryRun {
+		fmt.Fprintf(&b, "dryRun: nothing written; %d objects would change", len(rep.Touched))
+		return &mcp.CallToolResult{Content: []mcp.Content{&mcp.TextContent{Text: b.String()}}}, rep, nil
+	}
+	s.changed(in.Project, m)
+	ids := make([]string, len(rep.Touched))
+	for i, t := range rep.Touched {
+		ids[i] = t[strings.Index(t, "#")+1:]
+	}
+	link := "/app/#" + r.View
+	if len(ids) > 0 {
+		link += "?highlight=" + url.QueryEscape(strings.Join(ids, ","))
+	}
+	fmt.Fprintf(&b, "%d changed on %s, not saved; review and Save: %s", len(rep.Touched), r.View, link)
+	return &mcp.CallToolResult{Content: []mcp.Content{&mcp.TextContent{Text: b.String()}}}, map[string]any{"targets": rep.Targets, "touched": rep.Touched, "saved": false, "dryRun": false, "link": link}, nil
 }
 
 func orInt(n, def int) int {

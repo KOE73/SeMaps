@@ -29,6 +29,7 @@ type layout struct {
 	zoneOrder []string
 	nodeOrder []string
 	before    map[string]string // "zone:<id>" / "node:<id>" -> the object as loaded
+	parents   map[string]string // effective parent of each zone, see zoneParents
 }
 
 func (m *Model) loadLayout(viewID string) (*layout, error) {
@@ -54,7 +55,46 @@ func (m *Model) loadLayout(viewID string) (*layout, error) {
 		l.nodeOrder = append(l.nodeOrder, id)
 		l.before["node:"+id] = objString(n)
 	}
+	l.parents = zoneParents(viewItems(doc, "zones"))
 	return l, nil
+}
+
+// zoneParents is where each zone nests: its `parent`, else a zone named by its
+// `container` (older files do that), else — files that only draw the frames
+// inside each other — the smallest zone whose rectangle strictly holds it.
+func zoneParents(list []*object) map[string]string {
+	ids := map[string]bool{}
+	for _, z := range list {
+		ids[z.str("id")] = true
+	}
+	out := map[string]string{}
+	for _, z := range list {
+		id := z.str("id")
+		p := z.str("parent")
+		if p == "" || !ids[p] || p == id {
+			p = z.str("container")
+			if !ids[p] || p == id {
+				p = ""
+			}
+		}
+		if p == "" {
+			rz, best, bestArea := zoneRect(z), "", 0.0
+			for _, o := range list {
+				ro := zoneRect(o)
+				if o == z || ro == rz || !ro.Contains(rz) {
+					continue
+				}
+				if a := ro.Width * ro.Height; best == "" || a < bestArea {
+					best, bestArea = o.str("id"), a
+				}
+			}
+			p = best
+		}
+		if p != "" {
+			out[id] = p
+		}
+	}
+	return out
 }
 
 func objString(o *object) string { b, _ := o.MarshalJSON(); return string(b) }
@@ -126,8 +166,8 @@ func (l *layout) setRect(id string, r Rect) {
 func has(o *object, key string) bool { _, ok := o.vals[key]; return ok }
 
 func (l *layout) parentOf(id string) string {
-	if z := l.zones[id]; z != nil {
-		return z.str("parent")
+	if l.zones[id] != nil {
+		return l.parents[id]
 	}
 	if n := l.nodes[id]; n != nil {
 		return nodeZone(n)
@@ -139,7 +179,7 @@ func (l *layout) parentOf(id string) string {
 func (l *layout) children(zone string) []string {
 	var out []string
 	for _, id := range l.zoneOrder {
-		if id != zone && l.zones[id].str("parent") == zone {
+		if id != zone && l.parents[id] == zone {
 			out = append(out, id)
 		}
 	}
@@ -153,13 +193,22 @@ func (l *layout) children(zone string) []string {
 
 // subtree is the element and everything inside it.
 func (l *layout) subtree(id string) []string {
-	out := []string{id}
-	if l.isZone(id) {
-		for _, c := range l.children(id) {
-			out = append(out, l.subtree(c)...)
+	seen := map[string]bool{}
+	var walk func(id string) []string
+	walk = func(id string) []string {
+		if seen[id] {
+			return nil
 		}
+		seen[id] = true
+		out := []string{id}
+		if l.isZone(id) {
+			for _, c := range l.children(id) {
+				out = append(out, walk(c)...)
+			}
+		}
+		return out
 	}
-	return out
+	return walk(id)
 }
 
 func (l *layout) content(zone string) (Rect, bool) {
@@ -245,6 +294,11 @@ func (l *layout) growAncestors(id string) {
 
 // commit applies every changed object as one batch.
 func (m *Model) commit(l *layout, extra []Op, author string, human bool) (GeomReport, error) {
+	return m.commitMode(l, extra, author, human, false)
+}
+
+// commitMode with dry set reports what would change and writes nothing.
+func (m *Model) commitMode(l *layout, extra []Op, author string, human, dry bool) (GeomReport, error) {
 	if !human {
 		return GeomReport{}, refuse(needHuman)
 	}
@@ -270,8 +324,8 @@ func (m *Model) commit(l *layout, extra []Op, author string, human bool) (GeomRe
 			touched = append(touched, l.view+"#"+op.ID)
 		}
 	}
-	if len(ops) == 0 {
-		return GeomReport{Touched: []string{}}, nil
+	if len(ops) == 0 || dry {
+		return GeomReport{Touched: append([]string{}, touched...)}, nil
 	}
 	if _, err := m.Apply(ops, author); err != nil {
 		return GeomReport{}, err
@@ -390,6 +444,12 @@ func (m *Model) SetZone(view string, elements []string, zone string, human bool,
 				return GeomReport{}, refuse("zone %s cannot go into itself or its own content", id)
 			}
 			setOrDrop(l.zones[id], "parent", zone)
+			if c := l.zones[id].str("container"); l.zones[c] != nil {
+				l.zones[id].set("container", nil)
+				if zone != "" {
+					l.zones[id].set("container", zone)
+				}
+			}
 		} else {
 			key := "zone"
 			if !has(l.nodes[id], "zone") && has(l.nodes[id], "container") {

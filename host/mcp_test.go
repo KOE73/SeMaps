@@ -72,7 +72,7 @@ func TestMCPListsAllTools(t *testing.T) {
 	}
 	for _, n := range []string{"list_projects", "list_views", "get_entity", "find_entities", "get_relations",
 		"get_text", "sync_preview", "doctor", "set_text", "add_relation", "add_relation_type",
-		"set_relation_visible", "confirm_rename", "extract", "sync", "place_entities", "get_view", "move_elements", "resize_elements", "set_zone", "add_zone", "fit_zone", "align_elements"} {
+		"set_relation_visible", "confirm_rename", "extract", "sync", "place_entities", "get_view", "move_elements", "resize_elements", "set_zone", "add_zone", "fit_zone", "align_elements", "arrange_like"} {
 		if !have[n] {
 			t.Errorf("no tool %s", n)
 		}
@@ -240,5 +240,27 @@ func TestMCPGeometryTools(t *testing.T) {
 	_, text = call(t, cs, "get_view", map[string]any{"view": "v_main#z_a"})
 	if !strings.Contains(text, `"x":40`) {
 		t.Fatalf("get_view after move: %s", text)
+	}
+}
+
+func TestMCPArrangeLike(t *testing.T) {
+	cs, _ := mcpSession(t)
+	for _, z := range []string{"z_ref", "z_t1"} {
+		res, text := call(t, cs, "add_zone", map[string]any{"view": "v_main", "id": z, "x": 0, "y": map[string]int{"z_ref": 0, "z_t1": 400}[z], "width": 300, "height": 200, "requestedByHuman": true})
+		if res.IsError {
+			t.Fatalf("add_zone: %s", text)
+		}
+	}
+	res, text := call(t, cs, "arrange_like", map[string]any{"reference": "v_main#z_ref", "targets": []string{"v_main#z_t1"}, "dryRun": true, "requestedByHuman": true})
+	if res.IsError || !strings.Contains(text, "dryRun: nothing written") {
+		t.Fatalf("dry run: %v %s", res.IsError, text)
+	}
+	res, text = call(t, cs, "arrange_like", map[string]any{"reference": "v_main#z_ref", "targets": []string{"v_main#z_t1"}, "requestedByHuman": true})
+	if res.IsError || !strings.Contains(text, "not saved") {
+		t.Fatalf("arrange_like: %v %s", res.IsError, text)
+	}
+	res, text = call(t, cs, "arrange_like", map[string]any{"reference": "v_main", "targets": []string{"z_t1"}, "requestedByHuman": true})
+	if !res.IsError || !strings.Contains(text, "view#zone") {
+		t.Fatalf("bare view as reference: %v %s", res.IsError, text)
 	}
 }

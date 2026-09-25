@@ -94,10 +94,12 @@ func (m *Model) GetView(ref, lang string) (ViewInfo, error) {
 		ents[e.str("id")] = e
 	}
 
+	zoneObjs := viewItems(doc, "zones")
+	parents := zoneParents(zoneObjs)
 	zones := map[string]*ZoneInfo{}
 	var order []*ZoneInfo
-	for _, z := range viewItems(doc, "zones") {
-		info := &ZoneInfo{ID: z.str("id"), Container: z.str("container"), Parent: z.str("parent"), Rect: zoneRect(z),
+	for _, z := range zoneObjs {
+		info := &ZoneInfo{ID: z.str("id"), Container: z.str("container"), Parent: parents[z.str("id")], Rect: zoneRect(z),
 			StyleID: z.str("styleId"), Zones: []*ZoneInfo{}, Nodes: []NodeInfo{}}
 		if raw, ok := z.vals["collapsed"]; ok {
 			_ = json.Unmarshal(raw, &info.Collapsed)
