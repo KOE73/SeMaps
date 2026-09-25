@@ -194,7 +194,7 @@ internal static class ReferenceEdgeCollector
     private static List<AnalyzedSymbol> AnalyzeType(ITypeSymbol type)
     {
         var results = new List<AnalyzedSymbol>();
-        var visited = new HashSet<INamedTypeSymbol>();
+        var visited = new HashSet<INamedTypeSymbol>(SymbolEqualityComparer.Default);
         AnalyzeTypeRecursive(type, [], results, visited);
         return results;
     }
