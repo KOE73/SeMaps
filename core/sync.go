@@ -145,13 +145,13 @@ func Sync(model *Model, facts *Facts, opt SyncOptions) (*SyncReport, error) {
 	base := model.copy()
 	model.mu.Unlock()
 	working := base.copy()
-	project, dir := model.project, model.dir
+	project := model.project
 	var manifest struct {
 		Sources struct {
 			Include []string `json:"include"`
 		} `json:"sources"`
 	}
-	if err := readJSON(filepath.Join(dir, "project.json"), &manifest); err != nil {
+	if err := json.Unmarshal(model.Manifest(), &manifest); err != nil {
 		return nil, fmt.Errorf("project.json: %w", err)
 	}
 	rep := &SyncReport{Project: project, Language: facts.Language, DryRun: opt.DryRun}

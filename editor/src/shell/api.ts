@@ -3,6 +3,7 @@
  * extractors, their runs and the sync of a run. Paths are relative to the
  * project root; the host never hands out absolute ones.
  */
+import { hostWriteHeaders } from "../util/hostKey.js";
 
 export interface RuntimeInfo {
   name: string;
@@ -158,7 +159,7 @@ export class ApiError extends Error {
 async function call<T>(method: string, url: string, body?: unknown): Promise<T> {
   const res = await fetch(url, {
     method,
-    headers: body === undefined ? {} : { "Content-Type": "application/json" },
+    headers: { ...(body === undefined ? {} : { "Content-Type": "application/json" }), ...(method === "GET" ? {} : hostWriteHeaders()) },
     body: body === undefined ? undefined : JSON.stringify(body),
     cache: "no-store",
   });

@@ -1,5 +1,6 @@
 import { compileTemplate } from "./parser.js";
 import type { CompileResult } from "./template-types.js";
+import { hostWriteHeaders } from "../util/hostKey.js";
 
 /** Where the shared template registry lives, next to `styles.json`. */
 const TEMPLATE_FILE = "templates.json";
@@ -100,7 +101,7 @@ export class TemplateLibrary {
   async save(): Promise<void> {
     const res = await fetch(`/api/save?file=${encodeURIComponent(TEMPLATE_FILE)}`, {
       method: "POST",
-      headers: { "Content-Type": "application/json" },
+      headers: { "Content-Type": "application/json", ...hostWriteHeaders() },
       body: JSON.stringify(this.sheet, null, 2),
     });
     if (!res.ok) throw new Error(`Сервер ответил HTTP ${res.status}`);

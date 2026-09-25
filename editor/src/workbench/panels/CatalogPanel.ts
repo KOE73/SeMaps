@@ -98,6 +98,8 @@ export class CatalogPanel implements IContentRenderer {
 
   private renderProject(project: ProjectEntry, current: string | undefined): HTMLElement {
     const t = i18n.d.panels.catalog;
+    const dirty=this.editor.dirtyForProject(project.id);
+    const authors=(refs: readonly {author:string}[])=>[...new Set(refs.map((r)=>r.author==="human"?"вы":"агент"))].join(", ");
     const tile = (icon: string, theme: string | undefined): HTMLElement =>
       el("span", { class: `catalog-icon${theme ? ` theme-${theme}` : ""}`, text: icon });
     const editBtn = (title: string, onClick: () => void): HTMLElement =>
@@ -137,6 +139,7 @@ export class CatalogPanel implements IContentRenderer {
               el("span", { class: "catalog-title", text: this.editor.viewName(view) }),
               el("span", { class: "catalog-subtitle", text: view.error ?? view.id }),
             ]),
+            (dirty?.views[view.id]?.length ?? 0)>0 ? el("span",{class:"catalog-dirty",text:"●",title:`Несохранено: ${authors(dirty!.views[view.id]!)}`}) : null,
           ],
         ),
         view.error ? null : editBtn(t.editView, () => openEditViewDialog(this.editor, view)),
@@ -145,6 +148,7 @@ export class CatalogPanel implements IContentRenderer {
 
     return el("div", { class: "catalog-project" }, [
       head,
+      (dirty?.registry.length ?? 0)>0 ? el("div",{class:"catalog-registry-dirty",text:`Реестр: изменено ${dirty!.registry.length} (${authors(dirty!.registry)})`}) : null,
       el("div", { class: "catalog-views" },
         views.length > 0 ? views : [el("div", { class: "catalog-none sidebar-label", text: t.noViews })],
       ),

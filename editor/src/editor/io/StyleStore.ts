@@ -1,6 +1,7 @@
 import { builtinStyleSheet } from "../../model/style-defaults.js";
 import type { WireStyleSheet } from "../../model/style-types.js";
 import type { StyleStore } from "./types.js";
+import { hostWriteHeaders } from "../../util/hostKey.js";
 
 /** File name the stylesheet occupies in the workspace models directory. */
 const STYLE_FILE = "styles.json";
@@ -24,7 +25,7 @@ export class HttpStyleStore implements StyleStore {
   async save(sheet: WireStyleSheet): Promise<void> {
     const res = await fetch(`/api/save?file=${encodeURIComponent(STYLE_FILE)}`, {
       method: "POST",
-      headers: { "Content-Type": "application/json" },
+      headers: { "Content-Type": "application/json", ...hostWriteHeaders() },
       body: JSON.stringify(sheet, null, 2),
     });
     if (!res.ok) throw new Error(`Сервер ответил HTTP ${res.status}`);

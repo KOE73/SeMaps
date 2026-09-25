@@ -12,7 +12,37 @@ import (
 	"strings"
 	"testing"
 	"time"
+
+	"semaps/core"
 )
+
+func TestStructuralReloadRequiresCleanModel(t *testing.T) {
+	s, srv := hostModelFixture(t)
+	defer srv.Close()
+	m, err := s.get("p")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := m.Apply([]core.Op{{Kind: "project", ID: "p", Value: json.RawMessage(`{"id":"p","title":"New","languages":["ru"]}`)}}, "human"); err != nil {
+		t.Fatal(err)
+	}
+	if err := s.clean("p"); err == nil {
+		t.Fatal("dirty project accepted for structural operation")
+	}
+	if err := m.Save(); err != nil {
+		t.Fatal(err)
+	}
+	if err := s.clean("p"); err != nil {
+		t.Fatal(err)
+	}
+	if err := s.reload(projectReloaded{OldProject: "p", NewProject: "p", NewView: "v_new"}); err != nil {
+		t.Fatal(err)
+	}
+	fresh, err := s.get("p")
+	if err != nil || fresh == m {
+		t.Fatalf("model not reloaded: %v", err)
+	}
+}
 
 func hostModelFixture(t *testing.T) (*modelService, *httptest.Server) {
 	t.Helper()

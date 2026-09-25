@@ -153,7 +153,9 @@ The backend persists project model files through `POST /api/model/{project}/save
 workspace-relative and **must start with `projects/`**; a file keeps its `.json` extension.
 `404` when `from` is missing, `409` when `to` exists or the project's working model is dirty
 (save first), `400` for a path outside `projects/`, `403` cross-origin and `401` without the host
-key like `/api/save`. Directories are moved whole; the host evicts a renamed project's loaded model.
+key like `/api/save`. The host changes the project or view `id`, the `project` field in view files,
+the default view reference, and text keys as needed. It then reloads the model and emits
+`projectReloaded` to subscribers.
 
 ### 3.4. Working model API
 
@@ -163,17 +165,17 @@ The host creates `<project root>/.semaps/host.json` containing `{pid, port, key}
 
 | Path | Method | Response / effect |
 |---|---|---|
-| `/api/model/{project}` | `GET` | `{project, registry, texts, views, dirty}`. `project` is the manifest; `registry` maps registry filenames to full documents; `texts` maps languages to full text documents; `views` maps view ids to view properties without geometry; `dirty` is below. |
+| `/api/model/{project}` | `GET` | `{project, registry, texts, views, viewFiles, dirty}`. `project` is the manifest; `registry` maps registry filenames to full documents; `texts` maps languages to full text documents; `views` maps view ids to view properties without geometry; `viewFiles` maps view ids to workspace-relative paths; `dirty` is below. |
 | `/api/model/{project}/views/{id}` | `GET` | Full working view document, including `zones`, `nodes` or `placements`, and `relations`. |
 | `/api/model/{project}/ops` | `POST` | `{client, ops}` applies one atomic batch as `human` → `{changed, dirty}`. A broken rule returns `422` with text and applies nothing. |
 | `/api/model/{project}/save` | `GET` | Current `dirty` summary for the Save confirmation. |
 | `/api/model/{project}/save` | `POST` | Writes every dirty contract file and clears the journal → empty `dirty`. |
 | `/api/model/{project}/discard` | `POST` | `{scope:"view",id}` or `{scope:"registry"}` or `{scope:"all"}`; reloads that scope from disk → new `dirty`. |
-| `/api/events?project=<id>` | `GET` | SSE: one `data:` JSON object per accepted batch/save/discard: `{client,author,changed,dirty}`. Clients ignore their own `client` id. |
+| `/api/events?project=<id>` | `GET` | SSE: one `data:` JSON object per accepted batch/save/discard: `{client,author,changed,dirty}`. Clients ignore their own `client` id. Structural changes add `projectReloaded:{oldProject,newProject,oldView?,newView?}`. |
 
-An operation is `{kind,id,view?,lang?,value,author?}`. `kind` is `entity`, `relation`, `relationType`, `text`, `view`, `zone`, or `node`. `value` is the whole object; `null` removes a zone or node placement only. Registry records cannot be removed. `text` requires `lang`; `view`, `zone`, and `node` require `view`. The host sets `author: human` on browser ops; the agent path sets `author: agent`. A changed reference is `{kind,id,view?,lang?,author}`. `dirty` is `{registry:[Ref],views:{<view-id>:[Ref]}}`, with the last author per touched object. The conflict unit is an object: later accepted replacement wins, with no field merge. The SSE event is emitted after the batch is in the journal. A view is loaded lazily when first read or changed.
+An operation is `{kind,id,view?,lang?,value,author?}`. `kind` is `project`, `entity`, `relation`, `relationType`, `text`, `view`, `zone`, or `node`. `project` replaces the `project.json` manifest and is counted in registry dirt. `value` is the whole object; `null` removes a zone or node placement only. Registry records and the manifest cannot be removed. `text` requires `lang`; `view`, `zone`, and `node` require `view`. The host sets `author: human` on browser ops; the agent path sets `author: agent`. A changed reference is `{kind,id,view?,lang?,author}`. `dirty` is `{registry:[Ref],views:{<view-id>:[Ref]}}`, with the last author per touched object. The conflict unit is an object: later accepted replacement wins, with no field merge. The SSE event is emitted after the batch is in the journal. A view is loaded lazily when first read or changed.
 
-Project and view creation still use `/api/save?create=1`; renames still use `/api/move`. Both writes require the host key. Renaming a dirty project is rejected with `409`; after a successful rename the host reloads the project on next access. `styles.json`, `templates.json`, and `content/` remain outside the working model.
+Project and view creation use `/api/save?create=1`; renames use `/api/move`. These structural operations require the host key and a clean project model; when dirty, the host returns `409` with «сначала сохраните». After success it reloads the project from files and emits `projectReloaded`. Ordinary manifest edits use a `project` op and the common Save. `styles.json`, `templates.json`, and `content/` remain outside the working model.
 
 ---
 ## 4. Alternative Host Adapters (VSCode / Electron / Node)

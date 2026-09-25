@@ -1,5 +1,6 @@
 import type { WireDocument } from "../../model/wire-types.js";
 import type { ModelStore, SaveTarget } from "./types.js";
+import { hostWriteHeaders } from "../../util/hostKey.js";
 
 /**
  * Loads and saves standalone single-file diagram models.
@@ -16,7 +17,7 @@ export class HttpStandaloneStore implements ModelStore {
   async save(target: SaveTarget, wire: WireDocument): Promise<void> {
     const res = await fetch(`/api/save?file=${encodeURIComponent(target.file)}`, {
       method: "POST",
-      headers: { "Content-Type": "application/json" },
+      headers: { "Content-Type": "application/json", ...hostWriteHeaders() },
       body: JSON.stringify(wire, null, 2),
     });
     if (!res.ok) throw new Error(`Сервер ответил HTTP ${res.status}`);

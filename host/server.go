@@ -532,6 +532,8 @@ func main() {
 			return
 		}
 		rel := filepath.ToSlash(strings.TrimPrefix(strings.TrimPrefix(target, absWorkspace), string(filepath.Separator)))
+		structureProject := ""
+		structureView := ""
 		if strings.HasPrefix(rel, "projects/") {
 			parts := strings.Split(rel, "/")
 			allowedCreate := r.URL.Query().Get("create") == "1" &&
@@ -540,6 +542,16 @@ func main() {
 				http.Error(w, "Project model files are saved through /api/model/{project}/save", http.StatusGone)
 				return
 			}
+			structureProject = parts[1]
+			models.structureMu.Lock()
+			defer models.structureMu.Unlock()
+			if len(parts) == 4 {
+				structureView = strings.TrimSuffix(parts[3], ".view.json")
+				if err := models.clean(structureProject); err != nil {
+					http.Error(w, "сначала сохраните: "+err.Error(), http.StatusConflict)
+					return
+				}
+			}
 		}
 
 		body, err := io.ReadAll(r.Body)
@@ -547,7 +559,6 @@ func main() {
 			http.Error(w, "Failed to read body", http.StatusInternalServerError)
 			return
 		}
-
 		if err := os.MkdirAll(filepath.Dir(target), 0755); err != nil {
 			http.Error(w, "Failed to create directory: "+err.Error(), http.StatusInternalServerError)
 			return
@@ -573,6 +584,12 @@ func main() {
 			http.Error(w, "Failed to write file: "+err.Error(), http.StatusInternalServerError)
 			return
 		}
+		if structureProject != "" {
+			if err := models.reload(projectReloaded{OldProject: structureProject, NewProject: structureProject, NewView: structureView}); err != nil {
+				http.Error(w, "Created but model reload failed: "+err.Error(), http.StatusInternalServerError)
+				return
+			}
+		}
 
 		fmt.Printf("Saved %s (%d bytes)\n", fileName, len(body))
 		w.WriteHeader(http.StatusOK)
@@ -589,6 +606,8 @@ func main() {
 		if !models.authorize(w, r) {
 			return
 		}
+		models.structureMu.Lock()
+		defer models.structureMu.Unlock()
 		fromRel, toRel := r.URL.Query().Get("from"), r.URL.Query().Get("to")
 		projects := filepath.Join(absWorkspace, "projects")
 		from, errFrom := inside(projects, strings.TrimPrefix(fromRel, "projects/"))
@@ -598,12 +617,9 @@ func main() {
 			return
 		}
 		projectID := strings.Split(strings.TrimPrefix(fromRel, "projects/"), "/")[0]
-		if m, err := models.get(projectID); err == nil {
-			d := m.Dirty()
-			if len(d.Registry) > 0 || len(d.Views) > 0 {
-				http.Error(w, "Save the project before renaming", http.StatusConflict)
-				return
-			}
+		if err := models.clean(projectID); err != nil {
+			http.Error(w, "сначала сохраните: "+err.Error(), http.StatusConflict)
+			return
 		}
 		src, err := os.Stat(from)
 		if err != nil {
@@ -619,11 +635,35 @@ func main() {
 			http.Error(w, "Already exists: "+toRel, http.StatusConflict)
 			return
 		}
-		if err := os.Rename(from, to); err != nil {
-			http.Error(w, "Failed to move: "+err.Error(), http.StatusInternalServerError)
+		var change projectReloaded
+		var moveErr error
+		if src.IsDir() {
+			if strings.Count(fromRel, "/") != 1 || strings.Count(toRel, "/") != 1 {
+				http.Error(w, "only project folders may be moved", 400)
+				return
+			}
+			newID := strings.TrimPrefix(toRel, "projects/")
+			moveErr = core.RenameProject(absWorkspace, projectID, newID)
+			change = projectReloaded{OldProject: projectID, NewProject: newID}
+		} else {
+			fromParts, toParts := strings.Split(fromRel, "/"), strings.Split(toRel, "/")
+			if len(fromParts) != 4 || len(toParts) != 4 || fromParts[2] != "views" || toParts[2] != "views" || fromParts[1] != toParts[1] || !strings.HasSuffix(fromParts[3], ".view.json") || !strings.HasSuffix(toParts[3], ".view.json") {
+				http.Error(w, "only views in one project may be moved", 400)
+				return
+			}
+			oldID := strings.TrimSuffix(fromParts[3], ".view.json")
+			newID := strings.TrimSuffix(toParts[3], ".view.json")
+			moveErr = core.RenameView(absWorkspace, projectID, oldID, newID)
+			change = projectReloaded{OldProject: projectID, NewProject: projectID, OldView: oldID, NewView: newID}
+		}
+		if moveErr != nil {
+			http.Error(w, "Failed to move: "+moveErr.Error(), http.StatusInternalServerError)
 			return
 		}
-		models.evict(projectID)
+		if err := models.reload(change); err != nil {
+			http.Error(w, "Moved but model reload failed: "+err.Error(), 500)
+			return
+		}
 		fmt.Printf("Moved %s -> %s\n", fromRel, toRel)
 		w.Write([]byte("OK"))
 	})

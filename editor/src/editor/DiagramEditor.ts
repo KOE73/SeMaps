@@ -27,6 +27,9 @@ import {
   drawioFileName,
   exportDrawio,
   HttpProjectStore,
+  HostModelStore,
+  type DirtySummary,
+  type ModelEvent,
   HttpStyleStore,
   download,
   readJsonFile,
@@ -137,6 +140,10 @@ export class DiagramEditor implements InspectorHost, StylePanelHost, DiagramEdit
   currentView: ViewEntry | null = null;
   readonly workspaceEvents = new Emitter<{ change: null }>();
   private dirty = false;
+  private readonly modelDirty = new Map<string, DirtySummary>();
+  private metadataProject: string | null = null;
+  private gestureActive = false;
+  private deferredEvent: ModelEvent | null = null;
   /**
    * Tracked apart from `dirty` because the two have different destinations and
    * different failure modes: a model may be bound to no file at all while the
@@ -254,8 +261,12 @@ export class DiagramEditor implements InspectorHost, StylePanelHost, DiagramEdit
     this.styleList.render();
 
     await this.reloadWorkspace();
-    const first = this.workspace.projects.flatMap((p) => p.views).find((v) => !v.error);
+    const hashView = location.hash.match(/^#(v_[^?]+)/)?.[1];
+    const first = this.workspace.projects.flatMap((p) => p.views).find((v) => v.id === hashView && !v.error)
+      ?? this.workspace.projects.flatMap((p) => p.views).find((v) => !v.error);
     if (first !== undefined) await this.loadView(first);
+    const highlight = new URLSearchParams(location.hash.split("?")[1] ?? "").get("highlight")?.split(",").filter(Boolean);
+    if (highlight?.length) { this.canvas.select(highlight[0]!); for(const id of highlight.slice(1)) this.canvas.toggleSelected(id); }
   }
 
   // ------------------------------------------------------------- workspace
@@ -279,10 +290,12 @@ export class DiagramEditor implements InspectorHost, StylePanelHost, DiagramEdit
     return this.workspace.projects.find((p) => p.views.some((v) => v.file === view.file));
   }
 
+  dirtyForProject(project: string): DirtySummary | undefined { return this.modelDirty.get(project); }
+
   /** Open a view, asking first if the current one has unsaved changes. */
   openView(view: ViewEntry, pos?: { clientX: number; clientY: number }): void {
     if (this.currentView?.file === view.file) return;
-    if (this.hasUnsavedChanges) {
+    if (!(this.store instanceof HostModelStore) && this.hasUnsavedChanges) {
       const at = pos ?? { clientX: window.innerWidth / 2, clientY: window.innerHeight / 2 };
       this.confirmDiscardOrSave(at, () => this.loadView(view));
     } else {
@@ -304,7 +317,7 @@ export class DiagramEditor implements InspectorHost, StylePanelHost, DiagramEdit
    */
   private guardOpen(projectId: string): boolean {
     const open = this.currentView ? this.projectOf(this.currentView)?.id === projectId : false;
-    if (open && this.dirty) {
+    if (open && (this.dirty || !!this.modelDirty.get(projectId)?.registry.length || !!Object.keys(this.modelDirty.get(projectId)?.views ?? {}).length)) {
       throw new Error("В открытой схеме этого проекта есть несохранённые изменения. Сохраните их (Ctrl+S) и повторите.");
     }
     return open;
@@ -320,8 +333,13 @@ export class DiagramEditor implements InspectorHost, StylePanelHost, DiagramEdit
     if (project.id !== oldId && this.workspace.projects.some((p) => p.id === project.id)) {
       throw new Error(`Проект «${project.id}» уже есть`);
     }
-    const open = this.guardOpen(oldId);
+    const open = project.id !== oldId ? this.guardOpen(oldId) : this.currentView ? this.projectOf(this.currentView)?.id === oldId : false;
     await this.workspaceStore.updateProject(oldId, project);
+    if (this.store instanceof HostModelStore) {
+      this.metadataProject = project.id;
+      this.modelDirty.set(project.id, await this.store.dirty(project.id));
+      this.markDirty();
+    }
     await this.reloadWorkspace();
     if (open && this.currentView) {
       await this.reopen(this.currentView.file.replace(`projects/${oldId}/`, `projects/${project.id}/`));
@@ -334,7 +352,7 @@ export class DiagramEditor implements InspectorHost, StylePanelHost, DiagramEdit
     if (view.id !== oldId && project.views.some((v) => v.id === view.id)) {
       throw new Error(`Вид «${view.id}» в проекте «${view.project}» уже есть`);
     }
-    const open = this.guardOpen(project.id);
+    const open = view.id !== oldId ? this.guardOpen(project.id) : this.currentView ? this.projectOf(this.currentView)?.id === project.id : false;
     const wasCurrent = this.currentView?.file === project.views.find((v) => v.id === oldId)?.file;
     const file = await this.workspaceStore.updateView(oldId, view, project.languages);
     await this.reloadWorkspace();
@@ -382,11 +400,14 @@ export class DiagramEditor implements InspectorHost, StylePanelHost, DiagramEdit
 
     this.canvas.events.on("gesturestart", () => {
       this.flushFieldEdit();
+      this.gestureActive = true;
       this.history.begin(this.snapshot());
     });
 
     this.canvas.events.on("gestureend", () => {
-      if (this.history.end(this.snapshot())) this.syncToolbar(this.canvas.selected);
+      this.gestureActive = false;
+      if (this.history.end(this.snapshot())) { this.syncToolbar(this.canvas.selected); this.queueModelSync(); }
+      if (this.deferredEvent) { const event=this.deferredEvent; this.deferredEvent=null; void this.receiveModelEvent(event); }
     });
 
     this.canvas.events.on("modelchange", () => {
@@ -828,12 +849,49 @@ export class DiagramEditor implements InspectorHost, StylePanelHost, DiagramEdit
       const wire = await this.store.load(view.file);
       this.currentView = view;
       this.loadWire(wire, title);
+      if (this.store instanceof HostModelStore) {
+        const project=this.projectOf(view)?.id;
+        if (project) {
+          this.store.subscribe(project,(event)=>{ if(this.gestureActive){this.deferredEvent=event;return} void this.receiveModelEvent(event); });
+          const dirty=await this.store.dirty(project); this.modelDirty.set(project,dirty);
+          this.dirty=dirty.registry.length>0 || Object.values(dirty.views).some((refs)=>refs.length>0);
+          this.syncSaveButton();
+        }
+      }
       this.workspaceEvents.emit("change", null);
     } catch (err) {
       // A failed fetch is surfaced rather than papered over with a stale
       // embedded copy of the model, which is what the original did (D-11).
       this.notify(`Не удалось открыть «${title}»: ${(err as Error).message}`);
     }
+  }
+
+  private async receiveModelEvent(event: ModelEvent): Promise<void> {
+    const project=this.currentView && this.projectOf(this.currentView)?.id;
+    if (!project) return;
+    const reload = event.projectReloaded;
+    this.modelDirty.set(reload?.newProject ?? project,event.dirty);
+    if (reload) {
+      await this.reloadWorkspace();
+      const file = this.currentView?.file
+        .replace(`projects/${reload.oldProject}/`, `projects/${reload.newProject}/`)
+        .replace(`/views/${reload.oldView}.view.json`, `/views/${reload.newView}.view.json`);
+      const view = this.workspace.projects.flatMap((p) => p.views).find((candidate) => candidate.file === file);
+      if (view) await this.loadView(view);
+    } else if (this.currentView) {
+      if (event.changed.some((ref) => ref.kind === "project" || ref.kind === "text")) await this.reloadWorkspace();
+      await this.loadView(this.currentView);
+    }
+    this.workspaceEvents.emit("change",null);
+  }
+
+  private queueModelSync(): void {
+    if (!(this.store instanceof HostModelStore) || !this.currentView || !this.canvas.model) return;
+    const store=this.store;
+    void store.sync(this.currentView.file,serializeDocument(this.canvas.model)).then(async()=>{
+      const project=this.projectOf(this.currentView!)?.id;
+      if(project){this.modelDirty.set(project,await store.dirty(project));this.workspaceEvents.emit("change",null)}
+    }).catch((err)=>this.notify(`Не удалось передать изменение хосту: ${(err as Error).message}`));
   }
 
   async loadFile(file: File): Promise<void> {
@@ -858,6 +916,7 @@ export class DiagramEditor implements InspectorHost, StylePanelHost, DiagramEdit
     // zone colours is migrated into named styles as it loads (see wire.ts).
     const doc = parseDocument(wire, this.styleLibrary);
     this.canvas.setModel(doc);
+    if(this.store instanceof HostModelStore && this.currentView){this.store.confirmLoaded(this.currentView.file,serializeDocument(doc))}
     this.history.reset(this.snapshot());
     this.dirty = false;
     this.syncSaveButton();
@@ -1249,7 +1308,7 @@ export class DiagramEditor implements InspectorHost, StylePanelHost, DiagramEdit
     // Seed the stack with the pre-edit state when this is the first change
     // after a load, so undo has somewhere to go back to.
     this.history.begin(before);
-    if (this.history.end(now)) this.syncToolbar(this.canvas.selected);
+    if (this.history.end(now)) { this.syncToolbar(this.canvas.selected); this.queueModelSync(); }
   }
 
   // ------------------------------------------------------------- styles API
@@ -1400,6 +1459,7 @@ export class DiagramEditor implements InspectorHost, StylePanelHost, DiagramEdit
     this.canvas.notifyModelChanged(reason);
     this.history.push(this.snapshot());
     this.markDirty();
+    this.queueModelSync();
     this.syncToolbar(this.canvas.selected);
     this.basePanel.render();
     this.edgesPanel.render();
@@ -1416,13 +1476,13 @@ export class DiagramEditor implements InspectorHost, StylePanelHost, DiagramEdit
   undo(): void {
     this.flushFieldEdit();
     const snapshot = this.history.undo();
-    if (snapshot !== null) this.restore(snapshot);
+    if (snapshot !== null) { this.restore(snapshot); this.queueModelSync(); }
   }
 
   redo(): void {
     this.flushFieldEdit();
     const snapshot = this.history.redo();
-    if (snapshot !== null) this.restore(snapshot);
+    if (snapshot !== null) { this.restore(snapshot); this.queueModelSync(); }
   }
 
   // ------------------------------------------------------------------- i/o
@@ -1437,6 +1497,23 @@ export class DiagramEditor implements InspectorHost, StylePanelHost, DiagramEdit
    */
   async save(): Promise<void> {
     this.flushFieldEdit();
+    if (this.store instanceof HostModelStore && this.currentView) {
+      try {
+        this.queueModelSync();
+        const project=this.projectOf(this.currentView)?.id;
+        if(project){
+          const summary=await this.store.dirty(project);
+          this.modelDirty.set(project,summary);
+          const agentRegistry=summary.registry.filter((r)=>r.author==="agent" || r.author==="sync").length;
+          const agentViews=Object.values(summary.views).flat().filter((r)=>r.author==="agent" || r.author==="sync").length;
+          if(agentRegistry+agentViews>0){
+            const humanRegistry=summary.registry.length-agentRegistry;
+            const views=Object.entries(summary.views).map(([id,refs])=>`${id}: вы ${refs.filter((r)=>r.author==="human").length}, агент ${refs.filter((r)=>r.author!=="human").length}`).join("\n");
+            if(!window.confirm(`Сохранить всё в проекте ${project}?\nРеестр: вы ${humanRegistry}, агент ${agentRegistry}.\nВиды:\n${views}`)) return;
+          }
+        }
+      }catch(err){this.notify(`Не удалось получить сводку сохранения: ${(err as Error).message}`);return}
+    }
     const problems: string[] = [];
     let stylesSaved = false;
 
@@ -1451,7 +1528,17 @@ export class DiagramEditor implements InspectorHost, StylePanelHost, DiagramEdit
     }
 
     const doc = this.canvas.model;
-    if (this.dirty && doc !== null) {
+    if (this.store instanceof HostModelStore && this.metadataProject && (!this.currentView || this.projectOf(this.currentView)?.id !== this.metadataProject)) {
+      try {
+        await this.store.saveProject(this.metadataProject);
+        this.modelDirty.delete(this.metadataProject);
+        this.metadataProject = null;
+        this.dirty = false;
+      } catch (err) {
+        problems.push(`Проект не сохранён: ${(err as Error).message}`);
+      }
+    }
+    if ((this.dirty || (this.store instanceof HostModelStore && this.currentView && this.modelDirty.has(this.projectOf(this.currentView)?.id ?? ""))) && doc !== null) {
       if (this.currentView === null) {
         problems.push(
           "Схема загружена вручную и не привязана к файлу на сервере — она не сохранена.",
@@ -1460,6 +1547,8 @@ export class DiagramEditor implements InspectorHost, StylePanelHost, DiagramEdit
         try {
           await this.store.save({ file: this.currentView.file }, serializeDocument(doc));
           this.dirty = false;
+          const project=this.projectOf(this.currentView)?.id;
+          if(project){this.modelDirty.delete(project);if(this.metadataProject===project)this.metadataProject=null;}
         } catch (err) {
           problems.push(`Схема не сохранена: ${(err as Error).message}`);
         }
@@ -1481,6 +1570,22 @@ export class DiagramEditor implements InspectorHost, StylePanelHost, DiagramEdit
         .filter((line): line is string => line !== null)
         .join("\n"),
     );
+  }
+
+  async discardCurrentView(): Promise<void> {
+    if(!(this.store instanceof HostModelStore)||!this.currentView)return;
+    const project=this.projectOf(this.currentView)?.id;if(!project)return;
+    if(!window.confirm(`Отменить несохранённые изменения вида ${this.currentView.id}?`))return;
+    try{await this.store.discard(project,"view",this.currentView.id);await this.loadView(this.currentView)}
+    catch(err){this.notify(`Не удалось отменить изменения вида: ${(err as Error).message}`)}
+  }
+
+  async discardRegistry(): Promise<void> {
+    if(!(this.store instanceof HostModelStore)||!this.currentView)return;
+    const project=this.projectOf(this.currentView)?.id;if(!project)return;
+    if(!window.confirm(`Отменить все несохранённые изменения реестра проекта ${project}?`))return;
+    try{await this.store.discard(project,"registry");await this.loadView(this.currentView)}
+    catch(err){this.notify(`Не удалось отменить изменения реестра: ${(err as Error).message}`)}
   }
 
   private flashSaved(): void {

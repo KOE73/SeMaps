@@ -16,18 +16,27 @@ import (
 )
 
 type modelEvent struct {
-	Client  string            `json:"client"`
-	Author  string            `json:"author"`
-	Changed []core.Ref        `json:"changed"`
-	Dirty   core.DirtySummary `json:"dirty"`
+	Client          string            `json:"client"`
+	Author          string            `json:"author"`
+	Changed         []core.Ref        `json:"changed"`
+	Dirty           core.DirtySummary `json:"dirty"`
+	ProjectReloaded *projectReloaded  `json:"projectReloaded,omitempty"`
+}
+
+type projectReloaded struct {
+	OldProject string `json:"oldProject"`
+	NewProject string `json:"newProject"`
+	OldView    string `json:"oldView,omitempty"`
+	NewView    string `json:"newView,omitempty"`
 }
 
 type modelService struct {
-	workspace string
-	key       string
-	mu        sync.Mutex
-	models    map[string]*core.Model
-	clients   map[string]map[chan modelEvent]struct{}
+	workspace   string
+	key         string
+	mu          sync.Mutex
+	structureMu sync.RWMutex
+	models      map[string]*core.Model
+	clients     map[string]map[chan modelEvent]struct{}
 }
 
 func newModelService(workspace string) (*modelService, error) {
@@ -59,6 +68,33 @@ func (s *modelService) evict(id string) {
 	s.mu.Lock()
 	delete(s.models, id)
 	s.mu.Unlock()
+}
+
+func (s *modelService) clean(id string) error {
+	m, err := s.get(id)
+	if err != nil {
+		return err
+	}
+	d := m.Dirty()
+	if len(d.Registry) > 0 || len(d.Views) > 0 {
+		return fmt.Errorf("сначала сохраните проект %s", id)
+	}
+	return nil
+}
+
+func (s *modelService) reload(change projectReloaded) error {
+	s.evict(change.OldProject)
+	s.evict(change.NewProject)
+	m, err := s.get(change.NewProject)
+	if err != nil {
+		return err
+	}
+	ev := modelEvent{Author: "host", Changed: []core.Ref{}, Dirty: m.Dirty(), ProjectReloaded: &change}
+	s.publish(change.OldProject, ev)
+	if change.NewProject != change.OldProject {
+		s.publish(change.NewProject, ev)
+	}
+	return nil
 }
 
 func (s *modelService) publish(id string, ev modelEvent) {
@@ -130,17 +166,14 @@ func (s *modelService) snapshot(w http.ResponseWriter, r *http.Request) {
 		modelError(w, err)
 		return
 	}
-	manifest, err := os.ReadFile(filepath.Join(m.ProjectDir(), "project.json"))
-	if err != nil {
-		modelError(w, err)
-		return
-	}
+	manifest := m.Manifest()
 	texts, err := m.TextSnapshot()
 	if err != nil {
 		modelError(w, err)
 		return
 	}
 	views := map[string]json.RawMessage{}
+	viewFiles := map[string]string{}
 	for _, p := range core.Index(s.workspace).Projects {
 		if p.ID == id {
 			for _, v := range p.Views {
@@ -158,10 +191,11 @@ func (s *modelService) snapshot(w http.ResponseWriter, r *http.Request) {
 				delete(props, "nodes")
 				delete(props, "placements")
 				views[v.ID], _ = json.Marshal(props)
+				viewFiles[v.ID] = v.File
 			}
 		}
 	}
-	writeJSON(w, map[string]any{"project": json.RawMessage(manifest), "registry": m.RegistrySnapshot(), "texts": texts, "views": views, "dirty": m.Dirty()})
+	writeJSON(w, map[string]any{"project": json.RawMessage(manifest), "registry": m.RegistrySnapshot(), "texts": texts, "views": views, "viewFiles": viewFiles, "dirty": m.Dirty()})
 }
 
 func (s *modelService) view(w http.ResponseWriter, r *http.Request) {
@@ -180,6 +214,8 @@ func (s *modelService) view(w http.ResponseWriter, r *http.Request) {
 }
 
 func (s *modelService) ops(w http.ResponseWriter, r *http.Request) {
+	s.structureMu.RLock()
+	defer s.structureMu.RUnlock()
 	if !s.authorize(w, r) {
 		return
 	}
@@ -216,6 +252,8 @@ func (s *modelService) summary(w http.ResponseWriter, r *http.Request) {
 }
 
 func (s *modelService) save(w http.ResponseWriter, r *http.Request) {
+	s.structureMu.RLock()
+	defer s.structureMu.RUnlock()
 	if !s.authorize(w, r) {
 		return
 	}
@@ -234,6 +272,8 @@ func (s *modelService) save(w http.ResponseWriter, r *http.Request) {
 }
 
 func (s *modelService) discard(w http.ResponseWriter, r *http.Request) {
+	s.structureMu.RLock()
+	defer s.structureMu.RUnlock()
 	if !s.authorize(w, r) {
 		return
 	}

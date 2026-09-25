@@ -352,14 +352,8 @@ func (m *Model) RegistrySnapshot() map[string]json.RawMessage {
 func (m *Model) TextSnapshot() (map[string]json.RawMessage, error) {
 	m.mu.Lock()
 	defer m.mu.Unlock()
-	manifest, err := loadDoc(filepath.Join(m.dir, "project.json"))
-	if err != nil {
-		return nil, err
-	}
 	var langs []string
-	if manifest != nil {
-		_ = json.Unmarshal(manifest.vals["languages"], &langs)
-	}
+	_ = json.Unmarshal(m.manifest.vals["languages"], &langs)
 	if len(langs) == 0 {
 		langs = []string{"ru"}
 	}
@@ -377,6 +371,13 @@ func (m *Model) TextSnapshot() (map[string]json.RawMessage, error) {
 		out[lang], _ = doc.MarshalJSON()
 	}
 	return out, nil
+}
+
+func (m *Model) Manifest() json.RawMessage {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	b, _ := m.manifest.MarshalJSON()
+	return b
 }
 
 func (m *Model) ProjectID() string  { return m.project }

@@ -12,6 +12,7 @@ import (
 	"io/fs"
 	"os"
 	"path/filepath"
+	"slices"
 	"strings"
 	stdsync "sync"
 )
@@ -48,6 +49,7 @@ type Model struct {
 	workspace  string
 	project    string
 	dir        string
+	manifest   *object
 	registries map[string]*registry
 	texts      map[string]*object
 	views      map[string]*modelView
@@ -63,19 +65,9 @@ var modelRegistries = map[string]struct{ file, key string }{
 }
 
 func LoadModel(workspace, project string) (*Model, error) {
-	id, err := pickProject(workspace, project)
+	m, err := LoadModelWithoutJournal(workspace, project)
 	if err != nil {
 		return nil, err
-	}
-	m := &Model{workspace: workspace, project: id, dir: filepath.Join(workspace, "projects", id),
-		registries: map[string]*registry{}, texts: map[string]*object{}, views: map[string]*modelView{}, loaded: map[string]bool{},
-		dirty: DirtySummary{Views: map[string][]Ref{}}}
-	for kind, spec := range modelRegistries {
-		r, err := loadRegistry(m.dir, spec.file, spec.key, freshList(spec.key))
-		if err != nil {
-			return nil, err
-		}
-		m.registries[kind] = r
 	}
 	f, err := os.Open(m.journalFile())
 	if errors.Is(err, fs.ErrNotExist) {
@@ -112,7 +104,7 @@ func cloneObject(o *object) *object {
 }
 
 func (m *Model) copy() *Model {
-	c := &Model{workspace: m.workspace, project: m.project, dir: m.dir,
+	c := &Model{workspace: m.workspace, project: m.project, dir: m.dir, manifest: cloneObject(m.manifest),
 		registries: map[string]*registry{}, texts: map[string]*object{}, views: map[string]*modelView{}, loaded: map[string]bool{},
 		journal: append([][]Op(nil), m.journal...), dirty: DirtySummary{Registry: append([]Ref(nil), m.dirty.Registry...), Views: map[string][]Ref{}}}
 	for k, r := range m.registries {
@@ -207,7 +199,7 @@ func (m *Model) Apply(ops []Op, author string) ([]Ref, error) {
 	if err != nil {
 		return nil, err
 	}
-	m.registries, m.texts, m.views, m.loaded, m.journal, m.dirty = c.registries, c.texts, c.views, c.loaded, c.journal, c.dirty
+	m.manifest, m.registries, m.texts, m.views, m.loaded, m.journal, m.dirty = c.manifest, c.registries, c.texts, c.views, c.loaded, c.journal, c.dirty
 	return refs, nil
 }
 
@@ -258,7 +250,40 @@ func upsertRef(list []Ref, ref Ref) []Ref {
 	return append(list, ref)
 }
 
+// orderedReplacement keeps the surviving keys in their original positions.
+// This is only serialization order: values still come entirely from next.
+func orderedReplacement(old, next *object) *object {
+	out := newObject()
+	for _, key := range old.keys {
+		if value, ok := next.vals[key]; ok {
+			out.keys = append(out.keys, key)
+			out.vals[key] = value
+		}
+	}
+	for _, key := range next.keys {
+		if _, ok := out.vals[key]; !ok {
+			out.keys = append(out.keys, key)
+			out.vals[key] = next.vals[key]
+		}
+	}
+	return out
+}
+
 func (m *Model) applyOne(op Op) error {
+	if op.Kind == "project" {
+		if op.View != "" || op.ID != m.project || bytes.Equal(bytes.TrimSpace(op.Value), []byte("null")) {
+			return refuse("invalid project operation")
+		}
+		o := newObject()
+		if err := json.Unmarshal(op.Value, o); err != nil {
+			return err
+		}
+		if o.str("id") != m.project {
+			return refuse("project id differs from folder; use structural rename")
+		}
+		m.manifest = orderedReplacement(m.manifest, o)
+		return nil
+	}
 	if spec, ok := modelRegistries[op.Kind]; ok {
 		if op.View != "" || bytes.Equal(bytes.TrimSpace(op.Value), []byte("null")) {
 			return refuse("registry %s cannot be removed or scoped to a view", op.Kind)
@@ -273,7 +298,7 @@ func (m *Model) applyOne(op Op) error {
 		r := m.registries[op.Kind]
 		for i, item := range r.items {
 			if item.str("id") == op.ID {
-				r.items[i] = o
+				r.items[i] = orderedReplacement(item, o)
 				r.dirty = true
 				return nil
 			}
@@ -286,6 +311,20 @@ func (m *Model) applyOne(op Op) error {
 		if op.View != "" || bytes.Equal(bytes.TrimSpace(op.Value), []byte("null")) {
 			return refuse("registry text cannot be removed or scoped to a view")
 		}
+		switch {
+		case strings.HasPrefix(op.ID, "e_"):
+		case strings.HasPrefix(op.ID, "r_"):
+			r := findByID(m.registries["relation"].items, op.ID)
+			if r == nil {
+				return refuse("no relation %s", op.ID)
+			}
+			if r.str("origin") == "code" {
+				return refuse("relation %s comes from code: it has no texts", op.ID)
+			}
+		case strings.HasPrefix(op.ID, "c_"), strings.HasPrefix(op.ID, "rt_"), strings.HasPrefix(op.ID, "v_"), strings.HasPrefix(op.ID, "z_"):
+		default:
+			return refuse("invalid text key %q", op.ID)
+		}
 		doc, err := m.loadText(op.Lang)
 		if err != nil {
 			return err
@@ -297,6 +336,21 @@ func (m *Model) applyOne(op Op) error {
 		entries, err := child(doc, "entries")
 		if err != nil {
 			return err
+		}
+		old, err := child(entries, op.ID)
+		if err != nil {
+			return err
+		}
+		for _, field := range entry.keys {
+			if !slices.Contains(TextFields, field) {
+				return refuse("invalid text field %q", field)
+			}
+			if strings.HasPrefix(op.ID, "e_") && (field == "name" || field == "title") && len(old.vals[field]) == 0 {
+				return refuse("an entity's name lives in entities.json")
+			}
+		}
+		if len(old.keys) > 0 {
+			entry = orderedReplacement(old, entry)
 		}
 		entries.set(op.ID, entry)
 		doc.set("entries", entries)
@@ -326,7 +380,11 @@ func (m *Model) applyOne(op Op) error {
 			}
 		}
 		for _, key := range n.keys {
-			v.doc.set(key, n.vals[key])
+			if string(n.vals[key]) == "null" {
+				v.doc.del(key)
+			} else {
+				v.doc.set(key, n.vals[key])
+			}
 		}
 		return nil
 	}
@@ -369,7 +427,7 @@ func (m *Model) applyOne(op Op) error {
 			return refuse("%s id differs from operation id", op.Kind)
 		}
 		if index >= 0 {
-			items[index] = o
+			items[index] = orderedReplacement(items[index], o)
 		} else {
 			items = append(items, o)
 		}
@@ -394,6 +452,14 @@ func (m *Model) Dirty() DirtySummary {
 func (m *Model) Save() error {
 	m.mu.Lock()
 	defer m.mu.Unlock()
+	for _, ref := range m.dirty.Registry {
+		if ref.Kind == "project" {
+			if err := saveDoc(filepath.Join(m.dir, "project.json"), m.manifest); err != nil {
+				return err
+			}
+			break
+		}
+	}
 	for kind, r := range m.registries {
 		if r.dirty {
 			if err := r.save(); err != nil {
@@ -468,7 +534,7 @@ func (m *Model) Discard(scope, view string) error {
 	} else if err := os.WriteFile(m.journalFile(), b.Bytes(), 0o644); err != nil {
 		return err
 	}
-	m.registries, m.texts, m.views, m.loaded, m.journal, m.dirty = fresh.registries, fresh.texts, fresh.views, fresh.loaded, fresh.journal, fresh.dirty
+	m.manifest, m.registries, m.texts, m.views, m.loaded, m.journal, m.dirty = fresh.manifest, fresh.registries, fresh.texts, fresh.views, fresh.loaded, fresh.journal, fresh.dirty
 	return nil
 }
 
@@ -478,6 +544,13 @@ func LoadModelWithoutJournal(workspace, project string) (*Model, error) {
 		return nil, err
 	}
 	m := &Model{workspace: workspace, project: id, dir: filepath.Join(workspace, "projects", id), registries: map[string]*registry{}, texts: map[string]*object{}, views: map[string]*modelView{}, loaded: map[string]bool{}, dirty: DirtySummary{Views: map[string][]Ref{}}}
+	m.manifest, err = loadDoc(filepath.Join(m.dir, "project.json"))
+	if err != nil {
+		return nil, err
+	}
+	if m.manifest == nil {
+		return nil, refuse("no project manifest %s", id)
+	}
 	for kind, spec := range modelRegistries {
 		r, err := loadRegistry(m.dir, spec.file, spec.key, freshList(spec.key))
 		if err != nil {

@@ -8,7 +8,7 @@ import "../styles/code-viewer.css";
 import "../styles/shell.css";
 
 import { Workbench } from "../workbench/Workbench.js";
-import { HttpProjectStore, HttpStyleStore, HttpWorkspaceStore } from "../editor/io/index.js";
+import { HostModelStore, HttpProjectStore, HttpStyleStore, HttpWorkspaceStore } from "../editor/io/index.js";
 import { toolApi } from "../shell/api.js";
 import { addToolModes } from "./toolModes.js";
 
@@ -27,7 +27,7 @@ async function main(): Promise<void> {
 
   const workbench = new Workbench(root, {
     workspace: new HttpWorkspaceStore(MODELS_BASE),
-    store: new HttpProjectStore(MODELS_BASE),
+    store: import.meta.env.DEV ? new HttpProjectStore(MODELS_BASE) : new HostModelStore(MODELS_BASE),
     // styles.json sits with the models, not with the app bundle.
     styleStore: new HttpStyleStore(MODELS_BASE),
     // …and so do templates.json and the content directory, which the canvas
@@ -42,7 +42,7 @@ async function main(): Promise<void> {
     document.title = `${setup.name || setup.projectFile} — SeMaps`;
     addToolModes(workbench);
   }
-  workbench.selectMode(location.hash.slice(1));
+  if (!location.hash.startsWith("#v_")) workbench.selectMode(location.hash.slice(1));
 
   // Handy for console debugging and testing
   Object.assign(window, {

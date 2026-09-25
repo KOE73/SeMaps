@@ -18,6 +18,7 @@ import type {
 import type { ModelStore, SaveTarget } from "./types.js";
 import type { RoutingMode } from "../../model/style-types.js";
 import { relationShownByDefault } from "../../model/relationVisibility.js";
+import { hostWriteHeaders } from "../../util/hostKey.js";
 
 /**
  * Reads and writes multi-file project models over HTTP.
@@ -39,21 +40,30 @@ export class HttpProjectStore implements ModelStore {
     return this.loadProjectBundle(file, data);
   }
 
-  private async loadProjectBundle(viewFile: string, viewData: any): Promise<WireDocument> {
+  protected async loadProjectBundle(viewFile: string, viewData: any, provided?: {
+    project: ProjectManifest;
+    entities: EntityCatalog;
+    relations: RelationCatalog;
+    relationTypes: RelationTypeCatalog;
+    texts: Record<string, unknown>;
+  }): Promise<WireDocument> {
     const isView = !!viewData.project;
     let projectManifest: ProjectManifest = viewData;
     let dir = viewFile.substring(0, viewFile.lastIndexOf("/") + 1);
 
     if (isView) {
       dir = dir + "../";
-      projectManifest = await fetch(new URL(dir + "project.json", new URL(this.baseUrl, location.href)))
+      projectManifest = provided?.project ?? await fetch(new URL(dir + "project.json", new URL(this.baseUrl, location.href)))
         .then((r) => r.json())
         .catch(() => ({ id: viewData.project || "unknown", title: "Архитектурная схема" }));
     }
 
     const languages = (projectManifest.languages?.length ? projectManifest.languages : ["ru"]) as string[];
 
-    const [entitiesRes, relationsRes, relationTypesRes, ...rawTexts] = await Promise.all([
+    const [entitiesRes, relationsRes, relationTypesRes, ...rawTexts] = provided ? [
+      provided.entities, provided.relations, provided.relationTypes,
+      ...languages.map((lang) => provided.texts[lang] ?? {}),
+    ] : await Promise.all([
       fetch(new URL(dir + "entities.json", new URL(this.baseUrl, location.href)))
         .then((r) => r.json())
         .catch(() => ({ entities: [] })) as Promise<EntityCatalog>,
@@ -252,7 +262,7 @@ export class HttpProjectStore implements ModelStore {
     // Fallback for standalone/legacy single-file JSON models
     const res = await fetch(`/api/save?file=${encodeURIComponent(target.file)}`, {
       method: "POST",
-      headers: { "Content-Type": "application/json" },
+      headers: { "Content-Type": "application/json", ...hostWriteHeaders() },
       body: JSON.stringify(wire, null, 2),
     });
     if (!res.ok) throw new Error(`Сервер ответил HTTP ${res.status}`);
@@ -314,7 +324,7 @@ export class HttpProjectStore implements ModelStore {
     // Save the view file
     const res = await fetch(`/api/save?file=${encodeURIComponent(viewFile)}`, {
       method: "POST",
-      headers: { "Content-Type": "application/json" },
+      headers: { "Content-Type": "application/json", ...hostWriteHeaders() },
       body: JSON.stringify(cleanView, null, 2),
     });
     if (!res.ok) throw new Error(`Не удалось сохранить ${viewFile}: HTTP ${res.status}`);
@@ -358,7 +368,7 @@ export class HttpProjectStore implements ModelStore {
     if (entitiesModified) {
       await fetch(`/api/save?file=${encodeURIComponent(dir + "entities.json")}`, {
         method: "POST",
-        headers: { "Content-Type": "application/json" },
+        headers: { "Content-Type": "application/json", ...hostWriteHeaders() },
         body: JSON.stringify({ entities: currentEntities }, null, 2),
       }).catch((err) => console.warn("Не удалось синхронизировать entities.json:", err));
     }
@@ -385,7 +395,7 @@ export class HttpProjectStore implements ModelStore {
         const file = serializeTextCatalog(lang, entries, base);
         await fetch(`/api/save?file=${encodeURIComponent(textFile)}`, {
           method: "POST",
-          headers: { "Content-Type": "application/json" },
+          headers: { "Content-Type": "application/json", ...hostWriteHeaders() },
           body: JSON.stringify(file, null, 2),
         }).catch((err) => console.warn(`Не удалось синхронизировать text.${lang}.json:`, err));
       }

@@ -2351,3 +2351,5 @@ textarea {
 .semaps-model-banner-close:hover {
   background: rgb(0 0 0 / 8%);
 }
+.catalog-dirty { color: #e0a83b; margin-left: 6px; font-size: 15px; }
+.catalog-registry-dirty { color: #e0a83b; font-size: 12px; padding: 2px 10px 5px; }
