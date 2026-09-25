@@ -40,10 +40,12 @@ var bundled embed.FS
 var overridable = []string{"styles.json", "templates.json", "content/"}
 
 // findProjectFile walks up from dir to the first directory with a .semaps
-// file. Two of them in one directory is an error, not a silent pick.
+// file. Two of them in one directory is an error, not a silent pick. Only
+// files count: the .semaps/ folder beside the project file (MCP logs) matches
+// the pattern too.
 func findProjectFile(dir string) (string, bool, error) {
 	for {
-		if m, _ := filepath.Glob(filepath.Join(dir, "*"+ProjectExt)); len(m) > 1 {
+		if m := projectFilesIn(dir); len(m) > 1 {
 			return "", false, fmt.Errorf("several project files in %s: %s — pass one explicitly", dir, strings.Join(m, ", "))
 		} else if len(m) == 1 {
 			return m[0], true, nil
@@ -54,6 +56,17 @@ func findProjectFile(dir string) (string, bool, error) {
 		}
 		dir = parent
 	}
+}
+
+func projectFilesIn(dir string) []string {
+	var files []string
+	m, _ := filepath.Glob(filepath.Join(dir, "*"+ProjectExt))
+	for _, f := range m {
+		if fi, err := os.Stat(f); err == nil && fi.Mode().IsRegular() {
+			files = append(files, f)
+		}
+	}
+	return files
 }
 
 // noCacheHandler makes the browser revalidate every file (HTML, JS, CSS, JSON) it reads.

@@ -760,3 +760,49 @@ func TestSlug(t *testing.T) {
 		}
 	}
 }
+
+// A field and the constructor parameter that fills it share a name; they are
+// two relations, and a second sync of the same facts changes nothing.
+// (NeuroModFlowNet: IouTracker.options, a record's positional property.)
+func TestMemberRelationFieldAndCtorParamAreTwo(t *testing.T) {
+	ws, dir := workspace(t, `{"id":"p","contractVersion":3}`, "", "", "")
+	f := `{"language":"csharp","root":".","edgeKinds":["holds","injects"],"symbols":[
+    {"id":"A","kind":"type","nativeKind":"class","name":"A","file":"a.cs"},
+    {"id":"B","kind":"type","nativeKind":"class","name":"B","file":"b.cs"}],
+    "edges":[
+      {"from":"A","to":"B","kind":"holds","via":{"member":"options","memberKind":"field","cardinality":"one","modifiers":["private","readonly"]}},
+      {"from":"A","to":"B","kind":"uses","via":{"member":"options","memberKind":"constructor"}}
+    ]}`
+	sync(t, ws, facts(t, f), SyncOptions{})
+	v := load(t, dir)
+	types := map[string]bool{}
+	for _, r := range v.Relations {
+		types[r["type"].(string)] = true
+	}
+	if len(v.Relations) != 2 || !types["holds.one.internal"] || !types["injects"] {
+		t.Fatalf("want a holds and an injects relation: %v", v.Relations)
+	}
+	rep := sync(t, ws, facts(t, f), SyncOptions{DryRun: true})
+	if len(rep.Changed)+len(rep.Added)+len(rep.Gone) != 0 {
+		t.Fatalf("second sync is not quiet: changed %v added %v gone %v", rep.Changed, rep.Added, rep.Gone)
+	}
+}
+
+// A rename in the same edit as a wrapper change (List -> IReadOnlyList) is
+// still offered as a rename: candidates are matched by family, not exact type.
+func TestMemberRelationRenameWithWrapperChange(t *testing.T) {
+	ws, _ := workspace(t, `{"id":"p","contractVersion":3}`, "", "", "")
+	before := `{"language":"csharp","root":".","edgeKinds":["holds"],"symbols":[
+    {"id":"A","kind":"type","nativeKind":"class","name":"A","file":"a.cs"},
+    {"id":"B","kind":"type","nativeKind":"class","name":"B","file":"b.cs"}],
+    "edges":[{"from":"A","to":"B","kind":"holds","via":{"member":"items","memberKind":"field","cardinality":"many","path":["item"]}}]}`
+	after := `{"language":"csharp","root":".","edgeKinds":["holds"],"symbols":[
+    {"id":"A","kind":"type","nativeKind":"class","name":"A","file":"a.cs"},
+    {"id":"B","kind":"type","nativeKind":"class","name":"B","file":"b.cs"}],
+    "edges":[{"from":"A","to":"B","kind":"holds","via":{"member":"entries","memberKind":"field","cardinality":"many","mutability":"readonly","path":["item"]}}]}`
+	sync(t, ws, facts(t, before), SyncOptions{})
+	rep := sync(t, ws, facts(t, after), SyncOptions{DryRun: true})
+	if len(rep.Renames) == 0 {
+		t.Fatalf("no rename candidate: %+v", rep)
+	}
+}

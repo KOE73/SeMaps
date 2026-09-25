@@ -330,8 +330,8 @@ func Sync(workspace string, facts *Facts, opt SyncOptions) (*SyncReport, error) 
 				// Skip member edges without via information
 				continue
 			}
-			key := memberRelationKey(from, to, edge.Via)
 			relType := deriveRelationType(edge.Kind, edge.Via)
+			key := memberRelationKey(from, to, relType, edge.Via)
 			existing := byKey[key]
 			if len(existing) > 0 {
 				for _, ri := range existing {
@@ -465,7 +465,7 @@ func Sync(workspace string, facts *Facts, opt SyncOptions) (*SyncReport, error) 
 				continue
 			}
 			path := strings.Join(v.Path, ",")
-			key := memberKey{from, to, path, relType}
+			key := memberKey{from, to, path, relationFamily(relType)}
 			missingMembers[key] = append(missingMembers[key], i)
 		}
 
@@ -488,7 +488,7 @@ func Sync(workspace string, facts *Facts, opt SyncOptions) (*SyncReport, error) 
 				continue
 			}
 			path := strings.Join(v.Path, ",")
-			key := memberKey{from, to, path, relType}
+			key := memberKey{from, to, path, relationFamily(relType)}
 			confirmedMembers[key] = true
 			newMembers[key] = append(newMembers[key], v.Member)
 		}
@@ -901,18 +901,21 @@ func relationKey(r *object) string {
 		// Organic relation
 		return triple(r.str("from"), r.str("to"), relationType(r))
 	}
-	// Member relation: key is (from, to, via.member, via.path)
+	// Member relation: key is (from, to, family, via.member, via.path)
 	var v Via
 	if err := json.Unmarshal(via, &v); err != nil {
 		// Malformed via; treat as organic for ordering
 		return triple(r.str("from"), r.str("to"), relationType(r))
 	}
-	return memberRelationKey(r.str("from"), r.str("to"), &v)
+	return memberRelationKey(r.str("from"), r.str("to"), relationType(r), &v)
 }
 
 // memberRelationKey creates the identification key for a member relation:
-// (from, to, member, path).
-func memberRelationKey(from, to string, via *Via) string {
+// (from, to, family, member, path). The family — holds, injects or uses — is
+// part of it: a field and the constructor parameter that fills it share a
+// name (`options`, a record's positional property) and are two relations; a
+// wrapper change within a family (List → IReadOnlyList) keeps the relation.
+func memberRelationKey(from, to, relType string, via *Via) string {
 	member := ""
 	if via != nil {
 		member = via.Member
@@ -921,7 +924,15 @@ func memberRelationKey(from, to string, via *Via) string {
 	if via != nil {
 		path = strings.Join(via.Path, ",")
 	}
-	return from + "\x00" + to + "\x00" + member + "\x00" + path
+	return from + "\x00" + to + "\x00" + relationFamily(relType) + "\x00" + member + "\x00" + path
+}
+
+// relationFamily: holds for every holds.* type, the type itself otherwise.
+func relationFamily(relType string) string {
+	if relType == "holds" || strings.HasPrefix(relType, "holds.") {
+		return "holds"
+	}
+	return relType
 }
 
 // deriveRelationType derives the relation type from edge kind and via features.

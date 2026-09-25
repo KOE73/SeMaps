@@ -150,3 +150,15 @@ func TestEdgesRoundTrip(t *testing.T) {
 		t.Errorf("content changed by patch with same edges:\n%s\nvs\n%s", string(data1), string(data2))
 	}
 }
+
+func TestFindProjectFileSkipsTheSemapsFolder(t *testing.T) {
+	dir := t.TempDir()
+	os.MkdirAll(filepath.Join(dir, ".semaps", "logs"), 0o755)
+	os.WriteFile(filepath.Join(dir, "x.semaps"), []byte("version: 1\n"), 0o644)
+	sub := filepath.Join(dir, "src")
+	os.MkdirAll(sub, 0o755)
+	f, ok, err := findProjectFile(sub)
+	if err != nil || !ok || filepath.Base(f) != "x.semaps" {
+		t.Fatalf("%q %v %v", f, ok, err)
+	}
+}
