@@ -318,8 +318,9 @@ The command line of an extractor cannot be set through the API — only in the f
 | `/api/runs/{id}` | `GET` | → `Run` |
 | `/api/runs/{id}/log?offset=<n>` | `GET` | → `{text, offset, state}`: the log from byte `n`; ask again with the new `offset` while `state` is `running` |
 | `/api/runs/{id}/sync` | `POST` | `{dryRun, noRenames}` → `{report, exitCode, empty}`; the report is `core.SyncReport`. Applies the facts of that run, never extracts again |
-| `/api/mcp` | `GET` | → `{file, exists, configured, entry, onPath, snippet, tools: [{name, description}], error?}`: does `.mcp.json` at the project root start `semaps mcp` (§6), and the tools it offers |
+| `/api/mcp` | `GET` | → `{file, exists, configured, entry, onPath, snippet, tools: [{name, description, readOnly, inputSchema}], error?}`: does `.mcp.json` at the project root start `semaps mcp` (§6), and the tools it offers |
 | `/api/mcp/install` | `POST` | → the same, after adding the `semaps` entry to `.mcp.json` (created when missing; other servers and keys stay; a file that does not parse → `409`) |
+| `/api/mcp/call` | `POST` | `{name, arguments}` → `{messages: [{dir: out \| in, message}], ms, isError, error?}`: the editor's sandbox. Runs one tool of `semaps mcp` on this project in a fresh in-memory session, as an agent would; `messages` are the JSON-RPC call and answer as they went, the handshake left out. The call is real: a writing tool writes |
 
 `Extractor`: `{id, language, project, root, include, exclude, edges, command?, tool: {language, found,
 source?: command|bundled|path, where?, runtime?, problem?}, lastRun?: Run}`.

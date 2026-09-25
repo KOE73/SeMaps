@@ -1,11 +1,12 @@
 import { el } from "../util/dom.js";
 import { toolApi, type McpStatus } from "../shell/api.js";
 import { fmt, t } from "../shell/strings.js";
+import { mcpSandbox } from "./mcpSandbox.js";
 
 /**
  * The MCP mode: what `semaps mcp` gives an agent, whether this project's
- * .mcp.json starts it, and the one action there is — writing that entry. Mostly
- * a reminder of the feature; there is little to set.
+ * .mcp.json starts it, the one action there is — writing that entry — and a
+ * sandbox that calls the tools as an agent would.
  */
 export async function loadMcp(inner: HTMLElement): Promise<void> {
   inner.replaceChildren(el("p", { class: "tool-muted", text: t.loading }));
@@ -100,5 +101,5 @@ function render(inner: HTMLElement, st: McpStatus): void {
     ),
   ]);
 
-  inner.replaceChildren(hero, state, why, ask, tools);
+  inner.replaceChildren(hero, state, why, ask, mcpSandbox(st.tools), tools);
 }

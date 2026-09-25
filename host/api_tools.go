@@ -44,6 +44,7 @@ func registerToolAPI(mux *http.ServeMux, file, workspace string) {
 	mux.HandleFunc("POST /api/runs/{id}/sync", api.guard(api.syncRun))
 	mux.HandleFunc("GET /api/mcp", api.guard(api.getMCP))
 	mux.HandleFunc("POST /api/mcp/install", api.guard(api.installMCP))
+	mux.HandleFunc("POST /api/mcp/call", api.guard(api.callMCP))
 }
 
 // guard: a request that changes or starts something must come from a page

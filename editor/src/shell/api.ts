@@ -117,7 +117,31 @@ export interface McpStatus {
   entry: string;
   onPath: boolean;
   snippet: string;
-  tools: { name: string; description: string }[];
+  tools: McpTool[];
+  error?: string;
+}
+
+export interface McpTool {
+  name: string;
+  description: string;
+  /** readOnlyHint: the tool only reads. The sandbox asks before any other. */
+  readOnly: boolean;
+  inputSchema: JsonSchema;
+}
+
+export interface JsonSchema {
+  type?: string | string[];
+  description?: string;
+  properties?: Record<string, JsonSchema>;
+  required?: string[];
+  items?: JsonSchema;
+}
+
+/** POST /api/mcp/call: one sandbox call, the JSON-RPC messages as they went. */
+export interface McpCallResult {
+  messages: { dir: "out" | "in"; message: unknown }[];
+  ms: number;
+  isError: boolean;
   error?: string;
 }
 
@@ -162,6 +186,8 @@ export const toolApi = {
     ),
   mcp: () => call<McpStatus>("GET", `${API}/mcp`),
   installMcp: () => call<McpStatus>("POST", `${API}/mcp/install`),
+  callMcp: (name: string, args: Record<string, unknown>) =>
+    call<McpCallResult>("POST", `${API}/mcp/call`, { name, arguments: args }),
   sync: (id: string, dryRun: boolean, noRenames = false) =>
     call<SyncResult>("POST", `${API}/runs/${encodeURIComponent(id)}/sync`, { dryRun, noRenames }),
 };

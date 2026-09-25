@@ -129,26 +129,34 @@ func (s *mcpServer) server() *mcp.Server {
 		Instructions: "SeMaps registry of this repository. Read with list_*/get_*/find_*; write only through these tools. " +
 			"Nothing can be deleted; view geometry only with requestedByHuman when a human asked. See docs/ADOPTING.md.",
 	})
-	tool := func(name, desc string) *mcp.Tool { return &mcp.Tool{Name: name, Description: desc} }
+	// Reading tools say so (readOnlyHint): a client may run them without asking,
+	// and the editor's sandbox asks before any other.
+	read := func(name, desc string) *mcp.Tool {
+		return &mcp.Tool{Name: name, Description: desc, Annotations: &mcp.ToolAnnotations{ReadOnlyHint: true}}
+	}
+	notDestructive := false
+	write := func(name, desc string) *mcp.Tool {
+		return &mcp.Tool{Name: name, Description: desc, Annotations: &mcp.ToolAnnotations{DestructiveHint: &notDestructive}}
+	}
 
-	mcp.AddTool(srv, tool("list_projects", "Projects of the workspace and their views."), s.listProjects)
-	mcp.AddTool(srv, tool("list_views", "Views of one project."), s.listViews)
-	mcp.AddTool(srv, tool("get_entity", "One entity by id or by symbol."), s.getEntity)
-	mcp.AddTool(srv, tool("find_entities", "Entities by name/symbol/namespace substring, kind, status."), s.findEntities)
-	mcp.AddTool(srv, tool("get_relations", "Relations of an entity (or all), by direction, type, status."), s.getRelations)
-	mcp.AddTool(srv, tool("get_relation_types", "The relation-type vocabulary with default visibility."), s.getRelationTypes)
-	mcp.AddTool(srv, tool("get_text", "Text entry of a key in one language."), s.getText)
-	mcp.AddTool(srv, tool("doctor", "Extractors and runtimes found, and the model check of the workspace."), s.doctor)
-	mcp.AddTool(srv, tool("sync_preview", "What sync would change, writing nothing (= semaps sync --dry-run)."), s.syncPreview)
+	mcp.AddTool(srv, read("list_projects", "Projects of the workspace and their views."), s.listProjects)
+	mcp.AddTool(srv, read("list_views", "Views of one project."), s.listViews)
+	mcp.AddTool(srv, read("get_entity", "One entity by id or by symbol."), s.getEntity)
+	mcp.AddTool(srv, read("find_entities", "Entities by name/symbol/namespace substring, kind, status."), s.findEntities)
+	mcp.AddTool(srv, read("get_relations", "Relations of an entity (or all), by direction, type, status."), s.getRelations)
+	mcp.AddTool(srv, read("get_relation_types", "The relation-type vocabulary with default visibility."), s.getRelationTypes)
+	mcp.AddTool(srv, read("get_text", "Text entry of a key in one language."), s.getText)
+	mcp.AddTool(srv, read("doctor", "Extractors and runtimes found, and the model check of the workspace."), s.doctor)
+	mcp.AddTool(srv, read("sync_preview", "What sync would change, writing nothing (= semaps sync --dry-run)."), s.syncPreview)
 
-	mcp.AddTool(srv, tool("set_text", "Write one text field as authored, with at = now."), s.setText)
-	mcp.AddTool(srv, tool("add_relation", "Add an authored relation; the id is minted and returned."), s.addRelation)
-	mcp.AddTool(srv, tool("add_relation_type", "Add an authored relation type."), s.addRelationType)
-	mcp.AddTool(srv, tool("set_relation_visible", "Show or hide one relation on one view (relations.except)."), s.setRelationVisible)
-	mcp.AddTool(srv, tool("confirm_rename", "Answer a sync rename candidate: entity + symbol, or relation + member."), s.confirmRename)
-	mcp.AddTool(srv, tool("extract", "Run the extractors of the .semaps file; returns run ids."), s.extract)
-	mcp.AddTool(srv, tool("sync", "Reconcile the registry with the code (extracts first unless run is given)."), s.sync)
-	mcp.AddTool(srv, tool("place_entities", "Put entities on a view. Only when a human asked for it: requestedByHuman."), s.placeEntities)
+	mcp.AddTool(srv, write("set_text", "Write one text field as authored, with at = now."), s.setText)
+	mcp.AddTool(srv, write("add_relation", "Add an authored relation; the id is minted and returned."), s.addRelation)
+	mcp.AddTool(srv, write("add_relation_type", "Add an authored relation type."), s.addRelationType)
+	mcp.AddTool(srv, write("set_relation_visible", "Show or hide one relation on one view (relations.except)."), s.setRelationVisible)
+	mcp.AddTool(srv, write("confirm_rename", "Answer a sync rename candidate: entity + symbol, or relation + member."), s.confirmRename)
+	mcp.AddTool(srv, write("extract", "Run the extractors of the .semaps file; returns run ids."), s.extract)
+	mcp.AddTool(srv, write("sync", "Reconcile the registry with the code (extracts first unless run is given)."), s.sync)
+	mcp.AddTool(srv, write("place_entities", "Put entities on a view. Only when a human asked for it: requestedByHuman."), s.placeEntities)
 	return srv
 }
 

@@ -314,3 +314,47 @@
   color: var(--accent);
   white-space: nowrap;
 }
+
+.mcp-play-desc {
+  margin: var(--tp-row-gap) 0;
+}
+
+.mcp-play-params {
+  margin-bottom: var(--tp-row-gap);
+}
+
+.mcp-play-label {
+  display: block;
+  margin: var(--tp-row-gap) 0;
+}
+
+.mcp-play-args {
+  width: 100%;
+  box-sizing: border-box;
+  padding: var(--tp-ctl-py) var(--tp-ctl-px);
+  border: 1px solid var(--line);
+  border-radius: 6px;
+  background: var(--input-bg);
+  color: var(--text);
+  font: var(--tp-mono)/1.45 ui-monospace, "Cascadia Mono", Consolas, monospace;
+  resize: vertical;
+}
+
+.mcp-play-write {
+  margin-top: var(--tp-row-gap);
+  color: var(--danger);
+}
+
+.mcp-play-dir {
+  margin-top: var(--tp-card-gap);
+  color: var(--muted);
+  font-weight: 600;
+}
+
+.mcp-play-result .tool-log {
+  max-height: calc(var(--tp-log-h) * 1.5);
+}
+
+.tool-form select {
+  width: 100%;
+}
