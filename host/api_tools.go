@@ -23,12 +23,13 @@ import (
 type toolAPI struct {
 	file      string // the .semaps file; empty when the host was started with --workspace
 	workspace string
+	models    *modelService
 	runs      *runStore
 	syncMu    sync.Mutex // one sync at a time: both write the same registry
 }
 
-func registerToolAPI(mux *http.ServeMux, file, workspace string) {
-	api := &toolAPI{file: file, workspace: workspace}
+func registerToolAPI(mux *http.ServeMux, file, workspace string, models *modelService) {
+	api := &toolAPI{file: file, workspace: workspace, models: models}
 	if file != "" {
 		api.runs = newRunStore(file)
 	}
@@ -53,6 +54,10 @@ func (api *toolAPI) guard(h http.HandlerFunc) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		if r.Method != http.MethodGet && !sameOrigin(r) {
 			http.Error(w, "Cross-origin request refused", http.StatusForbidden)
+			return
+		}
+		if r.Method != http.MethodGet && r.Header.Get("Authorization") != "Bearer "+api.models.key {
+			http.Error(w, "Missing or invalid host key", http.StatusUnauthorized)
 			return
 		}
 		if api.file == "" {
@@ -308,7 +313,13 @@ func (api *toolAPI) syncRun(w http.ResponseWriter, r *http.Request) {
 	}
 	api.syncMu.Lock()
 	defer api.syncMu.Unlock()
-	report, err := api.runs.syncRun(api.workspace, info, core.SyncOptions{DryRun: body.DryRun, NoRenames: body.NoRenames})
+	model, err := api.models.get(info.Project)
+	if err != nil {
+		modelError(w, err)
+		return
+	}
+	before := model.Dirty()
+	report, err := api.runs.syncRunModel(model, info, core.SyncOptions{DryRun: body.DryRun, NoRenames: body.NoRenames})
 	if err != nil {
 		status := http.StatusConflict
 		var usage *core.UsageError
@@ -317,6 +328,25 @@ func (api *toolAPI) syncRun(w http.ResponseWriter, r *http.Request) {
 		}
 		http.Error(w, err.Error(), status)
 		return
+	}
+	if !body.DryRun {
+		after := model.Dirty()
+		changed := []core.Ref{}
+		for _, ref := range after.Registry {
+			found := false
+			for _, old := range before.Registry {
+				if old.Kind == ref.Kind && old.ID == ref.ID && old.Lang == ref.Lang && old.Author == ref.Author {
+					found = true
+					break
+				}
+			}
+			if !found {
+				changed = append(changed, ref)
+			}
+		}
+		if len(changed) > 0 {
+			api.models.publish(info.Project, modelEvent{Author: "sync", Changed: changed, Dirty: after})
+		}
 	}
 	writeJSON(w, map[string]any{"report": report, "exitCode": report.ExitCode(), "empty": report.Empty()})
 }

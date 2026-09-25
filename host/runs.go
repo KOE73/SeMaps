@@ -226,7 +226,7 @@ func readStats(file string) (*runStats, error) {
 }
 
 // syncRun reconciles the model project of a finished run with its facts.
-func (s *runStore) syncRun(workspace string, info *runInfo, opt core.SyncOptions) (*core.SyncReport, error) {
+func (s *runStore) syncRunModel(model *core.Model, info *runInfo, opt core.SyncOptions) (*core.SyncReport, error) {
 	if info.State != "done" {
 		return nil, fmt.Errorf("run %s is %s", info.ID, info.State)
 	}
@@ -235,5 +235,20 @@ func (s *runStore) syncRun(workspace string, info *runInfo, opt core.SyncOptions
 		return nil, err
 	}
 	opt.Project = info.Project
-	return core.SyncWorkspace(workspace, facts, opt)
+	return core.Sync(model, facts, opt)
+}
+
+func (s *runStore) syncRun(workspace string, info *runInfo, opt core.SyncOptions) (*core.SyncReport, error) {
+	m, err := core.LoadModel(workspace, info.Project)
+	if err != nil {
+		return nil, err
+	}
+	rep, err := s.syncRunModel(m, info, opt)
+	if err != nil {
+		return rep, err
+	}
+	if !opt.DryRun && len(rep.Written) > 0 {
+		err = m.Save()
+	}
+	return rep, err
 }

@@ -177,6 +177,10 @@ func workspaceHandler(workspace string, defaults fs.FS) http.Handler {
 	def := http.FileServer(noListing{http.FS(defaults)})
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		rel := strings.TrimPrefix(path.Clean("/"+r.URL.Path), "/")
+		if rel == ".semaps" || strings.HasPrefix(rel, ".semaps/") {
+			http.NotFound(w, r)
+			return
+		}
 		for _, o := range overridable {
 			if rel == o || (strings.HasSuffix(o, "/") && strings.HasPrefix(rel, o)) {
 				if _, err := os.Stat(filepath.Join(workspace, filepath.FromSlash(rel))); err != nil {
@@ -367,6 +371,17 @@ func main() {
 	if err != nil {
 		log.Fatalf("No free port from %d: %v", port, err)
 	}
+	models, err := newModelService(absWorkspace)
+	if err != nil {
+		log.Fatalf("Model service: %v", err)
+	}
+	hostRoot := proj.Root
+	if hostRoot == "" {
+		hostRoot = absRoot
+	}
+	if err := models.hostFile(hostRoot, listener.Addr().(*net.TCPAddr).Port); err != nil {
+		log.Fatalf("Host key: %v", err)
+	}
 	url := fmt.Sprintf("http://%s/app/", listener.Addr().String())
 
 	fmt.Printf("SeMaps on %s\n", url)
@@ -384,9 +399,24 @@ func main() {
 		}()
 	}
 
-	http.Handle("/app/", noCacheHandler(http.StripPrefix("/app/", http.FileServer(http.FS(appFS)))))
+	appFiles := http.StripPrefix("/app/", http.FileServer(http.FS(appFS)))
+	http.Handle("/app/", noCacheHandler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path == "/app/" || r.URL.Path == "/app/index.html" {
+			b, err := fs.ReadFile(appFS, "index.html")
+			if err != nil {
+				http.Error(w, err.Error(), 500)
+				return
+			}
+			b = []byte(strings.Replace(string(b), "</head>", `<meta name="semaps-key" content="`+models.key+`" /></head>`, 1))
+			w.Header().Set("Content-Type", "text/html; charset=utf-8")
+			w.Write(b)
+			return
+		}
+		appFiles.ServeHTTP(w, r)
+	})))
 	http.Handle("/", noCacheHandler(workspaceHandler(absWorkspace, defaultsFS)))
-	registerToolAPI(http.DefaultServeMux, proj.File, absWorkspace)
+	models.register(http.DefaultServeMux)
+	registerToolAPI(http.DefaultServeMux, proj.File, absWorkspace, models)
 	// Short addresses of the tool pages (ADR_20260924-3 §4).
 	for short, page := range map[string]string{"/setup": "/app/#project", "/extract": "/app/#extract"} {
 		http.Handle("GET "+short, http.RedirectHandler(page, http.StatusFound))
@@ -485,8 +515,7 @@ func main() {
 			http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
 			return
 		}
-		if !sameOrigin(r) {
-			http.Error(w, "Cross-origin save refused", http.StatusForbidden)
+		if !models.authorize(w, r) {
 			return
 		}
 
@@ -501,6 +530,16 @@ func main() {
 		if err != nil || filepath.Ext(target) != ".json" {
 			http.Error(w, "Invalid file path (must be a relative .json path within workspace)", http.StatusBadRequest)
 			return
+		}
+		rel := filepath.ToSlash(strings.TrimPrefix(strings.TrimPrefix(target, absWorkspace), string(filepath.Separator)))
+		if strings.HasPrefix(rel, "projects/") {
+			parts := strings.Split(rel, "/")
+			allowedCreate := r.URL.Query().Get("create") == "1" &&
+				(len(parts) == 3 && parts[2] == "project.json" || len(parts) == 4 && parts[2] == "views" && strings.HasSuffix(parts[3], ".view.json"))
+			if !allowedCreate {
+				http.Error(w, "Project model files are saved through /api/model/{project}/save", http.StatusGone)
+				return
+			}
 		}
 
 		body, err := io.ReadAll(r.Body)
@@ -547,8 +586,7 @@ func main() {
 			http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
 			return
 		}
-		if !sameOrigin(r) {
-			http.Error(w, "Cross-origin move refused", http.StatusForbidden)
+		if !models.authorize(w, r) {
 			return
 		}
 		fromRel, toRel := r.URL.Query().Get("from"), r.URL.Query().Get("to")
@@ -558,6 +596,14 @@ func main() {
 		if errFrom != nil || errTo != nil || !strings.HasPrefix(fromRel, "projects/") || !strings.HasPrefix(toRel, "projects/") {
 			http.Error(w, "from and to must be paths inside projects/", http.StatusBadRequest)
 			return
+		}
+		projectID := strings.Split(strings.TrimPrefix(fromRel, "projects/"), "/")[0]
+		if m, err := models.get(projectID); err == nil {
+			d := m.Dirty()
+			if len(d.Registry) > 0 || len(d.Views) > 0 {
+				http.Error(w, "Save the project before renaming", http.StatusConflict)
+				return
+			}
 		}
 		src, err := os.Stat(from)
 		if err != nil {
@@ -577,6 +623,7 @@ func main() {
 			http.Error(w, "Failed to move: "+err.Error(), http.StatusInternalServerError)
 			return
 		}
+		models.evict(projectID)
 		fmt.Printf("Moved %s -> %s\n", fromRel, toRel)
 		w.Write([]byte("OK"))
 	})

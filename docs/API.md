@@ -2,7 +2,7 @@
 
 This document defines the host/backend communication contract for the SeMaps editor (`@semaps/editor`). Any backend implementation (Go server, Node.js server, VSCode extension WebView, Electron, CLI embedded server, Cloud) must fulfill these requirements to ensure full compatibility for both reading and writing models.
 
-**Scope.** This file covers transport only — which paths a host serves and accepts. The *shape* of every file listed here is normative in [`CONTRACT.md`](CONTRACT.md) (model contract **v3**). A host never needs to understand the contents — it moves bytes.
+**Scope.** This file covers transport and the host's working model. The disk format remains normative in [`CONTRACT.md`](CONTRACT.md) (contract **v3**). The host understands project objects and writes contract files only on project Save.
 
 ---
 
@@ -48,7 +48,7 @@ Workspace Root (--workspace, e.g. docs/diagrams/)
 
 ## 2. Read Requirements (Static / GET)
 
-The backend must serve static JSON documents and application assets over HTTP or an equivalent virtual transport.
+The backend serves application assets and global workspace JSON. Project model reads use §3.4; static project JSON remains available for compatibility and inspection, but is not the editor's working state.
 
 ### 2.1. Endpoints & Paths
 
@@ -103,19 +103,19 @@ The one listing a host gives. It walks `projects/*/` (a folder counts only with 
 
 ### 2.3. Caching
 
-Model files are edited on disk while the editor is open, so a host **MUST NOT** let the browser reuse a cached copy without revalidating: serve every `.json` with `Cache-Control: no-cache` (or an equivalent validator). A stale `entities.json` does not fail loudly — the diagram simply renders raw ids in place of names, which reads as a broken model rather than a caching problem. Application assets under `/app/assets/*` are content-hashed and may be cached normally.
+Serve every `.json` with `Cache-Control: no-cache` (or an equivalent validator). Model API responses are working state and must not be cached. Application assets under `/app/assets/*` are content-hashed and may be cached normally.
 
 ---
 
 ## 3. Write Requirements (Save API)
 
-The backend must provide a mechanism to persist updated JSON files back to the workspace.
+The backend persists project model files through `POST /api/model/{project}/save` (§3.4). `/api/save` remains for global assets and creation of a new project/view file.
 
 ### 3.1. Save Endpoint: `POST /api/save`
 
-- **URL Pattern**: `/api/save?file=<relative_path>`
+- **URL Pattern**: `/api/save?file=<relative_path>`; existing files under `projects/` return `410 Gone`. The only project paths permitted are `create=1` on `projects/<id>/project.json` and `projects/<id>/views/<id>.view.json`.
 - **Method**: `POST`
-- **Headers**: `Content-Type: application/json`
+- **Headers**: `Content-Type: application/json`, `Authorization: Bearer <host key>`
 - **Request Body**: Valid JSON payload formatted with 2-space indentation.
 
 #### Query Parameter `create`
@@ -135,7 +135,9 @@ The backend must provide a mechanism to persist updated JSON files back to the w
 | `200 OK` | File successfully written to disk | `OK` or `{ "status": "ok" }` |
 | `400 Bad Request` | Missing `file` param, invalid extension, or directory traversal attempt | Error message string |
 | `405 Method Not Allowed` | Method is not `POST` | `Method not allowed` |
+| `401 Unauthorized` | Missing or wrong host key on a write | Error text |
 | `409 Conflict` | `create=1` and the file exists | `Already exists: <file>` |
+| `410 Gone` | An existing project model file was submitted | Use project Save (§3.4) |
 | `500 Internal Server Error` | File system I/O error or permission failure | Error message string |
 
 ### 3.3. Security & Path Traversal Rules
@@ -149,50 +151,31 @@ The backend must provide a mechanism to persist updated JSON files back to the w
 
 `/api/move?from=<rel>&to=<rel>` renames a project folder or a view file. Both paths are
 workspace-relative and **must start with `projects/`**; a file keeps its `.json` extension.
-`404` when `from` is missing, `409` when `to` exists (a rename never replaces anything — on
-Windows `os.Rename` would), `400` for a path outside `projects/`, `403` cross-origin like
-`/api/save`. Directories are moved whole.
+`404` when `from` is missing, `409` when `to` exists or the project's working model is dirty
+(save first), `400` for a path outside `projects/`, `403` cross-origin and `401` without the host
+key like `/api/save`. Directories are moved whole; the host evicts a renamed project's loaded model.
 
-### 3.4. What the editor actually writes
+### 3.4. Working model API
 
-One user-initiated save issues up to three `POST /api/save` calls, in this order:
+The running host owns one in-memory `core.Model` per project. Contract files stay unchanged until Save. Every accepted batch is appended to `<project root>/.semaps/work/<project>.jsonl`; startup replays it. A project-wide Save writes dirty files in contract v3 format (two spaces, no HTML escaping, existing key order), then clears the journal. Discard reloads the selected scope from files and rewrites the journal for remaining edits. There is no host Undo or field merge.
 
-| File | When |
-|---|---|
-| `views/<view_id>.view.json` | always |
-| `projects/<project_id>/entities.json` | only if the canvas gained a block absent from the registry (appended with `origin: "authored"`) |
-| `projects/<project_id>/text.<lang>.json` | only if a name or description changed; values the user edited are re-stamped `authored`, untouched ones keep their loaded provenance, so an idle save produces an empty diff |
-| `templates.json` | only when the style/template panel edits a template's text, independent of any view save |
+The host creates `<project root>/.semaps/host.json` containing `{pid, port, key}`. The key is also embedded as `<meta name="semaps-key" content="…">` in `/app/` HTML. Every mutating endpoint requires `Authorization: Bearer <key>` and the existing same-origin check; missing/wrong key returns `401`. This includes `/api/save`, `/api/move`, and the tool API writes. `.semaps/` is never served as workspace static content. The host listens on localhost.
 
-Before writing `text.<lang>.json` the editor re-reads it and keeps every key the open view did not
-load, so a name written meanwhile (a new view, an agent's description) survives the save.
+| Path | Method | Response / effect |
+|---|---|---|
+| `/api/model/{project}` | `GET` | `{project, registry, texts, views, dirty}`. `project` is the manifest; `registry` maps registry filenames to full documents; `texts` maps languages to full text documents; `views` maps view ids to view properties without geometry; `dirty` is below. |
+| `/api/model/{project}/views/{id}` | `GET` | Full working view document, including `zones`, `nodes` or `placements`, and `relations`. |
+| `/api/model/{project}/ops` | `POST` | `{client, ops}` applies one atomic batch as `human` → `{changed, dirty}`. A broken rule returns `422` with text and applies nothing. |
+| `/api/model/{project}/save` | `GET` | Current `dirty` summary for the Save confirmation. |
+| `/api/model/{project}/save` | `POST` | Writes every dirty contract file and clears the journal → empty `dirty`. |
+| `/api/model/{project}/discard` | `POST` | `{scope:"view",id}` or `{scope:"registry"}` or `{scope:"all"}`; reloads that scope from disk → new `dirty`. |
+| `/api/events?project=<id>` | `GET` | SSE: one `data:` JSON object per accepted batch/save/discard: `{client,author,changed,dirty}`. Clients ignore their own `client` id. |
 
-Creating a project or a view from the editor, on a person's action, writes:
+An operation is `{kind,id,view?,lang?,value,author?}`. `kind` is `entity`, `relation`, `relationType`, `text`, `view`, `zone`, or `node`. `value` is the whole object; `null` removes a zone or node placement only. Registry records cannot be removed. `text` requires `lang`; `view`, `zone`, and `node` require `view`. The host sets `author: human` on browser ops; the agent path sets `author: agent`. A changed reference is `{kind,id,view?,lang?,author}`. `dirty` is `{registry:[Ref],views:{<view-id>:[Ref]}}`, with the last author per touched object. The conflict unit is an object: later accepted replacement wins, with no field merge. The SSE event is emitted after the batch is in the journal. A view is loaded lazily when first read or changed.
 
-| Action | Files |
-|---|---|
-| new project | `projects/<id>/project.json` |
-| new view | `projects/<project>/views/<id>.view.json` (axis, empty `zones`/`nodes`, no `edges`), then `text.<lang>.json` with `name` under the view's id |
-
-Editing them (the ✎ in the catalogue), on a person's action:
-
-| Action | Requests |
-|---|---|
-| project title, subtitle, icon, theme | `project.json` rewritten, other keys kept |
-| project id | `move projects/<old> → projects/<new>`, then `project.json` (`id`), then every view (`project`) |
-| view name | `text.<lang>.json` of the language shown |
-| view axis, icon, theme | the `.view.json`, geometry untouched |
-| view id | `move views/<old>.view.json → <new>.view.json`, the file's `id`, the text key in every `text.<lang>.json` (provenance kept), `defaultView` if it named the old id |
-
-The editor refuses a rename while the open view of that project has unsaved changes, and reopens
-it afterwards.
-
-`relations.json`, `relation-types.json`, `containers.json` and `content/index.json` are **never
-written by the editor**, and `project.json` only by creating or editing a project. A host that makes
-those files read-only loses nothing but managing projects.
+Project and view creation still use `/api/save?create=1`; renames still use `/api/move`. Both writes require the host key. Renaming a dirty project is rejected with `409`; after a successful rename the host reloads the project on next access. `styles.json`, `templates.json`, and `content/` remain outside the working model.
 
 ---
-
 ## 4. Alternative Host Adapters (VSCode / Electron / Node)
 
 When embedding `@semaps/editor` in non-HTTP hosts (e.g., VSCode Extension WebView, Electron IPC):
@@ -317,7 +300,7 @@ The command line of an extractor cannot be set through the API — only in the f
 | `/api/runs` | `POST` | `{extractor}` → `202` `Run` (`state: running`) |
 | `/api/runs/{id}` | `GET` | → `Run` |
 | `/api/runs/{id}/log?offset=<n>` | `GET` | → `{text, offset, state}`: the log from byte `n`; ask again with the new `offset` while `state` is `running` |
-| `/api/runs/{id}/sync` | `POST` | `{dryRun, noRenames}` → `{report, exitCode, empty}`; the report is `core.SyncReport`. Applies the facts of that run, never extracts again |
+| `/api/runs/{id}/sync` | `POST` | `{dryRun, noRenames}` → `{report, exitCode, empty}`; the report is `core.SyncReport`. Applies the facts of that run to the working model (unsaved), never extracts again |
 | `/api/mcp` | `GET` | → `{file, exists, configured, entry, onPath, snippet, tools: [{name, description, readOnly, inputSchema}], error?}`: does `.mcp.json` at the project root start `semaps mcp` (§6), and the tools it offers |
 | `/api/mcp/install` | `POST` | → the same, after adding the `semaps` entry to `.mcp.json` (created when missing; other servers and keys stay; a file that does not parse → `409`) |
 | `/api/mcp/call` | `POST` | `{name, arguments}` → `{messages: [{dir: out \| in, message}], ms, isError, error?}`: the editor's sandbox. Runs one tool of `semaps mcp` on this project in a fresh in-memory session, as an agent would; `messages` are the JSON-RPC call and answer as they went, the handshake left out. The call is real: a writing tool writes |
