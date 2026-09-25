@@ -318,6 +318,8 @@ The command line of an extractor cannot be set through the API — only in the f
 | `/api/runs/{id}` | `GET` | → `Run` |
 | `/api/runs/{id}/log?offset=<n>` | `GET` | → `{text, offset, state}`: the log from byte `n`; ask again with the new `offset` while `state` is `running` |
 | `/api/runs/{id}/sync` | `POST` | `{dryRun, noRenames}` → `{report, exitCode, empty}`; the report is `core.SyncReport`. Applies the facts of that run, never extracts again |
+| `/api/mcp` | `GET` | → `{file, exists, configured, entry, onPath, snippet, tools: [{name, description}], error?}`: does `.mcp.json` at the project root start `semaps mcp` (§6), and the tools it offers |
+| `/api/mcp/install` | `POST` | → the same, after adding the `semaps` entry to `.mcp.json` (created when missing; other servers and keys stay; a file that does not parse → `409`) |
 
 `Extractor`: `{id, language, project, root, include, exclude, edges, command?, tool: {language, found,
 source?: command|bundled|path, where?, runtime?, problem?}, lastRun?: Run}`.
@@ -326,7 +328,7 @@ exitCode, error?, stats?: {symbols, edges, symbolKinds, edgeKinds, language}}`.
 
 A run's facts never enter the workspace; they stay in the temp directory beside its log.
 
-The tool pages are modes of the one editor page: `/app/#extract`, `/app/#project`. Short addresses `/extract` and `/setup` redirect there.
+The tool pages are modes of the one editor page: `/app/#extract`, `/app/#project`, `/app/#mcp`. Short addresses `/extract` and `/setup` redirect there.
 
 ## 6. MCP: `semaps mcp`
 

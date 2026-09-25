@@ -276,3 +276,41 @@
   width: auto;
   margin: 0;
 }
+
+/* ------------------------------------------------------------ MCP mode */
+
+.mcp-hero {
+  display: flex;
+  gap: var(--tp-card-px);
+  align-items: flex-start;
+  margin-bottom: var(--tp-card-gap);
+}
+
+.mcp-hero-mark {
+  font-size: calc(var(--tp-h1) * 2);
+  line-height: 1;
+}
+
+.mcp-list {
+  margin: 0;
+  padding-left: 20px;
+  line-height: 1.55;
+}
+
+.mcp-list li + li {
+  margin-top: var(--tp-row-gap);
+}
+
+.mcp-ask li {
+  font-style: italic;
+}
+
+.mcp-manual {
+  margin-top: var(--tp-card-gap);
+}
+
+.tool-table code {
+  font: var(--tp-mono) ui-monospace, "Cascadia Mono", Consolas, monospace;
+  color: var(--accent);
+  white-space: nowrap;
+}

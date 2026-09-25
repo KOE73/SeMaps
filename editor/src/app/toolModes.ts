@@ -4,16 +4,18 @@ import type { WorkbenchMode } from "../workbench/modes.js";
 import type { CommandDefinition } from "../workbench/commands/types.js";
 import { focusNewExtractor, loadExtractors } from "./extract.js";
 import { loadProject, saveProject } from "./setup.js";
+import { installMcp, loadMcp } from "./mcp.js";
 import { t } from "../shell/strings.js";
 
 /**
  * The modes after the diagrams, present only when the host was started from a
- * .semaps file: Extractors and Project. Each is a page in a scrolling surface,
+ * .semaps file: Extractors, Project and MCP. Each is a page in a scrolling surface,
  * loaded when first entered, with a ribbon tab of its own.
  */
 export function addToolModes(workbench: Workbench): void {
   const extract = page();
   const project = page();
+  const mcp = page();
 
   const commands: CommandDefinition[] = [
     {
@@ -42,6 +44,19 @@ export function addToolModes(workbench: Workbench): void {
       icon: "⟳",
       execute: () => void loadProject(project.inner),
     },
+    {
+      id: "tools.mcp.install",
+      title: t.mcpInstall,
+      icon: "🔌",
+      execute: () => void installMcp(mcp.inner),
+    },
+    {
+      id: "tools.mcp.refresh",
+      title: t.refresh,
+      description: t.refreshHint,
+      icon: "⟳",
+      execute: () => void loadMcp(mcp.inner),
+    },
   ];
   workbench.commands.registerAll(commands);
 
@@ -55,6 +70,12 @@ export function addToolModes(workbench: Workbench): void {
     { id: "project", title: t.navSetup, items: [
       { type: "button", command: "tools.project.save", size: "large" },
       { type: "button", command: "tools.project.refresh", size: "large" },
+    ] },
+  ]));
+  workbench.addMode(mode("mcp", t.navMcp, mcp, () => loadMcp(mcp.inner), [
+    { id: "mcp", title: t.navMcp, items: [
+      { type: "button", command: "tools.mcp.install", size: "large" },
+      { type: "button", command: "tools.mcp.refresh", size: "large" },
     ] },
   ]));
 }

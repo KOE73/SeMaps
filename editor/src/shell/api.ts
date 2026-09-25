@@ -109,6 +109,18 @@ export interface SettingsPatch {
   port?: number;
 }
 
+/** GET /api/mcp: does the project's .mcp.json start `semaps mcp`, and what it offers. */
+export interface McpStatus {
+  file: string;
+  exists: boolean;
+  configured: boolean;
+  entry: string;
+  onPath: boolean;
+  snippet: string;
+  tools: { name: string; description: string }[];
+  error?: string;
+}
+
 /** The host answered with an error; `message` is its text. */
 export class ApiError extends Error {
   constructor(
@@ -148,6 +160,8 @@ export const toolApi = {
       "GET",
       `${API}/runs/${encodeURIComponent(id)}/log?offset=${offset}`,
     ),
+  mcp: () => call<McpStatus>("GET", `${API}/mcp`),
+  installMcp: () => call<McpStatus>("POST", `${API}/mcp/install`),
   sync: (id: string, dryRun: boolean, noRenames = false) =>
     call<SyncResult>("POST", `${API}/runs/${encodeURIComponent(id)}/sync`, { dryRun, noRenames }),
 };

@@ -62,6 +62,35 @@ const ru = {
     added: "не хватает",
     changed: "изменилось",
   },
+  // mcp
+  navMcp: "MCP",
+  mcpTitle: "Карта кода для вашего ИИ-агента",
+  mcpLead:
+    "semaps mcp — MCP-сервер, через который Claude Code, Cursor, Copilot и другие агенты читают и правят эту карту сами. Не нужно объяснять агенту формат файлов: он получает инструменты, а правила контракта держит сервер.",
+  mcpWhyTitle: "Что это даёт",
+  mcpWhy: [
+    "Агент отвечает на вопросы об архитектуре по реестру, а не перечитывает весь код: «кто держит VmProgram», «что зависит от этой сборки».",
+    "Агент сам пишет описания, подписи связей и переводы — всё помечается как авторское, с датой.",
+    "После правки кода агент запускает извлечение и сверку и объясняет, что изменилось на схемах.",
+    "Правила соблюдаются всегда: id выдаёт сервер, ничего не удаляется, раскладку видов агент трогает только по вашей просьбе.",
+  ],
+  mcpStateTitle: "Подключение в этом проекте",
+  mcpConfigured: "Подключено: {file} запускает semaps mcp (запись «{entry}»). Агенту достаточно открыть этот репозиторий.",
+  mcpNotConfigured: "Пока не подключено: в корне проекта нет записи semaps в {file}.",
+  mcpInstall: "Подключить",
+  mcpInstallHint: "Допишет запись semaps в {file} в корне проекта; другие серверы в файле останутся.",
+  mcpNotOnPath: "semaps не найден в PATH: клиент агента его не запустит. Установите semaps (install.cmd) или впишите полный путь в command.",
+  mcpManual: "Или вручную — {file} в корне проекта:",
+  mcpCopy: "Копировать",
+  mcpCopied: "Скопировано",
+  mcpToolsTitle: "Инструменты сервера",
+  mcpAskTitle: "Что попросить у агента",
+  mcpAsk: [
+    "«Какие классы держат VmProgram и через какие поля?»",
+    "«Опиши все сборки проекта одной строкой каждую, на русском и английском»",
+    "«Я переименовал поле — сверь карту и подтверди переименование»",
+    "«Покажи на виде Операции связи injects для VmController»",
+  ],
 };
 
 type Strings = typeof ru;
@@ -122,6 +151,35 @@ const en: Strings = {
     added: "missing",
     changed: "changed",
   },
+  // mcp
+  navMcp: "MCP",
+  mcpTitle: "A code map for your AI agent",
+  mcpLead:
+    "semaps mcp is an MCP server through which Claude Code, Cursor, Copilot and other agents read and edit this map themselves. No need to explain the file format: the agent gets tools, the server keeps the contract's rules.",
+  mcpWhyTitle: "What it gives you",
+  mcpWhy: [
+    "The agent answers architecture questions from the registry instead of rereading the code: who holds VmProgram, what depends on this assembly.",
+    "The agent writes descriptions, relation labels and translations itself — all marked authored, with a date.",
+    "After a code change the agent runs extraction and sync and explains what changed on the diagrams.",
+    "The rules always hold: ids come from the server, nothing is deleted, view layout is touched only when you ask.",
+  ],
+  mcpStateTitle: "Connection in this project",
+  mcpConfigured: "Connected: {file} starts semaps mcp (entry “{entry}”). An agent only has to open this repository.",
+  mcpNotConfigured: "Not connected yet: no semaps entry in {file} at the project root.",
+  mcpInstall: "Connect",
+  mcpInstallHint: "Adds the semaps entry to {file} at the project root; other servers in the file stay.",
+  mcpNotOnPath: "semaps is not on PATH: the agent's client will not start it. Install semaps (install.cmd) or write the full path in command.",
+  mcpManual: "Or by hand — {file} at the project root:",
+  mcpCopy: "Copy",
+  mcpCopied: "Copied",
+  mcpToolsTitle: "Server tools",
+  mcpAskTitle: "What to ask the agent",
+  mcpAsk: [
+    "“Which classes hold VmProgram, and through which fields?”",
+    "“Describe every assembly of the project in one line, in Russian and English”",
+    "“I renamed a field — sync the map and confirm the rename”",
+    "“Show the injects relations of VmController on the Operations view”",
+  ],
 };
 
 export const t: Strings = I18nService.get().currentLanguage === "en" ? en : ru;
