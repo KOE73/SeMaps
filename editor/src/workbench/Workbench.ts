@@ -126,7 +126,9 @@ export class Workbench {
       },
     );
     ribbonContainer.appendChild(this.ribbon.element);
-    this.display = new DisplayPanel(this.ribbon, createDisplaySpec(), this.commands);
+    this.display = new DisplayPanel(this.ribbon, createDisplaySpec(), this.commands, () =>
+      this.filterManager.renderControls(),
+    );
 
     // 11. Bind events
     this.bindEvents();

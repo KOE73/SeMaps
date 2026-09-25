@@ -1,34 +1,94 @@
 /*
  * The tool modes (Extractors, Project): plain forms in a scrolling surface
- * under the ribbon. Colours come from the theme tokens of editor.css.
+ * under the ribbon. Colours come from the theme tokens of editor.css; sizes
+ * follow the UI density (data-density on <html>, as the ribbon does).
  */
+
+:root,
+:root[data-density="norm"] {
+  --tp-font: 13px;
+  --tp-small: 11px;
+  --tp-mono: 12px;
+  --tp-h1: 18px;
+  --tp-h2: 14px;
+  --tp-page-px: 20px;
+  --tp-page-py: 20px;
+  --tp-card-px: 16px;
+  --tp-card-py: 14px;
+  --tp-card-gap: 14px;
+  --tp-row-gap: 8px;
+  --tp-label-w: 160px;
+  --tp-ctl-py: 5px;
+  --tp-ctl-px: 8px;
+  --tp-btn-px: 12px;
+  --tp-log-h: 260px;
+}
+
+:root[data-density="mini"] {
+  --tp-font: 12px;
+  --tp-small: 10.5px;
+  --tp-mono: 11px;
+  --tp-h1: 16px;
+  --tp-h2: 13px;
+  --tp-page-px: 16px;
+  --tp-page-py: 14px;
+  --tp-card-px: 12px;
+  --tp-card-py: 10px;
+  --tp-card-gap: 10px;
+  --tp-row-gap: 6px;
+  --tp-label-w: 140px;
+  --tp-ctl-py: 3px;
+  --tp-ctl-px: 7px;
+  --tp-btn-px: 10px;
+  --tp-log-h: 220px;
+}
+
+:root[data-density="nano"] {
+  --tp-font: 11px;
+  --tp-small: 10px;
+  --tp-mono: 10.5px;
+  --tp-h1: 14px;
+  --tp-h2: 12px;
+  --tp-page-px: 12px;
+  --tp-page-py: 10px;
+  --tp-card-px: 10px;
+  --tp-card-py: 7px;
+  --tp-card-gap: 7px;
+  --tp-row-gap: 4px;
+  --tp-label-w: 120px;
+  --tp-ctl-py: 2px;
+  --tp-ctl-px: 6px;
+  --tp-btn-px: 8px;
+  --tp-log-h: 180px;
+}
 
 .tool-page {
   flex: 1;
   min-height: 0;
   overflow: auto;
   user-select: text;
+  font-size: var(--tp-font);
 }
 
 .tool-page-inner {
   max-width: 980px;
   margin: 0 auto;
-  padding: 20px 20px 48px;
+  padding: var(--tp-page-py) var(--tp-page-px) 48px;
 }
 
 .tool-page h1 {
-  font-size: 18px;
+  font-size: var(--tp-h1);
   margin: 0 0 4px;
 }
 
 .tool-page h2 {
-  font-size: 14px;
+  font-size: var(--tp-h2);
   margin: 0;
 }
 
 .tool-hint {
   color: var(--muted);
-  margin: 0 0 16px;
+  margin: 0 0 var(--tp-card-gap);
   line-height: 1.5;
 }
 
@@ -36,15 +96,15 @@
   background: var(--panel);
   border: 1px solid var(--line);
   border-radius: var(--radius);
-  padding: 14px 16px;
-  margin-bottom: 14px;
+  padding: var(--tp-card-py) var(--tp-card-px);
+  margin-bottom: var(--tp-card-gap);
 }
 
 .tool-card-head {
   display: flex;
   align-items: center;
-  gap: 10px;
-  margin-bottom: 10px;
+  gap: var(--tp-row-gap);
+  margin-bottom: var(--tp-row-gap);
 }
 
 .tool-card-head .spacer {
@@ -53,8 +113,8 @@
 
 .tool-form {
   display: grid;
-  grid-template-columns: 160px 1fr;
-  gap: 8px 12px;
+  grid-template-columns: var(--tp-label-w) 1fr;
+  gap: var(--tp-row-gap) var(--tp-card-px);
   align-items: center;
 }
 
@@ -66,7 +126,7 @@
 .tool-form select,
 .tool-new input {
   width: 100%;
-  padding: 5px 8px;
+  padding: var(--tp-ctl-py) var(--tp-ctl-px);
   border: 1px solid var(--line);
   border-radius: 6px;
   background: var(--input-bg);
@@ -82,12 +142,12 @@
   display: flex;
   flex-wrap: wrap;
   align-items: center;
-  gap: 8px;
-  margin-top: 12px;
+  gap: var(--tp-row-gap);
+  margin-top: var(--tp-card-gap);
 }
 
 .tool-btn {
-  padding: 5px 12px;
+  padding: var(--tp-ctl-py) var(--tp-btn-px);
   border: 1px solid var(--line);
   border-radius: 6px;
   background: var(--panel-alt);
@@ -119,7 +179,7 @@
 .tool-badge {
   padding: 1px 7px;
   border-radius: 10px;
-  font-size: 11px;
+  font-size: var(--tp-small);
   background: var(--panel-alt);
   color: var(--muted);
 }
@@ -142,14 +202,14 @@
 }
 
 .tool-log {
-  margin: 10px 0 0;
-  max-height: 260px;
+  margin: var(--tp-row-gap) 0 0;
+  max-height: var(--tp-log-h);
   overflow: auto;
-  padding: 8px 10px;
+  padding: var(--tp-ctl-px) var(--tp-card-px);
   border-radius: 6px;
   background: var(--input-bg);
   border: 1px solid var(--line);
-  font: 12px/1.45 ui-monospace, "Cascadia Mono", Consolas, monospace;
+  font: var(--tp-mono)/1.45 ui-monospace, "Cascadia Mono", Consolas, monospace;
   white-space: pre-wrap;
   word-break: break-all;
 }
@@ -157,12 +217,12 @@
 .tool-stats {
   display: flex;
   flex-wrap: wrap;
-  gap: 6px;
-  margin-top: 8px;
+  gap: var(--tp-row-gap);
+  margin-top: var(--tp-row-gap);
 }
 
 .tool-report {
-  margin-top: 10px;
+  margin-top: var(--tp-row-gap);
 }
 
 .tool-report details {
@@ -176,14 +236,14 @@
 .tool-report ul {
   margin: 4px 0 8px;
   padding-left: 22px;
-  max-height: 220px;
+  max-height: var(--tp-log-h);
   overflow: auto;
-  font: 12px/1.5 ui-monospace, "Cascadia Mono", Consolas, monospace;
+  font: var(--tp-mono)/1.5 ui-monospace, "Cascadia Mono", Consolas, monospace;
 }
 
 .tool-new {
   display: flex;
-  gap: 8px;
+  gap: var(--tp-row-gap);
 }
 
 .tool-new input {
@@ -196,7 +256,7 @@
 }
 
 .tool-table td {
-  padding: 4px 8px 4px 0;
+  padding: var(--tp-ctl-py) var(--tp-ctl-px) var(--tp-ctl-py) 0;
   vertical-align: top;
 }
 
@@ -207,7 +267,7 @@
 .tool-check {
   display: inline-flex;
   align-items: center;
-  gap: 6px;
+  gap: var(--tp-row-gap);
   color: var(--muted);
 }
 

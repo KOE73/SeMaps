@@ -136,6 +136,20 @@ export function createDefaultRibbonSpec(): RibbonSpec {
             id: "canvas_options",
             get title() { return i18n.d.ribbon.groups.canvas; },
             items: [
+              {
+                type: "select",
+                command: "view.strokeScaling.set",
+                get label() { return i18n.d.ribbon.labels.strokeScaling; },
+                get options() {
+                  return [
+                    { value: "zoom", label: i18n.d.ribbon.labels.strokeScalingZoom },
+                    { value: "soft", label: i18n.d.ribbon.labels.strokeScalingSoft },
+                    { value: "fixed", label: i18n.d.ribbon.labels.strokeScalingFixed },
+                  ];
+                },
+                getValue: () => localStorage.getItem("semaps.strokeScaling") || "zoom",
+              },
+              { type: "toggle", command: "view.shadows.global.toggle", size: "medium" },
               { type: "toggle", command: "view.grid.toggle", size: "small" },
               { type: "toggle", command: "view.snap.toggle", size: "small" },
               { type: "toggle", command: "view.routing.debug", size: "small" },
@@ -240,7 +254,8 @@ export function createDefaultRibbonSpec(): RibbonSpec {
 }
 
 /**
- * How the tool looks, not what it shows: theme, density, languages, effects.
+ * How the tool looks, not what it shows: theme, density, languages; the
+ * canvas effects follow it in the same panel.
  * Not a tab — the gear at the end of the tab row opens it in every mode.
  */
 export function createDisplaySpec(): RibbonTabSpec {
@@ -300,27 +315,6 @@ export function createDisplaySpec(): RibbonTabSpec {
             ],
             getValue: (ctx: CommandContext) => ctx.dataLang || "ru",
           },
-        ],
-      },
-      {
-        id: "canvas_look",
-        get title() { return i18n.d.ribbon.groups.canvas; },
-        items: [
-          { type: "button", command: "view.filters.visual.toggle", size: "medium" },
-          {
-            type: "select",
-            command: "view.strokeScaling.set",
-            get label() { return i18n.d.ribbon.labels.strokeScaling; },
-            get options() {
-              return [
-                { value: "zoom", label: i18n.d.ribbon.labels.strokeScalingZoom },
-                { value: "soft", label: i18n.d.ribbon.labels.strokeScalingSoft },
-                { value: "fixed", label: i18n.d.ribbon.labels.strokeScalingFixed },
-              ];
-            },
-            getValue: () => localStorage.getItem("semaps.strokeScaling") || "zoom",
-          },
-          { type: "toggle", command: "view.shadows.global.toggle", size: "medium" },
         ],
       },
     ],

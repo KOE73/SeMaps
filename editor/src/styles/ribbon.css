@@ -784,3 +784,23 @@
   flex-wrap: wrap;
 }
 
+
+/* The canvas effects laid out in the gear's panel: the four sections side by side. */
+.canvas-filters-inline {
+  margin: 6px 0 6px;
+  border: 1px solid var(--line, #3a3a3c);
+  border-radius: 6px;
+  overflow: hidden;
+}
+
+.canvas-filters-inline .canvas-filters-body {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(260px, 1fr));
+  max-height: none;
+  overflow: visible;
+}
+
+.canvas-filters-inline .canvas-filters-section {
+  border-bottom: none;
+  padding-bottom: 0;
+}

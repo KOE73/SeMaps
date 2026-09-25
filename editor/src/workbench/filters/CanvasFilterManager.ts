@@ -40,6 +40,8 @@ export class CanvasFilterManager {
   private matteLayerEl: HTMLElement | null = null;
   private popupEl: HTMLElement | null = null;
   private backdropEl: HTMLElement | null = null;
+  /** The controls laid out in another panel (the gear's), kept to redraw them. */
+  private inlineEl: HTMLElement | null = null;
 
   constructor(private readonly getCanvasHost: () => HTMLElement | null) {
     this.currentTheme = "cream";
@@ -52,6 +54,7 @@ export class CanvasFilterManager {
     this.currentTheme = theme;
     this.loadForTheme(theme);
     this.apply();
+    this.refreshInline();
   }
 
   private getStorageKey(theme: string): string {
@@ -86,6 +89,18 @@ export class CanvasFilterManager {
     if (this.popupEl) {
       this.updatePopupControls();
     }
+    this.refreshInline();
+  }
+
+  /** The controls as a block for another panel, instead of the flyout. */
+  renderControls(): HTMLElement {
+    this.inlineEl = el("div", { class: "canvas-filters-inline" });
+    this.fillControls(this.inlineEl, i18n.currentLanguage === "en");
+    return this.inlineEl;
+  }
+
+  private refreshInline(): void {
+    if (this.inlineEl?.isConnected) this.fillControls(this.inlineEl, i18n.currentLanguage === "en");
   }
 
   apply(): void {
@@ -199,8 +214,11 @@ export class CanvasFilterManager {
   }
 
   private renderPopupContent(isEn: boolean): void {
-    if (!this.popupEl) return;
-    this.popupEl.innerHTML = "";
+    if (this.popupEl) this.fillControls(this.popupEl, isEn);
+  }
+
+  private fillControls(target: HTMLElement, isEn: boolean): void {
+    target.innerHTML = "";
 
     // Header
     const header = el("div", { class: "canvas-filters-header" }, [
@@ -390,9 +408,9 @@ export class CanvasFilterManager {
       }),
     ]);
 
-    this.popupEl.appendChild(header);
-    this.popupEl.appendChild(body);
-    this.popupEl.appendChild(footer);
+    target.appendChild(header);
+    target.appendChild(body);
+    target.appendChild(footer);
   }
 
   private updatePopupControls(): void {

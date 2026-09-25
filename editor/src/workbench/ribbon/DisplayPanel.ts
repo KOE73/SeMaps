@@ -5,7 +5,8 @@ import type { RibbonTabSpec } from "./types.js";
 
 /**
  * The gear's panel: the look of the tool, in every mode. It floats under the
- * gear, renders the display groups with the ribbon's own renderer and follows
+ * gear, renders the display groups with the ribbon's own renderer, then the
+ * canvas effects laid out in full, and follows
  * command state while open; a click outside or Escape closes it.
  */
 export class DisplayPanel {
@@ -16,6 +17,8 @@ export class DisplayPanel {
     private readonly ribbon: Ribbon,
     private readonly spec: RibbonTabSpec,
     registry: CommandRegistry,
+    /** Laid out after the groups: controls that are not commands (the canvas effects). */
+    private readonly extra?: () => HTMLElement,
   ) {
     registry.onStateChanged(() => this.fill());
     window.addEventListener("keydown", (e) => {
@@ -56,5 +59,6 @@ export class DisplayPanel {
       el("div", { class: "display-panel-title", text: this.spec.title }),
       this.ribbon.renderGroups(this.spec),
     );
+    if (this.extra) this.panel.appendChild(this.extra());
   }
 }
