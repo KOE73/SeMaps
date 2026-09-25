@@ -829,3 +829,56 @@
   --dv-tabs-and-actions-container-font-size: var(--dv-density-font);
   --dv-tabs-and-actions-container-height: var(--dv-density-h);
 }
+
+/*
+ * The chevron of hidden tabs and its list, in the scheme's colours: dockview's
+ * defaults are grey on grey and the list may render outside the themed tree.
+ */
+.dv-tabs-overflow-dropdown-default {
+  margin: 3px 4px;
+  padding: 0 calc(6px * var(--ui-space)) 0 calc(8px * var(--ui-space));
+  height: auto;
+  align-self: center;
+  border-radius: 4px;
+  background: var(--accent-soft, rgba(78, 161, 255, 0.12));
+  color: var(--accent, #4ea1ff);
+  font-weight: 600;
+  font-size: var(--dv-density-font);
+}
+
+.dv-tabs-overflow-dropdown-default:hover {
+  background: var(--accent, #4ea1ff);
+  color: var(--panel, #fff);
+}
+
+.dv-tabs-overflow-dropdown-default > svg {
+  fill: currentColor;
+}
+
+.dv-tabs-overflow-container {
+  background: var(--panel, #252526);
+  border: 1px solid var(--line, #3a3a3c);
+  border-radius: 6px;
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.25);
+  color: var(--text, #e6e6e6);
+  font-size: var(--dv-density-font);
+}
+
+.dv-tabs-overflow-container .dv-tab:not(:last-child) {
+  border-bottom: 1px solid var(--line, #3a3a3c);
+}
+
+.dv-tabs-overflow-container .dv-inactive-tab {
+  background: var(--panel, #252526);
+  color: var(--muted, #9aa0a6);
+}
+
+.dv-tabs-overflow-container .dv-tab:hover {
+  background: var(--hover, #333336);
+  color: var(--text, #e6e6e6);
+}
+
+.dv-tabs-overflow-container .dv-active-tab {
+  background: var(--accent-soft, rgba(78, 161, 255, 0.12));
+  color: var(--text, #e6e6e6);
+}
