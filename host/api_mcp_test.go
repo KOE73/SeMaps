@@ -2,6 +2,7 @@ package main
 
 import (
 	"encoding/json"
+	"net/http"
 	"net/http/httptest"
 	"os"
 	"path/filepath"
@@ -58,16 +59,27 @@ func TestMCPCallRecordsTheWire(t *testing.T) {
 	os.MkdirAll(p, 0o755)
 	os.WriteFile(filepath.Join(p, "project.json"), []byte(`{"id":"p"}`), 0o644)
 	os.WriteFile(filepath.Join(p, "entities.json"), []byte(`{"entities":[{"id":"e_a","name":"A","kind":"class"}]}`), 0o644)
-	api := &toolAPI{file: file, workspace: filepath.Join(dir, "ws")}
-
-	rec := httptest.NewRecorder()
+	models, err := newModelService(filepath.Join(dir, "ws"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	api := &toolAPI{file: file, workspace: filepath.Join(dir, "ws"), models: models}
+	mux := http.NewServeMux()
+	registerMCPHTTP(mux, project{Root: dir}, api.workspace, dir, models)
+	mux.HandleFunc("POST /api/mcp/call", api.callMCP)
+	srv := httptest.NewServer(mux)
+	defer srv.Close()
 	body := strings.NewReader(`{"name":"get_entity","arguments":{"id":"e_a"}}`)
-	api.callMCP(rec, httptest.NewRequest("POST", "/api/mcp/call", body))
-	if rec.Code != 200 {
-		t.Fatalf("%d %s", rec.Code, rec.Body)
+	response, err := srv.Client().Post(srv.URL+"/api/mcp/call", "application/json", body)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer response.Body.Close()
+	if response.StatusCode != 200 {
+		t.Fatalf("%d", response.StatusCode)
 	}
 	var res mcpCallResult
-	json.Unmarshal(rec.Body.Bytes(), &res)
+	json.NewDecoder(response.Body).Decode(&res)
 	if res.IsError || res.Error != "" || len(res.Messages) != 2 || res.Messages[0].Dir != "out" || res.Messages[1].Dir != "in" {
 		t.Fatalf("%+v", res)
 	}

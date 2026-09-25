@@ -177,26 +177,15 @@ func (api *toolAPI) callMCP(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "expected {name, arguments}", http.StatusBadRequest)
 		return
 	}
-	proj, err := loadProject(api.file)
-	if err != nil {
-		http.Error(w, err.Error(), http.StatusInternalServerError)
-		return
-	}
-	root, _ := filepath.Abs(proj.SourceRoot)
-	srv := (&mcpServer{proj: proj, workspace: api.workspace, sourceRoot: root}).server()
-	srv.AddReceivingMiddleware(callLog(proj.Root, nil)) // the sandbox's calls land in the same log
-
 	ctx := r.Context()
-	st, ct := mcp.NewInMemoryTransports()
-	ss, err := srv.Connect(ctx, st, nil)
-	if err != nil {
-		http.Error(w, err.Error(), http.StatusInternalServerError)
-		return
-	}
-	defer ss.Close()
 	var wire lockedBuffer
+	transport := &mcp.StreamableClientTransport{
+		Endpoint:             "http://" + r.Host + "/mcp",
+		HTTPClient:           &http.Client{Transport: bearerTransport{key: api.models.key, next: http.DefaultTransport}},
+		DisableStandaloneSSE: true,
+	}
 	cs, err := mcp.NewClient(&mcp.Implementation{Name: "semaps-sandbox"}, nil).
-		Connect(ctx, &mcp.LoggingTransport{Transport: ct, Writer: &wire}, nil)
+		Connect(ctx, &mcp.LoggingTransport{Transport: transport, Writer: &wire}, nil)
 	if err != nil {
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 		return

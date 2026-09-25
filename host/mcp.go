@@ -10,6 +10,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"net/url"
 	"os"
 	"path/filepath"
 	"strings"
@@ -24,17 +25,7 @@ type mcpServer struct {
 	workspace  string
 	sourceRoot string
 	project    string // --project; "" — the only one
-}
-
-func runMCP(proj project, workspace, sourceRoot, projectID string) int {
-	s := &mcpServer{proj: proj, workspace: workspace, sourceRoot: sourceRoot, project: projectID}
-	srv := s.server()
-	srv.AddReceivingMiddleware(callLog(proj.Root, os.Stderr))
-	if err := srv.Run(context.Background(), &mcp.StdioTransport{}); err != nil {
-		fmt.Fprintf(os.Stderr, "semaps mcp: %v\n", err)
-		return 1
-	}
-	return 0
+	models     *modelService
 }
 
 // Every structured answer is a JSON object: MCP clients (Claude Code among
@@ -130,6 +121,18 @@ type placeIn struct {
 	RequestedByHuman bool             `json:"requestedByHuman" jsonschema:"true only when a human asked for this layout in so many words"`
 }
 
+type saveIn struct {
+	Project          string `json:"project,omitempty"`
+	RequestedByHuman bool   `json:"requestedByHuman"`
+}
+
+type discardIn struct {
+	Project          string `json:"project,omitempty"`
+	Scope            string `json:"scope" jsonschema:"registry, view or all"`
+	View             string `json:"view,omitempty"`
+	RequestedByHuman bool   `json:"requestedByHuman"`
+}
+
 func (s *mcpServer) server() *mcp.Server {
 	srv := mcp.NewServer(&mcp.Implementation{Name: "semaps", Version: "1"}, &mcp.ServerOptions{
 		Instructions: "SeMaps registry of this repository. Read with list_*/get_*/find_*; write only through these tools. " +
@@ -163,7 +166,43 @@ func (s *mcpServer) server() *mcp.Server {
 	mcp.AddTool(srv, write("extract", "Run the extractors of the .semaps file; returns run ids."), s.extract)
 	mcp.AddTool(srv, write("sync", "Reconcile the registry with the code (extracts first unless run is given)."), s.sync)
 	mcp.AddTool(srv, write("place_entities", "Put entities on a view. Only when a human asked for it: requestedByHuman."), s.placeEntities)
+	mcp.AddTool(srv, write("save", "Save all unsaved project changes only when a human explicitly requested it."), s.save)
+	mcp.AddTool(srv, write("discard", "Discard unsaved changes only when a human explicitly requested it."), s.discard)
 	return srv
+}
+
+func (s *mcpServer) save(_ context.Context, _ *mcp.CallToolRequest, in saveIn) (*mcp.CallToolResult, any, error) {
+	if !in.RequestedByHuman {
+		return nil, nil, errors.New("save requires requestedByHuman: true")
+	}
+	m, err := s.model(in.Project)
+	if err != nil {
+		return nil, nil, err
+	}
+	if err := m.Save(); err != nil {
+		return nil, nil, err
+	}
+	if s.models != nil {
+		s.models.publish(m.ProjectID(), modelEvent{Author: "agent", Changed: []core.Ref{}, Dirty: m.Dirty()})
+	}
+	return done("project saved")
+}
+
+func (s *mcpServer) discard(_ context.Context, _ *mcp.CallToolRequest, in discardIn) (*mcp.CallToolResult, any, error) {
+	if !in.RequestedByHuman {
+		return nil, nil, errors.New("discard requires requestedByHuman: true")
+	}
+	m, err := s.model(in.Project)
+	if err != nil {
+		return nil, nil, err
+	}
+	if err := m.Discard(in.Scope, in.View); err != nil {
+		return nil, nil, err
+	}
+	if s.models != nil {
+		s.models.publish(m.ProjectID(), modelEvent{Author: "agent", Changed: []core.Ref{}, Dirty: m.Dirty()})
+	}
+	return done("unsaved changes discarded")
 }
 
 func (s *mcpServer) pick(p string) string {
@@ -206,7 +245,11 @@ type record struct {
 func (r record) str(k string) string { s, _ := r.fields[k].(string); return s }
 
 func (s *mcpServer) records(project, file string) ([]record, error) {
-	raws, err := core.Records(s.workspace, s.pick(project), file)
+	m, err := s.model(project)
+	if err != nil {
+		return nil, err
+	}
+	raws, err := m.Records(file)
 	if err != nil {
 		return nil, err
 	}
@@ -216,6 +259,57 @@ func (s *mcpServer) records(project, file string) ([]record, error) {
 		_ = json.Unmarshal(raw, &out[i].fields)
 	}
 	return out, nil
+}
+
+func (s *mcpServer) model(project string) (*core.Model, error) {
+	if s.models == nil {
+		return core.LoadModel(s.workspace, s.pick(project))
+	}
+	id := s.pick(project)
+	if id == "" {
+		dir, err := core.ProjectDir(s.workspace, "")
+		if err != nil {
+			return nil, err
+		}
+		id = filepath.Base(dir)
+	}
+	return s.models.get(id)
+}
+
+func (s *mcpServer) changed(project string, m *core.Model) {
+	if s.models == nil {
+		return
+	}
+	dirty := m.Dirty()
+	refs := append([]core.Ref{}, dirty.Registry...)
+	for _, viewRefs := range dirty.Views {
+		refs = append(refs, viewRefs...)
+	}
+	s.models.publish(m.ProjectID(), modelEvent{Author: "agent", Changed: refs, Dirty: dirty})
+}
+
+func (s *mcpServer) reviewLink(m *core.Model, id string) string {
+	for _, p := range core.Index(s.workspace).Projects {
+		if p.ID != m.ProjectID() {
+			continue
+		}
+		for _, v := range p.Views {
+			if v.ID == id {
+				return "/app/#" + v.ID
+			}
+			b, err := m.View(v.ID)
+			if err != nil {
+				continue
+			}
+			if strings.Contains(string(b), `"`+id+`"`) {
+				return "/app/#" + v.ID + "?highlight=" + url.QueryEscape(id)
+			}
+		}
+		if len(p.Views) > 0 {
+			return "/app/#" + p.Views[0].ID + "?highlight=" + url.QueryEscape(id)
+		}
+	}
+	return "/app/"
 }
 
 func raws(list []record) []json.RawMessage {
@@ -313,7 +407,11 @@ func (s *mcpServer) getRelationTypes(_ context.Context, _ *mcp.CallToolRequest, 
 }
 
 func (s *mcpServer) getText(_ context.Context, _ *mcp.CallToolRequest, in textIn) (*mcp.CallToolResult, any, error) {
-	entry, err := core.Text(s.workspace, s.pick(in.Project), in.Lang, in.Key)
+	m, err := s.model(in.Project)
+	if err != nil {
+		return nil, nil, err
+	}
+	entry, err := m.Text(in.Lang, in.Key)
 	if err != nil {
 		return nil, nil, err
 	}
@@ -336,47 +434,77 @@ func (s *mcpServer) doctor(_ context.Context, _ *mcp.CallToolRequest, _ struct{}
 // ------------------------------------------------------------------ writing
 
 func (s *mcpServer) setText(_ context.Context, _ *mcp.CallToolRequest, in setTextIn) (*mcp.CallToolResult, any, error) {
-	if err := core.SetText(s.workspace, s.pick(in.Project), in.Lang, in.Key, in.Field, in.Value); err != nil {
-		return nil, nil, err
-	}
-	return done("%s.%s (%s) written", in.Key, in.Field, in.Lang)
-}
-
-func (s *mcpServer) addRelation(_ context.Context, _ *mcp.CallToolRequest, in addRelationIn) (*mcp.CallToolResult, any, error) {
-	id, err := core.AddRelation(s.workspace, s.pick(in.Project), in.From, in.To, in.Type)
+	m, err := s.model(in.Project)
 	if err != nil {
 		return nil, nil, err
 	}
-	return done("%s added", id)
+	if err := m.SetText(in.Lang, in.Key, in.Field, in.Value, "agent"); err != nil {
+		return nil, nil, err
+	}
+	s.changed(in.Project, m)
+	return done("%s.%s (%s) changed, not saved; review and Save: %s", in.Key, in.Field, in.Lang, s.reviewLink(m, in.Key))
+}
+
+func (s *mcpServer) addRelation(_ context.Context, _ *mcp.CallToolRequest, in addRelationIn) (*mcp.CallToolResult, any, error) {
+	m, err := s.model(in.Project)
+	if err != nil {
+		return nil, nil, err
+	}
+	id, err := m.AddRelation(in.From, in.To, in.Type, "agent")
+	if err != nil {
+		return nil, nil, err
+	}
+	s.changed(in.Project, m)
+	return done("%s added, not saved; review and Save: %s", id, s.reviewLink(m, id))
 }
 
 func (s *mcpServer) addRelationType(_ context.Context, _ *mcp.CallToolRequest, in addTypeIn) (*mcp.CallToolResult, any, error) {
-	if err := core.AddRelationType(s.workspace, s.pick(in.Project), in.ID, in.Visibility, in.StyleID); err != nil {
+	m, err := s.model(in.Project)
+	if err != nil {
 		return nil, nil, err
 	}
-	return done("type %s added; give it a name: set_text key rt_%s", in.ID, in.ID)
+	if err := m.AddRelationType(in.ID, in.Visibility, in.StyleID, "agent"); err != nil {
+		return nil, nil, err
+	}
+	s.changed(in.Project, m)
+	return done("type %s added, not saved; give it a name: set_text key rt_%s; review: %s", in.ID, in.ID, s.reviewLink(m, "rt_"+in.ID))
 }
 
 func (s *mcpServer) setRelationVisible(_ context.Context, _ *mcp.CallToolRequest, in visibleIn) (*mcp.CallToolResult, any, error) {
-	if err := core.SetRelationVisible(s.workspace, s.pick(in.Project), in.View, in.Relation, in.Visible); err != nil {
+	m, err := s.model(in.Project)
+	if err != nil {
 		return nil, nil, err
 	}
-	return done("%s on %s: visible=%v", in.Relation, in.View, in.Visible)
+	if err := m.SetRelationVisible(in.View, in.Relation, in.Visible, "agent"); err != nil {
+		return nil, nil, err
+	}
+	s.changed(in.Project, m)
+	return done("%s on %s: visible=%v, not saved; review and Save: %s", in.Relation, in.View, in.Visible, s.reviewLink(m, in.Relation))
 }
 
 func (s *mcpServer) confirmRename(_ context.Context, _ *mcp.CallToolRequest, in renameIn) (*mcp.CallToolResult, any, error) {
 	p := s.pick(in.Project)
 	switch {
 	case in.Entity != "" && in.Relation == "":
-		if err := core.ConfirmEntityRename(s.workspace, p, in.Entity, in.Symbol); err != nil {
+		m, err := s.model(p)
+		if err != nil {
 			return nil, nil, err
 		}
-		return done("%s takes symbol %s; run sync again", in.Entity, in.Symbol)
+		if err := m.ConfirmEntityRename(in.Entity, in.Symbol, "agent"); err != nil {
+			return nil, nil, err
+		}
+		s.changed(p, m)
+		return done("%s takes symbol %s, not saved; run sync again; review: %s", in.Entity, in.Symbol, s.reviewLink(m, in.Entity))
 	case in.Relation != "" && in.Entity == "":
-		if err := core.ConfirmRelationRename(s.workspace, p, in.Relation, in.Member); err != nil {
+		m, err := s.model(p)
+		if err != nil {
 			return nil, nil, err
 		}
-		return done("%s takes member %s; run sync again", in.Relation, in.Member)
+		if err := m.ConfirmRelationRename(in.Relation, in.Member, "agent"); err != nil {
+			return nil, nil, err
+		}
+		s.changed(p, m)
+		return done("%s takes member %s, not saved; run sync again; review: %s", in.Relation, in.Member, s.reviewLink(m, in.Relation))
 	}
 	return nil, nil, errors.New("pass entity+symbol or relation+member")
 }
@@ -437,13 +565,23 @@ func (s *mcpServer) reconcile(in syncIn, dryRun bool) (*mcp.CallToolResult, any,
 	var b strings.Builder
 	var reports []*core.SyncReport
 	for _, info := range runs {
-		rep, err := store.syncRun(s.workspace, info, core.SyncOptions{DryRun: dryRun, NoRenames: in.NoRenames})
+		m, err := s.model(info.Project)
+		if err != nil {
+			return nil, nil, err
+		}
+		rep, err := store.syncRunModel(m, info, core.SyncOptions{DryRun: dryRun, NoRenames: in.NoRenames})
 		if err != nil {
 			return nil, nil, err
 		}
 		fmt.Fprintf(&b, "== %s → project %s (run %s)\n", info.Extractor, info.Project, info.ID)
 		rep.Print(&b)
 		reports = append(reports, rep)
+		if !dryRun && len(rep.Written) > 0 {
+			s.changed(info.Project, m)
+		}
+	}
+	if !dryRun {
+		b.WriteString("Changes are not saved; review in the editor and Save.\n")
 	}
 	return &mcp.CallToolResult{Content: []mcp.Content{&mcp.TextContent{Text: b.String()}}}, map[string]any{"reports": reports}, nil
 }
@@ -457,10 +595,15 @@ func (s *mcpServer) sync(_ context.Context, _ *mcp.CallToolRequest, in syncIn) (
 }
 
 func (s *mcpServer) placeEntities(_ context.Context, _ *mcp.CallToolRequest, in placeIn) (*mcp.CallToolResult, any, error) {
-	if err := core.PlaceEntities(s.workspace, s.pick(in.Project), in.View, in.Entities, in.RequestedByHuman); err != nil {
+	m, err := s.model(in.Project)
+	if err != nil {
 		return nil, nil, err
 	}
-	return done("%d placed on %s", len(in.Entities), in.View)
+	if err := m.PlaceEntities(in.View, in.Entities, in.RequestedByHuman, "agent"); err != nil {
+		return nil, nil, err
+	}
+	s.changed(in.Project, m)
+	return done("%d placed on %s, not saved; review and Save: %s", len(in.Entities), in.View, s.reviewLink(m, in.View))
 }
 
 func orInt(n, def int) int {

@@ -24,6 +24,9 @@ An agent reads and writes the registry through MCP tools (API.md §6), never par
 3. **Use the tools**: `list_projects`, `get_entity`, `set_text`, `add_relation`, `sync_preview`, `sync`, etc.
    The agent does not read `entities.json` or write files by hand — all changes go through tools,
    which enforce rules (id generation, provenance, deletion prevention, view restrictions).
+   `semaps mcp` starts the host without a browser when needed and connects to its shared working
+   model. Tool edits appear in the editor immediately but remain unsaved until the human reviews
+   them and presses «Сохранить». Save the current project before assigning a new task to an agent.
 
 For the first model, the steps below still apply (project file, workspace folder, entities.json),
 but the agent uses tools instead of hand-editing JSON.
@@ -260,8 +263,8 @@ file of the project (`views/…`, `project.json`, `entities.json`, `relations.js
   nodes (CONTRACT §8.2, §9.6): create the view empty and let the human place the nodes. When the
   human explicitly asks for help with a view ("spread these subclasses into frames by meaning"),
   do what was asked and nothing more. [LAYOUT.md](LAYOUT.md) explains how a view works — sizes,
-  frames, lines — and the two things that are not optional: the view must not be open unsaved in
-  the editor, and geometry outside the request stays put.
+  frames, lines — and the two things that are not optional: the shared working model must be
+  reviewed and saved by the human, and geometry outside the request stays put.
 - **Judge `semaps check` by its exit code**: 0 is clean, 1 means findings (listed on stdout).
   Do not match the output text.
 - **A stale `semaps` binary in `PATH`** (for example `~/go/bin/semaps` from an older `go install`)

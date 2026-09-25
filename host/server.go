@@ -334,7 +334,7 @@ func main() {
 		os.Exit(code)
 	}
 	if mcpMode {
-		os.Exit(runMCP(proj, absWorkspace, absRoot, sync.project))
+		os.Exit(runMCPProxy(proj, absWorkspace, sync.project))
 	}
 	if syncMode {
 		fmt.Printf("  workspace:   %s\n\n", absWorkspace)
@@ -416,6 +416,7 @@ func main() {
 	})))
 	http.Handle("/", noCacheHandler(workspaceHandler(absWorkspace, defaultsFS)))
 	models.register(http.DefaultServeMux)
+	registerMCPHTTP(http.DefaultServeMux, proj, absWorkspace, absRoot, models)
 	registerToolAPI(http.DefaultServeMux, proj.File, absWorkspace, models)
 	// Short addresses of the tool pages (ADR_20260924-3 §4).
 	for short, page := range map[string]string{"/setup": "/app/#project", "/extract": "/app/#extract"} {

@@ -305,7 +305,7 @@ The command line of an extractor cannot be set through the API — only in the f
 | `/api/runs/{id}/sync` | `POST` | `{dryRun, noRenames}` → `{report, exitCode, empty}`; the report is `core.SyncReport`. Applies the facts of that run to the working model (unsaved), never extracts again |
 | `/api/mcp` | `GET` | → `{file, exists, configured, entry, onPath, snippet, tools: [{name, description, readOnly, inputSchema}], error?}`: does `.mcp.json` at the project root start `semaps mcp` (§6), and the tools it offers |
 | `/api/mcp/install` | `POST` | → the same, after adding the `semaps` entry to `.mcp.json` (created when missing; other servers and keys stay; a file that does not parse → `409`) |
-| `/api/mcp/call` | `POST` | `{name, arguments}` → `{messages: [{dir: out \| in, message}], ms, isError, error?}`: the editor's sandbox. Runs one tool of `semaps mcp` on this project in a fresh in-memory session, as an agent would; `messages` are the JSON-RPC call and answer as they went, the handshake left out. The call is real: a writing tool writes |
+| `/api/mcp/call` | `POST` | `{name, arguments}` → `{messages: [{dir: out \| in, message}], ms, isError, error?}`: the editor's sandbox. Runs one tool through the host's `/mcp` endpoint; `messages` are the JSON-RPC call and answer, with the handshake left out. A writing tool changes the shared working model and remains unsaved. |
 
 `Extractor`: `{id, language, project, root, include, exclude, edges, command?, tool: {language, found,
 source?: command|bundled|path, where?, runtime?, problem?}, lastRun?: Run}`.
@@ -318,11 +318,16 @@ The tool pages are modes of the one editor page: `/app/#extract`, `/app/#project
 
 ## 6. MCP: `semaps mcp`
 
-`semaps mcp [--project <id>] [dir | file.semaps]` serves the registry as MCP tools over stdio
-(official Go SDK, [`ADR_20260924-5`](adr/ADR_20260924-5_host_mcp-server.md)). Roots are found as
-for `semaps` without arguments: a `.semaps` file upward from the current directory. stdout is the
-protocol; the project banner and extractor logs go to stderr. `--project` picks the model project
-when the workspace has several; every tool also takes `project`.
+`semaps mcp [--project <id>] [dir | file.semaps]` provides MCP over stdio as a proxy to the
+running host's Streamable HTTP endpoint `/mcp` (official Go SDK,
+[`ADR_20260924-5`](adr/ADR_20260924-5_host_mcp-server.md)). It reads the host port and key from
+`<project root>/.semaps/host.json`. When the host is absent, it starts the same binary with
+`--here --no-browser`, waits for the endpoint, then connects. Roots are found from a `.semaps`
+file upward from the current directory. stdout is only the protocol; diagnostics go to stderr.
+`--project` supplies a default project when the workspace has several. The host also serves
+`/mcp` directly, requiring the same bearer key as other writes; the editor sandbox uses it too.
+All MCP reads and writes use the host's live `core.Model`. Writes are journaled and visible to
+subscribers; contract files change only on `save`.
 
 The tools are thin: every rule of writing is a function of `core/` (`core/edit.go`), and a broken
 rule comes back as a tool error (`isError: true`) whose text names the rule. Nothing was written
@@ -336,14 +341,14 @@ then.
 - **Nothing is deleted**: there is no tool for it.
 - Geometry of a view is written only by `place_entities` with `requestedByHuman: true`, and an
   entity already on the view is refused, not moved (CONTRACT §8.2 p. 3).
-- Files keep every key they had, in the order they had it.
+- Files keep every key they had, in the order they had it. Tool edits are unsaved until `save`.
 
 Every structured answer (`structuredContent`) is a JSON object, lists included: clients
 reject anything else.
 
 **Log.** Every tool call — the tool, its arguments, time, the error if any — is a JSON line in
 `<project root>/.semaps/logs/mcp-<date>.jsonl` (kept 14 days; the folder carries its own
-`.gitignore`), and a short line on stderr, which clients keep in their server logs. Calls from the
+  `.gitignore`), and a short line on stderr, which clients keep in their server logs. Calls from the
 editor's sandbox land in the same file.
 
 **Reading**
@@ -372,6 +377,8 @@ editor's sandbox land in the same file.
 | `extract` | `extractor?` | runs the extractors of the `.semaps` file one by one → `{runs: [{run, extractor, project}]}` |
 | `sync` | `extractor?`, `run?`, `noRenames?` | extracts (or takes the facts of `run`) and reconciles; the text answer is the sync report, the structured one `{reports: [core.SyncReport]}` |
 | `place_entities` | `view`, `entities: [{entity, zone?, x, y, width?, height?}]`, `requestedByHuman` | puts entities on a view |
+| `save` | `project?`, `requestedByHuman: true` | saves all dirty project files and clears the journal; refused without explicit human request |
+| `discard` | `project?`, `scope: registry \| view \| all`, `view?`, `requestedByHuman: true` | drops the requested unsaved changes; refused without explicit human request |
 
 **Entry** in the consuming project, `.mcp.json` at its root:
 ```json

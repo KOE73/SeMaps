@@ -112,8 +112,13 @@ func TestMCPWritesGoThroughCore(t *testing.T) {
 	}
 	call(t, cs, "confirm_rename", map[string]any{"entity": "e_a", "symbol": "N.A2"})
 	data, _ := os.ReadFile(filepath.Join(ws, "projects", "p", "entities.json"))
+	if strings.Contains(string(data), "N.A2") {
+		t.Fatal("agent edit bypassed Save")
+	}
+	call(t, cs, "save", map[string]any{"requestedByHuman": true})
+	data, _ = os.ReadFile(filepath.Join(ws, "projects", "p", "entities.json"))
 	if !strings.Contains(string(data), "N.A2") {
-		t.Fatal("rename not written")
+		t.Fatal("rename not saved")
 	}
 }
 

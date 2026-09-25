@@ -10,9 +10,10 @@ Without such a request an agent does not write geometry at all
 
 ## Two things that are not optional
 
-- **The editor and you write the same file.** Saving from the editor rewrites the whole view and
-  wipes what you wrote; your write wipes unsaved work in the editor. So the view has to be saved
-  (or closed) before you write, and reloaded after.
+- **The editor and the agent share one working model.** An accepted geometry operation appears in
+  open editor windows before the contract files are saved. Save writes that working state to disk;
+  the human reviews and saves the agent's changes. Keep the scope of each operation within the
+  requested geometry.
 - **Geometry you were not asked about stays as it is.** Existing zones and nodes keep their
   coordinates unless the request covers them.
 
