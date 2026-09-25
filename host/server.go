@@ -603,7 +603,7 @@ func runSync(workspace, factsPath string, opt core.SyncOptions) int {
 		fmt.Fprintf(os.Stderr, "semaps sync: %v\n", err)
 		return 1
 	}
-	report, err := core.Sync(workspace, facts, opt)
+	report, err := core.SyncWorkspace(workspace, facts, opt)
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "semaps sync: %v\n", err)
 		var usage *core.UsageError

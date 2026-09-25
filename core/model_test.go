@@ -93,3 +93,35 @@ func TestModelAtomicAndDiscardScopes(t *testing.T) {
 		t.Fatalf("bad all discard: %+v", m.Dirty())
 	}
 }
+
+func TestModelEditsStayUnsavedUntilSave(t *testing.T) {
+	ws := editWorkspace(t)
+	file := filepath.Join(ws, "projects", "p", "relations.json")
+	before, err := os.ReadFile(file)
+	if err != nil {
+		t.Fatal(err)
+	}
+	m, err := LoadModel(ws, "p")
+	if err != nil {
+		t.Fatal(err)
+	}
+	id, err := m.AddRelation("e_a", "e_x", "call", "agent")
+	if err != nil || id != "r_a_x_call" {
+		t.Fatalf("%s: %v", id, err)
+	}
+	after, err := os.ReadFile(file)
+	if err != nil || !bytes.Equal(before, after) {
+		t.Fatal("edit wrote contract before Save")
+	}
+	items, err := m.Records("relations.json")
+	if err != nil || len(items) != 2 {
+		t.Fatalf("working model not updated: %v", err)
+	}
+	if err := m.Save(); err != nil {
+		t.Fatal(err)
+	}
+	after, err = os.ReadFile(file)
+	if err != nil || bytes.Equal(before, after) {
+		t.Fatal("Save did not write contract")
+	}
+}

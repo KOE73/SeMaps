@@ -86,7 +86,7 @@ func find(list []map[string]any, id string) map[string]any {
 
 func sync(t *testing.T, ws string, f *Facts, opt SyncOptions) *SyncReport {
 	t.Helper()
-	rep, err := Sync(ws, f, opt)
+	rep, err := SyncWorkspace(ws, f, opt)
 	if err != nil {
 		t.Fatalf("sync: %v", err)
 	}
@@ -532,7 +532,7 @@ func TestSyncModuleIDsFromFullName(t *testing.T) {
 func TestSyncNeedsProjectWhenSeveral(t *testing.T) {
 	ws, _ := workspace(t, `{"id":"p","contractVersion":3}`, "", "", "")
 	writeFile(t, filepath.Join(ws, "projects", "q", "project.json"), `{"id":"q","contractVersion":3}`)
-	_, err := Sync(ws, facts(t, `{"language":"go","root":".","symbols":[],"edges":[]}`), SyncOptions{})
+	_, err := SyncWorkspace(ws, facts(t, `{"language":"go","root":".","symbols":[],"edges":[]}`), SyncOptions{})
 	var usage *UsageError
 	if !errors.As(err, &usage) {
 		t.Fatalf("want UsageError, got %v", err)

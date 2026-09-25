@@ -235,5 +235,5 @@ func (s *runStore) syncRun(workspace string, info *runInfo, opt core.SyncOptions
 		return nil, err
 	}
 	opt.Project = info.Project
-	return core.Sync(workspace, facts, opt)
+	return core.SyncWorkspace(workspace, facts, opt)
 }

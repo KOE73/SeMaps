@@ -129,16 +129,23 @@ func (r *SyncReport) Print(w io.Writer) {
 // Which ones a view shows is the view's decision (CONTRACT.md §8.5).
 var structuralTypes = []string{"extends", "implements", "contains", "depends"}
 
-// Sync reconciles <workspace>/projects/<project> with facts.
-func Sync(workspace string, facts *Facts, opt SyncOptions) (*SyncReport, error) {
+// Sync reconciles facts into the working model. Persisting the contract is a
+// separate, project-wide Save decision.
+func Sync(model *Model, facts *Facts, opt SyncOptions) (*SyncReport, error) {
 	if err := facts.Validate(); err != nil {
 		return nil, err
 	}
-	project, err := pickProject(workspace, opt.Project)
-	if err != nil {
-		return nil, err
+	if model == nil {
+		return nil, errors.New("nil model")
 	}
-	dir := filepath.Join(workspace, "projects", project)
+	if opt.Project != "" && opt.Project != model.project {
+		return nil, &UsageError{fmt.Sprintf("model project %q differs from %q", model.project, opt.Project)}
+	}
+	model.mu.Lock()
+	base := model.copy()
+	model.mu.Unlock()
+	working := base.copy()
+	project, dir := model.project, model.dir
 	var manifest struct {
 		Sources struct {
 			Include []string `json:"include"`
@@ -176,23 +183,7 @@ func Sync(workspace string, facts *Facts, opt SyncOptions) (*SyncReport, error) 
 		covered[k] = true
 	}
 
-	withVersion := func() *object {
-		o := newObject()
-		o.set("contractVersion", 3)
-		return o
-	}
-	ents, err := loadRegistry(dir, "entities.json", "entities", newObject)
-	if err != nil {
-		return nil, err
-	}
-	rels, err := loadRegistry(dir, "relations.json", "relations", withVersion)
-	if err != nil {
-		return nil, err
-	}
-	types, err := loadRegistry(dir, "relation-types.json", "relationTypes", withVersion)
-	if err != nil {
-		return nil, err
-	}
+	ents, rels, types := working.registries["entity"], working.registries["relation"], working.registries["relationType"]
 
 	// ------------------------------------------------ registry must be sane
 	taken := map[string]bool{}   // every entity id, any origin
@@ -605,16 +596,45 @@ func Sync(workspace string, facts *Facts, opt SyncOptions) (*SyncReport, error) 
 	if opt.DryRun {
 		return rep, nil
 	}
-	for _, reg := range []*registry{ents, rels, types} {
+	var ops []Op
+	for _, kind := range []string{"entity", "relation", "relationType"} {
+		reg := working.registries[kind]
 		if !reg.dirty {
 			continue
 		}
-		if err := reg.save(); err != nil {
-			return rep, err
+		previous := map[string][]byte{}
+		for _, item := range base.registries[kind].items {
+			previous[item.str("id")], _ = item.MarshalJSON()
+		}
+		for _, item := range reg.items {
+			value, _ := item.MarshalJSON()
+			if !bytes.Equal(previous[item.str("id")], value) {
+				ops = append(ops, Op{Kind: kind, ID: item.str("id"), Value: value})
+			}
 		}
 		rep.Written = append(rep.Written, path.Join("projects", project, reg.name))
 	}
+	if _, err := model.Apply(ops, "sync"); err != nil {
+		return rep, err
+	}
 	return rep, nil
+}
+
+// SyncWorkspace is the non-host CLI path: load, reconcile, and save. Hosts use
+// Sync on their already loaded model and leave Save to the human.
+func SyncWorkspace(workspace string, facts *Facts, opt SyncOptions) (*SyncReport, error) {
+	m, err := LoadModel(workspace, opt.Project)
+	if err != nil {
+		return nil, err
+	}
+	rep, err := Sync(m, facts, opt)
+	if err != nil || opt.DryRun || rep.ExitCode() != 0 && len(rep.Broken) > 0 {
+		return rep, err
+	}
+	if len(rep.Written) > 0 {
+		err = m.Save()
+	}
+	return rep, err
 }
 
 // managed: an entity sync answers for — `origin: code`, or adopted earlier.
