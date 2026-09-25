@@ -188,13 +188,13 @@ export class Inspector {
       class: "field-row",
       attrs: {
         style:
-          "background: var(--panel-alt); padding: 8px 12px; border-radius: 8px; border: 1px solid var(--line); margin-bottom: 8px; justify-content: space-between; align-items: center;",
+          "background: var(--panel-alt); padding: calc(8px * var(--ui-space)) calc(12px * var(--ui-space)); border-radius: 8px; border: 1px solid var(--line); margin-bottom: calc(8px * var(--ui-space)); justify-content: space-between; align-items: center;",
       },
     }, [
-      el("span", { text: i18n.d.panels.properties.edgeDisplayOnCanvas, attrs: { style: "font-weight: 600; font-size: 12px;" } }),
+      el("span", { text: i18n.d.panels.properties.edgeDisplayOnCanvas, attrs: { style: "font-weight: 600; font-size: calc(12px * var(--ui-text));" } }),
       el("div", {
         class: "pill-group",
-        attrs: { style: "display: flex; gap: 4px;" },
+        attrs: { style: "display: flex; gap: calc(4px * var(--ui-space));" },
       }, [
         el("button", {
           class: `btn btn-small ${isVisibleOnCanvas ? "btn-primary" : ""}`,
@@ -227,7 +227,7 @@ export class Inspector {
         el("span", { class: "mono coords", text: `${fromEl?.label || edge.from} ➔ ${toEl?.label || edge.to}` }),
       ]),
       el("label", { class: "field" }, [
-        el("div", { attrs: { style: "display: flex; align-items: center; justify-content: space-between; margin-bottom: 2px;" } }, [
+        el("div", { attrs: { style: "display: flex; align-items: center; justify-content: space-between; margin-bottom: calc(2px * var(--ui-space));" } }, [
           el("span", { class: "field-label", text: i18n.d.panels.properties.edgeLabelTitle }),
           el("span", { class: "chip chip-lang", text: (this.host.dataLang || "ru").toUpperCase() }),
         ]),
@@ -308,7 +308,7 @@ export class Inspector {
       el("div", { class: "field" }, [
         el("button", {
           class: "btn full",
-          attrs: { style: "display: flex; align-items: center; justify-content: center; gap: 6px;" },
+          attrs: { style: "display: flex; align-items: center; justify-content: center; gap: calc(6px * var(--ui-space));" },
           text: `📄 ${i18n.d.dialogs.docEditor.openEditorBtn}`,
           on: {
             click: () => this.host.openDocEditor(edge.id, "edge"),
@@ -363,7 +363,7 @@ export class Inspector {
   private labelField(element: DiagramElement): HTMLElement {
     const lang = (this.host.dataLang || "ru").toUpperCase();
     return el("label", { class: "field" }, [
-      el("div", { attrs: { style: "display: flex; align-items: center; justify-content: space-between; margin-bottom: 2px;" } }, [
+      el("div", { attrs: { style: "display: flex; align-items: center; justify-content: space-between; margin-bottom: calc(2px * var(--ui-space));" } }, [
         el("span", { class: "field-label", text: i18n.d.panels.properties.labelTitle }),
         el("span", { class: "chip chip-lang", text: lang }),
       ]),
@@ -650,7 +650,7 @@ export class Inspector {
 
     return el("div", { class: "field-group" }, [
       el("label", { class: "field" }, [
-        el("div", { attrs: { style: "display: flex; align-items: center; justify-content: space-between; margin-bottom: 2px;" } }, [
+        el("div", { attrs: { style: "display: flex; align-items: center; justify-content: space-between; margin-bottom: calc(2px * var(--ui-space));" } }, [
           el("span", { class: "field-label", text: i18n.d.panels.properties.descriptionTitle }),
           el("span", { class: "chip chip-lang", text: langBadge }),
         ]),
@@ -669,10 +669,10 @@ export class Inspector {
           },
         }),
       ]),
-      el("div", { class: "field", attrs: { style: "margin-top: 4px;" } }, [
+      el("div", { class: "field", attrs: { style: "margin-top: calc(4px * var(--ui-space));" } }, [
         el("button", {
           class: `btn full ${hasDoc ? "btn-secondary" : ""}`,
-          attrs: { style: "display: flex; align-items: center; justify-content: center; gap: 6px;" },
+          attrs: { style: "display: flex; align-items: center; justify-content: center; gap: calc(6px * var(--ui-space));" },
           text: `📄 ${i18n.d.dialogs.docEditor.openEditorBtn}${hasDoc ? " (✓)" : ""}`,
           on: {
             click: () => this.host.openDocEditor(element.id, isContainer(element) ? "zone" : "node"),
@@ -689,7 +689,7 @@ export class Inspector {
 
     return el("div", { class: "field" }, [
       el("span", { class: "field-label", text: i18n.d.panels.properties.codeRefTitle }),
-      el("div", { attrs: { style: "display: flex; gap: 6px; align-items: center;" } }, [
+      el("div", { attrs: { style: "display: flex; gap: calc(6px * var(--ui-space)); align-items: center;" } }, [
         el("input", {
           class: "mono input-code",
           attrs: { style: "flex: 1; min-width: 0;" },
@@ -710,7 +710,7 @@ export class Inspector {
               class: "btn btn-secondary",
               title: "Просмотреть исходный код (без сохранения)",
               text: "💻",
-              attrs: { style: "padding: 4px 8px; flex-shrink: 0;" },
+              attrs: { style: "padding: calc(4px * var(--ui-space)) calc(8px * var(--ui-space)); flex-shrink: 0;" },
               on: {
                 click: () => this.host.openCodeViewer?.(value, element.label),
               },

@@ -1522,7 +1522,7 @@ export class DiagramEditor implements InspectorHost, StylePanelHost, DiagramEdit
       editor = el("textarea", {
         attrs: {
           spellcheck: "false",
-          style: "width: 100%; height: 360px; font-family: monospace; font-size: 12px; background: var(--bg, #1a1a1a); color: var(--text, #fff); border: 1px solid var(--border, #3a3a3c); border-radius: 4px; padding: 8px; resize: vertical; box-sizing: border-box;",
+          style: "width: 100%; height: 360px; font-family: monospace; font-size: calc(12px * var(--ui-text)); background: var(--bg, #1a1a1a); color: var(--text, #fff); border: 1px solid var(--border, #3a3a3c); border-radius: 4px; padding: calc(8px * var(--ui-space)); resize: vertical; box-sizing: border-box;",
         },
       }) as HTMLTextAreaElement;
       this.slots.set("json-text", editor);
@@ -1533,12 +1533,12 @@ export class DiagramEditor implements InspectorHost, StylePanelHost, DiagramEdit
 
       modal = el("div", { class: "modal", attrs: { hidden: "true" } }, [
         el("div", { class: "modal-card", attrs: { style: "width: 600px; max-width: 90vw;" } }, [
-          el("div", { class: "modal-head", attrs: { style: "display: flex; justify-content: space-between; align-items: center; padding: 10px 14px; border-bottom: 1px solid var(--border, #3a3a3c);" } }, [
-            el("h3", { text: "Модель диаграммы (JSON)", attrs: { style: "margin: 0; font-size: 14px;" } }),
+          el("div", { class: "modal-head", attrs: { style: "display: flex; justify-content: space-between; align-items: center; padding: calc(10px * var(--ui-space)) calc(14px * var(--ui-space)); border-bottom: 1px solid var(--border, #3a3a3c);" } }, [
+            el("h3", { text: "Модель диаграммы (JSON)", attrs: { style: "margin: 0; font-size: calc(14px * var(--ui-text));" } }),
             closeBtn,
           ]),
-          el("div", { class: "modal-body", attrs: { style: "padding: 14px;" } }, [editor]),
-          el("div", { class: "modal-foot", attrs: { style: "display: flex; justify-content: flex-end; gap: 8px; padding: 10px 14px; border-top: 1px solid var(--border, #3a3a3c);" } }, [
+          el("div", { class: "modal-body", attrs: { style: "padding: calc(14px * var(--ui-space));" } }, [editor]),
+          el("div", { class: "modal-foot", attrs: { style: "display: flex; justify-content: flex-end; gap: calc(8px * var(--ui-space)); padding: calc(10px * var(--ui-space)) calc(14px * var(--ui-space)); border-top: 1px solid var(--border, #3a3a3c);" } }, [
             copyBtn,
             applyBtn,
           ]),
@@ -1620,7 +1620,7 @@ export class DiagramEditor implements InspectorHost, StylePanelHost, DiagramEdit
 
     const saveBtn = el("button", {
       class: "btn btn-success full",
-      attrs: { style: "padding: 8px 12px; font-size: 12px; font-weight: 600;" },
+      attrs: { style: "padding: calc(8px * var(--ui-space)) calc(12px * var(--ui-space)); font-size: calc(12px * var(--ui-text)); font-weight: 600;" },
       text: "💾 Сохранить и открыть",
       on: {
         click: async (ev: MouseEvent) => {
@@ -1634,7 +1634,7 @@ export class DiagramEditor implements InspectorHost, StylePanelHost, DiagramEdit
 
     const cancelBtn = el("button", {
       class: "btn full",
-      attrs: { style: "padding: 8px 12px; font-size: 12px; font-weight: 600; background: var(--panel-alt); border: 1px solid var(--line);" },
+      attrs: { style: "padding: calc(8px * var(--ui-space)) calc(12px * var(--ui-space)); font-size: calc(12px * var(--ui-text)); font-weight: 600; background: var(--panel-alt); border: 1px solid var(--line);" },
       text: "↩ Отменить",
       on: {
         click: (ev: MouseEvent) => {
@@ -1646,7 +1646,7 @@ export class DiagramEditor implements InspectorHost, StylePanelHost, DiagramEdit
 
     const discardBtn = el("button", {
       class: "btn btn-danger full",
-      attrs: { style: "padding: 7px 12px; font-size: 12px; font-weight: 500;" },
+      attrs: { style: "padding: calc(7px * var(--ui-space)) calc(12px * var(--ui-space)); font-size: calc(12px * var(--ui-text)); font-weight: 500;" },
       text: "🗑 Загрузить без сохранения",
       on: {
         click: async (ev: MouseEvent) => {

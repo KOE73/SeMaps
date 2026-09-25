@@ -32,7 +32,8 @@
   --rb-theme-h: 32px;
   --dv-density-h: 32px;
   --dv-density-font: 12px;
-  --panel-zoom: 1;
+  --ui-text: 1;
+  --ui-space: 1;
 }
 
 :root[data-density="mini"] {
@@ -60,35 +61,38 @@
   --rb-theme-h: 26px;
   --dv-density-h: 27px;
   --dv-density-font: 11.5px;
-  --panel-zoom: 0.9;
+  --ui-text: 0.92;
+  --ui-space: 0.7;
 }
 
 :root[data-density="nano"] {
-  --rb-page-h: 58px;
-  --rb-large-w: 40px;
-  --rb-large-h: 36px;
+  /* Nano: the type of Mini, the gaps squeezed to the minimum. */
+  --rb-page-h: 64px;
+  --rb-large-w: 44px;
+  --rb-large-h: 40px;
   --rb-large-icon: 15px;
-  --rb-large-label: 9px;
-  --rb-ctl-h: 21px;
-  --rb-medium-px: 5px;
+  --rb-large-label: 9.5px;
+  --rb-ctl-h: 20px;
+  --rb-medium-px: 3px;
   --rb-medium-icon: 12px;
   --rb-small-icon: 12px;
   --rb-svg: 14px;
-  --rb-font: 11px;
-  --rb-select-font: 10.5px;
-  --rb-group-title: 8.5px;
-  --rb-sep-h: 32px;
-  --rb-tab-py: 3px;
-  --rb-tab-px: 10px;
-  --rb-qat-w: 22px;
-  --rb-qat-h: 20px;
+  --rb-font: 11.5px;
+  --rb-select-font: 11px;
+  --rb-group-title: 9px;
+  --rb-sep-h: 30px;
+  --rb-tab-py: 1px;
+  --rb-tab-px: 8px;
+  --rb-qat-w: 20px;
+  --rb-qat-h: 18px;
   --rb-qat-icon: 12px;
   --rb-qat-svg: 13px;
   --rb-theme-w: 32px;
   --rb-theme-h: 20px;
-  --dv-density-h: 23px;
-  --dv-density-font: 11px;
-  --panel-zoom: 0.8;
+  --dv-density-h: 21px;
+  --dv-density-font: 11.5px;
+  --ui-text: 0.92;
+  --ui-space: 0.3;
 }
 
 .workbench-ribbon {
@@ -815,22 +819,13 @@
 }
 
 /*
- * Panels around the diagram follow the density as a whole: their content is
- * scaled by --panel-zoom (CSS zoom scales type, padding and inline styles
- * alike; percentages still fill the panel). The canvas is not scaled — it has
- * its own zoom — only the controls floating over it.
+ * Panels around the diagram take their sizes from two density tokens, the
+ * way the ribbon does: --ui-text multiplies type, --ui-space padding, gaps and
+ * margins (editor.css and the panels' own styles). Nano keeps Mini's type and
+ * squeezes the gaps. dockview's theme class on its shell sets the tab row
+ * size; density wins there too.
  */
-.workbench-dockview-host .dv-content-container > :not(.canvas-area) {
-  zoom: var(--panel-zoom);
-}
-
-/* dockview's theme class on its shell sets the tab row size; density wins. */
 .workbench-dockview-host .dv-shell {
   --dv-tabs-and-actions-container-font-size: var(--dv-density-font);
   --dv-tabs-and-actions-container-height: var(--dv-density-h);
 }
-
-.workbench-dockview-host .canvas-area .zoom-bar {
-  zoom: var(--panel-zoom);
-}
-

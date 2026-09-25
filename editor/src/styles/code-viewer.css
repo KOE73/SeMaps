@@ -10,7 +10,7 @@
   display: flex;
   align-items: center;
   justify-content: center;
-  padding: 20px;
+  padding: calc(20px * var(--ui-space));
   background: rgba(0, 0, 0, 0.6);
   backdrop-filter: blur(6px);
   z-index: 1000;
@@ -45,8 +45,8 @@
   display: flex;
   align-items: center;
   justify-content: space-between;
-  gap: 12px;
-  padding: 10px 16px;
+  gap: calc(12px * var(--ui-space));
+  padding: calc(10px * var(--ui-space)) calc(16px * var(--ui-space));
   background: var(--panel-alt, #252528);
   border-bottom: 1px solid var(--line, #3a3a3c);
   cursor: grab;
@@ -60,31 +60,31 @@
 .semaps-code-title-group {
   display: flex;
   align-items: center;
-  gap: 10px;
+  gap: calc(10px * var(--ui-space));
   min-width: 0;
   flex: 1;
 }
 
 .semaps-code-title-icon {
-  font-size: 16px;
+  font-size: calc(16px * var(--ui-text));
   line-height: 1;
 }
 
 .semaps-code-title-text {
-  font-size: 14px;
+  font-size: calc(14px * var(--ui-text));
   font-weight: 700;
   color: var(--text, #f0f0f0);
   white-space: nowrap;
 }
 
 .semaps-code-path-badge {
-  font-size: 11px;
+  font-size: calc(11px * var(--ui-text));
   font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", "Courier New", monospace;
   color: var(--muted, #94a3b8);
   background: var(--panel, #1e1e20);
   border: 1px solid var(--line, #3a3a3c);
   border-radius: 6px;
-  padding: 2px 8px;
+  padding: calc(2px * var(--ui-space)) calc(8px * var(--ui-space));
   max-width: 380px;
   white-space: nowrap;
   overflow: hidden;
@@ -94,7 +94,7 @@
 .semaps-code-head-actions {
   display: flex;
   align-items: center;
-  gap: 8px;
+  gap: calc(8px * var(--ui-space));
   flex-shrink: 0;
 }
 
@@ -102,9 +102,9 @@
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  gap: 5px;
-  padding: 4px 10px;
-  font-size: 12px;
+  gap: calc(5px * var(--ui-space));
+  padding: calc(4px * var(--ui-space)) calc(10px * var(--ui-space));
+  font-size: calc(12px * var(--ui-text));
   font-weight: 600;
   border-radius: 6px;
   border: 1px solid var(--line, #3a3a3c);
@@ -129,7 +129,7 @@
   border: 1px solid transparent;
   background: transparent;
   color: var(--muted, #888);
-  font-size: 16px;
+  font-size: calc(16px * var(--ui-text));
   cursor: pointer;
   transition: all 0.15s ease;
 }
@@ -147,9 +147,9 @@
   min-height: 0;
   overflow: auto;
   background: #151517;
-  padding: 12px 0;
+  padding: calc(12px * var(--ui-space)) 0;
   font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", "Courier New", monospace;
-  font-size: 13px;
+  font-size: calc(13px * var(--ui-text));
   line-height: 1.55;
   tab-size: 4;
 }
@@ -163,7 +163,7 @@
 .semaps-code-line {
   display: flex;
   align-items: baseline;
-  padding: 0 16px;
+  padding: 0 calc(16px * var(--ui-space));
   white-space: pre;
 }
 
@@ -173,7 +173,7 @@
 
 .semaps-code-line-num {
   width: 44px;
-  padding-right: 16px;
+  padding-right: calc(16px * var(--ui-space));
   text-align: right;
   color: #55555c;
   user-select: none;
@@ -191,10 +191,10 @@
   display: flex;
   align-items: center;
   justify-content: space-between;
-  padding: 8px 16px;
+  padding: calc(8px * var(--ui-space)) calc(16px * var(--ui-space));
   background: var(--panel-alt, #252528);
   border-top: 1px solid var(--line, #3a3a3c);
-  font-size: 12px;
+  font-size: calc(12px * var(--ui-text));
   color: var(--muted, #94a3b8);
   user-select: none;
 }
@@ -202,13 +202,13 @@
 .semaps-code-foot-info {
   display: flex;
   align-items: center;
-  gap: 14px;
+  gap: calc(14px * var(--ui-space));
 }
 
 .semaps-code-lang-tag {
   font-weight: 700;
-  font-size: 11px;
-  padding: 2px 7px;
+  font-size: calc(11px * var(--ui-text));
+  padding: calc(2px * var(--ui-space)) calc(7px * var(--ui-space));
   border-radius: 4px;
   background: var(--accent, #3b82f6);
   color: #fff;
@@ -224,23 +224,23 @@
   align-items: center;
   justify-content: center;
   height: 100%;
-  padding: 30px;
+  padding: calc(30px * var(--ui-space));
   text-align: center;
-  gap: 12px;
+  gap: calc(12px * var(--ui-space));
 }
 
 .semaps-code-error-icon {
-  font-size: 32px;
+  font-size: calc(32px * var(--ui-text));
 }
 
 .semaps-code-error-title {
-  font-size: 15px;
+  font-size: calc(15px * var(--ui-text));
   font-weight: 700;
   color: #f87171;
 }
 
 .semaps-code-error-msg {
-  font-size: 12px;
+  font-size: calc(12px * var(--ui-text));
   color: var(--muted, #94a3b8);
   max-width: 460px;
   word-break: break-word;
@@ -321,15 +321,15 @@
   color: #e4e4e7;
   border: 1px solid var(--border, #3a3a3c);
   border-radius: 10px;
-  padding: 12px 14px;
-  font-size: 12px;
+  padding: calc(12px * var(--ui-space)) calc(14px * var(--ui-space));
+  font-size: calc(12px * var(--ui-text));
   line-height: 1.5;
   box-shadow: 0 16px 40px rgba(0, 0, 0, 0.65), 0 0 0 1px var(--line, #2d2d30);
   pointer-events: none;
   transition: opacity 0.12s ease-out;
   display: flex;
   flex-direction: column;
-  gap: 8px;
+  gap: calc(8px * var(--ui-space));
   overflow: hidden;
 }
 
@@ -337,14 +337,14 @@
   display: flex;
   align-items: center;
   justify-content: space-between;
-  gap: 8px;
+  gap: calc(8px * var(--ui-space));
   border-bottom: 1px solid var(--line, #27272a);
-  padding-bottom: 6px;
+  padding-bottom: calc(6px * var(--ui-space));
 }
 
 .semaps-rich-code-tooltip-path {
   font-family: monospace;
-  font-size: 11px;
+  font-size: calc(11px * var(--ui-text));
   color: #a1a1aa;
   white-space: nowrap;
   overflow: hidden;
@@ -357,17 +357,17 @@
   max-height: 340px;
   overflow-y: auto;
   font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
-  font-size: 12px;
+  font-size: calc(12px * var(--ui-text));
 }
 
 .semaps-rich-code-tooltip-foot {
   display: flex;
   align-items: center;
   justify-content: space-between;
-  font-size: 10px;
+  font-size: calc(10px * var(--ui-text));
   color: #71717a;
   border-top: 1px dashed var(--line, #27272a);
-  padding-top: 4px;
+  padding-top: calc(4px * var(--ui-space));
 }
 
 /* ------------------------------------------------------------------ Node Code Button (Canvas) */

@@ -26,13 +26,13 @@ export class FiltersPanel {
 
     const viewsList = el("div", {
       class: "filters-views-list",
-      attrs: { style: "display: flex; flex-direction: column; gap: 4px; padding: 6px 10px 10px;" },
+      attrs: { style: "display: flex; flex-direction: column; gap: calc(4px * var(--ui-space)); padding: calc(6px * var(--ui-space)) calc(10px * var(--ui-space)) calc(10px * var(--ui-space));" },
     }, [
       el(
         "button",
         {
           class: `btn full ${activeView === null || activeView === "all" ? "btn-primary is-active" : ""}`,
-          attrs: { style: "text-align: left; justify-content: flex-start; gap: 8px;" },
+          attrs: { style: "text-align: left; justify-content: flex-start; gap: calc(8px * var(--ui-space));" },
           on: {
             click: () => {
               canvas.setView(null);
@@ -51,7 +51,7 @@ export class FiltersPanel {
           "button",
           {
             class: `btn full ${isActive ? "btn-primary is-active" : ""}`,
-            attrs: { style: "text-align: left; justify-content: flex-start; gap: 8px;", title: v.description || "" },
+            attrs: { style: "text-align: left; justify-content: flex-start; gap: calc(8px * var(--ui-space));", title: v.description || "" },
             on: {
               click: () => {
                 canvas.setView(v.id);
@@ -72,7 +72,7 @@ export class FiltersPanel {
       attrs: { style: "border-bottom: 1px solid var(--border);" },
     }, [
       el("div", {
-        attrs: { style: "padding: 10px 10px 4px; display: flex; justify-content: space-between; align-items: center;" },
+        attrs: { style: "padding: calc(10px * var(--ui-space)) calc(10px * var(--ui-space)) calc(4px * var(--ui-space)); display: flex; justify-content: space-between; align-items: center;" },
       }, [
         el("span", { class: "section-label", text: i18n.d.panels.filters.perspectivesHeader }),
       ]),
@@ -106,18 +106,18 @@ export class FiltersPanel {
 
     const tagListContainer = el("div", {
       class: "filters-tag-list",
-      attrs: { style: "padding: 6px 10px 10px; display: flex; flex-wrap: wrap; gap: 6px; max-height: 240px; overflow-y: auto;" },
+      attrs: { style: "padding: calc(6px * var(--ui-space)) calc(10px * var(--ui-space)) calc(10px * var(--ui-space)); display: flex; flex-wrap: wrap; gap: calc(6px * var(--ui-space)); max-height: 240px; overflow-y: auto;" },
     });
 
     const tagsHead = el("div", {
-      attrs: { style: "padding: 10px 10px 4px; display: flex; flex-direction: column; gap: 6px;" },
+      attrs: { style: "padding: calc(10px * var(--ui-space)) calc(10px * var(--ui-space)) calc(4px * var(--ui-space)); display: flex; flex-direction: column; gap: calc(6px * var(--ui-space));" },
     }, [
       el("div", { attrs: { style: "display: flex; justify-content: space-between; align-items: center;" } }, [
         el("span", { class: "section-label", text: i18n.d.panels.filters.tagsHeader }),
         activeTags.size > 0
           ? el("button", {
               class: "btn btn-small",
-              attrs: { style: "padding: 2px 8px; font-size: 11px;" },
+              attrs: { style: "padding: calc(2px * var(--ui-space)) calc(8px * var(--ui-space)); font-size: calc(11px * var(--ui-text));" },
               text: `${i18n.d.common.undo} (${activeTags.size})`,
               on: {
                 click: () => {
@@ -158,12 +158,12 @@ export class FiltersPanel {
     // -------------------------------------------------------- 3. Relations / Связи
     const relationsSection = el("div", {
       class: "filters-section",
-      attrs: { style: "padding: 10px;" },
+      attrs: { style: "padding: calc(10px * var(--ui-space));" },
     }, [
-      el("div", { attrs: { style: "margin-bottom: 6px;" } }, [
+      el("div", { attrs: { style: "margin-bottom: calc(6px * var(--ui-space));" } }, [
         el("span", { class: "section-label", text: i18n.d.panels.filters.connectionsHeader }),
       ]),
-      el("label", { class: "check", attrs: { style: "display: flex; align-items: center; gap: 8px; cursor: pointer;" } }, [
+      el("label", { class: "check", attrs: { style: "display: flex; align-items: center; gap: calc(8px * var(--ui-space)); cursor: pointer;" } }, [
         el("input", {
           type: "checkbox",
           attrs: !canvas.isEdgeFamilyHidden("structure") ? { checked: "checked" } : {},
@@ -193,7 +193,7 @@ export class FiltersPanel {
     if (tags.length === 0) {
       replaceChildren(
         container,
-        el("div", { class: "inspector-empty", attrs: { style: "width: 100%; font-size: 12px;" }, text: this.tagQuery ? "Теги не найдены" : "В этой схеме нет тегов" })
+        el("div", { class: "inspector-empty", attrs: { style: "width: 100%; font-size: calc(12px * var(--ui-text));" }, text: this.tagQuery ? "Теги не найдены" : "В этой схеме нет тегов" })
       );
       return;
     }

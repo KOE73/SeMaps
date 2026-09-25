@@ -255,7 +255,7 @@ export class EdgesPanel {
         header,
         el(
           "div",
-          { class: "edge-list", attrs: { style: "max-height: 320px; gap: 3px;" } },
+          { class: "edge-list", attrs: { style: "max-height: 320px; gap: calc(3px * var(--ui-space));" } },
           rows.length === 0
             ? [el("div", { class: "muted italic", text: i18n.d.panels.relations.notFound })]
             : rows,
@@ -326,10 +326,10 @@ export class EdgesPanel {
         },
       },
     }, [
-      el("span", { class: "mono", text: isOutgoing ? "➔" : "⬅", attrs: { style: "opacity: 0.7; font-size: 10px;" } }),
+      el("span", { class: "mono", text: isOutgoing ? "➔" : "⬅", attrs: { style: "opacity: 0.7; font-size: calc(10px * var(--ui-text));" } }),
       el("span", { class: "input-strong", text: otherName }),
-      item.label ? el("span", { class: "muted mono", text: `«${item.label}»`, attrs: { style: "font-size: 10px;" } }) : null,
-      item.raw?.via?.text ? el("span", { class: "muted mono", text: item.raw.via.text, attrs: { style: "font-size: 9px; opacity: 0.7;" }, title: `Member type: ${item.raw.via.text}` }) : null,
+      item.label ? el("span", { class: "muted mono", text: `«${item.label}»`, attrs: { style: "font-size: calc(10px * var(--ui-text));" } }) : null,
+      item.raw?.via?.text ? el("span", { class: "muted mono", text: item.raw.via.text, attrs: { style: "font-size: calc(9px * var(--ui-text)); opacity: 0.7;" }, title: `Member type: ${item.raw.via.text}` }) : null,
     ]);
 
     const typeCol = el("div", { class: "edge-col-type" }, [
@@ -337,7 +337,7 @@ export class EdgesPanel {
         class: "badge chip",
         text: item.type,
         title: `Тип связи: ${item.type}`,
-        attrs: { style: "font-size: 9.5px; padding: 1px 4px;" },
+        attrs: { style: "font-size: calc(9.5px * var(--ui-text)); padding: 1px calc(4px * var(--ui-space));" },
       }),
     ]);
 
@@ -346,7 +346,7 @@ export class EdgesPanel {
         class: "mono muted",
         text: item.styleId ? item.styleId.replace(/^relation\./, "") : "auto",
         title: `Стиль связи: ${item.styleId ?? "по типу"}`,
-        attrs: { style: "font-size: 9.5px;" },
+        attrs: { style: "font-size: calc(9.5px * var(--ui-text));" },
       }),
     ]);
 
@@ -435,11 +435,11 @@ export class EdgesPanel {
       const lblInput = el("input", { type: "text", value: item.label, placeholder: "Подпись связи…" });
 
       const editBox = el("div", {
-        attrs: { style: "display: flex; flex-direction: column; gap: 6px; padding: 8px; margin-top: 2px; margin-bottom: 4px; background: var(--panel); border: 1px solid var(--line); border-radius: 6px;" },
+        attrs: { style: "display: flex; flex-direction: column; gap: calc(6px * var(--ui-space)); padding: calc(8px * var(--ui-space)); margin-top: calc(2px * var(--ui-space)); margin-bottom: calc(4px * var(--ui-space)); background: var(--panel); border: 1px solid var(--line); border-radius: 6px;" },
       }, [
         el("div", { class: "grid-2" }, [typeSel, styleSel.root]),
         lblInput,
-        el("div", { attrs: { style: "display: flex; gap: 6px; justify-content: flex-end;" } }, [
+        el("div", { attrs: { style: "display: flex; gap: calc(6px * var(--ui-space)); justify-content: flex-end;" } }, [
           el("button", {
             class: "btn btn-small",
             text: "Отмена",
@@ -545,7 +545,7 @@ export class EdgesPanel {
 
     const labelInput = el("input", { type: "text", placeholder: i18n.d.panels.relations.labelPlaceholder });
 
-    return el("div", { class: "panel", attrs: { style: "flex-direction: column; align-items: stretch; gap: 6px; margin-top: 8px;" } }, [
+    return el("div", { class: "panel", attrs: { style: "flex-direction: column; align-items: stretch; gap: calc(6px * var(--ui-space)); margin-top: calc(8px * var(--ui-space));" } }, [
       el("div", { class: "field-label accent", text: i18n.d.panels.relations.addNewHeader }),
       targetSelect.root,
       el("div", { class: "grid-2" }, [typeSelect, styleSelect.root]),

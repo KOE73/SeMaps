@@ -37,13 +37,13 @@ export class CatalogPanel implements IContentRenderer {
       title: i18n.d.commands.newProject.desc,
       on: { click: () => openNewProjectDialog(editor) },
     });
-    const scroll = el("div", { class: "sidebar-scroll", attrs: { style: "flex: 1; overflow-y: auto; padding: 8px;" } }, [
+    const scroll = el("div", { class: "sidebar-scroll", attrs: { style: "flex: 1; overflow-y: auto; padding: calc(8px * var(--ui-space));" } }, [
       el("div", { class: "catalog-toolbar" }, [this.projectLabel, this.addProjectBtn]),
       this.catalogSlot,
       this.customSection,
     ]);
 
-    this.hintDiv = el("div", { class: "hint sidebar-label", attrs: { style: "padding: 8px; border-top: 1px solid var(--border);" } }, [
+    this.hintDiv = el("div", { class: "hint sidebar-label", attrs: { style: "padding: calc(8px * var(--ui-space)); border-top: 1px solid var(--border);" } }, [
       el("div", { text: i18n.d.panels.catalog.hintDragZone }),
       el("div", { text: i18n.d.panels.catalog.hintDragBlock }),
       el("div", { text: i18n.d.panels.catalog.hintCollapseZone }),
@@ -55,7 +55,7 @@ export class CatalogPanel implements IContentRenderer {
       on: { click: () => editor.openFile() },
     });
 
-    const foot = el("div", { class: "sidebar-foot", attrs: { style: "padding: 8px; border-top: 1px solid var(--border);" } }, [
+    const foot = el("div", { class: "sidebar-foot", attrs: { style: "padding: calc(8px * var(--ui-space)); border-top: 1px solid var(--border);" } }, [
       this.openJsonBtn,
     ]);
 

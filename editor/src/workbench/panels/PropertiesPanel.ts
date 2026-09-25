@@ -13,8 +13,8 @@ export class PropertiesPanel implements IContentRenderer {
 
   constructor(private readonly editor: DiagramEditorFacade & InspectorHost) {
     this.badge = el("span", { class: "badge", text: i18n.d.common.notSelected });
-    this.body = el("div", { class: "inspector-body", attrs: { style: "padding: 12px; overflow-y: auto; height: 100%;" } });
-    this.titleEl = el("h2", { text: i18n.d.panels.properties.title, attrs: { style: "font-size: 13px; margin: 0;" } });
+    this.body = el("div", { class: "inspector-body", attrs: { style: "padding: calc(12px * var(--ui-space)); overflow-y: auto; height: 100%;" } });
+    this.titleEl = el("h2", { text: i18n.d.panels.properties.title, attrs: { style: "font-size: calc(13px * var(--ui-text)); margin: 0;" } });
 
     const head = el("div", { class: "inspector-head" }, [
       this.titleEl,

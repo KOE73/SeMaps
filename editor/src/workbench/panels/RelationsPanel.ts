@@ -12,7 +12,7 @@ export class RelationsPanel implements IContentRenderer {
   constructor(editor: DiagramEditor) {
     this.body = el("div", {
       class: "inspector-body edges-pane",
-      attrs: { style: "padding: 12px; overflow-y: auto; height: 100%;" },
+      attrs: { style: "padding: calc(12px * var(--ui-space)); overflow-y: auto; height: 100%;" },
     });
 
     this.element = el(

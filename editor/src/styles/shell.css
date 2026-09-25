@@ -44,21 +44,22 @@
 }
 
 :root[data-density="nano"] {
-  --tp-font: 11px;
-  --tp-small: 10px;
-  --tp-mono: 10.5px;
-  --tp-h1: 14px;
-  --tp-h2: 12px;
-  --tp-page-px: 12px;
-  --tp-page-py: 10px;
-  --tp-card-px: 10px;
-  --tp-card-py: 7px;
-  --tp-card-gap: 7px;
-  --tp-row-gap: 4px;
+  /* Nano: the type of Mini, the gaps squeezed to the minimum. */
+  --tp-font: 12px;
+  --tp-small: 10.5px;
+  --tp-mono: 11px;
+  --tp-h1: 16px;
+  --tp-h2: 13px;
+  --tp-page-px: 8px;
+  --tp-page-py: 6px;
+  --tp-card-px: 8px;
+  --tp-card-py: 4px;
+  --tp-card-gap: 4px;
+  --tp-row-gap: 2px;
   --tp-label-w: 120px;
-  --tp-ctl-py: 2px;
-  --tp-ctl-px: 6px;
-  --tp-btn-px: 8px;
+  --tp-ctl-py: 1px;
+  --tp-ctl-px: 4px;
+  --tp-btn-px: 6px;
   --tp-log-h: 180px;
 }
 

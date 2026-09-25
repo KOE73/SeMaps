@@ -2,7 +2,7 @@ import type { IContentRenderer, GroupPanelPartInitParameters } from "dockview-co
 import type { DiagramEditor } from "../../editor/DiagramEditor.js";
 import { StyleList, type StylePanelHost } from "../../editor/StyleList.js";
 import { StyleEditor } from "../../editor/StyleEditor.js";
-import { el, cssZoom } from "../../util/dom.js";
+import { el } from "../../util/dom.js";
 import { i18n } from "../i18n/I18nService.js";
 
 const STYLE_LIST_WIDTH_KEY = "semaps:style-list-width";
@@ -109,13 +109,12 @@ export class StylesPanel implements IContentRenderer {
       e.preventDefault();
       const startX = e.clientX;
       const startWidth = list.offsetWidth;
-      const zoom = cssZoom(list);
       this.resizer.setPointerCapture(e.pointerId);
       this.resizer.classList.add("is-dragging");
 
       const onMove = (move: PointerEvent): void => {
         const maxWidth = this.element.offsetWidth - MIN_STYLE_EDITOR_WIDTH;
-        const width = clamp(startWidth + (move.clientX - startX) / zoom, MIN_STYLE_LIST_WIDTH, Math.max(MIN_STYLE_LIST_WIDTH, maxWidth));
+        const width = clamp(startWidth + (move.clientX - startX), MIN_STYLE_LIST_WIDTH, Math.max(MIN_STYLE_LIST_WIDTH, maxWidth));
         list.style.width = `${width}px`;
       };
 

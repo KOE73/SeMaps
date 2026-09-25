@@ -79,11 +79,3 @@ export function requireElement<T extends Element = HTMLElement>(id: string): T {
   if (found === null) throw new Error(`Missing element #${id}`);
   return found as unknown as T;
 }
-
-/**
- * The CSS zoom an element is drawn at (panels follow the UI density by zoom).
- * Pointer deltas are screen pixels; divide by this to get the element's own.
- */
-export function cssZoom(node: Element): number {
-  return (node as Element & { currentCSSZoom?: number }).currentCSSZoom ?? 1;
-}

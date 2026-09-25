@@ -25,7 +25,7 @@ export class BasePanel implements IContentRenderer {
     const kinds = el("div", { class: "kind-chips" });
     const head = el("div", {
       class: "base-panel-head",
-      attrs: { style: "padding: 10px; border-bottom: 1px solid var(--border); flex-shrink: 0;" },
+      attrs: { style: "padding: calc(10px * var(--ui-space)); border-bottom: 1px solid var(--border); flex-shrink: 0;" },
     }, [this.searchInput, kinds]);
 
     this.element = el(
