@@ -40,5 +40,11 @@ if not errorlevel 1 (
   echo No npm: the TypeScript extractor is not installed.
 )
 
+rem Whatever still runs holds the files install replaces: every semaps.exe
+rem (editors, MCP servers of agent sessions) and every exe started from the
+rem install folder (extractors and their build hosts) is killed, children too.
+taskkill /f /t /im semaps.exe >nul 2>nul
+powershell -NoProfile -Command "$d = Join-Path $env:LOCALAPPDATA 'Programs\SeMaps'; Get-Process | Where-Object { $_.Path -and $_.Path.StartsWith($d, [StringComparison]::OrdinalIgnoreCase) } | Stop-Process -Force -ErrorAction SilentlyContinue"
+
 "%STAGE%\semaps.exe" install || exit /b 1
 rmdir /s /q "%STAGE%"

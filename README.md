@@ -143,7 +143,9 @@ semaps SeMaps\examples\example.semaps
 ### Updating
 
 A new exe from Releases, or `git pull` and `install.cmd` again — the editor is inside the
-exe, so an old exe means an old editor.
+exe, so an old exe means an old editor. `install.cmd` first kills every running `semaps.exe`
+(open editors, the MCP servers of agent sessions) and every exe started from the install
+folder: reopen the editor and restart agent sessions afterwards.
 
 ## Extractors: one per language, yours is welcome
 
