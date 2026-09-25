@@ -25,6 +25,43 @@ has several projects. The editor copies it from the block/zone menu or the Prope
 references of several objects are joined by commas. Tools accept it wherever they take an object
 of a view (API.md §6). The same object opens in the editor at `/app/#<view>?highlight=<id>`.
 
+## Tools for a view
+
+All geometry tools need `requestedByHuman: true` — the person asked for exactly this — and change
+the shared working model: the result is on the editor's screen at once, unsaved, authored `agent`,
+and every answer says so with a link that opens the view and highlights what was touched. Each step
+is one batch: it applies whole or not at all. Parameters and answers are in API.md §6.
+
+| To… | Use |
+|---|---|
+| see the view: zones nested, absolute rectangles, visible lines, what is unsaved | `get_view` (a zone reference reads only that subtree) |
+| shift things, a zone with its content | `move_elements` |
+| change a size (minimums, and a zone never under its content) | `resize_elements` |
+| put nodes or zones into a zone, coordinates untouched | `set_zone` |
+| a new zone | `add_zone` |
+| a zone as tight as its content, ancestors grown | `fit_zone` |
+| line elements up on the first | `align_elements` |
+| make zones like an example | `arrange_like` |
+
+Everything is snapped to the grid 10. **Do the small steps for a small change and `arrange_like`
+for "do the rest the same way".** It carries from a reference zone to each target the offset of every
+node in its zone, node sizes, `template`, `styleId`, the zone size, style and fold. Nodes are paired
+by their part in the inheritance (the base of a family that the others extend) and then by the words
+of their names that tell a variant from the family (`fp16`, `u8`, `nhwc`); what has no pair goes to a
+free row under the layout and is reported.
+
+The order of work for "make the other zones like this one":
+
+1. `get_view` on the parent zone — see the zones and their nodes;
+2. `arrange_like` with `dryRun: true` — the pairs, the nodes without a pair, what would move;
+3. show the person that plan, and only then run it without `dryRun`;
+4. answer «сделал, не сохранено — проверьте» with the link from the tool.
+
+Example, from a live project: a zone holds seven sub-zones (Undistort, Colour, Perspective, Crop,
+Resize, PadResize, Rotate90), each with the family base on the left and heirs on the right. The person
+laid out one by hand; «сделай остальные в `v_ops#z_transform` как `v_ops#z_tr_undistort`» is one
+`arrange_like` with `reference: "v_ops#z_tr_undistort"`, `parent: "v_ops#z_transform"`.
+
 ## Coordinates
 
 - Model units, absolute, **y grows downwards**. The origin is arbitrary; the editor fits the view

@@ -107,6 +107,7 @@ const ru = {
     "«Опиши все сборки проекта одной строкой каждую, на русском и английском»",
     "«Я переименовал поле — сверь карту и подтверди переименование»",
     "«Покажи на виде Операции связи injects для VmController»",
+    "«Сделай зоны в v_ops#z_transform как v_ops#z_tr_undistort» (ссылку копирует «🔗» в свойствах или меню блока)",
   ],
 };
 
@@ -213,6 +214,7 @@ const en: Strings = {
     "“Describe every assembly of the project in one line, in Russian and English”",
     "“I renamed a field — sync the map and confirm the rename”",
     "“Show the injects relations of VmController on the Operations view”",
+    "“Lay out the zones in v_ops#z_transform like v_ops#z_tr_undistort” (the link is copied by “🔗” in Properties or the block menu)",
   ],
 };
 
