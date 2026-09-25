@@ -442,9 +442,9 @@ func (m *Model) applyOne(op Op) error {
 func (m *Model) Dirty() DirtySummary {
 	m.mu.Lock()
 	defer m.mu.Unlock()
-	d := DirtySummary{Registry: append([]Ref(nil), m.dirty.Registry...), Views: map[string][]Ref{}}
+	d := DirtySummary{Registry: append([]Ref{}, m.dirty.Registry...), Views: map[string][]Ref{}}
 	for k, v := range m.dirty.Views {
-		d.Views[k] = append([]Ref(nil), v...)
+		d.Views[k] = append([]Ref{}, v...)
 	}
 	return d
 }

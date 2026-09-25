@@ -182,3 +182,14 @@ func TestProjectManifestIsJournaledAndSavedWithRegistry(t *testing.T) {
 		t.Fatal("manifest not saved")
 	}
 }
+
+func TestCleanModelDirtySerializesEmptyLists(t *testing.T) {
+	m, err := LoadModel(editWorkspace(t), "p")
+	if err != nil {
+		t.Fatal(err)
+	}
+	b, _ := json.Marshal(m.Dirty())
+	if string(b) != `{"registry":[],"views":{}}` {
+		t.Fatalf("clean dirty summary = %s", b)
+	}
+}
