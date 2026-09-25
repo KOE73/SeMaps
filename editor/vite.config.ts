@@ -53,8 +53,6 @@ export default defineConfig(({ mode }) => {
           rollupOptions: {
             input: {
               main: fileURLToPath(new URL("index.html", import.meta.url)),
-              setup: fileURLToPath(new URL("setup.html", import.meta.url)),
-              extract: fileURLToPath(new URL("extract.html", import.meta.url)),
             },
           },
         }

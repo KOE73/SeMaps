@@ -9,7 +9,8 @@ import "../styles/shell.css";
 
 import { Workbench } from "../workbench/Workbench.js";
 import { HttpProjectStore, HttpStyleStore, HttpWorkspaceStore } from "../editor/io/index.js";
-import { createTopBar } from "../shell/TopBar.js";
+import { toolApi } from "../shell/api.js";
+import { addToolModes } from "./toolModes.js";
 
 /**
  * Application entry point with Workbench Architecture.
@@ -24,12 +25,7 @@ async function main(): Promise<void> {
   const root = document.getElementById("app");
   if (root === null) throw new Error("Missing #app root");
 
-  // The top bar every page of the tool carries; the workbench lives under it.
-  const body = document.createElement("div");
-  body.className = "shell-body";
-  root.append(createTopBar("editor").element, body);
-
-  const workbench = new Workbench(body, {
+  const workbench = new Workbench(root, {
     workspace: new HttpWorkspaceStore(MODELS_BASE),
     store: new HttpProjectStore(MODELS_BASE),
     // styles.json sits with the models, not with the app bundle.
@@ -38,6 +34,15 @@ async function main(): Promise<void> {
     // fetches for itself rather than through a store.
     modelsBase: MODELS_BASE,
   });
+
+  // With a .semaps file the host also serves the tool modes; the hash of the
+  // URL (#extract, #project) says which mode to open.
+  const setup = await toolApi.setup().catch(() => undefined);
+  if (setup) {
+    document.title = `${setup.name || setup.projectFile} — SeMaps`;
+    addToolModes(workbench);
+  }
+  workbench.selectMode(location.hash.slice(1));
 
   // Handy for console debugging and testing
   Object.assign(window, {

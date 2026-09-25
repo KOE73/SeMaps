@@ -326,7 +326,7 @@ exitCode, error?, stats?: {symbols, edges, symbolKinds, edgeKinds, language}}`.
 
 A run's facts never enter the workspace; they stay in the temp directory beside its log.
 
-Short addresses of the tool pages: `/setup` → `/app/setup.html`, `/extract` → `/app/extract.html`.
+The tool pages are modes of the one editor page: `/app/#extract`, `/app/#project`. Short addresses `/extract` and `/setup` redirect there.
 
 ## 6. MCP: `semaps mcp`
 

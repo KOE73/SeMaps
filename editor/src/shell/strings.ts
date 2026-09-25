@@ -1,13 +1,15 @@
 import { I18nService } from "../workbench/i18n/I18nService.js";
 
 /**
- * Texts of the tool pages (top bar, /setup, /extract). Kept apart from the
- * editor's dictionary: these pages do not load the workbench.
+ * Texts of the tool modes (Extractors, Project). Kept apart from the
+ * editor's dictionary.
  */
 const ru = {
   navEditor: "Схемы",
   navExtract: "Экстракторы",
-  navSetup: "Настройки",
+  navSetup: "Проект",
+  refresh: "Обновить",
+  refreshHint: "Перечитать с хоста",
   noProjectFile: "Хост запущен с --workspace: нет файла .semaps, экстракторов и настроек нет.",
   loading: "Загрузка…",
   // setup
@@ -67,7 +69,9 @@ type Strings = typeof ru;
 const en: Strings = {
   navEditor: "Diagrams",
   navExtract: "Extractors",
-  navSetup: "Settings",
+  navSetup: "Project",
+  refresh: "Refresh",
+  refreshHint: "Read again from the host",
   noProjectFile: "The host was started with --workspace: no .semaps file, so no extractors or settings.",
   loading: "Loading…",
   setupTitle: "Project settings",

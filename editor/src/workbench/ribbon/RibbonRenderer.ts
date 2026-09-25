@@ -21,6 +21,7 @@ export class RibbonRenderer {
     tabs: readonly RibbonTabSpec[],
     activeTabId: string,
     onSelectTab: (id: string) => void,
+    options: { readonly quickAccess?: boolean; readonly trailing?: readonly HTMLElement[] } = {},
   ): HTMLElement {
     const ctx = this.getContext();
     const currentKind = ctx.selection.current?.kind;
@@ -32,8 +33,9 @@ export class RibbonRenderer {
 
     const header = el("div", { class: "ribbon-header-inner" });
 
-    // 1. Quick Access Toolbar (Save, Undo, Redo)
+    // 1. Quick Access Toolbar (Save, Undo, Redo) — a diagram's; other modes leave it out.
     const qat = el("div", { class: "ribbon-qat" });
+    qat.hidden = options.quickAccess === false;
     const qatCommands = ["file.save", "edit.undo", "edit.redo"];
     for (const cmdId of qatCommands) {
       const state = this.registry.getState(cmdId, ctx);
@@ -91,6 +93,11 @@ export class RibbonRenderer {
       tabBar.appendChild(tabBtn);
     }
     header.appendChild(tabBar);
+
+    // 3. What stays at the end of the row whatever the tab: the modes, the gear.
+    if (options.trailing?.length) {
+      header.appendChild(el("div", { class: "ribbon-trailing" }, [...options.trailing]));
+    }
 
     return header;
   }

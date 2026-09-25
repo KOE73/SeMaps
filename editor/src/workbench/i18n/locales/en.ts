@@ -16,6 +16,10 @@ export const enDictionary: UiDictionary = {
     notSelected: "NOTHING SELECTED",
   },
   ribbon: {
+    modes: {
+      diagrams: "Diagrams",
+      display: "Display",
+    },
     tabs: {
       home: "Home",
       insert: "Insert",
@@ -23,7 +27,7 @@ export const enDictionary: UiDictionary = {
       view: "View",
       formatBlock: "Block Format",
       formatEdge: "Relation Format",
-      settings: "Settings",
+      settings: "Display",
       help: "Help",
     },
     groups: {

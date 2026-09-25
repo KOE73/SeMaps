@@ -375,7 +375,7 @@ func main() {
 	http.Handle("/", noCacheHandler(workspaceHandler(absWorkspace, defaultsFS)))
 	registerToolAPI(http.DefaultServeMux, proj.File, absWorkspace)
 	// Short addresses of the tool pages (ADR_20260924-3 §4).
-	for short, page := range map[string]string{"/setup": "/app/setup.html", "/extract": "/app/extract.html"} {
+	for short, page := range map[string]string{"/setup": "/app/#project", "/extract": "/app/#extract"} {
 		http.Handle("GET "+short, http.RedirectHandler(page, http.StatusFound))
 	}
 	http.HandleFunc("/api/info", func(w http.ResponseWriter, r *http.Request) {

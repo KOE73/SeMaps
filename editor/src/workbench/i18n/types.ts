@@ -16,6 +16,11 @@ export interface UiDictionary {
     readonly notSelected: string;
   };
   readonly ribbon: {
+    /** The modes at the end of the tab row, and the gear after them. */
+    readonly modes: {
+      readonly diagrams: string;
+      readonly display: string;
+    };
     readonly tabs: {
       readonly home: string;
       readonly insert: string;

@@ -1,66 +1,7 @@
 /*
- * The tool pages: the top bar every page carries (editor, extractors,
- * settings) and the plain forms of /setup and /extract. Colours come from the
- * theme tokens of editor.css.
+ * The tool modes (Extractors, Project): plain forms in a scrolling surface
+ * under the ribbon. Colours come from the theme tokens of editor.css.
  */
-
-.shell-topbar {
-  display: flex;
-  align-items: center;
-  gap: 16px;
-  height: 34px;
-  padding: 0 14px;
-  flex-shrink: 0;
-  background: var(--panel);
-  border-bottom: 1px solid var(--line);
-  color: var(--text);
-  z-index: 60;
-}
-
-.shell-brand {
-  font-weight: 700;
-  letter-spacing: 0.02em;
-  color: var(--accent);
-}
-
-.shell-project {
-  color: var(--muted);
-  white-space: nowrap;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  max-width: 40vw;
-}
-
-.shell-nav {
-  display: flex;
-  gap: 2px;
-  margin-left: auto;
-}
-
-.shell-nav-link {
-  padding: 5px 10px;
-  border-radius: 6px;
-  color: var(--muted);
-  text-decoration: none;
-}
-
-.shell-nav-link:hover {
-  background: var(--hover);
-  color: var(--text);
-}
-
-.shell-nav-link.is-active {
-  background: var(--accent-soft);
-  color: var(--accent);
-}
-
-/* The area under the bar: the editor's workbench, or a tool page. */
-.shell-body {
-  flex: 1;
-  min-height: 0;
-  display: flex;
-  flex-direction: column;
-}
 
 .tool-page {
   flex: 1;

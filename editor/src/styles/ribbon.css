@@ -697,4 +697,90 @@
   line-height: 1;
 }
 
+/* ------------------------------------------------ end of the tab row: modes, gear */
+
+.ribbon-trailing {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  margin-left: auto;
+  padding-left: 12px;
+  flex-shrink: 0;
+}
+
+.ribbon-modes {
+  display: flex;
+  gap: 2px;
+  padding: 2px;
+  border-radius: 6px;
+  background: var(--panel-alt, #2d2d30);
+}
+
+.ribbon-mode-btn {
+  padding: 3px 10px;
+  border: none;
+  border-radius: 4px;
+  background: transparent;
+  color: var(--muted, #9aa0a6);
+  font-size: var(--rb-font);
+  cursor: pointer;
+}
+
+.ribbon-mode-btn:hover {
+  color: var(--text, #ffffff);
+  background: var(--hover, #333336);
+}
+
+.ribbon-mode-btn.is-active {
+  color: var(--accent, #4ea1ff);
+  background: var(--accent-soft, rgba(78, 161, 255, 0.12));
+  font-weight: 600;
+}
+
+.ribbon-gear-btn {
+  width: 26px;
+  height: 26px;
+  border: none;
+  border-radius: 4px;
+  background: transparent;
+  color: var(--muted, #9aa0a6);
+  font-size: 15px;
+  line-height: 1;
+  cursor: pointer;
+}
+
+.ribbon-gear-btn:hover {
+  color: var(--text, #ffffff);
+  background: var(--hover, #333336);
+}
+
+/* The gear's floating panel; the effects flyout opens above it. */
+.display-panel-backdrop {
+  position: fixed;
+  inset: 0;
+  z-index: 900;
+}
+
+.display-panel {
+  position: fixed;
+  z-index: 901;
+  max-width: min(720px, calc(100vw - 16px));
+  padding: 8px 10px 4px;
+  background: var(--panel, #252526);
+  border: 1px solid var(--line, #3a3a3c);
+  border-radius: 8px;
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.3);
+  color: var(--text, #e6e6e6);
+}
+
+.display-panel-title {
+  font-size: var(--rb-font);
+  font-weight: 600;
+  color: var(--muted, #9aa0a6);
+  margin-bottom: 6px;
+}
+
+.display-panel .ribbon-tab-page {
+  flex-wrap: wrap;
+}
 

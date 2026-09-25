@@ -6,7 +6,9 @@ import { createBuiltinCommands } from "./commands/builtinCommands.js";
 import type { CommandContext, SelectionService } from "./commands/types.js";
 import { ShortcutManager } from "./commands/ShortcutManager.js";
 import { Ribbon } from "./ribbon/Ribbon.js";
-import { createDefaultRibbonSpec } from "./ribbon/RibbonModel.js";
+import { createDefaultRibbonSpec, createDisplaySpec } from "./ribbon/RibbonModel.js";
+import { DisplayPanel } from "./ribbon/DisplayPanel.js";
+import type { WorkbenchMode } from "./modes.js";
 import { DockviewHost } from "./dockview/DockviewHost.js";
 import { CanvasFilterManager } from "./filters/CanvasFilterManager.js";
 import { i18n } from "./i18n/I18nService.js";
@@ -20,6 +22,8 @@ import { i18n } from "./i18n/I18nService.js";
  * - Fullscreen Dockview (multi-zone dockable panels around central diagram)
  * - Shortcut Manager (global hotkeys)
  * - Theme/Status/Persistence synchronization
+ * - Modes: the diagram editor and whatever else is added (addMode), switched
+ *   at the end of the tab row; the gear after them opens the display panel
  */
 export class Workbench {
   readonly root: HTMLElement;
@@ -29,6 +33,11 @@ export class Workbench {
   readonly ribbon: Ribbon;
   readonly dockviewHost: DockviewHost;
   readonly filterManager: CanvasFilterManager;
+  readonly display: DisplayPanel;
+
+  private readonly modes: WorkbenchMode[] = [];
+  private mode: WorkbenchMode;
+  private readonly surfaces: HTMLElement;
 
   constructor(
     private readonly hostElement: HTMLElement,
@@ -74,8 +83,15 @@ export class Workbench {
       },
     });
 
+    // Every mode's surface lives here; one is shown at a time.
+    this.surfaces = el("div", {
+      class: "workbench-surfaces",
+      attrs: { style: "flex: 1; min-width: 0; min-height: 0; position: relative; display: flex;" },
+    });
+    this.surfaces.appendChild(dockviewContainer);
+
     root.appendChild(ribbonContainer);
-    root.appendChild(dockviewContainer);
+    root.appendChild(this.surfaces);
 
     // 6. Initialize Command Center
     this.commands = new CommandRegistry();
@@ -92,12 +108,25 @@ export class Workbench {
 
     // 10. Initialize Ribbon
     const ribbonSpec = createDefaultRibbonSpec();
+    this.mode = {
+      id: "",
+      get title() { return i18n.d.ribbon.modes.diagrams; },
+      tabs: ribbonSpec.tabs,
+      surface: dockviewContainer,
+      enter: () => this.editor.canvas.render(),
+    };
+    this.modes.push(this.mode);
     this.ribbon = new Ribbon(
       ribbonSpec,
       this.commands,
       () => this.createCommandContext(),
+      {
+        quickAccess: () => this.mode.id === "",
+        trailing: () => this.renderTrailing(),
+      },
     );
     ribbonContainer.appendChild(this.ribbon.element);
+    this.display = new DisplayPanel(this.ribbon, createDisplaySpec(), this.commands);
 
     // 11. Bind events
     this.bindEvents();
@@ -114,6 +143,55 @@ export class Workbench {
 
     // 12. Mount to host
     this.hostElement.appendChild(root);
+  }
+
+  /** Adds a mode after the diagrams; its button appears at the end of the tab row. */
+  addMode(mode: WorkbenchMode): void {
+    mode.surface.hidden = true;
+    this.surfaces.appendChild(mode.surface);
+    this.modes.push(mode);
+    this.ribbon.render();
+  }
+
+  /** Shows a mode by id ("" — the diagrams); an unknown id opens the diagrams. */
+  selectMode(id: string): void {
+    const next = this.modes.find((m) => m.id === id) ?? this.modes[0]!;
+    this.display.close();
+    this.mode = next;
+    for (const m of this.modes) m.surface.hidden = m !== next;
+    this.shortcuts.enabled = next.id === "";
+    this.ribbon.setSpec({ tabs: next.tabs });
+    next.enter?.();
+    const url = new URL(location.href);
+    url.hash = next.id;
+    history.replaceState(null, "", next.id ? url : url.href.replace(/#$/, ""));
+  }
+
+  /** The end of the tab row: the modes (when there is more than one), then the gear. */
+  private renderTrailing(): HTMLElement[] {
+    const out: HTMLElement[] = [];
+    if (this.modes.length > 1) {
+      const switcher = el("div", { class: "ribbon-modes", attrs: { role: "tablist" } });
+      for (const m of this.modes) {
+        switcher.appendChild(
+          el("button", {
+            class: "ribbon-mode-btn" + (m === this.mode ? " is-active" : ""),
+            text: m.title,
+            attrs: { role: "tab", "aria-selected": String(m === this.mode) },
+            on: { click: () => this.selectMode(m.id) },
+          }),
+        );
+      }
+      out.push(switcher);
+    }
+    const gear = el("button", {
+      class: "ribbon-gear-btn",
+      text: "⚙",
+      attrs: { title: i18n.d.ribbon.modes.display, "aria-label": i18n.d.ribbon.modes.display },
+      on: { click: (e: MouseEvent) => this.display.toggle(e.currentTarget as HTMLElement) },
+    });
+    out.push(gear);
+    return out;
   }
 
   private bindEvents(): void {

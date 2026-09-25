@@ -1,10 +1,17 @@
 import type { CommandRegistry } from "../commands/CommandRegistry.js";
 import type { CommandContext } from "../commands/types.js";
-import type { RibbonSpec } from "./types.js";
+import type { RibbonSpec, RibbonTabSpec } from "./types.js";
 import { RibbonRenderer } from "./RibbonRenderer.js";
 import { TooltipManager } from "./TooltipManager.js";
 import { KeyTipsManager } from "./KeyTipsManager.js";
 import { el, replaceChildren } from "../../util/dom.js";
+
+export interface RibbonOptions {
+  /** Save, undo, redo before the tabs; off where there is no diagram. */
+  readonly quickAccess?: () => boolean;
+  /** Elements at the end of the tab row, the same on every tab. */
+  readonly trailing?: () => readonly HTMLElement[];
+}
 
 export class Ribbon {
   readonly element: HTMLElement;
@@ -17,9 +24,10 @@ export class Ribbon {
   private activeTabId = "home";
 
   constructor(
-    private readonly spec: RibbonSpec,
+    private spec: RibbonSpec,
     registry: CommandRegistry,
     private readonly getContext: () => CommandContext,
+    private readonly options: RibbonOptions = {},
   ) {
     this.renderer = new RibbonRenderer(registry, getContext);
 
@@ -46,6 +54,18 @@ export class Ribbon {
     });
 
     this.render();
+  }
+
+  /** Another set of tabs (a mode was switched); the first one is opened. */
+  setSpec(spec: RibbonSpec): void {
+    this.spec = spec;
+    this.activeTabId = spec.tabs[0]?.id ?? "";
+    this.render();
+  }
+
+  /** The groups of a tab rendered on their own, for a panel outside the ribbon. */
+  renderGroups(tab: RibbonTabSpec): HTMLElement {
+    return this.renderer.renderTabContent(tab);
   }
 
   selectTab(id: string): void {
@@ -83,9 +103,12 @@ export class Ribbon {
     if (!activeTab) return;
 
     // 1. Render Tabs Bar
-    const header = this.renderer.renderTabsHeader(this.spec.tabs, this.activeTabId, (id) => {
-      this.selectTab(id);
-    });
+    const header = this.renderer.renderTabsHeader(
+      this.spec.tabs,
+      this.activeTabId,
+      (id) => this.selectTab(id),
+      { quickAccess: this.options.quickAccess?.() ?? true, trailing: this.options.trailing?.() },
+    );
     replaceChildren(this.tabsHeaderContainer, header);
 
     // 2. Render Active Tab Page

@@ -16,6 +16,10 @@ export const ruDictionary: UiDictionary = {
     notSelected: "НИЧЕГО НЕ ВЫБРАНО",
   },
   ribbon: {
+    modes: {
+      diagrams: "Схемы",
+      display: "Отображение",
+    },
     tabs: {
       home: "Главная",
       insert: "Вставка",
@@ -23,7 +27,7 @@ export const ruDictionary: UiDictionary = {
       view: "Вид",
       formatBlock: "Формат блока",
       formatEdge: "Формат связи",
-      settings: "Настройки",
+      settings: "Отображение",
       help: "Справка",
     },
     groups: {

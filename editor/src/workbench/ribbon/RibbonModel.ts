@@ -1,4 +1,4 @@
-import type { RibbonSpec } from "./types.js";
+import type { RibbonSpec, RibbonTabSpec } from "./types.js";
 import type { CommandContext } from "../commands/types.js";
 import { i18n } from "../i18n/I18nService.js";
 
@@ -136,21 +136,6 @@ export function createDefaultRibbonSpec(): RibbonSpec {
             id: "canvas_options",
             get title() { return i18n.d.ribbon.groups.canvas; },
             items: [
-              { type: "button", command: "view.filters.visual.toggle", size: "medium" },
-              {
-                type: "select",
-                command: "view.strokeScaling.set",
-                get label() { return i18n.d.ribbon.labels.strokeScaling; },
-                get options() {
-                  return [
-                    { value: "zoom", label: i18n.d.ribbon.labels.strokeScalingZoom },
-                    { value: "soft", label: i18n.d.ribbon.labels.strokeScalingSoft },
-                    { value: "fixed", label: i18n.d.ribbon.labels.strokeScalingFixed },
-                  ];
-                },
-                getValue: () => localStorage.getItem("semaps.strokeScaling") || "zoom",
-              },
-              { type: "toggle", command: "view.shadows.global.toggle", size: "medium" },
               { type: "toggle", command: "view.grid.toggle", size: "small" },
               { type: "toggle", command: "view.snap.toggle", size: "small" },
               { type: "toggle", command: "view.routing.debug", size: "small" },
@@ -179,69 +164,6 @@ export function createDefaultRibbonSpec(): RibbonSpec {
               { type: "toggle", command: "panel.neighbourhood.toggle", size: "small" },
               { type: "separator" },
               { type: "button", command: "workspace.layout.reset", size: "small" },
-            ],
-          },
-        ],
-      },
-
-      // --------------------------------------------------------- Настройки
-      {
-        id: "settings",
-        get title() { return i18n.d.ribbon.tabs.settings; },
-        keyTip: "S",
-        groups: [
-          {
-            id: "appearance",
-            get title() { return i18n.d.ribbon.groups.appearance; },
-            items: [
-              {
-                type: "theme-gallery",
-                command: "view.theme.set",
-                themes: [
-                  { id: "cream", name: "Cream" },
-                  { id: "dark", name: "Dark" },
-                  { id: "emerald", name: "Emerald" },
-                  { id: "light", name: "Light" },
-                ],
-                getValue: () => "cream",
-              },
-            ],
-          },
-          {
-            id: "interface",
-            get title() { return i18n.d.ribbon.groups.interface; },
-            items: [
-              {
-                type: "select",
-                command: "view.density.set",
-                get label() { return i18n.d.ribbon.labels.density; },
-                options: [
-                  { value: "nano", label: "Nano" },
-                  { value: "mini", label: "Mini" },
-                  { value: "norm", label: "Norm" },
-                ],
-                getValue: () => localStorage.getItem("semaps.density") || "norm",
-              },
-              {
-                type: "select",
-                command: "view.uiLang.set",
-                get label() { return i18n.d.ribbon.labels.uiLang; },
-                options: [
-                  { value: "ru", label: "Русский (RU)" },
-                  { value: "en", label: "English (EN)" },
-                ],
-                getValue: (ctx: CommandContext) => ctx.uiLang || i18n.currentLanguage,
-              },
-              {
-                type: "select",
-                command: "view.lang.set",
-                get label() { return i18n.d.ribbon.labels.dataLang; },
-                options: [
-                  { value: "ru", label: "RU" },
-                  { value: "en", label: "EN" },
-                ],
-                getValue: (ctx: CommandContext) => ctx.dataLang || "ru",
-              },
             ],
           },
         ],
@@ -311,6 +233,94 @@ export function createDefaultRibbonSpec(): RibbonSpec {
               { type: "button", command: "edit.delete", size: "medium" },
             ],
           },
+        ],
+      },
+    ],
+  };
+}
+
+/**
+ * How the tool looks, not what it shows: theme, density, languages, effects.
+ * Not a tab — the gear at the end of the tab row opens it in every mode.
+ */
+export function createDisplaySpec(): RibbonTabSpec {
+  return {
+    id: "display",
+    get title() { return i18n.d.ribbon.tabs.settings; },
+    groups: [
+      {
+        id: "appearance",
+        get title() { return i18n.d.ribbon.groups.appearance; },
+        items: [
+          {
+            type: "theme-gallery",
+            command: "view.theme.set",
+            themes: [
+              { id: "cream", name: "Cream" },
+              { id: "dark", name: "Dark" },
+              { id: "emerald", name: "Emerald" },
+              { id: "light", name: "Light" },
+            ],
+            getValue: () => localStorage.getItem("semaps:theme") || "cream",
+          },
+        ],
+      },
+      {
+        id: "interface",
+        get title() { return i18n.d.ribbon.groups.interface; },
+        items: [
+          {
+            type: "select",
+            command: "view.density.set",
+            get label() { return i18n.d.ribbon.labels.density; },
+            options: [
+              { value: "nano", label: "Nano" },
+              { value: "mini", label: "Mini" },
+              { value: "norm", label: "Norm" },
+            ],
+            getValue: () => localStorage.getItem("semaps.density") || "norm",
+          },
+          {
+            type: "select",
+            command: "view.uiLang.set",
+            get label() { return i18n.d.ribbon.labels.uiLang; },
+            options: [
+              { value: "ru", label: "Русский (RU)" },
+              { value: "en", label: "English (EN)" },
+            ],
+            getValue: (ctx: CommandContext) => ctx.uiLang || i18n.currentLanguage,
+          },
+          {
+            type: "select",
+            command: "view.lang.set",
+            get label() { return i18n.d.ribbon.labels.dataLang; },
+            options: [
+              { value: "ru", label: "RU" },
+              { value: "en", label: "EN" },
+            ],
+            getValue: (ctx: CommandContext) => ctx.dataLang || "ru",
+          },
+        ],
+      },
+      {
+        id: "canvas_look",
+        get title() { return i18n.d.ribbon.groups.canvas; },
+        items: [
+          { type: "button", command: "view.filters.visual.toggle", size: "medium" },
+          {
+            type: "select",
+            command: "view.strokeScaling.set",
+            get label() { return i18n.d.ribbon.labels.strokeScaling; },
+            get options() {
+              return [
+                { value: "zoom", label: i18n.d.ribbon.labels.strokeScalingZoom },
+                { value: "soft", label: i18n.d.ribbon.labels.strokeScalingSoft },
+                { value: "fixed", label: i18n.d.ribbon.labels.strokeScalingFixed },
+              ];
+            },
+            getValue: () => localStorage.getItem("semaps.strokeScaling") || "zoom",
+          },
+          { type: "toggle", command: "view.shadows.global.toggle", size: "medium" },
         ],
       },
     ],

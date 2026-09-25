@@ -1,13 +1,9 @@
-import "../styles/editor.css";
-import "../styles/shell.css";
-
 import { el } from "../util/dom.js";
-import { applySavedTheme, createTopBar } from "../shell/TopBar.js";
 import { toolApi, type ExtractorView, type RunInfo, type Setup, type SyncResult } from "../shell/api.js";
 import { fmt, t } from "../shell/strings.js";
 
 /**
- * /extract: the extractors of the .semaps file. Per extractor: its
+ * The Extractors mode: the extractors of the .semaps file. Per extractor: its
  * parameters, a run with a live log and statistics, the dry-run report of
  * that run, and writing exactly those facts to the registry
  * (ADR_20260924-3 §3).
@@ -21,14 +17,10 @@ interface ProjectRef {
 let projects: ProjectRef[] = [];
 let languages: string[] = [];
 
-async function main(): Promise<void> {
-  applySavedTheme();
-  const root = document.getElementById("app")!;
-  const bar = createTopBar("extract");
-  const inner = el("div", { class: "tool-page-inner" }, [el("p", { class: "tool-muted", text: t.loading })]);
-  root.append(bar.element, el("div", { class: "shell-body" }, [el("main", { class: "tool-page" }, [inner])]));
-
-  const setup = await bar.setup;
+/** (Re)loads the page into `inner` from the host. */
+export async function loadExtractors(inner: HTMLElement): Promise<void> {
+  inner.replaceChildren(el("p", { class: "tool-muted", text: t.loading }));
+  const setup = await toolApi.setup().catch(() => undefined);
   if (!setup) {
     inner.replaceChildren(el("p", { class: "tool-error", text: t.noProjectFile }));
     return;
@@ -38,6 +30,13 @@ async function main(): Promise<void> {
     .then((w) => w.projects ?? [])
     .catch(() => []);
   render(inner, setup);
+}
+
+/** Puts the cursor into the id of a new extractor. */
+export function focusNewExtractor(inner: HTMLElement): void {
+  const input = inner.querySelector<HTMLInputElement>(".tool-new input");
+  input?.scrollIntoView({ block: "center" });
+  input?.focus();
 }
 
 function render(inner: HTMLElement, setup: Setup): void {
@@ -319,5 +318,3 @@ function showReport(res: SyncResult, target: HTMLElement): void {
   }
   target.replaceChildren(...out);
 }
-
-void main();

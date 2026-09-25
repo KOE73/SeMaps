@@ -4,6 +4,8 @@ import type { CommandContext, IDisposable } from "./types.js";
 
 export class ShortcutManager implements IDisposable {
   private readonly abort = new AbortController();
+  /** Off while a mode without a diagram is shown: Delete must not hit a hidden selection. */
+  enabled = true;
 
   constructor(
     private readonly registry: CommandRegistry,
@@ -27,6 +29,7 @@ export class ShortcutManager implements IDisposable {
   }
 
   private handleKeyDown(e: KeyboardEvent): void {
+    if (!this.enabled) return;
     const isEditable = this.isEditableTarget(e.target);
     const eventKey = this.normalizeKey(e);
     const modCtrl = e.ctrlKey || e.metaKey;

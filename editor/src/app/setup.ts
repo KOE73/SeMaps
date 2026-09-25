@@ -1,29 +1,25 @@
-import "../styles/editor.css";
-import "../styles/shell.css";
-
 import { el } from "../util/dom.js";
-import { applySavedTheme, createTopBar } from "../shell/TopBar.js";
 import { toolApi, type SettingsPatch, type Setup, type Tools } from "../shell/api.js";
 import { fmt, t } from "../shell/strings.js";
 
 /**
- * /setup: the project's .semaps settings and what the host finds on this
- * machine. Extractors have their own page (/extract).
+ * The Project mode: the project's .semaps settings and what the host finds on
+ * this machine. Extractors have their own mode.
  */
-async function main(): Promise<void> {
-  applySavedTheme();
-  const root = document.getElementById("app")!;
-  const bar = createTopBar("setup");
-  const inner = el("div", { class: "tool-page-inner" }, [el("p", { class: "tool-muted", text: t.loading })]);
-  root.append(bar.element, el("div", { class: "shell-body" }, [el("main", { class: "tool-page" }, [inner])]));
-
-  const setup = await bar.setup;
+export async function loadProject(inner: HTMLElement): Promise<void> {
+  inner.replaceChildren(el("p", { class: "tool-muted", text: t.loading }));
+  const setup = await toolApi.setup().catch(() => undefined);
   if (!setup) {
     inner.replaceChildren(el("p", { class: "tool-error", text: t.noProjectFile }));
     return;
   }
   const tools = await toolApi.tools().catch(() => undefined);
   render(inner, setup, tools);
+}
+
+/** Saves the form, as its own button does. */
+export function saveProject(inner: HTMLElement): void {
+  inner.querySelector<HTMLButtonElement>(".tool-btn.is-primary")?.click();
 }
 
 function render(inner: HTMLElement, setup: Setup, tools: Tools | undefined): void {
@@ -103,5 +99,3 @@ function render(inner: HTMLElement, setup: Setup, tools: Tools | undefined): voi
     toolsCard,
   );
 }
-
-void main();
