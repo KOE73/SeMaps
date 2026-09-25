@@ -1815,4 +1815,28 @@ export class DiagramEditor implements InspectorHost, StylePanelHost, DiagramEdit
   notify(message: string): void {
     window.alert(message);
   }
+
+  /** Object references for agents: `view#id`, several joined by commas; `project/view#id` when there are several projects. */
+  linkFor(ids: readonly string[]): string {
+    const view = this.currentView;
+    if (view === null || ids.length === 0) return "";
+    const project = this.workspace.projects.length > 1 ? this.projectOf(view)?.id : undefined;
+    return ids.map((id) => `${project ? project + "/" : ""}${view.id}#${id}`).join(", ");
+  }
+
+  /** Copy the link of the selection (or of `ids`) and say so with a short-lived toast. */
+  copyLink(ids?: readonly string[]): void {
+    const link = this.linkFor(ids ?? [...this.canvas.selectedIds]);
+    if (link === "") return;
+    void navigator.clipboard.writeText(link).then(() => this.toast(`Ссылка скопирована: ${link}`));
+  }
+
+  toast(message: string): void {
+    const box = document.createElement("div");
+    box.textContent = message;
+    box.setAttribute("role", "status");
+    Object.assign(box.style, { position: "fixed", left: "50%", bottom: "24px", transform: "translateX(-50%)", padding: "8px 14px", background: "#222", color: "#fff", borderRadius: "6px", font: "13px sans-serif", zIndex: "10000", maxWidth: "80vw" });
+    document.body.append(box);
+    setTimeout(() => box.remove(), 2200);
+  }
 }

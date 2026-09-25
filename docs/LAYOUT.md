@@ -17,6 +17,14 @@ Without such a request an agent does not write geometry at all
 - **Geometry you were not asked about stays as it is.** Existing zones and nodes keep their
   coordinates unless the request covers them.
 
+## Pointing at an object
+
+The human hands you an object of a view as a reference: `<view>#<id>` — `v_ops#z_undistort` for a
+zone, `v_ops#e_op_crop` for a node (named by its entity); `<project>/<view>#<id>` when the workspace
+has several projects. The editor copies it from the block/zone menu or the Properties panel;
+references of several objects are joined by commas. Tools accept it wherever they take an object
+of a view (API.md §6). The same object opens in the editor at `/app/#<view>?highlight=<id>`.
+
 ## Coordinates
 
 - Model units, absolute, **y grows downwards**. The origin is arbitrary; the editor fits the view

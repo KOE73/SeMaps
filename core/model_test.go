@@ -193,3 +193,38 @@ func TestCleanModelDirtySerializesEmptyLists(t *testing.T) {
 		t.Fatalf("clean dirty summary = %s", b)
 	}
 }
+
+func TestParseRefAndResolve(t *testing.T) {
+	for in, want := range map[string]ObjectRef{
+		"v_main":                        {View: "v_main"},
+		"v_main#z_core":                 {View: "v_main", ID: "z_core"},
+		"p/v_main#e_a":                  {Project: "p", View: "v_main", ID: "e_a"},
+		"/app/#v_main?highlight=z_core": {View: "v_main", ID: "z_core"},
+	} {
+		got, err := ParseRef(in)
+		if err != nil || got != want {
+			t.Fatalf("ParseRef(%q) = %+v, %v; want %+v", in, got, err, want)
+		}
+	}
+	for _, bad := range []string{"", "#z", "v#", "a/b/c#z", "v#a,b"} {
+		if _, err := ParseRef(bad); err == nil {
+			t.Fatalf("ParseRef(%q) accepted", bad)
+		}
+	}
+	m, err := LoadModel(editWorkspace(t), "p")
+	if err != nil {
+		t.Fatal(err)
+	}
+	for ref, kind := range map[string]string{"v_main": "view", "v_main#z_core": "zone", "v_main#e_a": "node"} {
+		r, _ := ParseRef(ref)
+		if k, err := m.ResolveRef(r); err != nil || k != kind {
+			t.Fatalf("ResolveRef(%s) = %q, %v", ref, k, err)
+		}
+	}
+	r, _ := ParseRef("v_main#z_nope")
+	_, err = m.ResolveRef(r)
+	refused(t, err, "z_nope is not on view v_main")
+	r, _ = ParseRef("v_none")
+	_, err = m.ResolveRef(r)
+	refused(t, err, "no view v_none")
+}

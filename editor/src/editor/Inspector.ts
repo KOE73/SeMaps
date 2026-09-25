@@ -15,8 +15,8 @@ export interface InspectorHost {
   readonly styles: StyleLibrary;
   /** Apply a field edit and mark the document dirty. */
   dataLang: string;
-  /** Id of the open view, for links that point at an object of it. */
-  readonly currentViewId?: string | null;
+  /** Copy the link of the selection: `view#id`. */
+  copyLink?(ids?: readonly string[]): void;
   editField(apply: () => void, options?: { rerender?: boolean; reselect?: boolean }): void;
   deleteSelection(): void;
   /** Set a content template on boxes, growing them to fit (null — the style's). */
@@ -363,17 +363,10 @@ export class Inspector {
 
   // ----------------------------------------------------------------- fields
 
-  /** Copies a link to this object: paste it to an agent, or open it to land on the object. */
+  /** Copies the link to this object: paste it to an agent. */
   private copyLinkButton(id: string): HTMLElement {
-    const view = this.host.currentViewId ?? "";
     const btn = el("button", { class: "btn", text: "🔗", attrs: { title: "Скопировать ссылку на объект (для агента)" } });
-    btn.addEventListener("click", () => {
-      const url = `${location.origin}${location.pathname}#${view}?highlight=${encodeURIComponent(id)}`;
-      void navigator.clipboard.writeText(url).then(() => {
-        btn.textContent = "✓";
-        setTimeout(() => { btn.textContent = "🔗"; }, 1200);
-      });
-    });
+    btn.addEventListener("click", () => this.host.copyLink?.([id]));
     return btn;
   }
 

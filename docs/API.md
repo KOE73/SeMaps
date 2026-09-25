@@ -351,6 +351,14 @@ then.
   entity already on the view is refused, not moved (CONTRACT §8.2 p. 3).
 - Files keep every key they had, in the order they had it. Tool edits are unsaved until `save`.
 
+**Object references.** A tool that takes an object of a view takes it as `<view>#<id>`
+(`v_ops#z_undistort`; a node is named by its entity: `v_ops#e_op_crop`), or
+`<project>/<view>#<id>` when the workspace has several projects. A bare `<view>` names the view. The
+editor's link `/app/#<view>?highlight=<id>` is accepted as well. An unknown view or an object that
+is not on the view is a tool error naming it (`core.ParseRef`, `Model.ResolveRef`). The editor
+copies the same string: «Копировать ссылку» in the block/zone menu and in the Properties panel;
+several selected objects give references joined by commas.
+
 Every structured answer (`structuredContent`) is a JSON object, lists included: clients
 reject anything else.
 

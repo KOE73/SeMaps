@@ -71,6 +71,7 @@ function blockItems(editor: DiagramEditor, host: MenuHost, el: DiagramElement): 
   const entity = entityOf(el) ?? doc.entities.find((e) => e.id === el.id);
 
   const items: MenuItem[] = [];
+  items.push({ label: "Копировать ссылку", icon: "🔗", onSelect: () => editor.copyLink(ids.length > 0 ? ids : [el.id]) }, { kind: "separator" });
   const relations = relationItems(editor, el.id);
   if (relations.length > 0) items.push(...relations, { kind: "separator" });
 
