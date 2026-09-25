@@ -1,0 +1,1 @@
+{ "version": "0.0.1", "configurations": [ { "name": "editor", "runtimeExecutable": "npm", "runtimeArgs": ["run", "dev", "--prefix", "editor"], "port": 5173 } ] }
