@@ -2,6 +2,9 @@ import { el } from "../util/dom.js";
 import { toolApi, type JsonSchema, type McpCallResult, type McpTool } from "../shell/api.js";
 import { fmt, t } from "../shell/strings.js";
 
+/** Chosen when the sandbox opens: reads, needs no arguments, shows the workspace. */
+const FIRST_TOOL = "list_projects";
+
 /**
  * The MCP sandbox: pick a tool, edit its arguments, call it on this project
  * through the host (POST /api/mcp/call) and read the JSON-RPC messages as they
@@ -9,10 +12,16 @@ import { fmt, t } from "../shell/strings.js";
  * for a confirmation, since the call is real.
  */
 export function mcpSandbox(tools: readonly McpTool[]): HTMLElement {
+  // Reading tools first, and one of them chosen: a first call must not write.
   const select = el("select", {}) as HTMLSelectElement;
-  for (const tool of tools) {
-    select.appendChild(el("option", { text: `${tool.name}  ·  ${tool.readOnly ? t.mcpRead : t.mcpWrite}`, attrs: { value: tool.name } }));
+  for (const [label, readOnly] of [[t.mcpRead, true], [t.mcpWrite, false]] as const) {
+    const group = el("optgroup", { attrs: { label } });
+    for (const tool of tools.filter((x) => x.readOnly === readOnly)) {
+      group.appendChild(el("option", { text: tool.name, attrs: { value: tool.name } }));
+    }
+    if (group.childElementCount > 0) select.appendChild(group);
   }
+  select.value = tools.find((x) => x.name === FIRST_TOOL)?.name ?? tools.find((x) => x.readOnly)?.name ?? "";
   const description = el("p", { class: "tool-muted mcp-play-desc" });
   const params = el("table", { class: "tool-table mcp-play-params" });
   const args = el("textarea", { class: "mcp-play-args", attrs: { spellcheck: "false", rows: "6" } }) as HTMLTextAreaElement;
