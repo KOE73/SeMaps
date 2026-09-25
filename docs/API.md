@@ -377,6 +377,7 @@ editor's sandbox land in the same file.
 | `find_entities` | `query?` (substring of name, symbol, namespace, id), `kind?`, `status?`, `limit?` = 50 | `{total, entities}` |
 | `get_relations` | `entity?`, `direction?` = `both` \| `out` \| `in`, `type?` (a prefix ending with `.` matches `holds.`), `status?`, `limit?` = 200 | `{total, relations}` |
 | `get_relation_types` | — | `{relationTypes}`: the vocabulary with `visibility` |
+| `get_view` | `view` (a view id, or a zone reference `v_ops#z_a` for that subtree only), `lang?` = `ru`, `project?` | `{view:{id,project,axis,relations,routing,scope?}, zones, nodes, edges, unsaved}`. `zones` nest: each has `id`, `name`, `container`, `parent`, absolute `x,y,width,height`, `styleId`, `collapsed`, `zones`, `nodes`; a node has `entity`, `name`, `kind`, `zone`, rectangle (default size when the file has none), `styleId`, `template`; `nodes` at the top are those in no zone. `edges` are the lines the view shows: its own `edges` list when it has the key, else relations by CONTRACT §8.5. `unsaved` lists the view's unsaved objects with their authors |
 | `get_text` | `lang`, `key` | the entry of `key` in `text.<lang>.json`, `{}` when none |
 | `doctor` | — | `{extractors, extractorsOK, findings}`: `semaps doctor` and `semaps check` |
 | `sync_preview` | as `sync` | as `sync`, writing nothing |

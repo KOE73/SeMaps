@@ -121,6 +121,12 @@ type placeIn struct {
 	RequestedByHuman bool             `json:"requestedByHuman" jsonschema:"true only when a human asked for this layout in so many words"`
 }
 
+type getViewIn struct {
+	Project string `json:"project,omitempty"`
+	View    string `json:"view" jsonschema:"a view id, or a zone reference view#zone to read only that subtree"`
+	Lang    string `json:"lang,omitempty" jsonschema:"language of names; default ru"`
+}
+
 type saveIn struct {
 	Project          string `json:"project,omitempty"`
 	RequestedByHuman bool   `json:"requestedByHuman"`
@@ -155,6 +161,7 @@ func (s *mcpServer) server() *mcp.Server {
 	mcp.AddTool(srv, read("get_relations", "Relations of an entity (or all), by direction, type, status."), s.getRelations)
 	mcp.AddTool(srv, read("get_relation_types", "The relation-type vocabulary with default visibility."), s.getRelationTypes)
 	mcp.AddTool(srv, read("get_text", "Text entry of a key in one language."), s.getText)
+	mcp.AddTool(srv, read("get_view", "A view with geometry as a tree: zones with their nodes, absolute rectangles, visible lines, what is unsaved. A zone reference reads only its subtree."), s.getView)
 	mcp.AddTool(srv, read("doctor", "Extractors and runtimes found, and the model check of the workspace."), s.doctor)
 	mcp.AddTool(srv, read("sync_preview", "What sync would change, writing nothing (= semaps sync --dry-run)."), s.syncPreview)
 
@@ -604,6 +611,30 @@ func (s *mcpServer) placeEntities(_ context.Context, _ *mcp.CallToolRequest, in 
 	}
 	s.changed(in.Project, m)
 	return done("%d placed on %s, not saved; review and Save: %s", len(in.Entities), in.View, s.reviewLink(m, in.View))
+}
+
+// modelOfRef picks the model a reference belongs to: its own project prefix, else project.
+func (s *mcpServer) modelOfRef(project, ref string) (*core.Model, error) {
+	r, err := core.ParseRef(ref)
+	if err != nil {
+		return nil, err
+	}
+	if r.Project != "" {
+		project = r.Project
+	}
+	return s.model(project)
+}
+
+func (s *mcpServer) getView(_ context.Context, _ *mcp.CallToolRequest, in getViewIn) (*mcp.CallToolResult, any, error) {
+	m, err := s.modelOfRef(in.Project, in.View)
+	if err != nil {
+		return nil, nil, err
+	}
+	info, err := m.GetView(in.View, in.Lang)
+	if err != nil {
+		return nil, nil, err
+	}
+	return nil, info, nil
 }
 
 func orInt(n, def int) int {

@@ -72,7 +72,7 @@ func TestMCPListsAllTools(t *testing.T) {
 	}
 	for _, n := range []string{"list_projects", "list_views", "get_entity", "find_entities", "get_relations",
 		"get_text", "sync_preview", "doctor", "set_text", "add_relation", "add_relation_type",
-		"set_relation_visible", "confirm_rename", "extract", "sync", "place_entities"} {
+		"set_relation_visible", "confirm_rename", "extract", "sync", "place_entities", "get_view"} {
 		if !have[n] {
 			t.Errorf("no tool %s", n)
 		}
@@ -208,5 +208,17 @@ func TestMCPCallLog(t *testing.T) {
 	}
 	if !strings.Contains(echo.String(), "get_entity") || !strings.Contains(echo.String(), "ERROR") {
 		t.Fatalf("stderr: %q", echo.String())
+	}
+}
+
+func TestMCPGetView(t *testing.T) {
+	cs, _ := mcpSession(t)
+	res, text := call(t, cs, "get_view", map[string]any{"view": "v_main"})
+	if res.IsError || !strings.Contains(text, `"zones":[]`) || !strings.Contains(text, `"edges":[]`) {
+		t.Fatalf("get_view: %s", text)
+	}
+	res, text = call(t, cs, "get_view", map[string]any{"view": "v_main#z_nope"})
+	if !res.IsError || !strings.Contains(text, "z_nope is not on view v_main") {
+		t.Fatalf("unknown object: %v %s", res.IsError, text)
 	}
 }
