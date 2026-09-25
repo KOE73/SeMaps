@@ -96,6 +96,10 @@ func (m *Model) ArrangeLike(view string, opt ArrangeOptions, human bool, author 
 	}
 
 	extends := m.extendsIn()
+	names := map[string]string{}
+	for _, e := range m.records("entity") {
+		names[e.str("id")] = e.str("name")
+	}
 	refZone := l.rect(ref)
 	refNodes := l.zoneNodes(ref)
 	report := ArrangeReport{DryRun: opt.DryRun}
@@ -106,7 +110,7 @@ func (m *Model) ArrangeLike(view string, opt ArrangeOptions, human bool, author 
 	for _, t := range targets {
 		tz := l.rect(t)
 		tNodes := l.zoneNodes(t)
-		pairs := pairNodes(refNodes, tNodes, extends)
+		pairs := pairNodes(refNodes, tNodes, extends, names)
 		at := ArrangeTarget{Zone: t, Pairs: []NodePair{}, Unpaired: []string{}, Missing: []string{}}
 		paired := map[string]bool{}
 		refPaired := map[string]bool{}
@@ -205,7 +209,7 @@ func (m *Model) extendsIn() map[string][]string {
 // pairNodes pairs the nodes of the reference zone with those of a target. First
 // the bases of a family (the node the others of the zone extend), then the rest
 // by the words that tell the variants apart (fp16, u8, nhwc…), best match first.
-func pairNodes(ref, target []string, extends map[string][]string) []NodePair {
+func pairNodes(ref, target []string, extends map[string][]string, names map[string]string) []NodePair {
 	var pairs []NodePair
 	usedR, usedT := map[string]bool{}, map[string]bool{}
 	take := func(r, t string) {
@@ -228,7 +232,7 @@ func pairNodes(ref, target []string, extends map[string][]string) []NodePair {
 	for i := 0; i < len(rb) && i < len(tb); i++ {
 		take(rb[i], tb[i])
 	}
-	rt, tt := distinguishing(ref), distinguishing(target)
+	rt, tt := distinguishing(ref, names), distinguishing(target, names)
 	type cand struct {
 		r, t   string
 		score  float64
@@ -264,12 +268,12 @@ func pairNodes(ref, target []string, extends map[string][]string) []NodePair {
 }
 
 // distinguishing: for each entity the words of its name that not every node of the zone has.
-func distinguishing(nodes []string) map[string]map[string]bool {
+func distinguishing(nodes []string, names map[string]string) map[string]map[string]bool {
 	words := map[string]map[string]bool{}
 	count := map[string]int{}
 	for _, n := range nodes {
 		ws := map[string]bool{}
-		for _, w := range splitWords(n) {
+		for _, w := range splitWords(orDefault(names[n], n)) {
 			ws[w] = true
 		}
 		words[n] = ws
@@ -302,10 +306,11 @@ func similarity(a, b map[string]bool) float64 {
 	return float64(common) / math.Max(float64(len(a)), float64(len(b)))
 }
 
-// splitWords cuts an entity id like e_op_onnx_crop_fp16_nchw at _ and at
-// lower-to-upper humps, lower-cased: "RgbFP16Nchw" is rgb, fp16, nchw.
-func splitWords(id string) []string {
-	id = strings.TrimPrefix(id, "e_")
+// splitWords cuts a name at _ . - and at humps: lower→Upper and digit→Upper,
+// lower-cased: "Op_Onnx_BgrU8Hwc_To_RgbFP16Nchw" gives op onnx bgr u8 hwc to rgb fp16 nchw.
+// The names are the code's, so they have the humps the lower-case ids lost.
+func splitWords(name string) []string {
+	name = strings.TrimPrefix(name, "e_")
 	var out []string
 	var cur []rune
 	flush := func() {
@@ -314,11 +319,11 @@ func splitWords(id string) []string {
 			cur = cur[:0]
 		}
 	}
-	for i, r := range id {
+	for _, r := range name {
 		switch {
-		case r == '_' || r == '.' || r == '-':
+		case r == '_' || r == '.' || r == '-' || r == ' ':
 			flush()
-		case unicode.IsUpper(r) && i > 0 && len(cur) > 0 && unicode.IsLower(cur[len(cur)-1]):
+		case unicode.IsUpper(r) && len(cur) > 0 && (unicode.IsLower(cur[len(cur)-1]) || unicode.IsDigit(cur[len(cur)-1])):
 			flush()
 			cur = append(cur, r)
 		default:

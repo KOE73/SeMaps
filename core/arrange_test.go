@@ -45,15 +45,16 @@ func arrangeModel(t *testing.T) *Model {
 	node("e_op_u_fp32_nchw", "z_u", 2710, 530, "")
 	// a target of other names and without the u8 variant, its nodes thrown about
 	zone("z_c", 660, 210)
-	for _, id := range []string{"e_op_c_div255base", "e_op_c_rgb_fp16_nchw_div255", "e_op_c_rgb_fp32_nchw_div255"} {
-		ent(id)
+	// ids are lower-case, only the names carry the words: RgbFP16Nchw
+	for id, name := range map[string]string{"e_op_c_div255base": "Op_BgrU8Hwc_To_RgbNchw_Div255Base", "e_op_c_rgbfp16nchw_div255": "Op_BgrU8Hwc_To_RgbFP16Nchw_Div255", "e_op_c_rgbfp32nchw_div255": "Op_BgrU8Hwc_To_RgbFP32Nchw_Div255"} {
+		add("entity", id, "", fmt.Sprintf(`{"id":"%s","name":"%s","kind":"class","origin":"code","symbol":"N.%s"}`, id, name, id))
 	}
-	rel("e_op_c_rgb_fp16_nchw_div255", "e_op_c_div255base")
-	rel("e_op_c_rgb_fp32_nchw_div255", "e_op_c_div255base")
+	rel("e_op_c_rgbfp16nchw_div255", "e_op_c_div255base")
+	rel("e_op_c_rgbfp32nchw_div255", "e_op_c_div255base")
 	rel("e_op_c_div255base", "e_root")
 	node("e_op_c_div255base", "z_c", 2500, 800, "")
-	node("e_op_c_rgb_fp16_nchw_div255", "z_c", 2380, 700, "")
-	node("e_op_c_rgb_fp32_nchw_div255", "z_c", 2900, 690, "")
+	node("e_op_c_rgbfp16nchw_div255", "z_c", 2380, 700, "")
+	node("e_op_c_rgbfp32nchw_div255", "z_c", 2900, 690, "")
 	// a target with all the variants and one more node
 	zone("z_x", 900, 210)
 	for _, id := range []string{"e_op_x_nchw_base", "e_op_x_u8_nhwc", "e_op_x_fp16_nchw", "e_op_x_fp32_nchw", "e_op_x_weird"} {
@@ -87,9 +88,9 @@ func TestArrangeLikeCarriesTheReferenceOver(t *testing.T) {
 	// z_c sits at (2360, 660): every node at the offset the reference has in its zone
 	c := rectOf(t, m, "z_c")
 	want := map[string]Rect{
-		"e_op_c_div255base":           {2380, 710, 280, 60},
-		"e_op_c_rgb_fp16_nchw_div255": {2710, 710, 280, 60},
-		"e_op_c_rgb_fp32_nchw_div255": {2710, 790, 280, 60},
+		"e_op_c_div255base":         {2380, 710, 280, 60},
+		"e_op_c_rgbfp16nchw_div255": {2710, 710, 280, 60},
+		"e_op_c_rgbfp32nchw_div255": {2710, 790, 280, 60},
 	}
 	for id, w := range want {
 		if got := rectOf(t, m, id); got != w {
