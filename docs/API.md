@@ -79,6 +79,8 @@ The backend serves application assets and global workspace JSON. Project model r
 The one listing a host gives. It walks `projects/*/` (a folder counts only with a `project.json`) and
 `views/*.view.json` in each; nothing else is listed, and plain directory listing stays refused
 ([`ADR_20260923-7`](adr/ADR_20260923-7_contract_projects-and-views-found-not-listed.md)).
+The editor overlays this disk index with the working manifest and text entries from
+`GET /api/model/{project}`. Unsaved titles and view names therefore appear in its catalogue.
 
 ```json
 { "projects": [
@@ -176,6 +178,12 @@ The host creates `<project root>/.semaps/host.json` containing `{pid, port, key}
 An operation is `{kind,id,view?,lang?,value,author?}`. `kind` is `project`, `entity`, `relation`, `relationType`, `text`, `view`, `zone`, or `node`. `project` replaces the `project.json` manifest and is counted in registry dirt. `value` is the whole object; `null` removes a zone or node placement only. Registry records and the manifest cannot be removed. `text` requires `lang`; `view`, `zone`, and `node` require `view`. The host sets `author: human` on browser ops; the agent path sets `author: agent`. A changed reference is `{kind,id,view?,lang?,author}`. `dirty` is `{registry:[Ref],views:{<view-id>:[Ref]}}`, with the last author per touched object. The conflict unit is an object: later accepted replacement wins, with no field merge. The SSE event is emitted after the batch is in the journal. A view is loaded lazily when first read or changed.
 
 Project and view creation use `/api/save?create=1`; renames use `/api/move`. These structural operations require the host key and a clean project model; when dirty, the host returns `409` with «сначала сохраните». After success it reloads the project from files and emits `projectReloaded`. Ordinary manifest edits use a `project` op and the common Save. `styles.json`, `templates.json`, and `content/` remain outside the working model.
+
+The editor sends operations after a completed action. Drag movement in progress remains local;
+the final placement is one `node` or `zone` operation. Incoming SSE changes are read from the
+working snapshot and appear in other windows without a file reload. The editor keeps Undo history
+locally for its own actions; the host has no Undo. Save and discard affect the whole working model
+or the requested scope and notify subscribers.
 
 ---
 ## 4. Alternative Host Adapters (VSCode / Electron / Node)

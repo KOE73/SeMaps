@@ -28,6 +28,12 @@ An agent reads and writes the registry through MCP tools (API.md §6), never par
    model. Tool edits appear in the editor immediately but remain unsaved until the human reviews
    them and presses «Сохранить». Save the current project before assigning a new task to an agent.
 
+The agent reports each changed object and a link to the relevant view. The editor marks unsaved
+registry and view changes by author; «Сохранить» shows a summary when the agent contributed.
+The MCP tools `save` and `discard` require `requestedByHuman: true` and may be called only after
+the person explicitly requests that action. Creating or renaming a project or view requires a
+clean working model; if the host returns `409` «сначала сохраните», save first and retry.
+
 For the first model, the steps below still apply (project file, workspace folder, entities.json),
 but the agent uses tools instead of hand-editing JSON.
 

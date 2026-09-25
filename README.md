@@ -15,7 +15,7 @@ The map is shared ground between people and coding agents, and it works in both 
 
 - **Agent → map.** Following the rules in [`docs/CONTRACT.md`](docs/CONTRACT.md), an agent records
   what it built or learned: entities, relations, descriptions, which container a thing belongs to.
-  Views and layout stay human; the agent writes registries and texts, never geometry.
+  The agent changes geometry only when the human explicitly requests it.
 - **Map → agent.** Before changing code, an agent reads the map to learn the intended
   architecture: which part owns what, which interactions are allowed, what a relation means. Its
   work then conforms to the design instead of drifting from it.
@@ -108,7 +108,11 @@ Any of these:
 The server starts in **its own console window** and your prompt / file manager is free at once;
 the browser opens on the editor. To stop, close that window (or Ctrl+C in it). Opening the same
 project again does not start a second server — it just brings up the browser.
-Edits are saved straight into the workspace folder — review and commit them like code.
+The editor and MCP agents share the host's working model. Accepted changes appear in open windows
+immediately and survive a restart in the local journal. **Сохранить** writes the changed contract
+files to the workspace; the button shows a summary when an agent contributed. Review the changes
+there and commit them like code. A project or view can be created or renamed only after its current
+changes are saved.
 
 ### 4. Check — in CI or before a commit
 
