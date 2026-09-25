@@ -75,7 +75,6 @@ export interface UiDictionary {
     readonly undo: { readonly title: string; readonly desc: string };
     readonly redo: { readonly title: string; readonly desc: string };
     readonly save: { readonly title: string; readonly desc: string };
-    readonly openFile: { readonly title: string; readonly desc: string };
     readonly exportDrawio: { readonly title: string; readonly desc: string };
     readonly zoomIn: { readonly title: string; readonly desc: string };
     readonly zoomOut: { readonly title: string; readonly desc: string };
@@ -131,7 +130,6 @@ export interface UiDictionary {
       readonly addView: string;
       readonly editProject: string;
       readonly editView: string;
-      readonly openJsonBtn: string;
       readonly hintDragZone: string;
       readonly hintDragBlock: string;
       readonly hintCollapseZone: string;

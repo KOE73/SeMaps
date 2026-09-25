@@ -1413,22 +1413,6 @@ export class DiagramEditor implements InspectorHost, StylePanelHost, DiagramEdit
     return this.stylesDirty;
   }
 
-  openFile(): void {
-    const input = this.slots.get("file-input") as HTMLInputElement | undefined;
-    if (input) {
-      input.click();
-    } else {
-      const i = document.createElement("input");
-      i.type = "file";
-      i.accept = ".json";
-      i.onchange = () => {
-        const file = i.files?.[0];
-        if (file) void this.loadFile(file);
-      };
-      i.click();
-    }
-  }
-
   undo(): void {
     this.flushFieldEdit();
     const snapshot = this.history.undo();

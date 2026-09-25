@@ -19,7 +19,6 @@ export class CatalogPanel implements IContentRenderer {
   private readonly projectLabel: HTMLElement;
   private readonly addProjectBtn: HTMLElement;
   private readonly hintDiv: HTMLElement;
-  private readonly openJsonBtn: HTMLElement;
 
   constructor(private readonly editor: DiagramEditor) {
     this.catalogSlot = el("div");
@@ -49,23 +48,13 @@ export class CatalogPanel implements IContentRenderer {
       el("div", { text: i18n.d.panels.catalog.hintCollapseZone }),
     ]);
 
-    this.openJsonBtn = el("button", {
-      class: "btn full",
-      text: i18n.d.panels.catalog.openJsonBtn,
-      on: { click: () => editor.openFile() },
-    });
-
-    const foot = el("div", { class: "sidebar-foot", attrs: { style: "padding: calc(8px * var(--ui-space)); border-top: 1px solid var(--border);" } }, [
-      this.openJsonBtn,
-    ]);
-
     this.element = el(
       "aside",
       {
         class: "sidebar",
         attrs: { style: "width: 100%; height: 100%; display: flex; flex-direction: column; overflow: hidden; background: var(--panel);" },
       },
-      [scroll, this.hintDiv, foot],
+      [scroll, this.hintDiv],
     );
 
     i18n.onLanguageChange(() => {
@@ -79,7 +68,6 @@ export class CatalogPanel implements IContentRenderer {
     this.customLabel.textContent = i18n.d.panels.catalog.customSection;
     this.projectLabel.textContent = i18n.d.panels.catalog.projectCatalog;
     this.addProjectBtn.textContent = i18n.d.panels.catalog.addProject;
-    this.openJsonBtn.textContent = i18n.d.panels.catalog.openJsonBtn;
     replaceChildren(this.hintDiv,
       el("div", { text: i18n.d.panels.catalog.hintDragZone }),
       el("div", { text: i18n.d.panels.catalog.hintDragBlock }),

@@ -29,16 +29,6 @@ export function createBuiltinCommands(): CommandDefinition[] {
       execute: (ctx) => ctx.io.save(),
     },
     {
-      id: "file.open",
-      get title() { return i18n.d.commands.openFile.title; },
-      get description() { return i18n.d.commands.openFile.desc; },
-      icon: "📂",
-      category: "File",
-      shortcut: "Ctrl+O",
-      keyTip: "O",
-      execute: (ctx) => ctx.io.openFile(),
-    },
-    {
       id: "file.export.drawio",
       get title() { return i18n.d.commands.exportDrawio.title; },
       get description() { return i18n.d.commands.exportDrawio.desc; },

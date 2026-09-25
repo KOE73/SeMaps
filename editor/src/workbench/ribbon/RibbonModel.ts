@@ -47,7 +47,6 @@ export function createDefaultRibbonSpec(): RibbonSpec {
             get title() { return i18n.d.ribbon.groups.file; },
             items: [
               { type: "button", command: "file.save", size: "large" },
-              { type: "button", command: "file.open", size: "medium" },
               { type: "button", command: "file.export.drawio", size: "medium" },
             ],
           },

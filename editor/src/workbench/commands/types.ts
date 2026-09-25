@@ -83,7 +83,6 @@ export interface IWorkspaceLayoutService {
 
 export interface DiagramIoService {
   save(): Promise<void>;
-  openFile(): void;
   exportDrawio(): void;
   toggleJsonModal(): void;
   copyJson(): Promise<void>;
@@ -106,7 +105,6 @@ export interface DiagramEditorFacade {
   redo(): void;
   save(): Promise<void>;
   exportDrawio(): void;
-  openFile(): void;
   toggleSidebar(): void;
   toggleJsonModal(): void;
   copyJson(): Promise<void>;
