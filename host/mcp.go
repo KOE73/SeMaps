@@ -28,12 +28,18 @@ type mcpServer struct {
 
 func runMCP(proj project, workspace, sourceRoot, projectID string) int {
 	s := &mcpServer{proj: proj, workspace: workspace, sourceRoot: sourceRoot, project: projectID}
-	if err := s.server().Run(context.Background(), &mcp.StdioTransport{}); err != nil {
+	srv := s.server()
+	srv.AddReceivingMiddleware(callLog(proj.Root, os.Stderr))
+	if err := srv.Run(context.Background(), &mcp.StdioTransport{}); err != nil {
 		fmt.Fprintf(os.Stderr, "semaps mcp: %v\n", err)
 		return 1
 	}
 	return 0
 }
+
+// Every structured answer is a JSON object: MCP clients (Claude Code among
+// them) reject an array in structuredContent, so lists come wrapped —
+// {views: [...]}, {relationTypes: [...]}, {runs: [...]}, {reports: [...]}.
 
 // Tool inputs. `project` is optional everywhere: --project, else the only one.
 
@@ -185,10 +191,10 @@ func (s *mcpServer) listViews(_ context.Context, _ *mcp.CallToolRequest, in proj
 	}
 	for _, p := range core.Index(s.workspace).Projects {
 		if p.ID == filepath.Base(dir) {
-			return nil, p.Views, nil
+			return nil, map[string]any{"views": p.Views}, nil
 		}
 	}
-	return nil, []any{}, nil
+	return nil, map[string]any{"views": []any{}}, nil
 }
 
 // record is one registry item, read for filtering.
@@ -303,7 +309,7 @@ func (s *mcpServer) getRelationTypes(_ context.Context, _ *mcp.CallToolRequest, 
 	if err != nil {
 		return nil, nil, err
 	}
-	return nil, raws(types), nil
+	return nil, map[string]any{"relationTypes": raws(types)}, nil
 }
 
 func (s *mcpServer) getText(_ context.Context, _ *mcp.CallToolRequest, in textIn) (*mcp.CallToolResult, any, error) {
@@ -410,7 +416,7 @@ func (s *mcpServer) extract(_ context.Context, _ *mcp.CallToolRequest, in extrac
 	for i, r := range runs {
 		out[i] = map[string]string{"run": r.ID, "extractor": r.Extractor, "project": r.Project}
 	}
-	return nil, out, nil
+	return nil, map[string]any{"runs": out}, nil
 }
 
 func (s *mcpServer) reconcile(in syncIn, dryRun bool) (*mcp.CallToolResult, any, error) {
@@ -439,7 +445,7 @@ func (s *mcpServer) reconcile(in syncIn, dryRun bool) (*mcp.CallToolResult, any,
 		rep.Print(&b)
 		reports = append(reports, rep)
 	}
-	return &mcp.CallToolResult{Content: []mcp.Content{&mcp.TextContent{Text: b.String()}}}, reports, nil
+	return &mcp.CallToolResult{Content: []mcp.Content{&mcp.TextContent{Text: b.String()}}}, map[string]any{"reports": reports}, nil
 }
 
 func (s *mcpServer) syncPreview(_ context.Context, _ *mcp.CallToolRequest, in syncIn) (*mcp.CallToolResult, any, error) {

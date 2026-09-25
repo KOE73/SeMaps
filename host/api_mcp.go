@@ -184,6 +184,7 @@ func (api *toolAPI) callMCP(w http.ResponseWriter, r *http.Request) {
 	}
 	root, _ := filepath.Abs(proj.SourceRoot)
 	srv := (&mcpServer{proj: proj, workspace: api.workspace, sourceRoot: root}).server()
+	srv.AddReceivingMiddleware(callLog(proj.Root, nil)) // the sandbox's calls land in the same log
 
 	ctx := r.Context()
 	st, ct := mcp.NewInMemoryTransports()

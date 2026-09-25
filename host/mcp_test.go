@@ -141,3 +141,67 @@ func TestMCPRefusalsAreToolErrors(t *testing.T) {
 		t.Fatal("placement asked by a human refused")
 	}
 }
+
+// Clients (Claude Code) reject a tools/call whose structuredContent is not an
+// object; every reading tool must answer with one.
+func TestMCPStructuredContentIsAnObject(t *testing.T) {
+	cs, _ := mcpSession(t)
+	for name, args := range map[string]map[string]any{
+		"list_projects":      {},
+		"list_views":         {},
+		"get_relation_types": {},
+		"find_entities":      {},
+		"get_relations":      {},
+		"get_entity":         {"id": "e_a"},
+		"get_text":           {"lang": "ru", "key": "e_a"},
+		"doctor":             {},
+	} {
+		res, text := call(t, cs, name, args)
+		if res.IsError {
+			t.Errorf("%s: %s", name, text)
+			continue
+		}
+		raw, _ := json.Marshal(res.StructuredContent)
+		if len(raw) == 0 || raw[0] != '{' {
+			t.Errorf("%s: structuredContent is not an object: %.80s", name, raw)
+		}
+	}
+}
+
+func TestMCPCallLog(t *testing.T) {
+	cs, ws := mcpSession(t)
+	root := t.TempDir()
+	// A second session on the same workspace, with the log on.
+	s := &mcpServer{workspace: ws, sourceRoot: ws}
+	srv := s.server()
+	var echo strings.Builder
+	srv.AddReceivingMiddleware(callLog(root, &echo))
+	st, ct := mcp.NewInMemoryTransports()
+	if _, err := srv.Connect(context.Background(), st, nil); err != nil {
+		t.Fatal(err)
+	}
+	logged, err := mcp.NewClient(&mcp.Implementation{Name: "test"}, nil).Connect(context.Background(), ct, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer logged.Close()
+	_ = cs
+	call(t, logged, "get_entity", map[string]any{"id": "e_a"})
+	call(t, logged, "get_entity", map[string]any{"id": "e_none"})
+
+	files, _ := filepath.Glob(filepath.Join(root, ".semaps", "logs", "mcp-*.jsonl"))
+	if len(files) != 1 {
+		t.Fatalf("log files: %v", files)
+	}
+	data, _ := os.ReadFile(files[0])
+	lines := strings.Split(strings.TrimSpace(string(data)), "\n")
+	if len(lines) != 2 || !strings.Contains(lines[0], `"tool":"get_entity"`) || !strings.Contains(lines[1], `"isError":true`) {
+		t.Fatalf("log:\n%s", data)
+	}
+	if _, err := os.Stat(filepath.Join(root, ".semaps", ".gitignore")); err != nil {
+		t.Fatal("no .gitignore in .semaps")
+	}
+	if !strings.Contains(echo.String(), "get_entity") || !strings.Contains(echo.String(), "ERROR") {
+		t.Fatalf("stderr: %q", echo.String())
+	}
+}

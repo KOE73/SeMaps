@@ -353,16 +353,24 @@ then.
   entity already on the view is refused, not moved (CONTRACT §8.2 p. 3).
 - Files keep every key they had, in the order they had it.
 
+Every structured answer (`structuredContent`) is a JSON object, lists included: clients
+reject anything else.
+
+**Log.** Every tool call — the tool, its arguments, time, the error if any — is a JSON line in
+`<project root>/.semaps/logs/mcp-<date>.jsonl` (kept 14 days; the folder carries its own
+`.gitignore`), and a short line on stderr, which clients keep in their server logs. Calls from the
+editor's sandbox land in the same file.
+
 **Reading**
 
 | Tool | Input | Answer |
 |---|---|---|
 | `list_projects` | — | `core.Index` of the workspace: projects and their views |
-| `list_views` | `project?` | views of the project |
+| `list_views` | `project?` | `{views}` |
 | `get_entity` | `id` \| `symbol` | the entity as in `entities.json` |
 | `find_entities` | `query?` (substring of name, symbol, namespace, id), `kind?`, `status?`, `limit?` = 50 | `{total, entities}` |
 | `get_relations` | `entity?`, `direction?` = `both` \| `out` \| `in`, `type?` (a prefix ending with `.` matches `holds.`), `status?`, `limit?` = 200 | `{total, relations}` |
-| `get_relation_types` | — | the vocabulary with `visibility` |
+| `get_relation_types` | — | `{relationTypes}`: the vocabulary with `visibility` |
 | `get_text` | `lang`, `key` | the entry of `key` in `text.<lang>.json`, `{}` when none |
 | `doctor` | — | `{extractors, extractorsOK, findings}`: `semaps doctor` and `semaps check` |
 | `sync_preview` | as `sync` | as `sync`, writing nothing |
@@ -376,8 +384,8 @@ then.
 | `add_relation_type` | `id`, `visibility?`, `styleId?` | authored type; its name goes by `set_text` under `rt_<id>` |
 | `set_relation_visible` | `view`, `relation`, `visible` | the relation into or out of `relations.except` against the default (CONTRACT §8.5) |
 | `confirm_rename` | `entity` + `symbol` \| `relation` + `member` | answers «переименование?» of sync: the old entity takes the new `symbol`, the old member relation the new `via.member`; then `sync` again |
-| `extract` | `extractor?` | runs the extractors of the `.semaps` file one by one → `[{run, extractor, project}]` |
-| `sync` | `extractor?`, `run?`, `noRenames?` | extracts (or takes the facts of `run`) and reconciles; the text answer is the sync report, the structured one `[core.SyncReport]` |
+| `extract` | `extractor?` | runs the extractors of the `.semaps` file one by one → `{runs: [{run, extractor, project}]}` |
+| `sync` | `extractor?`, `run?`, `noRenames?` | extracts (or takes the facts of `run`) and reconciles; the text answer is the sync report, the structured one `{reports: [core.SyncReport]}` |
 | `place_entities` | `view`, `entities: [{entity, zone?, x, y, width?, height?}]`, `requestedByHuman` | puts entities on a view |
 
 **Entry** in the consuming project, `.mcp.json` at its root:
