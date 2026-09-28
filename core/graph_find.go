@@ -441,7 +441,31 @@ func containerShortName(n *GraphNode, byID map[string]*GraphNode, methodOf map[s
 			return cn.Name
 		}
 	}
-	return ""
+	return containerFromSymbol(n.Symbol)
+}
+
+// containerFromSymbol reads the type's short name out of a method's symbol
+// (`<type>.<name>(<params>)`, ADR_20260928-4 §2). An answer of a walk has no
+// `contains` edges unless they were followed, so the map above is empty for
+// nearly every method a walk prints.
+func containerFromSymbol(symbol string) string {
+	head := symbol
+	if i := strings.Index(head, "("); i >= 0 {
+		head = head[:i]
+	}
+	switch {
+	case strings.HasSuffix(head, "..ctor"):
+		head = strings.TrimSuffix(head, "..ctor")
+	case strings.HasSuffix(head, "..cctor"):
+		head = strings.TrimSuffix(head, "..cctor")
+	default:
+		i := strings.LastIndex(head, ".")
+		if i < 0 {
+			return ""
+		}
+		head = head[:i]
+	}
+	return head[strings.LastIndexAny(head, ".+")+1:]
 }
 
 // methodDisplayName is the short signature a method prints as in

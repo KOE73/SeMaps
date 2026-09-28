@@ -107,8 +107,11 @@ func relationMacrosFor(e GraphEdge, fromID, subjectID string, byID map[string]*G
 			if n := byID[subjectID]; n != nil {
 				subjectFile = n.File
 			}
+			// The file's name without its folders: the full path of that
+			// node stands on its own line of the answer, and repeating it in
+			// every relation doubled the answer on a real project.
 			if doerFile != "" && doerFile != subjectFile {
-				rm.RelationLinesFile = doerFile
+				rm.RelationLinesFile = doerFile[strings.LastIndex(doerFile, "/")+1:]
 			}
 		}
 	}
