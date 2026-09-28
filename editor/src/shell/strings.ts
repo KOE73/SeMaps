@@ -36,6 +36,9 @@ const ru = {
   include: "Включить",
   exclude: "Исключить",
   edgeKinds: "Виды связей",
+  watch: "Следить за исходниками",
+  watchHint: "При изменении исходников экстрактор запускается заново и обновляется только граф; реестр меняет только сверка.",
+  runTriggerWatch: "слежение",
   listHint: "через запятую",
   command: "Команда (только в файле)",
   extractorFound: "найден",
@@ -150,6 +153,10 @@ const ru = {
   graphEdgesOf: "Связи",
   graphOpenSource: "Открыть исходник",
   graphStats: "{nodes} узлов, {edges} рёбер",
+  graphShowMissing: "показывать пропавшие",
+  graphHiddenMissing: "скрыто: {nodes} узлов, {edges} рёбер",
+  graphRunFailedNotice: "Последний прогон экстрактора «{extractor}» не удался — граф показывает факты предыдущего прогона.",
+  graphLiveDiff: "+{addedNodes}/−{removedNodes} узлов, +{addedEdges}/−{removedEdges} рёбер",
 };
 
 type Strings = typeof ru;
@@ -184,6 +191,9 @@ const en: Strings = {
   include: "Include",
   exclude: "Exclude",
   edgeKinds: "Edge kinds",
+  watch: "Watch sources",
+  watchHint: "A source change reruns the extractor and refreshes the graph only; the registry is changed by sync alone.",
+  runTriggerWatch: "watch",
   listHint: "comma-separated",
   command: "Command (file only)",
   extractorFound: "found",
@@ -298,6 +308,10 @@ const en: Strings = {
   graphEdgesOf: "Edges",
   graphOpenSource: "Open source",
   graphStats: "{nodes} nodes, {edges} edges",
+  graphShowMissing: "show missing",
+  graphHiddenMissing: "hidden: {nodes} nodes, {edges} edges",
+  graphRunFailedNotice: "The newest run of extractor “{extractor}” failed — the graph shows the facts of the run before it.",
+  graphLiveDiff: "+{addedNodes}/−{removedNodes} nodes, +{addedEdges}/−{removedEdges} edges",
 };
 
 export const t: Strings = I18nService.get().currentLanguage === "en" ? en : ru;

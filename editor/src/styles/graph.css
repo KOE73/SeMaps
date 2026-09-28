@@ -36,6 +36,19 @@
   color: var(--accent);
 }
 
+.graph-notice.is-warn {
+  color: var(--warn, #f2b705);
+}
+
+.graph-notices:empty {
+  display: none;
+}
+
+.graph-live-notice {
+  color: var(--muted);
+  font-size: 0.9em;
+}
+
 .graph-toolbar {
   display: flex;
   align-items: center;

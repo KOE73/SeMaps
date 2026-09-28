@@ -58,15 +58,18 @@ export interface GraphEdge {
 
 export interface GraphFactsInfo {
   extractor: string;
-  run: string;
-  finished: string;
+  run?: string;
+  finished?: string;
   language: string;
+  lastRun?: string;
+  lastRunFailed?: boolean;
 }
 
 export interface GraphStats {
   nodes: number;
   edges: number;
   byPresence: Record<string, number>;
+  hiddenMissing?: { nodes: number; edges: number };
 }
 
 export interface GraphResponse {
@@ -76,8 +79,16 @@ export interface GraphResponse {
   stats: GraphStats;
 }
 
-export async function fetchGraph(project: string): Promise<GraphResponse> {
-  const res = await fetch(`/api/graph/${encodeURIComponent(project)}?fields=via,position`, { cache: "no-store" });
+export interface GraphDiff {
+  addedNodes?: string[];
+  removedNodes?: string[];
+  changedNodes?: string[];
+  addedEdges?: { from: string; to: string; kind: string }[];
+  removedEdges?: { from: string; to: string; kind: string }[];
+}
+
+export async function fetchGraph(project: string, missing = false): Promise<GraphResponse> {
+  const res = await fetch(`/api/graph/${encodeURIComponent(project)}?fields=via,position${missing ? "&missing=1" : ""}`, { cache: "no-store" });
   if (!res.ok) throw new Error((await res.text()).trim() || res.statusText);
   return (await res.json()) as GraphResponse;
 }

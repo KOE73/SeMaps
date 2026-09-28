@@ -3,7 +3,7 @@ import Sigma from "sigma";
 import type { NodeDisplayData, EdgeDisplayData } from "sigma/types";
 import { animateNodes } from "sigma/utils";
 import { el } from "../../util/dom.js";
-import { t } from "../../shell/strings.js";
+import { fmt, t } from "../../shell/strings.js";
 import type { GraphEdge, GraphNode, GraphResponse } from "./types.js";
 import { type ColorBy, PRESENCE_CODE_COLOR, MODEL_MARKER, edgeRenderColor, edgeSize, legendFor, nodeColor, resetPalette } from "./colors.js";
 import { type LayoutKind, applyGroupedLayout, communityGroups, groupKey, runForceLayout, seedCircle } from "./layouts.js";
@@ -18,7 +18,7 @@ import { GraphPanel, statsLine } from "./panel.js";
 export class GraphEngine {
   private readonly graph: Graph;
   private readonly nodeById = new Map<string, GraphNode>();
-  private readonly edges: GraphEdge[];
+  private edges: GraphEdge[];
   private renderer!: Sigma;
   private canvas!: HTMLElement;
   private resizeObserver: ResizeObserver | undefined;
@@ -32,8 +32,13 @@ export class GraphEngine {
   private readonly legendEl = el("div", { class: "graph-legend" });
   private readonly filtersHost = el("div", {});
   private readonly statsEl = el("span", { class: "tool-muted" });
+  private readonly noticeEl = el("span", { class: "graph-live-notice" });
+  private readonly noticeHost = el("div", { class: "graph-notices" });
+  private noticeTimer: ReturnType<typeof setTimeout> | undefined;
+  private data: GraphResponse;
 
-  constructor(private readonly data: GraphResponse) {
+  constructor(data: GraphResponse) {
+    this.data = data;
     for (const n of data.nodes) this.nodeById.set(n.id, n);
     this.edges = data.edges;
     this.filters = allFilters(data.nodes, [...new Set(data.edges.map((e) => e.kind))]);
@@ -102,6 +107,7 @@ export class GraphEngine {
       el("label", { class: "graph-field" }, [t.graphLayout, layoutSelect]),
       restart,
       el("span", { class: "spacer" }),
+      this.noticeEl,
       this.statsEl,
     ]);
 
@@ -109,12 +115,10 @@ export class GraphEngine {
     const sideDock = el("div", { class: "graph-side" }, [this.legendEl, this.filtersHost, this.panel.root]);
     const body = el("div", { class: "graph-body" }, [canvas, sideDock]);
     const root = el("div", { class: "graph-mode" }, [toolbar, body]);
-
-    if (this.data.facts.length === 0) {
-      root.prepend(this.noticeBar());
-    }
+    root.prepend(this.noticeHost);
 
     this.canvas = canvas;
+    this.refreshNotices();
     return root;
   }
 
@@ -147,7 +151,7 @@ export class GraphEngine {
       this.renderer.refresh();
     });
     this.filtersHost.replaceChildren(filtersRoot);
-    this.statsEl.textContent = statsLine(this.data.nodes.length, this.data.edges.length);
+    this.statsEl.textContent = statsLine(this.data.nodes.length, this.data.edges.length, this.data.stats.hiddenMissing);
 
     this.applyLayout();
   }
@@ -169,13 +173,145 @@ export class GraphEngine {
   destroy(): void {
     this.resizeObserver?.disconnect();
     this.forceHandle?.stop();
+    clearTimeout(this.noticeTimer);
     this.renderer?.kill();
   }
 
-  private noticeBar(): HTMLElement {
-    const link = el("a", { text: t.graphOpenExtractors });
-    link.href = "#extract";
-    return el("p", { class: "graph-notice" }, [t.graphNoFactsNotice + " ", link]);
+  // -------------------------------------------------------- live updates
+
+  /** Applies the difference between the currently held graph and a freshly
+   * fetched one, in place: gone nodes/edges are dropped, new ones are added
+   * next to their already-placed neighbours (or the centre, with a small
+   * random offset), changed ones get their data replaced, and everything
+   * that stays KEEPS its coordinates — no layout runs on its own
+   * (PLAN_20260928-2 step 6). Selection and camera are untouched, except the
+   * selection is cleared when the selected node is gone. Returns the counts
+   * for the toolbar's transient notice. */
+  applyDiff(next: GraphResponse): { addedNodes: number; removedNodes: number; addedEdges: number; removedEdges: number } {
+    const oldSymbolKinds = new Set(this.data.nodes.map((n) => n.kind).filter((k): k is string => !!k));
+    const oldVisibility = new Set(this.data.nodes.map((n) => n.visibility).filter((v): v is string => !!v));
+    const oldEdgeKinds = new Set(this.edges.map((e) => e.kind));
+    const oldContainers = new Set(this.data.nodes.flatMap((n) => n.containers ?? []));
+
+    const removedNodeIds = this.graph.nodes().filter((id) => !next.nodes.some((n) => n.id === id));
+    for (const id of removedNodeIds) {
+      if (this.graph.hasNode(id)) this.graph.dropNode(id);
+      this.nodeById.delete(id);
+    }
+
+    const addedNodes = next.nodes.filter((n) => !this.graph.hasNode(n.id));
+    for (const n of addedNodes) {
+      const { x, y } = this.placementFor(n, next);
+      this.graph.addNode(n.id, { label: n.name ?? n.id, x, y, size: 3 });
+    }
+    for (const n of next.nodes) this.nodeById.set(n.id, n);
+
+    const nextEdgeKey = (e: GraphEdge) => `${e.from}\u0000${e.to}\u0000${e.kind}`;
+    const oldEdgeKeys = new Set(this.edges.map(nextEdgeKey));
+    const nextEdgeKeys = new Set(next.edges.map(nextEdgeKey));
+    let removedEdges = 0;
+    for (const e of this.edges) {
+      if (nextEdgeKeys.has(nextEdgeKey(e))) continue;
+      // An edge whose endpoint node was just dropped above is already gone
+      // (graphology drops a node's edges with it) — graph.edges(from, to)
+      // throws for a missing node, so this only looks at edges between
+      // nodes that still exist.
+      if (!this.graph.hasNode(e.from) || !this.graph.hasNode(e.to)) { removedEdges++; continue; }
+      const key = this.graph.edges(e.from, e.to).find((eid) => this.graph.getEdgeAttribute(eid, "kind") === e.kind);
+      if (key) { this.graph.dropEdge(key); removedEdges++; }
+    }
+    let addedEdges = 0;
+    for (const e of next.edges) {
+      if (oldEdgeKeys.has(nextEdgeKey(e))) continue;
+      if (!this.graph.hasNode(e.from) || !this.graph.hasNode(e.to)) continue;
+      this.graph.addEdge(e.from, e.to, { kind: e.kind, via: e.via, presence: e.presence });
+      addedEdges++;
+    }
+    this.edges = next.edges.filter((e) => this.graph.hasNode(e.from) && this.graph.hasNode(e.to));
+
+    // Degree-based size, recomputed for everyone — cheap next to a layout.
+    this.graph.forEachNode((node) => {
+      const d = this.graph.degree(node);
+      this.graph.setNodeAttribute(node, "size", 3 + Math.min(18, Math.sqrt(d) * 2.4));
+    });
+
+    this.data = next;
+
+    // Merge filter selections: a value already offered keeps the user's
+    // choice, a newly offered one starts included.
+    const merge = (selected: Set<string>, oldAvailable: Set<string>, nowAvailable: Set<string>) => {
+      const out = new Set<string>();
+      for (const v of nowAvailable) if (!oldAvailable.has(v) || selected.has(v)) out.add(v);
+      return out;
+    };
+    const newSymbolKinds = new Set(next.nodes.map((n) => n.kind).filter((k): k is string => !!k));
+    const newVisibility = new Set(next.nodes.map((n) => n.visibility).filter((v): v is string => !!v));
+    const newEdgeKinds = new Set(next.edges.map((e) => e.kind));
+    const newContainers = new Set(next.nodes.flatMap((n) => n.containers ?? []));
+    this.filters.symbolKinds = merge(this.filters.symbolKinds, oldSymbolKinds, newSymbolKinds);
+    this.filters.visibility = merge(this.filters.visibility, oldVisibility, newVisibility);
+    this.filters.edgeKinds = merge(this.filters.edgeKinds, oldEdgeKinds, newEdgeKinds);
+    if (this.filters.container && !newContainers.has(this.filters.container)) this.filters.container = "";
+    void oldContainers;
+
+    if (this.selected && removedNodeIds.includes(this.selected)) {
+      this.selected = undefined;
+      this.panel.clear();
+    }
+
+    resetPalette();
+    this.refreshLegend();
+    this.refreshNotices();
+    const { root: filtersRoot } = buildFilters(next.nodes, [...newEdgeKinds], this.filters, () => this.renderer.refresh());
+    this.filtersHost.replaceChildren(filtersRoot);
+    this.statsEl.textContent = statsLine(next.nodes.length, next.edges.length, next.stats.hiddenMissing);
+    this.renderer.refresh();
+
+    return { addedNodes: addedNodes.length, removedNodes: removedNodeIds.length, addedEdges, removedEdges };
+  }
+
+  /** Where a new node lands: the average position of its already-placed
+   * neighbours in the new edge list, or the centre when it has none, with a
+   * small random offset so several new nodes do not stack exactly. */
+  private placementFor(n: GraphNode, next: GraphResponse): { x: number; y: number } {
+    const neighbourIds = next.edges
+      .filter((e) => e.from === n.id || e.to === n.id)
+      .map((e) => (e.from === n.id ? e.to : e.from))
+      .filter((id) => this.graph.hasNode(id));
+    const jitter = () => (Math.random() - 0.5) * 8;
+    if (neighbourIds.length === 0) return { x: jitter(), y: jitter() };
+    let sx = 0, sy = 0;
+    for (const id of neighbourIds) { sx += this.graph.getNodeAttribute(id, "x"); sy += this.graph.getNodeAttribute(id, "y"); }
+    return { x: sx / neighbourIds.length + jitter(), y: sy / neighbourIds.length + jitter() };
+  }
+
+  /** The toolbar's transient "N added/removed" notice (a few seconds). */
+  announceDiff(counts: { addedNodes: number; removedNodes: number; addedEdges: number; removedEdges: number }): void {
+    if (counts.addedNodes === 0 && counts.removedNodes === 0 && counts.addedEdges === 0 && counts.removedEdges === 0) return;
+    clearTimeout(this.noticeTimer);
+    this.noticeEl.textContent = fmt(t.graphLiveDiff, {
+      addedNodes: String(counts.addedNodes),
+      removedNodes: String(counts.removedNodes),
+      addedEdges: String(counts.addedEdges),
+      removedEdges: String(counts.removedEdges),
+    });
+    this.noticeTimer = setTimeout(() => { this.noticeEl.textContent = ""; }, 5000);
+  }
+
+  private refreshNotices(): void {
+    const bars: HTMLElement[] = [];
+    if (this.data.facts.length === 0) {
+      const link = el("a", { text: t.graphOpenExtractors });
+      link.href = "#extract";
+      bars.push(el("p", { class: "graph-notice" }, [t.graphNoFactsNotice + " ", link]));
+    }
+    for (const f of this.data.facts) {
+      if (!f.lastRunFailed) continue;
+      const link = el("a", { text: t.graphOpenExtractors });
+      link.href = "#extract";
+      bars.push(el("p", { class: "graph-notice is-warn" }, [fmt(t.graphRunFailedNotice, { extractor: f.extractor }) + " ", link]));
+    }
+    this.noticeHost.replaceChildren(...bars);
   }
 
   // ------------------------------------------------------------ rendering

@@ -5,7 +5,7 @@ import type { CommandDefinition } from "../workbench/commands/types.js";
 import { focusNewExtractor, loadExtractors } from "./extract.js";
 import { loadProject, saveProject } from "./setup.js";
 import { installMcp, loadMcp } from "./mcp.js";
-import { loadGraph, refreshGraph } from "./graph.js";
+import { loadGraph, leaveGraph, refreshGraph } from "./graph.js";
 import { t } from "../shell/strings.js";
 
 /**
@@ -86,7 +86,7 @@ export function addToolModes(workbench: Workbench): void {
     { id: "graph", title: t.navGraph, items: [
       { type: "button", command: "tools.graph.refresh", size: "large" },
     ] },
-  ]));
+  ], leaveGraph));
   workbench.addMode(mode("mcp", t.navMcp, mcp, () => loadMcp(mcp.inner), [
     { id: "mcp", title: t.navMcp, items: [
       { type: "button", command: "tools.mcp.install", size: "large" },
@@ -112,6 +112,7 @@ function mode(
   p: Page,
   load: () => Promise<void>,
   groups: WorkbenchMode["tabs"][number]["groups"],
+  leave?: () => void,
 ): WorkbenchMode {
   let loaded = false;
   return {
@@ -124,5 +125,6 @@ function mode(
       loaded = true;
       void load();
     },
+    leave,
   };
 }

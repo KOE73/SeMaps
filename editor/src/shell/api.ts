@@ -34,6 +34,7 @@ export interface RunInfo {
   extractor: string;
   project: string;
   language: string;
+  trigger?: "watch";
   started: string;
   finished?: string;
   seconds?: number;
@@ -51,6 +52,7 @@ export interface ExtractorView {
   include: string[];
   exclude: string[];
   edges: string[];
+  watch: boolean;
   command?: string;
   tool: ExtractorTool;
   lastRun?: RunInfo;
@@ -101,6 +103,7 @@ export interface ExtractorPatch {
   include?: string[];
   exclude?: string[];
   edges?: string[];
+  watch?: boolean;
 }
 
 export interface SettingsPatch {

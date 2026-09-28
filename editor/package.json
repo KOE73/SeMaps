@@ -3,7 +3,7 @@
   "version": "0.1.0",
   "private": true,
   "type": "module",
-  "description": "Semantic architecture diagram canvas and editor. Fixed coordinates, no auto-layout.",
+  "description": "Semantic architecture diagram canvas and editor. Diagrams have fixed coordinates, no auto-layout.",
   "license": "MIT",
   "files": [
     "dist"

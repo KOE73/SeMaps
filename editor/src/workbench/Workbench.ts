@@ -159,6 +159,7 @@ export class Workbench {
   selectMode(id: string): void {
     const next = this.modes.find((m) => m.id === id) ?? this.modes[0]!;
     this.display.close();
+    if (this.mode !== next) this.mode.leave?.();
     this.mode = next;
     for (const m of this.modes) m.surface.hidden = m !== next;
     this.shortcuts.enabled = next.id === "";

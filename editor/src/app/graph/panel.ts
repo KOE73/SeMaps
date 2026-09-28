@@ -81,6 +81,8 @@ export class GraphPanel {
   }
 }
 
-export function statsLine(nodes: number, edges: number): string {
-  return fmt(t.graphStats, { nodes: String(nodes), edges: String(edges) });
+export function statsLine(nodes: number, edges: number, hiddenMissing?: { nodes: number; edges: number }): string {
+  const base = fmt(t.graphStats, { nodes: String(nodes), edges: String(edges) });
+  if (!hiddenMissing || (hiddenMissing.nodes === 0 && hiddenMissing.edges === 0)) return base;
+  return `${base} · ${fmt(t.graphHiddenMissing, { nodes: String(hiddenMissing.nodes), edges: String(hiddenMissing.edges) })}`;
 }

@@ -132,9 +132,17 @@ graph view) picks it up on its own. It never touches the registry: sync is still
 deliberate step (`semaps sync`, above, or the page's "Sync" button), because otherwise unreviewed
 edits would land in the model without anyone asking for them
 (`docs/plans/PLAN_20260928-4_host_watch-sources.md` step 4). Switch it off the same way, by editing
-the `.semaps` file or (once the editor's «Экстракторы» page has the control) its checkbox; either
-takes effect at once, no restart of the host needed. With `--workspace` (no `.semaps` file) nothing
-is watched.
+the `.semaps` file or its checkbox on the editor's «Экстракторы» page; either takes effect at once,
+no restart of the host needed. With `--workspace` (no `.semaps` file) nothing is watched.
+
+## The code graph page
+
+`/app/#graph` shows the live code graph of a project as nodes and edges — the same source
+`get_graph` reads, rendered and laid out by algorithm rather than authored by hand
+(`docs/adr/ADR_20260928-2_editor_graph-is-a-separate-form.md`). It colours by container,
+namespace, symbol kind or code/model presence, filters and searches, and — for an extractor with
+`watch: true` above — follows the graph live as sources change, without a page reload. It writes
+nothing to the workspace; nothing on this page changes the registry or the `.semaps` file.
 
 Then, from anywhere inside the project:
 

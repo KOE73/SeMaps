@@ -3,7 +3,9 @@
 ![SeMaps — semantic architecture maps, shared ground for humans and agents](docs/images/promo.jpg)
 
 Semantic architecture maps: one model, several views, each view declares an **axis** —
-the question it answers. Layout is manual only; there is no auto-layout.
+the question it answers. Layout is manual only; there is no auto-layout. This is about
+diagrams — the live code graph page lays itself out by algorithm, on purpose
+([`ADR_20260928-2`](docs/adr/ADR_20260928-2_editor_graph-is-a-separate-form.md)).
 
 - The machine checks mechanical sync with code: does the entity exist, does `codeRef` resolve,
   does a relation point anywhere.
@@ -34,6 +36,8 @@ sync with code (in progress, see below) will show where the code has moved away 
 | Extractor for TypeScript (`extractors/typescript/`) | **in progress** — [`PLAN_20260923_extractors_typescript`](docs/plans/PLAN_20260923_extractors_typescript.md) |
 | Extractor for C# (`extractors/csharp/`) | **in progress** — [`PLAN_20260923_extractors_csharp`](docs/plans/PLAN_20260923_extractors_csharp.md) |
 | JSON schema of extractor facts (`schemas/`) | works: [`extractor-facts.schema.json`](schemas/extractor-facts.schema.json) |
+| Code graph page (`editor/`, `/app/#graph`) | works: sigma + graphology, algorithmic layout, live updates — [`PLAN_20260928-2_editor_graph-page`](docs/plans/PLAN_20260928-2_editor_graph-page.md) |
+| Watching sources (`host/`) | works: `watch` on an extractor reruns it on a source change and refreshes the graph only — [`PLAN_20260928-4_host_watch-sources`](docs/plans/PLAN_20260928-4_host_watch-sources.md) |
 
 ## Getting started
 

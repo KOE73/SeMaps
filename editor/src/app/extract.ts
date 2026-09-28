@@ -105,6 +105,9 @@ function extractorCard(e: ExtractorView, inner: HTMLElement): HTMLElement {
     edgeCheckboxes.push(el("label", { class: "tool-check" }, [cb, kind]));
   }
 
+  const watchCb = el("input", { type: "checkbox" }) as HTMLInputElement;
+  watchCb.checked = e.watch;
+
   const formRows = [
     el("label", { text: t.language }),
     language,
@@ -118,6 +121,8 @@ function extractorCard(e: ExtractorView, inner: HTMLElement): HTMLElement {
     exclude,
     el("label", { text: t.edgeKinds }),
     el("div", { class: "tool-checks" }, edgeCheckboxes),
+    el("label", { text: t.watch }),
+    el("div", {}, [el("label", { class: "tool-check" }, [watchCb, t.watch]), el("p", { class: "tool-hint" }, [t.watchHint])]),
   ];
   if (e.command) {
     const cmd = el("input", { value: e.command });
@@ -138,6 +143,7 @@ function extractorCard(e: ExtractorView, inner: HTMLElement): HTMLElement {
         include: parseList(include.value),
         exclude: parseList(exclude.value),
         edges: edges.length > 0 ? edges : undefined,
+        watch: watchCb.checked,
       });
       render(inner, next);
     } catch (err) {
@@ -220,10 +226,11 @@ async function followRun(run: RunInfo, panel: HTMLElement): Promise<void> {
 
 function showRun(run: RunInfo, panel: HTMLElement, logText: string): void {
   const when = new Date(run.started).toLocaleString();
+  const triggerSuffix = run.trigger === "watch" ? ` · ${t.runTriggerWatch}` : "";
   const head =
     run.state === "done" && run.stats
-      ? `${t.lastRun}: ${when} · ${run.stats.symbols} ${t.symbols}, ${run.stats.edges} ${t.edges} · ${run.seconds ?? 0}s`
-      : `${t.lastRun}: ${when} · ${run.state === "failed" ? t.failed : run.state}`;
+      ? `${t.lastRun}: ${when} · ${run.stats.symbols} ${t.symbols}, ${run.stats.edges} ${t.edges} · ${run.seconds ?? 0}s${triggerSuffix}`
+      : `${t.lastRun}: ${when} · ${run.state === "failed" ? t.failed : run.state}${triggerSuffix}`;
   const children: (HTMLElement | null)[] = [el("p", { class: "tool-muted", text: head })];
   if (run.error) children.push(el("p", { class: "tool-error", text: run.error }));
   if (run.stats) {
