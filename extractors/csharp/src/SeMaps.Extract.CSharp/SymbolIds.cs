@@ -69,10 +69,24 @@ internal static class SymbolIds
         {
             MethodKind.Constructor => ".ctor",
             MethodKind.StaticConstructor => ".cctor",
-            _ => method.Arity > 0 ? $"{method.Name}`{method.Arity}" : method.Name,
+            _ => method.Arity > 0 ? $"{MethodShortName(method)}`{method.Arity}" : MethodShortName(method),
         };
         return $"{TypeId(method.ContainingType)}.{name}({ParameterTypeList(method.Parameters)})";
     }
+
+    /// <summary>
+    /// A method's own short name: for an ordinary method, <c>Name</c>; for an explicit
+    /// interface implementation (<c>double IShape.Area()</c>), <c>Name</c> is the fully
+    /// qualified <c>N.IShape.Area</c> as written — this returns the interface member's
+    /// simple name instead (<c>Area</c>), so the id and `name` field read like any other
+    /// method. Two explicit implementations of same-named members of different interfaces
+    /// on the same type are the one case this can still collide on; not seen in practice
+    /// (docs/extractors/csharp.md).
+    /// </summary>
+    private static string MethodShortName(IMethodSymbol method) =>
+        method.ExplicitInterfaceImplementations.Length > 0
+            ? method.ExplicitInterfaceImplementations[0].Name
+            : method.Name;
 
     /// <summary>Id of an indexer: same shape as <see cref="MethodId"/>, name <c>this</c>.</summary>
     public static string IndexerId(IPropertySymbol indexer) =>

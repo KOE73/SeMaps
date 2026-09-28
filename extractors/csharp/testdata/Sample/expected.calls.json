@@ -733,6 +733,16 @@
       "line": 6
     },
     {
+      "from": "Sample.App.AdvancedRepetitionGuard.CurrentStatus",
+      "to": "Sample.Core.IRepository.CurrentStatus",
+      "kind": "implements"
+    },
+    {
+      "from": "Sample.App.AdvancedRepetitionGuard.Snapshot()",
+      "to": "Sample.Core.IRepository.Snapshot()",
+      "kind": "implements"
+    },
+    {
       "from": "Sample.Core",
       "to": "Sample.Core.Container",
       "kind": "contains"

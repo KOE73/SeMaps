@@ -313,14 +313,26 @@ internal sealed class FactsExtractor(string rootArgument, string rootFullPath, P
             }
         }
 
-        var printMethods = _requestedEdgeKinds?.Contains("calls") == true;
         foreach (var (id, entry) in _types)
         {
             var symbol = entry.Symbol;
             symbols.Add(BuildTypeSymbolFact(id, symbol, entry, outputIds, edges));
-            if (printMethods)
+        }
+
+        var printMethods = _requestedEdgeKinds?.Contains("calls") == true;
+        if (printMethods)
+        {
+            // Two passes: every method symbol of every type first, then
+            // overrides/implements, which need the *target* method (possibly
+            // of a type visited later) already known.
+            foreach (var (id, entry) in _types)
             {
-                CollectMethods(id, symbol, entry.File, symbols, edges);
+                CollectMethods(id, entry.Symbol, entry.File, symbols, edges);
+            }
+
+            foreach (var (id, entry) in _types)
+            {
+                AddMethodLevelEdges(id, entry.Symbol, edges);
             }
         }
 
@@ -606,7 +618,10 @@ internal sealed class FactsExtractor(string rootArgument, string rootFullPath, P
                         break;
                     }
 
-                    AddMethodSymbol(id, typeId, canonical, canonical.Name, NativeKindOf(canonical),
+                    var name = canonical.ExplicitInterfaceImplementations.Length > 0
+                        ? canonical.ExplicitInterfaceImplementations[0].Name
+                        : canonical.Name;
+                    AddMethodSymbol(id, typeId, canonical, name, NativeKindOf(canonical),
                         symbols, edges, PartialSyntaxRefs(canonical));
                     break;
                 }
@@ -640,7 +655,8 @@ internal sealed class FactsExtractor(string rootArgument, string rootFullPath, P
         }
 
         return method.MethodKind is MethodKind.Ordinary or MethodKind.Constructor or
-            MethodKind.StaticConstructor or MethodKind.UserDefinedOperator or MethodKind.Conversion;
+            MethodKind.StaticConstructor or MethodKind.UserDefinedOperator or MethodKind.Conversion or
+            MethodKind.ExplicitInterfaceImplementation;
     }
 
     private static string NativeKindOf(IMethodSymbol method) => method.MethodKind switch
@@ -712,6 +728,68 @@ internal sealed class FactsExtractor(string rootArgument, string rootFullPath, P
 
         edges.Add(new EdgeWithVia { From = typeId, To = id, Kind = "contains" });
         _methodSymbols[id] = symbol;
+    }
+
+    /// <summary>
+    /// `overrides` (method -> the base virtual method it overrides) and `implements`
+    /// (method -> the interface method it implements, implicit and explicit alike)
+    /// for the methods of <paramref name="symbol"/> already collected by
+    /// <see cref="CollectMethods"/> (ADR_20260928-4 §1, §3). Both ends must be
+    /// symbols of this output; an edge is only added from the type that actually
+    /// declares the overriding/implementing method, not from a subclass that
+    /// merely inherits it.
+    /// </summary>
+    private void AddMethodLevelEdges(string typeId, INamedTypeSymbol symbol, HashSet<EdgeWithVia> edges)
+    {
+        foreach (var member in symbol.GetMembers().OfType<IMethodSymbol>())
+        {
+            if (member.OverriddenMethod is not { } overridden || !IsCallsEligibleMethod(member))
+            {
+                continue;
+            }
+
+            var fromId = SymbolIds.MethodId(member.PartialImplementationPart ?? member);
+            var toId = SymbolIds.MethodId(overridden.OriginalDefinition);
+            if (fromId != toId && _methodSymbols.ContainsKey(fromId) && _methodSymbols.ContainsKey(toId))
+            {
+                edges.Add(new EdgeWithVia { From = fromId, To = toId, Kind = "overrides" });
+            }
+        }
+
+        foreach (var iface in symbol.Interfaces)
+        {
+            foreach (var ifaceMethod in iface.GetMembers().OfType<IMethodSymbol>().Where(m => m.MethodKind == MethodKind.Ordinary))
+            {
+                if (symbol.FindImplementationForInterfaceMember(ifaceMethod) is not IMethodSymbol impl ||
+                    !SymbolEqualityComparer.Default.Equals(impl.ContainingType, symbol))
+                {
+                    continue; // not declared on this type: no edge from here
+                }
+
+                var fromId = SymbolIds.MethodId(impl.PartialImplementationPart ?? impl);
+                var toId = SymbolIds.MethodId(ifaceMethod);
+                if (fromId != toId && _methodSymbols.ContainsKey(fromId) && _methodSymbols.ContainsKey(toId))
+                {
+                    edges.Add(new EdgeWithVia { From = fromId, To = toId, Kind = "implements" });
+                }
+            }
+
+            foreach (var ifaceProperty in iface.GetMembers().OfType<IPropertySymbol>())
+            {
+                if (symbol.FindImplementationForInterfaceMember(ifaceProperty) is not IPropertySymbol impl ||
+                    !SymbolEqualityComparer.Default.Equals(impl.ContainingType, symbol))
+                {
+                    continue;
+                }
+
+                var fromId = impl.IsIndexer ? SymbolIds.IndexerId(impl) : SymbolIds.PropertyId(impl);
+                var toId = ifaceProperty.IsIndexer ? SymbolIds.IndexerId(ifaceProperty) : SymbolIds.PropertyId(ifaceProperty);
+                if (fromId != toId && _methodSymbols.ContainsKey(fromId) && _methodSymbols.ContainsKey(toId))
+                {
+                    edges.Add(new EdgeWithVia { From = fromId, To = toId, Kind = "implements" });
+                }
+            }
+        }
     }
 
     private static bool IsExtendableBase(INamedTypeSymbol baseType) => baseType.SpecialType is not (

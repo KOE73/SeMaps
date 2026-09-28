@@ -318,8 +318,8 @@ func (f *Facts) problems() []string {
 			}
 		case "contains":
 			if toKind == "method" {
-				if fromKind != "" && fromKind != "type" {
-					bad("%s: contains to a method must start at a type", where)
+				if fromKind != "" && fromKind != "type" && fromKind != "interface" {
+					bad("%s: contains to a method must start at a type or interface", where)
 				}
 				containedBy[e.To]++
 			}

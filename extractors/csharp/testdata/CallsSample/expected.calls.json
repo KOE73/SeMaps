@@ -1,0 +1,459 @@
+{
+  "language": "csharp",
+  "root": ".",
+  "edgeKinds": [
+    "calls",
+    "contains",
+    "depends",
+    "extends",
+    "implements"
+  ],
+  "symbols": [
+    {
+      "id": "CallsSample.App",
+      "kind": "module",
+      "nativeKind": "namespace",
+      "name": "App",
+      "namespace": "",
+      "file": "CallsSample.App/Animals.cs",
+      "line": 1
+    },
+    {
+      "id": "CallsSample.App.Animal",
+      "kind": "type",
+      "nativeKind": "abstract-class",
+      "name": "Animal",
+      "namespace": "CallsSample.App",
+      "file": "CallsSample.App/Animals.cs",
+      "line": 3,
+      "endLine": 6,
+      "visibility": "public",
+      "members": []
+    },
+    {
+      "id": "CallsSample.App.Animal.Speak()",
+      "kind": "method",
+      "nativeKind": "method",
+      "name": "Speak",
+      "namespace": "",
+      "file": "CallsSample.App/Animals.cs",
+      "line": 5,
+      "endLine": 5,
+      "visibility": "public"
+    },
+    {
+      "id": "CallsSample.App.Circle",
+      "kind": "type",
+      "nativeKind": "class",
+      "name": "Circle",
+      "namespace": "CallsSample.App",
+      "file": "CallsSample.App/Shapes.cs",
+      "line": 8,
+      "endLine": 13,
+      "visibility": "public",
+      "members": [
+        {
+          "kind": "field",
+          "name": "Radius",
+          "type": "double",
+          "visibility": "public"
+        }
+      ],
+      "memberLines": {
+        "Radius": 10
+      }
+    },
+    {
+      "id": "CallsSample.App.Circle.Area()",
+      "kind": "method",
+      "nativeKind": "method",
+      "name": "Area",
+      "namespace": "",
+      "file": "CallsSample.App/Shapes.cs",
+      "line": 12,
+      "endLine": 12,
+      "visibility": "public"
+    },
+    {
+      "id": "CallsSample.App.Dog",
+      "kind": "type",
+      "nativeKind": "class",
+      "name": "Dog",
+      "namespace": "CallsSample.App",
+      "file": "CallsSample.App/Animals.cs",
+      "line": 10,
+      "endLine": 13,
+      "visibility": "public",
+      "members": []
+    },
+    {
+      "id": "CallsSample.App.Dog.Speak()",
+      "kind": "method",
+      "nativeKind": "method",
+      "name": "Speak",
+      "namespace": "",
+      "file": "CallsSample.App/Animals.cs",
+      "line": 12,
+      "endLine": 12,
+      "visibility": "public"
+    },
+    {
+      "id": "CallsSample.App.Factory",
+      "kind": "type",
+      "nativeKind": "static-class",
+      "name": "Factory",
+      "namespace": "CallsSample.App",
+      "file": "CallsSample.App/Shapes.cs",
+      "line": 36,
+      "endLine": 43,
+      "visibility": "public",
+      "members": []
+    },
+    {
+      "id": "CallsSample.App.Factory.MakeCircle(double)",
+      "kind": "method",
+      "nativeKind": "method",
+      "name": "MakeCircle",
+      "namespace": "",
+      "file": "CallsSample.App/Shapes.cs",
+      "line": 42,
+      "endLine": 42,
+      "visibility": "public"
+    },
+    {
+      "id": "CallsSample.App.IShape",
+      "kind": "interface",
+      "nativeKind": "interface",
+      "name": "IShape",
+      "namespace": "CallsSample.App",
+      "file": "CallsSample.App/Shapes.cs",
+      "line": 3,
+      "endLine": 6,
+      "visibility": "public",
+      "members": [
+        {
+          "kind": "method",
+          "name": "Area",
+          "type": "double Area()",
+          "visibility": "public"
+        }
+      ],
+      "memberLines": {
+        "Area": 5
+      }
+    },
+    {
+      "id": "CallsSample.App.IShape.Area()",
+      "kind": "method",
+      "nativeKind": "method",
+      "name": "Area",
+      "namespace": "",
+      "file": "CallsSample.App/Shapes.cs",
+      "line": 5,
+      "endLine": 5,
+      "visibility": "public"
+    },
+    {
+      "id": "CallsSample.App.Puppy",
+      "kind": "type",
+      "nativeKind": "class",
+      "name": "Puppy",
+      "namespace": "CallsSample.App",
+      "file": "CallsSample.App/Animals.cs",
+      "line": 16,
+      "endLine": 19,
+      "visibility": "public",
+      "members": []
+    },
+    {
+      "id": "CallsSample.App.Puppy.Speak()",
+      "kind": "method",
+      "nativeKind": "method",
+      "name": "Speak",
+      "namespace": "",
+      "file": "CallsSample.App/Animals.cs",
+      "line": 18,
+      "endLine": 18,
+      "visibility": "public"
+    },
+    {
+      "id": "CallsSample.App.Robot",
+      "kind": "type",
+      "nativeKind": "class",
+      "name": "Robot",
+      "namespace": "CallsSample.App",
+      "file": "CallsSample.App/Shapes.cs",
+      "line": 24,
+      "endLine": 27,
+      "visibility": "public",
+      "members": []
+    },
+    {
+      "id": "CallsSample.App.Robot.Area()",
+      "kind": "method",
+      "nativeKind": "method",
+      "name": "Area",
+      "namespace": "",
+      "file": "CallsSample.App/Shapes.cs",
+      "line": 26,
+      "endLine": 26,
+      "visibility": "private"
+    },
+    {
+      "id": "CallsSample.App.ShapeUser",
+      "kind": "type",
+      "nativeKind": "class",
+      "name": "ShapeUser",
+      "namespace": "CallsSample.App",
+      "file": "CallsSample.App/Shapes.cs",
+      "line": 29,
+      "endLine": 34,
+      "visibility": "public",
+      "members": []
+    },
+    {
+      "id": "CallsSample.App.ShapeUser.Measure(IShape)",
+      "kind": "method",
+      "nativeKind": "method",
+      "name": "Measure",
+      "namespace": "",
+      "file": "CallsSample.App/Shapes.cs",
+      "line": 33,
+      "endLine": 33,
+      "visibility": "public"
+    },
+    {
+      "id": "CallsSample.App.Square",
+      "kind": "type",
+      "nativeKind": "class",
+      "name": "Square",
+      "namespace": "CallsSample.App",
+      "file": "CallsSample.App/Shapes.cs",
+      "line": 15,
+      "endLine": 20,
+      "visibility": "public",
+      "members": [
+        {
+          "kind": "field",
+          "name": "Side",
+          "type": "double",
+          "visibility": "public"
+        }
+      ],
+      "memberLines": {
+        "Side": 17
+      }
+    },
+    {
+      "id": "CallsSample.App.Square.Area()",
+      "kind": "method",
+      "nativeKind": "method",
+      "name": "Area",
+      "namespace": "",
+      "file": "CallsSample.App/Shapes.cs",
+      "line": 19,
+      "endLine": 19,
+      "visibility": "public"
+    },
+    {
+      "id": "[CallsSample.App]",
+      "kind": "module",
+      "nativeKind": "assembly",
+      "name": "CallsSample.App",
+      "namespace": "",
+      "file": "CallsSample.App/CallsSample.App.csproj"
+    }
+  ],
+  "edges": [
+    {
+      "from": "CallsSample.App",
+      "to": "CallsSample.App.Animal",
+      "kind": "contains"
+    },
+    {
+      "from": "CallsSample.App",
+      "to": "CallsSample.App.Circle",
+      "kind": "contains"
+    },
+    {
+      "from": "CallsSample.App",
+      "to": "CallsSample.App.Dog",
+      "kind": "contains"
+    },
+    {
+      "from": "CallsSample.App",
+      "to": "CallsSample.App.Factory",
+      "kind": "contains"
+    },
+    {
+      "from": "CallsSample.App",
+      "to": "CallsSample.App.IShape",
+      "kind": "contains"
+    },
+    {
+      "from": "CallsSample.App",
+      "to": "CallsSample.App.Puppy",
+      "kind": "contains"
+    },
+    {
+      "from": "CallsSample.App",
+      "to": "CallsSample.App.Robot",
+      "kind": "contains"
+    },
+    {
+      "from": "CallsSample.App",
+      "to": "CallsSample.App.ShapeUser",
+      "kind": "contains"
+    },
+    {
+      "from": "CallsSample.App",
+      "to": "CallsSample.App.Square",
+      "kind": "contains"
+    },
+    {
+      "from": "CallsSample.App.Animal",
+      "to": "CallsSample.App.Animal.Speak()",
+      "kind": "contains"
+    },
+    {
+      "from": "CallsSample.App.Circle",
+      "to": "CallsSample.App.Circle.Area()",
+      "kind": "contains"
+    },
+    {
+      "from": "CallsSample.App.Circle",
+      "to": "CallsSample.App.IShape",
+      "kind": "implements",
+      "line": 8
+    },
+    {
+      "from": "CallsSample.App.Circle.Area()",
+      "to": "CallsSample.App.IShape.Area()",
+      "kind": "implements"
+    },
+    {
+      "from": "CallsSample.App.Dog",
+      "to": "CallsSample.App.Animal",
+      "kind": "extends",
+      "line": 10
+    },
+    {
+      "from": "CallsSample.App.Dog",
+      "to": "CallsSample.App.Dog.Speak()",
+      "kind": "contains"
+    },
+    {
+      "from": "CallsSample.App.Dog.Speak()",
+      "to": "CallsSample.App.Animal.Speak()",
+      "kind": "overrides"
+    },
+    {
+      "from": "CallsSample.App.Factory",
+      "to": "CallsSample.App.Factory.MakeCircle(double)",
+      "kind": "contains"
+    },
+    {
+      "from": "CallsSample.App.IShape",
+      "to": "CallsSample.App.IShape.Area()",
+      "kind": "contains"
+    },
+    {
+      "from": "CallsSample.App.Puppy",
+      "to": "CallsSample.App.Dog",
+      "kind": "extends",
+      "line": 16
+    },
+    {
+      "from": "CallsSample.App.Puppy",
+      "to": "CallsSample.App.Puppy.Speak()",
+      "kind": "contains"
+    },
+    {
+      "from": "CallsSample.App.Puppy.Speak()",
+      "to": "CallsSample.App.Dog.Speak()",
+      "kind": "overrides"
+    },
+    {
+      "from": "CallsSample.App.Robot",
+      "to": "CallsSample.App.IShape",
+      "kind": "implements",
+      "line": 24
+    },
+    {
+      "from": "CallsSample.App.Robot",
+      "to": "CallsSample.App.Robot.Area()",
+      "kind": "contains"
+    },
+    {
+      "from": "CallsSample.App.Robot.Area()",
+      "to": "CallsSample.App.IShape.Area()",
+      "kind": "implements"
+    },
+    {
+      "from": "CallsSample.App.ShapeUser",
+      "to": "CallsSample.App.ShapeUser.Measure(IShape)",
+      "kind": "contains"
+    },
+    {
+      "from": "CallsSample.App.Square",
+      "to": "CallsSample.App.IShape",
+      "kind": "implements",
+      "line": 15
+    },
+    {
+      "from": "CallsSample.App.Square",
+      "to": "CallsSample.App.Square.Area()",
+      "kind": "contains"
+    },
+    {
+      "from": "CallsSample.App.Square.Area()",
+      "to": "CallsSample.App.IShape.Area()",
+      "kind": "implements"
+    },
+    {
+      "from": "[CallsSample.App]",
+      "to": "CallsSample.App.Animal",
+      "kind": "contains"
+    },
+    {
+      "from": "[CallsSample.App]",
+      "to": "CallsSample.App.Circle",
+      "kind": "contains"
+    },
+    {
+      "from": "[CallsSample.App]",
+      "to": "CallsSample.App.Dog",
+      "kind": "contains"
+    },
+    {
+      "from": "[CallsSample.App]",
+      "to": "CallsSample.App.Factory",
+      "kind": "contains"
+    },
+    {
+      "from": "[CallsSample.App]",
+      "to": "CallsSample.App.IShape",
+      "kind": "contains"
+    },
+    {
+      "from": "[CallsSample.App]",
+      "to": "CallsSample.App.Puppy",
+      "kind": "contains"
+    },
+    {
+      "from": "[CallsSample.App]",
+      "to": "CallsSample.App.Robot",
+      "kind": "contains"
+    },
+    {
+      "from": "[CallsSample.App]",
+      "to": "CallsSample.App.ShapeUser",
+      "kind": "contains"
+    },
+    {
+      "from": "[CallsSample.App]",
+      "to": "CallsSample.App.Square",
+      "kind": "contains"
+    }
+  ]
+}
