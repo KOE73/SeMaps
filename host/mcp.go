@@ -132,6 +132,7 @@ type placeIn struct {
 type getGraphIn struct {
 	Project string `json:"project,omitempty"`
 	Level   string `json:"level,omitempty" jsonschema:"types (drop function/value/method nodes) or all; default types without around, all with around"`
+	Lift    string `json:"lift,omitempty" jsonschema:"types (fold method-level edges up to their containing types, ADR_20260928-3 §6) or none; default types unless around is a method, or (without around) unless level=all"`
 	// Kinds is only for a whole-graph request (no Around): a neighbourhood
 	// names Follow instead (part 1 of the agent-answers rework).
 	Kinds     string   `json:"kinds,omitempty" jsonschema:"whole-graph only (no around): comma list of edge kinds to keep; default: all"`
@@ -545,7 +546,7 @@ func (s *mcpServer) getGraph(_ context.Context, _ *mcp.CallToolRequest, in getGr
 	}
 
 	var notice string
-	var around string
+	var around, aroundKind string
 	if in.Around != "" {
 		res := core.ResolveNode(graph, in.Around)
 		switch {
@@ -556,7 +557,7 @@ func (s *mcpServer) getGraph(_ context.Context, _ *mcp.CallToolRequest, in getGr
 		case res.MissingHidden && !in.Missing:
 			return nil, nil, fmt.Errorf("node %q is hidden as missing; pass missing:true to include it", res.Node.ID)
 		}
-		around, notice = res.Node.ID, res.Notice
+		around, aroundKind, notice = res.Node.ID, res.Node.Kind, res.Notice
 	}
 
 	var hiddenNodes, hiddenEdges int
@@ -570,6 +571,18 @@ func (s *mcpServer) getGraph(_ context.Context, _ *mcp.CallToolRequest, in getGr
 			level = "all"
 		}
 	}
+
+	lift := in.Lift
+	if lift == "" {
+		lift = defaultLift(around != "", aroundKind, level)
+	}
+	if lift != "types" && lift != "none" {
+		return nil, nil, fmt.Errorf("lift: %q is neither %q nor %q", lift, "types", "none")
+	}
+	if lift == "types" {
+		graph = core.LiftToTypes(graph)
+	}
+
 	if graph, err = core.FilterLevel(graph, level); err != nil {
 		return nil, nil, err
 	}

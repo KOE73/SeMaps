@@ -54,6 +54,11 @@ type RelationMacros struct {
 	Cardinality, Type, Text string
 	RelationLine            int
 	RelationLines           []int
+	// Count, FromMethods, ToMethods mirror GraphEdge's lifted-edge fields
+	// (core/graph_lift.go): set only for an edge LiftToTypes produced from
+	// one or more method-level edges.
+	Count                  int
+	FromMethods, ToMethods []string
 }
 
 // NodeMacrosOf builds the plain (no relations) macro set of a node.
@@ -164,8 +169,26 @@ func relationMacroValue(r RelationMacros, name string) (string, bool) {
 			parts[i] = strconv.Itoa(l)
 		}
 		return strings.Join(parts, ","), true
+	case "count":
+		if r.Count <= 1 {
+			return "", false // a single, non-merged edge has nothing worth showing
+		}
+		return strconv.Itoa(r.Count), true
+	case "fromMethods":
+		return joinCapped(r.FromMethods, 5), len(r.FromMethods) > 0
+	case "toMethods":
+		return joinCapped(r.ToMethods, 5), len(r.ToMethods) > 0
 	}
 	return "", false
+}
+
+// joinCapped: at most `max` names, then "+N" for the rest — the short form
+// {fromMethods}/{toMethods} print (part of lifting, ADR_20260928-3 §6).
+func joinCapped(names []string, max int) string {
+	if len(names) <= max {
+		return strings.Join(names, ",")
+	}
+	return strings.Join(names[:max], ",") + fmt.Sprintf("+%d", len(names)-max)
 }
 
 var nodeMacroNames = map[string]bool{
@@ -179,6 +202,7 @@ var relationMacroNames = map[string]bool{
 	"relation": true, "member": true, "memberKind": true, "memberLine": true,
 	"modifiers": true, "cardinality": true, "type": true, "text": true,
 	"relationLine": true, "relationLines": true,
+	"count": true, "fromMethods": true, "toMethods": true,
 }
 
 // tplNode is one piece of a parsed template.

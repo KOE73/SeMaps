@@ -76,6 +76,9 @@ func relationMacrosFor(e GraphEdge, fromID string, byID map[string]*GraphNode) R
 		}
 	}
 	rm.Type = e.Type
+	rm.Count = e.Count
+	rm.FromMethods = e.FromMethods
+	rm.ToMethods = e.ToMethods
 	return rm
 }
 
@@ -182,7 +185,7 @@ func contains(ss []string, s string) bool {
 // FactsTemplate is the stored template of the `facts` format (part 3): one
 // line per neighbour, focus node first, relations to the node it was reached
 // from folded into the same line.
-const FactsTemplate = "{step} {fullName}  {file}:{lines}  [{relations: {relation} {member}[:{memberLine}] [{memberKind}] [{modifiers}] | ; }]"
+const FactsTemplate = "{step} {fullName}  {file}:{lines}  [{relations: {relation} {member}[:{memberLine}] [{memberKind}] [{modifiers}][ ×{count} from {fromMethods}[ to {toMethods}]] | ; }]"
 
 type factsFormat struct{}
 

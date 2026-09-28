@@ -302,7 +302,7 @@ func (g *graphService) serve(w http.ResponseWriter, r *http.Request) {
 	// such rather than as "no such node".
 	missing := parseBoolParam(r.URL.Query().Get("missing"))
 	var notice string
-	var around string
+	var around, aroundKind string
 	if aroundQuery != "" {
 		res := core.ResolveNode(graph, aroundQuery)
 		switch {
@@ -320,7 +320,7 @@ func (g *graphService) serve(w http.ResponseWriter, r *http.Request) {
 			http.Error(w, fmt.Sprintf("node %q is hidden as missing; pass missing=1 to include it", res.Node.ID), http.StatusNotFound)
 			return
 		}
-		around, notice = res.Node.ID, res.Notice
+		around, aroundKind, notice = res.Node.ID, res.Node.Kind, res.Notice
 	}
 
 	graph, hiddenNodes, hiddenEdges := core.FilterMissing(graph, missing)
@@ -333,6 +333,22 @@ func (g *graphService) serve(w http.ResponseWriter, r *http.Request) {
 			levelParam = "all"
 		}
 	}
+
+	liftParam := r.URL.Query().Get("lift")
+	if liftParam == "" {
+		liftParam = defaultLift(around != "", aroundKind, levelParam)
+	}
+	if liftParam != "types" && liftParam != "none" {
+		http.Error(w, fmt.Sprintf("lift: %q is neither %q nor %q", liftParam, "types", "none"), http.StatusBadRequest)
+		return
+	}
+	if liftParam == "types" {
+		// Before the walk (and before level=types would otherwise just drop
+		// method nodes outright): ADR_20260928-3 §6, so `follow=calls` from a
+		// type walks type to type.
+		graph = core.LiftToTypes(graph)
+	}
+
 	graph, err = core.FilterLevel(graph, levelParam)
 	if err != nil {
 		http.Error(w, err.Error(), http.StatusBadRequest)
@@ -414,6 +430,24 @@ func (g *graphService) serveFind(w http.ResponseWriter, r *http.Request) {
 	}
 	limit, _ := strconv.Atoi(r.URL.Query().Get("limit"))
 	writeJSON(w, map[string]any{"candidates": core.FindNodes(graph, r.URL.Query().Get("q"), limit)})
+}
+
+// defaultLift is `lift`'s default when the parameter is absent
+// (ADR_20260928-3 §6): with a focus node (`hasAround`), `types` unless that
+// node is itself a method (methods are already the finest level, so there is
+// nothing to lift); without one (a whole-graph request), `types` exactly when
+// `level` is also `types` (the whole-graph default), `none` when it is `all`.
+func defaultLift(hasAround bool, aroundKind, level string) string {
+	if hasAround {
+		if aroundKind == "method" {
+			return "none"
+		}
+		return "types"
+	}
+	if level == "types" {
+		return "types"
+	}
+	return "none"
 }
 
 // parseFanout: 0 (off, the default) or a positive integer.

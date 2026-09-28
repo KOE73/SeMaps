@@ -79,6 +79,14 @@ type GraphEdge struct {
 	Relation string `json:"relation,omitempty"` // registry relation id, or empty
 	Status   string `json:"status,omitempty"`   // the relation's status ("present"/"missing"), for "both" and "model" edges only
 	Presence string `json:"presence"`           // "both", "code" or "model"
+	// Count, FromMethods, ToMethods are set only by LiftToTypes, on an edge
+	// that folds one or more method-level edges into a type-to-type one:
+	// Count is how many original edges were merged; FromMethods/ToMethods are
+	// the short names of the methods lifted from each end (sorted,
+	// de-duplicated), whichever end was a method. Nil/0 on every other edge.
+	Count       int      `json:"count,omitempty"`
+	FromMethods []string `json:"fromMethods,omitempty"`
+	ToMethods   []string `json:"toMethods,omitempty"`
 }
 
 // Graph is the join of extractor facts and a model, docs/adr/ADR_20260928 §2.

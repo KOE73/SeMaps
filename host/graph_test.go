@@ -447,6 +447,107 @@ func TestGraphEndpointMissingDefaultVsInclude(t *testing.T) {
 // TestGraphServiceNotifyPublishesDiff exercises step 5's wiring end to end:
 // a run finishing calls the callback registered on the run store, which
 // diffs against the previous graph and publishes to /api/events.
+// liftFixture is a workspace with two types, A and B, A having two methods
+// that each call one of B's methods, plus their `contains` edges — enough to
+// exercise the default `lift=types` (ADR_20260928-3 §6) at the whole-graph
+// level (which asking about a type also inherits).
+func liftFixture(t *testing.T) *graphService {
+	t.Helper()
+	ws := t.TempDir()
+	dir := filepath.Join(ws, "projects", "p")
+	for file, body := range map[string]string{
+		"project.json":   `{"id":"p"}`,
+		"entities.json":  `{"entities":[]}`,
+		"relations.json": `{"relations":[]}`,
+	} {
+		p := filepath.Join(dir, file)
+		if err := os.MkdirAll(filepath.Dir(p), 0o755); err != nil {
+			t.Fatal(err)
+		}
+		if err := os.WriteFile(p, []byte(body), 0o644); err != nil {
+			t.Fatal(err)
+		}
+	}
+	models, err := newModelService(ws)
+	if err != nil {
+		t.Fatal(err)
+	}
+	semapsFile := filepath.Join(ws, "test.semaps")
+	proj := project{File: semapsFile, Extractors: []extractorConf{{ID: "csharp", Language: "csharp", Project: "p"}}}
+	gs := newGraphService(proj, models)
+
+	store := newRunStore(semapsFile)
+	info := &runInfo{ID: "20260101-000000-csharp", Extractor: "csharp", Project: "p", Language: "csharp", State: "done", Finished: time.Now()}
+	if err := os.MkdirAll(filepath.Join(store.dir, info.ID), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	facts := core.Facts{Language: "csharp", Root: ".", Symbols: []core.Symbol{
+		{ID: "A", Kind: "type", NativeKind: "class", Name: "A", File: "A.cs"},
+		{ID: "A.M1", Kind: "method", NativeKind: "method", Name: "M1", File: "A.cs"},
+		{ID: "A.M2", Kind: "method", NativeKind: "method", Name: "M2", File: "A.cs"},
+		{ID: "B", Kind: "type", NativeKind: "class", Name: "B", File: "B.cs"},
+		{ID: "B.N1", Kind: "method", NativeKind: "method", Name: "N1", File: "B.cs"},
+	}, Edges: []core.Edge{
+		{From: "A", To: "A.M1", Kind: "contains"},
+		{From: "A", To: "A.M2", Kind: "contains"},
+		{From: "A.M1", To: "B.N1", Kind: "calls"},
+		{From: "A.M2", To: "B.N1", Kind: "calls"},
+		{From: "B", To: "B.N1", Kind: "contains"},
+	}}
+	b, _ := json.Marshal(facts)
+	if err := os.WriteFile(store.path(info.ID, "facts.json"), b, 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if err := store.save(info); err != nil {
+		t.Fatal(err)
+	}
+	return gs
+}
+
+// TestGraphEndpointLiftDefaultAndNone: asking about a type shows the calls
+// its methods make, lifted to the type it and the target belong to
+// (ADR_20260928-3 §6); `lift=none` shows none of them (the raw graph has no
+// type-to-type `calls` edge, only method-to-method ones, which `around` a
+// type does not walk since `follow` matches Kind "calls" regardless of
+// endpoint but the neighbourhood only includes nodes reached — the type node
+// itself has no `calls` edge before lifting).
+func TestGraphEndpointLiftDefaultAndNone(t *testing.T) {
+	gs := liftFixture(t)
+	srv := graphServer(gs)
+	defer srv.Close()
+
+	res, body := getGraphJSON(t, srv.URL+"/api/graph/p?around=csharp:A&depth=1&format=json")
+	if res.StatusCode != http.StatusOK {
+		t.Fatalf("expected 200, got %d: %+v", res.StatusCode, body)
+	}
+	edges, _ := body["edges"].([]any)
+	found := false
+	for _, e := range edges {
+		em := e.(map[string]any)
+		if em["kind"] == "calls" && em["from"] == "csharp:A" && em["to"] == "csharp:B" {
+			found = true
+			if em["count"].(float64) != 2 {
+				t.Fatalf("expected count 2 on the lifted calls edge, got %+v", em)
+			}
+		}
+	}
+	if !found {
+		t.Fatalf("expected a lifted calls edge csharp:A -> csharp:B by default, got %+v", edges)
+	}
+
+	res2, body2 := getGraphJSON(t, srv.URL+"/api/graph/p?around=csharp:A&depth=1&format=json&lift=none")
+	if res2.StatusCode != http.StatusOK {
+		t.Fatalf("expected 200, got %d: %+v", res2.StatusCode, body2)
+	}
+	edges2, _ := body2["edges"].([]any)
+	for _, e := range edges2 {
+		em := e.(map[string]any)
+		if em["kind"] == "calls" && em["from"] == "csharp:A" {
+			t.Fatalf("expected no calls edge from the type itself with lift=none, got %+v", em)
+		}
+	}
+}
+
 func TestGraphServiceNotifyPublishesDiff(t *testing.T) {
 	gs, models := graphFixture(t, true)
 	// seed gs.prev with the graph before the run, as if it had been read once already.
