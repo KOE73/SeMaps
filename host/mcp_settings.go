@@ -11,6 +11,12 @@ import "sync"
 type mcpSettingsBox struct {
 	mu sync.RWMutex
 	v  mcpSettings
+	// onChange, when set (registerMCPHTTP, PLAN_20260928-7 step 4), is
+	// called after every Set with the new settings, outside the lock: the
+	// MCP server uses it to rebuild its graph tool list and notify
+	// connected clients when tools/description changed. nil in tests that
+	// only care about format/list_cap/limit (step 2).
+	onChange func(mcpSettings)
 }
 
 func newMcpSettingsBox(v mcpSettings) *mcpSettingsBox {
@@ -26,5 +32,19 @@ func (b *mcpSettingsBox) Get() mcpSettings {
 func (b *mcpSettingsBox) Set(v mcpSettings) {
 	b.mu.Lock()
 	b.v = v.withDefaults()
+	onChange := b.onChange
+	cur := b.v
+	b.mu.Unlock()
+	if onChange != nil {
+		onChange(cur)
+	}
+}
+
+// OnChange installs the settings-changed callback (registerMCPHTTP calls
+// this once, right after building the server, so the callback can close
+// over it).
+func (b *mcpSettingsBox) OnChange(f func(mcpSettings)) {
+	b.mu.Lock()
+	b.onChange = f
 	b.mu.Unlock()
 }

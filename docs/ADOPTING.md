@@ -28,6 +28,17 @@ An agent reads and writes the registry through MCP tools (API.md §6), never par
    model. Tool edits appear in the editor immediately but remain unsaved until the human reviews
    them and presses «Сохранить». Save the current project before assigning a new task to an agent.
 
+**Choosing `mcp.tools`/`mcp.description`.** The `.semaps` file's `mcp:` section (API.md §2.1a, §6)
+picks which graph tools the MCP server offers and how much each says about itself: a strong model
+reads `get_graph`'s full parameter set on its own, so `mcp.tools: one` (the default) with
+`mcp.description: standard` (also the default) works well; a small or less steerable model does
+better with `mcp.tools: narrow` — one tool per question shape (`who_calls`, `what_it_holds`, ...),
+each taking only a node name and depth, so there is nothing to get wrong; when context is tight
+(a long task, or a model with a small window), drop to `mcp.description: brief` regardless of the
+tool set — one or two sentences and an example per tool instead of the worked examples and trap
+list `standard` carries. The editor's MCP settings page shows the exact text and size (bytes and
+an estimated token count) of all six combinations before you choose.
+
 **`get_graph` vs `get_relations`.** Both read structure, but from different sources
 (ADR_20260928_host_live-code-graph.md): `get_relations` answers "what the registry says" — the
 authored model, entities and relations as the human and past syncs left them, exactly what is in

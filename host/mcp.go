@@ -229,6 +229,21 @@ type discardIn struct {
 	RequestedByHuman bool   `json:"requestedByHuman"`
 }
 
+// read/write build a *mcp.Tool with its annotation: a reading tool says so
+// (readOnlyHint), so a client may run it without asking, and the editor's
+// sandbox asks before any other. Package-level (not closures inside
+// server()) so registerGraphTools, called both from server() and from a
+// settings-change rebuild, can build tools the same way.
+func read(name, desc string) *mcp.Tool {
+	return &mcp.Tool{Name: name, Description: desc, Annotations: &mcp.ToolAnnotations{ReadOnlyHint: true}}
+}
+
+var notDestructive = false
+
+func write(name, desc string) *mcp.Tool {
+	return &mcp.Tool{Name: name, Description: desc, Annotations: &mcp.ToolAnnotations{DestructiveHint: &notDestructive}}
+}
+
 func (s *mcpServer) server() *mcp.Server {
 	srv := mcp.NewServer(&mcp.Implementation{Name: "semaps", Version: "1"}, &mcp.ServerOptions{
 		Instructions: "SeMaps registry of this repository. Read with list_*/get_*/find_*; write only through these tools. " +
@@ -236,14 +251,6 @@ func (s *mcpServer) server() *mcp.Server {
 	})
 	// Reading tools say so (readOnlyHint): a client may run them without asking,
 	// and the editor's sandbox asks before any other.
-	read := func(name, desc string) *mcp.Tool {
-		return &mcp.Tool{Name: name, Description: desc, Annotations: &mcp.ToolAnnotations{ReadOnlyHint: true}}
-	}
-	notDestructive := false
-	write := func(name, desc string) *mcp.Tool {
-		return &mcp.Tool{Name: name, Description: desc, Annotations: &mcp.ToolAnnotations{DestructiveHint: &notDestructive}}
-	}
-
 	mcp.AddTool(srv, read("list_projects", "Projects of the workspace and their views."), s.listProjects)
 	mcp.AddTool(srv, read("list_views", "Views of one project."), s.listViews)
 	mcp.AddTool(srv, read("get_entity", "One entity by id or by symbol."), s.getEntity)
@@ -253,10 +260,9 @@ func (s *mcpServer) server() *mcp.Server {
 	mcp.AddTool(srv, read("get_text", "Text entry of a key in one language."), s.getText)
 	mcp.AddTool(srv, read("get_view", "A view with geometry as a tree: zones with their nodes, absolute rectangles, visible lines, what is unsaved. A zone reference reads only its subtree."), s.getView)
 	mcp.AddTool(srv, read("doctor", "Extractors and runtimes found, and the model check of the workspace."), s.doctor)
-	mcp.AddTool(srv, read("get_graph", "The live code graph: symbols and their code positions joined with entities and containers, docs/adr/ADR_20260928_host_live-code-graph.md. Bound it with around+depth or container, or it is cut to limit nodes (truncated: true, with the full counts). format/set pick the answer shape and which edges count; see graph_formats."), s.getGraph)
-	mcp.AddTool(srv, read("graph_formats", "The answer formats, the relation vocabulary follow accepts, the template macro dictionary and rules, and the defaults."), s.graphFormats)
-	mcp.AddTool(srv, read("find_node", "Substring search over graph node names/ids: candidates to pass as get_graph's around."), s.findNode)
 	mcp.AddTool(srv, read("sync_preview", "What sync would change, writing nothing (= semaps sync --dry-run)."), s.syncPreview)
+	settings := s.mcpSettingsNow()
+	s.registerGraphTools(srv, settings.Tools, settings.Description)
 
 	mcp.AddTool(srv, write("set_text", "Write one text field as authored, with at = now."), s.setText)
 	mcp.AddTool(srv, write("add_relation", "Add an authored relation; the id is minted and returned."), s.addRelation)
@@ -276,6 +282,73 @@ func (s *mcpServer) server() *mcp.Server {
 	mcp.AddTool(srv, write("save", "Save all unsaved project changes only when a human explicitly requested it."), s.save)
 	mcp.AddTool(srv, write("discard", "Discard unsaved changes only when a human explicitly requested it."), s.discard)
 	return srv
+}
+
+// narrowIn: input of every tool of the `narrow` set (PLAN_20260928-7 step
+// 4): one required node name (or id), an optional depth, and the usual
+// optional project.
+type narrowIn struct {
+	Project string `json:"project,omitempty"`
+	Name    string `json:"name" jsonschema:"a node name (or id from find_node)"`
+	Depth   int    `json:"depth,omitempty" jsonschema:"hops from name; 1-5, default 1"`
+}
+
+// graphToolNames: every tool name either set can register, so
+// rebuildGraphTools can remove them all before adding back the ones the new
+// settings ask for — RemoveTools on a name the server does not have is a
+// no-op.
+func graphToolNames() []string {
+	names := []string{"get_graph", "find_node", "graph_formats"}
+	for name := range narrowTools {
+		names = append(names, name)
+	}
+	return names
+}
+
+// registerGraphTools adds the graph tools of one set (`one` or `narrow`) at
+// one description level to srv. Used both by server() (the set/level the
+// running settings hold right now) and by getMCP's six-combination sizing
+// (host/api_mcp.go), which builds a tool set for each combination without
+// touching the live settings.
+func (s *mcpServer) registerGraphTools(srv *mcp.Server, toolsSet, level string) {
+	if toolsSet == "narrow" {
+		for name, t := range narrowTools {
+			name, t := name, t // capture for the handler closure
+			d := narrowDescriptions(name, t)
+			mcp.AddTool(srv, read(name, d.at(level)), func(ctx context.Context, req *mcp.CallToolRequest, in narrowIn) (*mcp.CallToolResult, any, error) {
+				return s.narrowWalk(ctx, req, in, t.Follow)
+			})
+		}
+		mcp.AddTool(srv, read("find_node", graphToolDescriptions["find_node"].at(level)), s.findNode)
+		return
+	}
+	mcp.AddTool(srv, read("get_graph", graphToolDescriptions["get_graph"].at(level)), s.getGraph)
+	mcp.AddTool(srv, read("graph_formats", graphToolDescriptions["graph_formats"].at(level)), s.graphFormats)
+	mcp.AddTool(srv, read("find_node", graphToolDescriptions["find_node"].at(level)), s.findNode)
+}
+
+// rebuildGraphTools drops every graph tool srv may have and adds back the
+// set/level the live settings hold now, notifying connected clients of the
+// list change (mcp.Server.RemoveTools/AddTool both call changeAndNotify,
+// which sends notifications/tools/list_changed to every session — the
+// mechanism the Go SDK gives for changing a live server's tool list; PLAN
+// step 4). Registered as settings.onChange by registerMCPHTTP, so PUT
+// /api/setup reaches connected MCP clients as soon as it reaches the
+// settings box.
+func (s *mcpServer) rebuildGraphTools(srv *mcp.Server) func(mcpSettings) {
+	return func(v mcpSettings) {
+		srv.RemoveTools(graphToolNames()...)
+		s.registerGraphTools(srv, v.Tools, v.Description)
+	}
+}
+
+// narrowWalk is the one shared implementation behind every `narrow` tool
+// (step 4: "thin wrappers over ONE shared function that get_graph uses
+// too"): it is get_graph itself, called with `around` set to the node name
+// and `follow` fixed to the tool's relations — the identical graph walk,
+// same defaults, same answer shape.
+func (s *mcpServer) narrowWalk(ctx context.Context, req *mcp.CallToolRequest, in narrowIn, follow []string) (*mcp.CallToolResult, any, error) {
+	return s.getGraph(ctx, req, getGraphIn{Project: in.Project, Around: in.Name, Depth: in.Depth, Follow: follow})
 }
 
 func (s *mcpServer) save(_ context.Context, _ *mcp.CallToolRequest, in saveIn) (*mcp.CallToolResult, any, error) {

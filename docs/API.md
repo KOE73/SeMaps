@@ -273,8 +273,8 @@ the file through the YAML tree: comments and key order survive.
 
 | Key | Default | Meaning |
 |---|---|---|
-| `tools` | `one` | `one` or `narrow` — which tool set is served (`PLAN_20260928-7` step 4; not yet built, the key is only stored and served by this part) |
-| `description` | `standard` | `brief`, `standard` or `full` — how much a tool's own description says (step 4; only stored and served by this part) |
+| `tools` | `one` | `one` or `narrow` — which tool set is served (`PLAN_20260928-7` step 4) |
+| `description` | `standard` | `brief`, `standard` or `full` — how much a tool's own description says (step 4) |
 | `format` | `facts` | the name of a registered graph format (`graph_formats`): the MCP tool `get_graph`'s own default answer format. The HTTP endpoint `GET /api/graph/{project}` keeps its own default, `json`, regardless of this key |
 | `list_cap` | `50` | how many names/lines one relation prints ({fromMethods}, {toMethods}, {relationLines}) before `+N` — a request parameter too (below), which wins over this |
 | `limit` | `200` | how many nodes an unbounded (no `around`, no `container`) answer is cut to — a request parameter too (below), which wins over this |
@@ -287,9 +287,15 @@ comments and key order survive.
 accepts `mcp: {…}`, any subset of the keys (camelCase in the request body: `tools`, `description`,
 `format`, `listCap`, `limit`). The change is written to the file and, in the same request, reaches
 the running host's in-memory settings — every `GET /api/graph/{project}` and every MCP `get_graph`
-call from the next one on uses the new `format`/`list_cap`/`limit`, with no restart (step 2; a
-change to `tools`/`description` additionally reissues the MCP tool list — `PLAN_20260928-7` step 4,
-not yet built).
+call from the next one on uses the new `format`/`list_cap`/`limit`, with no restart (step 2). A
+change to `tools`/`description` rebuilds the MCP server's graph tool list in place (the Go SDK's
+`Server.RemoveTools`/`AddTool`, which both send `notifications/tools/list_changed` to every
+connected session) — an already-open session sees the new list once its client re-lists tools
+(the SDK gives no way to change *which tools a session is mid-call with* without that
+notification round-trip); a brand new session always gets the current set and level from its
+first `tools/list`. `semaps mcp`'s stdio proxy copies the remote tool list once, at startup, and
+does not watch for a later change — an agent using it needs its session restarted (`semaps mcp`
+started again) to pick up a `tools`/`description` change (`PLAN_20260928-7` step 4).
 
 ### Resolution order
 
@@ -334,7 +340,7 @@ The command line of an extractor cannot be set through the API — only in the f
 | `/api/runs/{id}` | `GET` | → `Run` |
 | `/api/runs/{id}/log?offset=<n>` | `GET` | → `{text, offset, state}`: the log from byte `n`; ask again with the new `offset` while `state` is `running` |
 | `/api/runs/{id}/sync` | `POST` | `{dryRun, noRenames}` → `{report, exitCode, empty}`; the report is `core.SyncReport`. Applies the facts of that run to the working model (unsaved), never extracts again |
-| `/api/mcp` | `GET` | → `{file, exists, configured, entry, onPath, snippet, tools: [{name, description, readOnly, inputSchema}], error?}`: does `.mcp.json` at the project root start `semaps mcp` (§6), and the tools it offers |
+| `/api/mcp` | `GET` | → `{file, exists, configured, entry, onPath, snippet, tools: [{name, description, readOnly, inputSchema}], mcpTools, mcpDescription, combos: [{tools, description, graphTools: [{name, description, readOnly, inputSchema}], bytes, estimateTokens}], error?}`: does `.mcp.json` at the project root start `semaps mcp` (§6), and the tools it offers now, at the live `mcp.tools`/`mcp.description` settings (`mcpTools`/`mcpDescription`). `combos` (`PLAN_20260928-7` step 5) has all six `tools`×`description` combinations, whichever is live or not — each with the graph tools that set would register, at that level's full description text, and that whole combination's size: `bytes` sums the tool names, descriptions and parameter (JSON-schema) descriptions; `estimateTokens` is `bytes / 4`, an estimate, not a real tokenizer count |
 | `/api/mcp/install` | `POST` | → the same, after adding the `semaps` entry to `.mcp.json` (created when missing; other servers and keys stay; a file that does not parse → `409`) |
 | `/api/mcp/call` | `POST` | `{name, arguments}` → `{messages: [{dir: out \| in, message}], ms, isError, error?}`: the editor's sandbox. Runs one tool through the host's `/mcp` endpoint; `messages` are the JSON-RPC call and answer, with the handshake left out. A writing tool changes the shared working model and remains unsaved. |
 | `/api/graph/{project}` | `GET` | → `{nodes, edges, facts: [{extractor, run?, finished?, language, lastRun?, lastRunFailed?}], stats: {nodes, edges, byPresence, hiddenMissing: {nodes, edges}}}`: the live code graph (`docs/adr/ADR_20260928_host_live-code-graph.md`, `docs/adr/ADR_20260928-3_host_calls-live-in-the-graph.md`), joining `project`'s live working model with the latest successful run of each of its `.semaps` extractors. Each `facts` item's `lastRun` is the id of that extractor's newest run in any state, and `lastRunFailed` says whether it failed — apart from `run`/`finished`, which stay whichever done run's facts the graph actually used (a failed run never changes the graph). No run at all for an extractor: it is left out of `facts`. No successful run yet for one that has run: `run`/`finished` are absent from its item, and the graph carries only model nodes for it. A node also carries `namespace` and `assembly` — the full name of its namespace and the name of its assembly, computed once when the graph is built, never by a per-request walk — and, on a neighbourhood answer (`around` given), `step`, its distance from the focus node. A `GraphEdge` also carries `status` (the relation's `present`/`missing`, CONTRACT.md §4) for a `both`- or `model`-presence edge; a `code`-only edge has none, and — only on an edge `lift=types` produced (below) — `count` (how many method-level edges were merged into it), `fromMethods`/`toMethods` (the short names of the methods lifted from each end, sorted, de-duplicated). Query parameters, all optional: `missing` (`1`/`true` to include; absent or `0`/`false`, the default, leaves out model-only nodes whose entity has status `missing` and model-only edges whose relation has status `missing`, plus every edge touching a node left out this way — a node/edge with presence `both` or `code` is never dropped by this; `stats.hiddenMissing` counts what was left out, so a reader knows it exists even at the default); `level` (`types` drops `function`/`value`/`method` nodes and the edges touching them; `all` keeps everything — default `types` for a whole-graph request (no `around`/`container`, ADR_20260928-3 §7), default `all` for a neighbourhood); `lift` (`types` or `none`, ADR_20260928-3 §6: `types` moves every edge with a `method`-kind node at either end to the type — or interface or module — that `contains` it, before `level`/`follow` run, so `follow=calls` from a type walks type to type; an edge that becomes a type to itself (recursion, or two methods of one type calling each other) is dropped; edges that become equal (same from, to, kind, type) after lifting are merged into one, keeping `count`/`fromMethods`/`toMethods`, above. Default: with `around`, `types` unless the resolved node is itself a `method`; without `around`, `types` exactly when `level` is also `types` (the whole-graph default) — so the whole-graph page shows calls/constructs between types by default, and `level=all` shows the raw method edges); `around` (a node id **or a name**, resolved as part 2 below: only its neighbourhood) with `follow` (comma list of directed relation names, below — a neighbourhood request only, `kinds` is refused alongside it) and `depth` (1–5, default 1) and `fanout` (a non-negative integer, 0/absent = unlimited: at most this many fresh neighbours per node per relation are taken into the walk, the rest reported, never silently dropped from the count); `kinds` (comma list of edge kinds to keep — **whole-graph request only**, no `around`; default: every kind); `container` (a `containers.json` id: only nodes whose resolved containers include it *or a descendant of it* by `parent` — a node's own `containers` list is unchanged, this only widens what counts as a match — edges between two kept nodes); `fields` (comma list from `members`, `via`, `position`, `memberLines`. The parameter *absent* means the default, `via,position`; the parameter *present but empty* (`fields=`) means none — `members` adds a joined entity's own `members`; `position` is `file`, `line`, `endLine`, `spans` of a node and `line`, `file` of an edge; `memberLines` is its own name, off by default, [`EXTRACTOR.md`](EXTRACTOR.md) §2 — applied by the `json`/`json-compact` formats only, see below); `limit` (a positive integer: an *unbounded* answer — no `around`, no `container` — is cut to this many nodes, edges between two kept nodes kept, the rest dropped; default the `.semaps` `mcp.limit` setting, `200` unless changed, `PLAN_20260928-7` step 2 — a bounded request, `around` or `container`, is never cut by this); `list_cap` (a positive integer: caps the names/lines a text format prints for one relation — `{fromMethods}`, `{toMethods}`, `{relationLines}` — before `+N`; default the `.semaps` `mcp.list_cap` setting, `50` unless changed; has no effect on `json`/`json-compact`); `format` (the answer's shape, below — the HTTP endpoint's own default stays `json`, `mcp.format` only changes the MCP tool's default) or `template` (a template of your own, part 3 below — conflicts with an unknown `format`, but a `template` always wins when both are given). Filters apply in this order: name resolution of `around` → `missing` → `lift` → `level` → `follow`+`fanout` (a neighbourhood) or `kinds` (a whole graph) → `container` → `limit` → `fields` → `format`/`template`. An unknown `around` name → `404` with the nearest names by edit distance; several candidates → a `409` listing them (id, kind, file:line); a node hidden by `missing` → `404` saying so and how to include it. An unknown `follow`/`fields`/`format` name, a bad `level`/`depth`/`fanout`, `around`+`kinds` both given, or a malformed `template` → `400`. Unlike the rest of this table, this is a plain read with no side effect, so it needs no host key — matching the `GET`s of §3.4, which likewise skip `authorize`. A text format's first line (after the name-resolution notice, if any) names anything the answer was cut by — `limit`, `fanout`, `list_cap`, or (asked with `lift=none`) a type/module whose own relations are empty while its methods' are not — and how to ask again for the rest; the trailing counts line (`N nodes (T types, M methods), E edges` — a module counts as a type) never repeats it. |
@@ -442,6 +448,42 @@ several selected objects give references joined by commas.
 Every structured answer (`structuredContent`) is a JSON object, lists included: clients
 reject anything else.
 
+**Two independent settings shape the graph tools** (`mcp.tools`/`mcp.description` of the
+`.semaps` file, §2.1a; `PLAN_20260928-7` step 4). Every other tool (`list_projects`, `get_entity`,
+`set_text`, ...) is unaffected by either.
+
+`mcp.tools`:
+- `one` (default) — `get_graph`, `find_node`, `graph_formats`, as described below.
+- `narrow` — ten single-purpose tools instead of `get_graph`, each with one required `name`
+  (a node name, or an id from `find_node`), an optional `depth` (default `1`) and the usual
+  optional `project`; `get_graph` and `graph_formats` are not offered in this set (`find_node`
+  is, in both sets). Each is a thin wrapper over the exact same walk `get_graph` uses, with
+  `follow` fixed and every other default (level, lift, `limit`, `listCap`, `format`) untouched —
+  calling one gives the identical answer as `get_graph` with `around: name` and that `follow`.
+
+| Tool | `follow` |
+|---|---|
+| `who_extends` | `extended-by`, `implemented-by` |
+| `what_it_extends` | `extends`, `implements` |
+| `who_holds` | `held-by`, `injected-into` |
+| `what_it_holds` | `holds`, `injects` |
+| `who_calls` | `called-by` |
+| `what_it_calls` | `calls`, `constructs` |
+| `where_created` | `constructed-by` |
+| `what_is_inside` | `contains` |
+| `where_it_lies` | `inside` |
+
+`mcp.description`: `brief` (what the tool answers, in one or two sentences, one example call),
+`standard` (default: what it answers, the main parameters, how to read a line of the answer,
+several question → call examples, and the traps found in practice: a relation is named from the
+node the walk came from and the same word continues it via `follow`; asking about a type lifts
+its methods' calls up to it, so `lift=none` on a type loses them; reading/writing a property
+counts as a `calls` edge; a cut answer says so in its first line; `fanout` cuts do not come back;
+a plain name is enough for `around`/`name`), `full` (`standard` plus the whole relation
+vocabulary, `lift`, `fanout`, the template language and its macros, name resolution and its
+notices). The texts are written out in full in `host/mcp_descriptions.go`, not assembled from
+pieces, and describe only parameters that exist now.
+
 **Log.** Every tool call — the tool, its arguments, time, the error if any — is a JSON line in
 `<project root>/.semaps/logs/mcp-<date>.jsonl` (kept 14 days; the folder carries its own
   `.gitignore`), and a short line on stderr, which clients keep in their server logs. Calls from the
@@ -463,6 +505,7 @@ editor's sandbox land in the same file.
 | `get_graph` | `project?`, `missing?`, `level?`, `kinds?`, `around?`, `follow?`, `depth?`, `fanout?`, `container?`, `fields?`, `limit?`, `listCap?`, `format?`, `template?` | Same parameters and order of filters as `GET /api/graph/{project}` (§5), with differences forced by the tool's typed JSON schema rather than a query string: `missing` is a plain boolean (default `false`); `follow` is a list of strings, not a comma string, defaulting to `DefaultFollow` when omitted/`null`; `fields` is a list of strings — omitted/`null` is the default (`via,position`), an explicit empty list (`[]`) is none, the same "absent vs empty" distinction §5 makes with `fields=`. `around` accepts a name as well as an id (part 2): an ambiguous name is a tool error listing the candidates, an unresolved one names the nearest matches, a hidden-as-missing one says so. A `json`/`json-compact` `format` is returned both as the tool's text content (the same bytes) and as `structuredContent`: `{nodes, edges, facts, stats, truncated, fullNodes?, fullEdges?}`. Any other format, or a `template`, is text content only, no `structuredContent`. Without `around` or `container`, the node list is cut to `limit` and `truncated: true` is reported alongside `fullNodes`/`fullEdges`, the untruncated counts — an agent asking for a whole project's graph never gets it all by accident. `around`/`container` bound the answer themselves and are never truncated. `limit` and `listCap`, when omitted/`0`, default to the `.semaps` `mcp.limit`/`mcp.list_cap` settings (`200`/`50` unless changed, `PLAN_20260928-7` step 2); given, they win over the setting. `format`, when omitted, defaults to the `.semaps` `mcp.format` setting (`core.DefaultToolFormat`, `"facts"` unless changed) — call `graph_formats` to see the alternatives, or pass `template` for a shape of your own. |
 | `graph_formats` | — | `{formats, relations, defaultFollow, template, defaults}`, the same shape as `GET /api/graph-formats` (§5) |
 | `find_node` | `project?`, `q`, `limit?` = 50 | `{candidates: [{id, kind, file?, line?}]}`: substring search (part 2) over node names/ids, the same as `GET /api/graph/{project}/find` |
+| `who_extends`, `what_it_extends`, `who_holds`, `what_it_holds`, `who_calls`, `what_it_calls`, `where_created`, `what_is_inside`, `where_it_lies` (`mcp.tools: narrow` only) | `name` (a node name or id), `depth?` = 1, `project?` | the identical text answer `get_graph` would give with `around: name` and this tool's fixed `follow` (see the table above) — same defaults, same format |
 | `sync_preview` | as `sync` | as `sync`, writing nothing |
 
 **Writing**

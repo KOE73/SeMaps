@@ -31,16 +31,36 @@ type mcpToolView struct {
 }
 
 type mcpStatus struct {
-	File       string         `json:"file"`       // relative to the project root
-	Exists     bool           `json:"exists"`     // the file is there
-	Configured bool           `json:"configured"` // it has an mcpServers entry running `semaps mcp`
-	Entry      string         `json:"entry"`      // the name of that entry
-	OnPath     bool           `json:"onPath"`     // `semaps` resolves on PATH, so the entry can say just "semaps"
-	Snippet    string         `json:"snippet"`    // what install writes
-	Tools      []mcpToolView  `json:"tools"`
-	Error      string         `json:"error,omitempty"`
-	raw        map[string]any `json:"-"`
-	servers    map[string]any `json:"-"`
+	File       string        `json:"file"`       // relative to the project root
+	Exists     bool          `json:"exists"`     // the file is there
+	Configured bool          `json:"configured"` // it has an mcpServers entry running `semaps mcp`
+	Entry      string        `json:"entry"`      // the name of that entry
+	OnPath     bool          `json:"onPath"`     // `semaps` resolves on PATH, so the entry can say just "semaps"
+	Snippet    string        `json:"snippet"`    // what install writes
+	Tools      []mcpToolView `json:"tools"`
+	// MCPTools/MCPDescription: the live mcp.tools/mcp.description settings
+	// (PLAN_20260928-7 step 5) — what Tools above was built with.
+	MCPTools       string `json:"mcpTools"`
+	MCPDescription string `json:"mcpDescription"`
+	// Combos: the six tools×description combinations, each with its graph
+	// tools' full description text and an estimated size, for the settings
+	// page to show what an agent would actually receive before it is saved.
+	Combos  []mcpCombo     `json:"combos"`
+	Error   string         `json:"error,omitempty"`
+	raw     map[string]any `json:"-"`
+	servers map[string]any `json:"-"`
+}
+
+// mcpCombo is one of the six tools×description combinations: the graph
+// tools that set would register, at that description level, with its
+// answer's size in bytes and an estimated token count (bytes/4 — an
+// estimate, not a real tokenizer).
+type mcpCombo struct {
+	Tools          string        `json:"tools"`
+	Description    string        `json:"description"`
+	GraphTools     []mcpToolView `json:"graphTools"`
+	Bytes          int           `json:"bytes"`
+	EstimateTokens int           `json:"estimateTokens"` // bytes / 4, an estimate
 }
 
 func (api *toolAPI) mcpPath() string { return filepath.Join(filepath.Dir(api.file), mcpFile) }
@@ -49,7 +69,12 @@ func mcpEntry() map[string]any { return map[string]any{"command": "semaps", "arg
 
 // readMCP reads .mcp.json; a missing file is not an error.
 func (api *toolAPI) readMCP() mcpStatus {
-	st := mcpStatus{File: mcpFile, Tools: mcpTools()}
+	live := mcpSettings{}.withDefaults()
+	if api.settings != nil {
+		live = api.settings.Get()
+	}
+	st := mcpStatus{File: mcpFile, Tools: mcpTools(live.Tools, live.Description),
+		MCPTools: live.Tools, MCPDescription: live.Description, Combos: mcpCombos()}
 	_, err := exec.LookPath("semaps")
 	st.OnPath = err == nil
 	snippet, _ := json.MarshalIndent(map[string]any{"mcpServers": map[string]any{"semaps": mcpEntry()}}, "", "  ")
@@ -119,11 +144,15 @@ func (api *toolAPI) installMCP(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, api.readMCP())
 }
 
-// mcpTools lists the tools of `semaps mcp` as the server itself declares them.
-func mcpTools() []mcpToolView {
+// mcpTools lists the tools of `semaps mcp` as the server itself declares
+// them, at the given graph tools/description setting (PLAN_20260928-7 step
+// 4/5) — the same server a real session would get for that setting.
+func mcpTools(toolsSet, description string) []mcpToolView {
 	ctx := context.Background()
 	st, ct := mcp.NewInMemoryTransports()
-	srv := (&mcpServer{}).server()
+	s := &mcpServer{}
+	s.proj.Mcp = mcpSettings{Tools: toolsSet, Description: description}.withDefaults()
+	srv := s.server()
 	ss, err := srv.Connect(ctx, st, nil)
 	if err != nil {
 		return nil
@@ -142,6 +171,54 @@ func mcpTools() []mcpToolView {
 	for i, t := range res.Tools {
 		out[i] = mcpToolView{Name: t.Name, Description: t.Description, InputSchema: t.InputSchema,
 			ReadOnly: t.Annotations != nil && t.Annotations.ReadOnlyHint}
+	}
+	return out
+}
+
+// graphToolSetOf: the graph tool names of one `mcp.tools` set, so
+// mcpCombos can pick them out of a full tool listing (mcpTools returns
+// every tool the server has, not just the graph ones).
+func graphToolSetOf(toolsSet string) map[string]bool {
+	names := map[string]bool{}
+	if toolsSet == "narrow" {
+		for name := range narrowTools {
+			names[name] = true
+		}
+		names["find_node"] = true
+		return names
+	}
+	names["get_graph"] = true
+	names["graph_formats"] = true
+	names["find_node"] = true
+	return names
+}
+
+// mcpCombos builds the six tools×description combinations `/api/mcp`
+// reports (PLAN_20260928-7 step 5): for each, the graph tools that set
+// registers with that level's description text, and the size of that whole
+// combination — tool names, descriptions and parameter (jsonschema)
+// descriptions — in bytes and an estimated token count (bytes/4).
+func mcpCombos() []mcpCombo {
+	var out []mcpCombo
+	for _, toolsSet := range []string{"one", "narrow"} {
+		graphNames := graphToolSetOf(toolsSet)
+		for _, description := range []string{"brief", "standard", "full"} {
+			all := mcpTools(toolsSet, description)
+			var graphTools []mcpToolView
+			total := 0
+			for _, t := range all {
+				if !graphNames[t.Name] {
+					continue
+				}
+				graphTools = append(graphTools, t)
+				total += len(t.Name) + len(t.Description)
+				if b, err := json.Marshal(t.InputSchema); err == nil {
+					total += len(b)
+				}
+			}
+			out = append(out, mcpCombo{Tools: toolsSet, Description: description, GraphTools: graphTools,
+				Bytes: total, EstimateTokens: total / 4})
+		}
 	}
 	return out
 }
