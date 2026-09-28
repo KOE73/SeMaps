@@ -28,10 +28,14 @@ type toolAPI struct {
 	syncMu    sync.Mutex // one sync at a time: both write the same registry
 }
 
-func registerToolAPI(mux *http.ServeMux, file, workspace string, models *modelService) {
+// onFinish, when not nil, is attached to the run store so something outside
+// the tool API (the graph service, PLAN_20260928_host_graph-provider.md step
+// 3/5) hears about a finished run without the tool API knowing it exists.
+func registerToolAPI(mux *http.ServeMux, file, workspace string, models *modelService, onFinish func(*runInfo)) {
 	api := &toolAPI{file: file, workspace: workspace, models: models}
 	if file != "" {
 		api.runs = newRunStore(file)
+		api.runs.onFinish = onFinish
 	}
 	mux.HandleFunc("GET /api/tools", api.guard(api.tools))
 	mux.HandleFunc("GET /api/setup", api.guard(api.getSetup))

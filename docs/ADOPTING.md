@@ -28,6 +28,18 @@ An agent reads and writes the registry through MCP tools (API.md §6), never par
    model. Tool edits appear in the editor immediately but remain unsaved until the human reviews
    them and presses «Сохранить». Save the current project before assigning a new task to an agent.
 
+**`get_graph` vs `get_relations`.** Both read structure, but from different sources
+(ADR_20260928_host_live-code-graph.md): `get_relations` answers "what the registry says" — the
+authored model, entities and relations as the human and past syncs left them, exactly what is in
+git. `get_graph` answers "what the code looks like now" — symbols and edges from the latest
+extractor run, joined with the model, including code that was never synced and positions
+(`file`, `line`) that the registry never stores. Call `get_graph` when the task needs to read
+actual code — "where is this declared", "what does this file currently define", "is this call
+still there" — or needs a symbol's file and line to open it. Call `get_relations` when the task is
+about the authored architecture — what the model asserts should be connected, independent of
+whether the latest extraction agrees. Bound `get_graph` with `around` (a node id) or `container`;
+without either it cuts to `limit` nodes (default 200) and reports `truncated: true`.
+
 To point an agent at an object of a view, copy its reference in the editor («🔗» in Properties, or
 «Копировать ссылку» in the block/zone menu): `v_ops#z_undistort`. A request that names the
 reference — «сделай остальные зоны в `v_ops#z_transform` как `v_ops#z_undistort`» — is what

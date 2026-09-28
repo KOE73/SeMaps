@@ -21,6 +21,14 @@ type modelEvent struct {
 	Changed         []core.Ref        `json:"changed"`
 	Dirty           core.DirtySummary `json:"dirty"`
 	ProjectReloaded *projectReloaded  `json:"projectReloaded,omitempty"`
+	// Graph carries what changed in the live code graph after a run
+	// (PLAN_20260928_host_graph-provider.md step 5), never the graph
+	// itself. It is a field the current editor's ModelEvent interface does
+	// not declare (editor/src/editor/io/HostModelStore.ts): a TypeScript
+	// `as ModelEvent` cast does not validate at runtime, so an event with
+	// only `graph` set and no other content the editor understands is read
+	// as an ordinary (empty) change and safely ignored.
+	Graph *core.GraphDiff `json:"graph,omitempty"`
 }
 
 type projectReloaded struct {

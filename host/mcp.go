@@ -26,6 +26,11 @@ type mcpServer struct {
 	sourceRoot string
 	project    string // --project; "" — the only one
 	models     *modelService
+	// onRunFinish, when set, is attached to every run store this server
+	// creates for `extract`/`sync` (s.runs), so the graph service hears
+	// about MCP-triggered runs too, not only ones started through the tool
+	// API (PLAN_20260928_host_graph-provider.md step 3/5).
+	onRunFinish func(*runInfo)
 }
 
 // Every structured answer is a JSON object: MCP clients (Claude Code among
@@ -121,6 +126,20 @@ type placeIn struct {
 	RequestedByHuman bool             `json:"requestedByHuman" jsonschema:"true only when a human asked for this layout in so many words"`
 }
 
+// getGraphIn: same parameters as GET /api/graph/{project} (host/graph.go),
+// plus `limit` so an agent never gets the whole graph by accident
+// (docs/plans/PLAN_20260928_host_graph-provider.md step 6).
+type getGraphIn struct {
+	Project   string `json:"project,omitempty"`
+	Level     string `json:"level,omitempty" jsonschema:"types (drop function/value nodes) or all (default)"`
+	Kinds     string `json:"kinds,omitempty" jsonschema:"comma list of edge kinds to keep; default: all"`
+	Around    string `json:"around,omitempty" jsonschema:"node id: only its neighbourhood, edges in both directions"`
+	Depth     int    `json:"depth,omitempty" jsonschema:"with around: 1-5, default 1"`
+	Container string `json:"container,omitempty" jsonschema:"a containers.json id: only nodes in it"`
+	Fields    string `json:"fields,omitempty" jsonschema:"comma list from members, via, position; default via,position"`
+	Limit     int    `json:"limit,omitempty" jsonschema:"without around or container, cut to this many nodes; default 200"`
+}
+
 type getViewIn struct {
 	Project string `json:"project,omitempty"`
 	View    string `json:"view" jsonschema:"a view id, or a zone reference view#zone to read only that subtree"`
@@ -203,6 +222,7 @@ func (s *mcpServer) server() *mcp.Server {
 	mcp.AddTool(srv, read("get_text", "Text entry of a key in one language."), s.getText)
 	mcp.AddTool(srv, read("get_view", "A view with geometry as a tree: zones with their nodes, absolute rectangles, visible lines, what is unsaved. A zone reference reads only its subtree."), s.getView)
 	mcp.AddTool(srv, read("doctor", "Extractors and runtimes found, and the model check of the workspace."), s.doctor)
+	mcp.AddTool(srv, read("get_graph", "The live code graph: symbols and their code positions joined with entities and containers, docs/adr/ADR_20260928_host_live-code-graph.md. Bound it with around+depth or container, or it is cut to limit nodes (truncated: true, with the full counts)."), s.getGraph)
 	mcp.AddTool(srv, read("sync_preview", "What sync would change, writing nothing (= semaps sync --dry-run)."), s.syncPreview)
 
 	mcp.AddTool(srv, write("set_text", "Write one text field as authored, with at = now."), s.setText)
@@ -460,6 +480,93 @@ func (s *mcpServer) getRelationTypes(_ context.Context, _ *mcp.CallToolRequest, 
 	return nil, map[string]any{"relationTypes": raws(types)}, nil
 }
 
+// getGraph is get_graph (docs/plans/PLAN_20260928_host_graph-provider.md step
+// 6): the same filters as GET /api/graph/{project} (host/graph.go), reusing
+// the same core filter functions, plus a `limit` on the node count so an
+// agent asking for a whole project's graph without `around` or `container`
+// gets a cut answer with `truncated: true` and the full counts, not
+// everything at once.
+func (s *mcpServer) getGraph(_ context.Context, _ *mcp.CallToolRequest, in getGraphIn) (*mcp.CallToolResult, any, error) {
+	m, err := s.model(in.Project)
+	if err != nil {
+		return nil, nil, err
+	}
+	sources, facts := sourcesFor(s.proj, m.ProjectID())
+	graph, err := core.BuildGraph(sources, m)
+	if err != nil {
+		return nil, nil, err
+	}
+
+	fields := parseFieldSet(in.Fields)
+	if fields["members"] {
+		if err := core.AttachMembers(graph, m); err != nil {
+			return nil, nil, err
+		}
+	}
+	if graph, err = core.FilterLevel(graph, in.Level); err != nil {
+		return nil, nil, err
+	}
+	if kinds := splitCSV(in.Kinds); len(kinds) > 0 {
+		graph = core.FilterEdgeKinds(graph, kinds)
+	}
+
+	bounded := false
+	if in.Around != "" {
+		depth := in.Depth
+		if depth == 0 {
+			depth = 1
+		}
+		if depth < 1 || depth > 5 {
+			return nil, nil, errors.New("depth: must be between 1 and 5")
+		}
+		if graph, err = core.Neighborhood(graph, in.Around, depth); err != nil {
+			return nil, nil, err
+		}
+		bounded = true
+	}
+	if in.Container != "" {
+		known, err := knownContainers(m)
+		if err != nil {
+			return nil, nil, err
+		}
+		if graph, err = core.FilterContainer(graph, in.Container, known); err != nil {
+			return nil, nil, err
+		}
+		bounded = true
+	}
+	graph = core.StripFields(graph, fields)
+
+	limit := in.Limit
+	if limit <= 0 {
+		limit = 200
+	}
+	fullNodes, fullEdges := len(graph.Nodes), len(graph.Edges)
+	truncated := false
+	if !bounded && len(graph.Nodes) > limit {
+		keep := map[string]bool{}
+		nodes := append([]core.GraphNode{}, graph.Nodes[:limit]...)
+		for _, n := range nodes {
+			keep[n.ID] = true
+		}
+		var edges []core.GraphEdge
+		for _, e := range graph.Edges {
+			if keep[e.From] && keep[e.To] {
+				edges = append(edges, e)
+			}
+		}
+		graph, truncated = &core.Graph{Nodes: nodes, Edges: edges}, true
+	}
+
+	resp := map[string]any{
+		"nodes": graph.Nodes, "edges": graph.Edges, "facts": facts,
+		"stats": graphStats(graph), "truncated": truncated,
+	}
+	if truncated {
+		resp["fullNodes"], resp["fullEdges"] = fullNodes, fullEdges
+	}
+	return nil, resp, nil
+}
+
 func (s *mcpServer) getText(_ context.Context, _ *mcp.CallToolRequest, in textIn) (*mcp.CallToolResult, any, error) {
 	m, err := s.model(in.Project)
 	if err != nil {
@@ -570,6 +677,7 @@ func (s *mcpServer) runs(id string) ([]*runInfo, error) {
 		return nil, err
 	}
 	store := newRunStore(s.proj.File)
+	store.onFinish = s.onRunFinish
 	var out []*runInfo
 	for _, e := range list {
 		info, wait, err := store.start(s.proj, e, os.Stderr)

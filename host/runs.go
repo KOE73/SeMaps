@@ -50,6 +50,11 @@ type runInfo struct {
 type runStore struct {
 	dir string
 	mu  sync.Mutex
+	// onFinish, when set, is called after a run reaches "done" (never after
+	// "failed"): PLAN_20260928_host_graph-provider.md step 3/5 hooks the
+	// graph service here to notify /api/events subscribers of what changed.
+	// nil by default: existing callers and tests are unaffected.
+	onFinish func(*runInfo)
 }
 
 func newRunStore(projectFile string) *runStore {
@@ -190,6 +195,9 @@ func (s *runStore) start(proj project, e extractorConf, echo io.Writer) (*runInf
 		s.save(info)
 		close(done)
 		s.prune(5)
+		if s.onFinish != nil && info.State == "done" {
+			s.onFinish(info)
+		}
 	}
 	if err := cmd.Start(); err != nil {
 		finish(err)

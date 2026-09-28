@@ -40,6 +40,11 @@ type GraphNode struct {
 	// Presence: "both" (symbol and entity), "code" (symbol only), "model"
 	// (entity only).
 	Presence string `json:"presence"`
+	// Members is the joined entity's own `members` field (docs/CONTRACT.md),
+	// as sync already copied it from the extractor's facts — never
+	// recomputed here. Filled only when asked (`fields=members`,
+	// PLAN_20260928_host_graph-provider.md step 4) by AttachMembers.
+	Members json.RawMessage `json:"members,omitempty"`
 }
 
 // GraphEdge is a fact edge, a registry relation, or both.
@@ -259,6 +264,35 @@ func compareGraphEdges(a, b GraphEdge) int {
 		bPath = strings.Join(b.Via.Path, ",")
 	}
 	return strings.Compare(aPath, bPath)
+}
+
+// AttachMembers fills GraphNode.Members for every node joined to an entity,
+// from entities.json's own `members` field: sync already copies the
+// extractor's `members` there (docs/CONTRACT.md), so this reads it back
+// rather than re-deriving it from facts. A node with no entity, or an
+// entity with no `members`, is left as is.
+func AttachMembers(graph *Graph, model *Model) error {
+	entities, err := parseObjects(model, "entities.json")
+	if err != nil {
+		return err
+	}
+	byID := map[string]*object{}
+	for _, e := range entities {
+		byID[e.str("id")] = e
+	}
+	for i, n := range graph.Nodes {
+		if n.Entity == "" {
+			continue
+		}
+		e := byID[n.Entity]
+		if e == nil {
+			continue
+		}
+		if raw, ok := e.vals["members"]; ok && len(raw) > 0 && string(raw) != "null" {
+			graph.Nodes[i].Members = raw
+		}
+	}
+	return nil
 }
 
 // parseObjects reads one registry file's items as ordered objects, the same

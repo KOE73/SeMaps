@@ -416,8 +416,10 @@ func main() {
 	})))
 	http.Handle("/", noCacheHandler(workspaceHandler(absWorkspace, defaultsFS)))
 	models.register(http.DefaultServeMux)
-	registerMCPHTTP(http.DefaultServeMux, proj, absWorkspace, absRoot, models)
-	registerToolAPI(http.DefaultServeMux, proj.File, absWorkspace, models)
+	graphSvc := newGraphService(proj, models)
+	graphSvc.register(http.DefaultServeMux)
+	registerMCPHTTP(http.DefaultServeMux, proj, absWorkspace, absRoot, models, graphSvc.notifyRunFinished)
+	registerToolAPI(http.DefaultServeMux, proj.File, absWorkspace, models, graphSvc.notifyRunFinished)
 	// Short addresses of the tool pages (ADR_20260924-3 §4).
 	for short, page := range map[string]string{"/setup": "/app/#project", "/extract": "/app/#extract"} {
 		http.Handle("GET "+short, http.RedirectHandler(page, http.StatusFound))
