@@ -24,7 +24,9 @@ internal static class ReferenceEdgeCollector
         INamedTypeSymbol symbol,
         HashSet<string> outputIds,
         HashSet<EdgeWithVia> edges,
-        HashSet<string>? requestedEdgeKinds)
+        HashSet<string>? requestedEdgeKinds,
+        string fromFile,
+        Func<ISymbol, (string File, int Line)?> locate)
     {
         foreach (var member in symbol.GetMembers())
         {
@@ -33,27 +35,27 @@ internal static class ReferenceEdgeCollector
             switch (member)
             {
                 case IFieldSymbol field:
-                    AddForMember(fromId, field, field.Type, "holds", outputIds, edges, requestedEdgeKinds);
+                    AddForMember(fromId, field, field.Type, "holds", outputIds, edges, requestedEdgeKinds, fromFile, locate);
                     break;
 
                 case IPropertySymbol { IsIndexer: false } property:
-                    AddForMember(fromId, property, property.Type, "holds", outputIds, edges, requestedEdgeKinds);
+                    AddForMember(fromId, property, property.Type, "holds", outputIds, edges, requestedEdgeKinds, fromFile, locate);
                     break;
 
                 case IEventSymbol @event when symbol.TypeKind == TypeKind.Interface:
-                    AddForMember(fromId, @event, @event.Type, "holds", outputIds, edges, requestedEdgeKinds);
+                    AddForMember(fromId, @event, @event.Type, "holds", outputIds, edges, requestedEdgeKinds, fromFile, locate);
                     break;
 
                 case IMethodSymbol method
                     when IsScannedMethod(method, symbol):
-                    AddForMethodSignature(fromId, method, outputIds, edges, requestedEdgeKinds);
+                    AddForMethodSignature(fromId, method, outputIds, edges, requestedEdgeKinds, fromFile, locate);
                     break;
             }
         }
 
         if (symbol.TypeKind == TypeKind.Delegate && symbol.DelegateInvokeMethod is { } invoke)
         {
-            AddForMethodSignature(fromId, invoke, outputIds, edges, requestedEdgeKinds);
+            AddForMethodSignature(fromId, invoke, outputIds, edges, requestedEdgeKinds, fromFile, locate);
         }
     }
 
@@ -75,7 +77,9 @@ internal static class ReferenceEdgeCollector
         string edgeKind,
         HashSet<string> outputIds,
         HashSet<EdgeWithVia> edges,
-        HashSet<string>? requestedEdgeKinds)
+        HashSet<string>? requestedEdgeKinds,
+        string fromFile,
+        Func<ISymbol, (string File, int Line)?> locate)
     {
         // Skip if edge kind not requested (holds/uses edges only when explicitly requested)
         if (requestedEdgeKinds is null || !requestedEdgeKinds.Contains(edgeKind))
@@ -87,6 +91,7 @@ internal static class ReferenceEdgeCollector
         var memberKindStr = GetMemberKind(member);
         var modifiers = ExtractModifiers(member);
         var typeText = SymbolDisplayHelpers.TypeToDisplayString(type);
+        var location = locate(member);
 
         // Get all referenced types and their features
         var typeAnalysis = AnalyzeType(type);
@@ -109,7 +114,15 @@ internal static class ReferenceEdgeCollector
                 Deferred = analyzed.Features.Deferred ? true : null,
             };
 
-            edges.Add(new EdgeWithVia { From = fromId, To = toId, Kind = edgeKind, Via = via });
+            edges.Add(new EdgeWithVia
+            {
+                From = fromId,
+                To = toId,
+                Kind = edgeKind,
+                Via = via,
+                Line = location?.Line,
+                File = location is { } loc && loc.File != fromFile ? loc.File : null,
+            });
         }
     }
 
@@ -118,18 +131,21 @@ internal static class ReferenceEdgeCollector
         IMethodSymbol method,
         HashSet<string> outputIds,
         HashSet<EdgeWithVia> edges,
-        HashSet<string>? requestedEdgeKinds)
+        HashSet<string>? requestedEdgeKinds,
+        string fromFile,
+        Func<ISymbol, (string File, int Line)?> locate)
     {
         var methodName = method.Name;
+        var location = locate(method);
 
         // Return type: uses with method name as member
-        AddForMethodParameter(fromId, method.ReturnType, methodName, "return", method, outputIds, edges, requestedEdgeKinds);
+        AddForMethodParameter(fromId, method.ReturnType, methodName, "return", outputIds, edges, requestedEdgeKinds, fromFile, location);
 
         // Parameters: uses with parameter name as member
         foreach (var param in method.Parameters)
         {
             var memberKindStr = method.MethodKind == MethodKind.Constructor ? "constructor" : "parameter";
-            AddForMethodParameter(fromId, param.Type, param.Name, memberKindStr, method, outputIds, edges, requestedEdgeKinds);
+            AddForMethodParameter(fromId, param.Type, param.Name, memberKindStr, outputIds, edges, requestedEdgeKinds, fromFile, location);
         }
     }
 
@@ -138,10 +154,11 @@ internal static class ReferenceEdgeCollector
         ITypeSymbol type,
         string paramName,
         string memberKindStr,
-        IMethodSymbol method,
         HashSet<string> outputIds,
         HashSet<EdgeWithVia> edges,
-        HashSet<string>? requestedEdgeKinds)
+        HashSet<string>? requestedEdgeKinds,
+        string fromFile,
+        (string File, int Line)? location)
     {
         var edgeKind = "uses";
 
@@ -181,7 +198,15 @@ internal static class ReferenceEdgeCollector
                 Deferred = analyzed.Features.Deferred ? true : null,
             };
 
-            edges.Add(new EdgeWithVia { From = fromId, To = toId, Kind = edgeKind, Via = via });
+            edges.Add(new EdgeWithVia
+            {
+                From = fromId,
+                To = toId,
+                Kind = edgeKind,
+                Via = via,
+                Line = location?.Line,
+                File = location is { } loc && loc.File != fromFile ? loc.File : null,
+            });
         }
     }
 
@@ -499,6 +524,10 @@ internal sealed class EdgeWithVia
     public required string To { get; set; }
     public required string Kind { get; set; }
     public ViaFact? Via { get; set; }
+    // Where the edge comes from: not part of identity (EXTRACTOR.md §3), so
+    // they are excluded from Equals/GetHashCode below.
+    public int? Line { get; set; }
+    public string? File { get; set; }
 
     public override bool Equals(object? obj)
     {

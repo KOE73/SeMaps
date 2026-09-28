@@ -27,6 +27,10 @@ internal sealed class FactsExtractor(string rootArgument, string rootFullPath, P
         public required INamedTypeSymbol Symbol;
         public required string File;
         public required int Line;
+        public int EndLine;
+        // Every declaration (partial types have more than one); sorted by
+        // (File, Line) once all syntax trees are processed.
+        public readonly List<(string File, int Line, int EndLine)> Declarations = [];
     }
 
     private sealed class NamespaceEntry
@@ -86,8 +90,10 @@ internal sealed class FactsExtractor(string rootArgument, string rootFullPath, P
                     continue;
                 }
 
-                var line = node.GetLocation().GetLineSpan().StartLinePosition.Line + 1;
-                Consider(symbol, relPath, line);
+                var lineSpan = node.GetLocation().GetLineSpan();
+                var line = lineSpan.StartLinePosition.Line + 1;
+                var endLine = lineSpan.EndLinePosition.Line + 1;
+                Consider(symbol, relPath, line, endLine);
 
                 // A top-level type declared in this project's sources: the project contains it.
                 // A linked file compiled into two projects gives "contains" from both.
@@ -139,7 +145,7 @@ internal sealed class FactsExtractor(string rootArgument, string rootFullPath, P
         return entry;
     }
 
-    private void Consider(INamedTypeSymbol symbol, string relPath, int line)
+    private void Consider(INamedTypeSymbol symbol, string relPath, int line, int endLine)
     {
         if (!IsEligibleKind(symbol.TypeKind))
         {
@@ -154,18 +160,23 @@ internal sealed class FactsExtractor(string rootArgument, string rootFullPath, P
         var id = SymbolIds.TypeId(symbol);
         if (_types.TryGetValue(id, out var existing))
         {
-            // partial declarations: keep the first declaration by path/line ordinal sort.
+            // partial declarations: keep the first declaration by path/line ordinal sort,
+            // but remember every declaration for `spans`.
+            existing.Declarations.Add((relPath, line, endLine));
             if (string.CompareOrdinal(relPath, existing.File) < 0 ||
                 (relPath == existing.File && line < existing.Line))
             {
                 existing.File = relPath;
                 existing.Line = line;
+                existing.EndLine = endLine;
             }
 
             return;
         }
 
-        _types[id] = new TypeEntry { Symbol = symbol, File = relPath, Line = line };
+        var entry = new TypeEntry { Symbol = symbol, File = relPath, Line = line, EndLine = endLine };
+        entry.Declarations.Add((relPath, line, endLine));
+        _types[id] = entry;
 
         if (!symbol.ContainingNamespace.IsGlobalNamespace)
         {
@@ -300,7 +311,7 @@ internal sealed class FactsExtractor(string rootArgument, string rootFullPath, P
         foreach (var (id, entry) in _types)
         {
             var symbol = entry.Symbol;
-            symbols.Add(BuildTypeSymbolFact(id, symbol, entry.File, entry.Line, outputIds, edges));
+            symbols.Add(BuildTypeSymbolFact(id, symbol, entry, outputIds, edges));
         }
 
         symbols.Sort((a, b) => string.CompareOrdinal(a.Id, b.Id));
@@ -317,6 +328,8 @@ internal sealed class FactsExtractor(string rootArgument, string rootFullPath, P
                 To = e.To,
                 Kind = e.Kind,
                 Via = e.Via,
+                Line = e.Line,
+                File = e.File,
             })
             .ToList();
 
@@ -411,16 +424,34 @@ internal sealed class FactsExtractor(string rootArgument, string rootFullPath, P
     private SymbolFact BuildTypeSymbolFact(
         string id,
         INamedTypeSymbol symbol,
-        string file,
-        int line,
+        TypeEntry entry,
         HashSet<string> outputIds,
         HashSet<EdgeWithVia> edges)
     {
         var (kind, nativeKind) = ClassifyType(symbol);
-        var members = MembersBuilder.Build(symbol, kind);
+        var (members, memberLines) = MembersBuilder.Build(symbol, kind, entry.File, m => SourceLocation(m));
 
-        AddStructuralEdges(id, symbol, outputIds, edges);
-        ReferenceEdgeCollector.Collect(id, symbol, outputIds, edges, _requestedEdgeKinds);
+        var baseListLocation = BaseListLocation(symbol);
+        AddStructuralEdges(id, symbol, outputIds, edges, entry.File, baseListLocation);
+        ReferenceEdgeCollector.Collect(id, symbol, outputIds, edges, _requestedEdgeKinds, entry.File, m => SourceLocation(m));
+
+        // A file linked into two projects yields one Consider() call per project for the
+        // same physical declaration: dedupe by (file, line) before deciding whether there
+        // is more than one real declaration.
+        var distinctDeclarations = entry.Declarations
+            .GroupBy(d => (d.File, d.Line))
+            .Select(g => g.First())
+            .ToList();
+
+        List<SpanFact>? spans = null;
+        if (distinctDeclarations.Count > 1)
+        {
+            spans = distinctDeclarations
+                .OrderBy(d => d.File, StringComparer.Ordinal)
+                .ThenBy(d => d.Line)
+                .Select(d => new SpanFact { File = d.File, Line = d.Line, EndLine = d.EndLine })
+                .ToList();
+        }
 
         return new SymbolFact
         {
@@ -429,25 +460,95 @@ internal sealed class FactsExtractor(string rootArgument, string rootFullPath, P
             NativeKind = nativeKind,
             Name = symbol.Name,
             Namespace = SymbolIds.NamespaceDottedName(symbol.ContainingNamespace),
-            File = file,
-            Line = line,
+            File = entry.File,
+            Line = entry.Line,
+            EndLine = entry.EndLine,
+            Spans = spans,
             Visibility = SymbolDisplayHelpers.Visibility(symbol.DeclaredAccessibility),
             Members = members,
+            MemberLines = memberLines,
         };
+    }
+
+    /// <summary>
+    /// Resolves a symbol's declaration to (file, line) within the root, for
+    /// `memberLines` and edge `line`/`file`. The first location that lies
+    /// under the root wins; a symbol with none (e.g. from metadata) yields
+    /// null.
+    /// </summary>
+    private (string File, int Line)? SourceLocation(ISymbol symbol)
+    {
+        foreach (var location in symbol.Locations)
+        {
+            if (location.SourceTree is null)
+            {
+                continue;
+            }
+
+            var relPath = RelativePath(location.SourceTree.FilePath);
+            if (relPath is null)
+            {
+                continue;
+            }
+
+            var line = location.GetLineSpan().StartLinePosition.Line + 1;
+            return (relPath, line);
+        }
+
+        return null;
+    }
+
+    /// <summary>
+    /// Finds where the base list (`: Base, IFoo`) is written, across every
+    /// partial declaration; the first one that has a base list wins.
+    /// </summary>
+    private (string File, int Line)? BaseListLocation(INamedTypeSymbol symbol)
+    {
+        foreach (var syntaxRef in symbol.DeclaringSyntaxReferences)
+        {
+            var baseList = syntaxRef.GetSyntax() switch
+            {
+                ClassDeclarationSyntax c => c.BaseList,
+                StructDeclarationSyntax s => s.BaseList,
+                RecordDeclarationSyntax r => r.BaseList,
+                InterfaceDeclarationSyntax i => i.BaseList,
+                _ => null,
+            };
+            if (baseList is null)
+            {
+                continue;
+            }
+
+            var relPath = RelativePath(baseList.SyntaxTree.FilePath);
+            if (relPath is null)
+            {
+                continue;
+            }
+
+            var line = baseList.GetLocation().GetLineSpan().StartLinePosition.Line + 1;
+            return (relPath, line);
+        }
+
+        return null;
     }
 
     private static void AddStructuralEdges(
         string id,
         INamedTypeSymbol symbol,
         HashSet<string> outputIds,
-        HashSet<EdgeWithVia> edges)
+        HashSet<EdgeWithVia> edges,
+        string fromFile,
+        (string File, int Line)? baseListLocation)
     {
+        int? line = baseListLocation?.Line;
+        string? file = baseListLocation is { } loc && loc.File != fromFile ? loc.File : null;
+
         if (symbol.TypeKind == TypeKind.Class && symbol.BaseType is { } baseType && IsExtendableBase(baseType))
         {
             var baseId = SymbolIds.TypeId(baseType);
             if (outputIds.Contains(baseId) && baseId != id)
             {
-                edges.Add(new EdgeWithVia { From = id, To = baseId, Kind = "extends" });
+                edges.Add(new EdgeWithVia { From = id, To = baseId, Kind = "extends", Line = line, File = file });
             }
         }
 
@@ -456,7 +557,7 @@ internal sealed class FactsExtractor(string rootArgument, string rootFullPath, P
             var ifaceId = SymbolIds.TypeId(iface);
             if (outputIds.Contains(ifaceId) && ifaceId != id)
             {
-                edges.Add(new EdgeWithVia { From = id, To = ifaceId, Kind = "implements" });
+                edges.Add(new EdgeWithVia { From = id, To = ifaceId, Kind = "implements", Line = line, File = file });
             }
         }
     }

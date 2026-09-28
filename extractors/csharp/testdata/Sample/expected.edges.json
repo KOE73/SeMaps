@@ -27,6 +27,7 @@
       "namespace": "Sample.App",
       "file": "Sample.App/AdvancedRepetitionGuard.cs",
       "line": 6,
+      "endLine": 13,
       "visibility": "public",
       "members": [
         {
@@ -35,7 +36,10 @@
           "type": "Status",
           "visibility": "public"
         }
-      ]
+      ],
+      "memberLines": {
+        "CurrentStatus": 8
+      }
     },
     {
       "id": "Sample.Core",
@@ -54,6 +58,7 @@
       "namespace": "Sample.Core",
       "file": "Sample.Core/Container.cs",
       "line": 3,
+      "endLine": 16,
       "visibility": "public",
       "members": []
     },
@@ -65,6 +70,7 @@
       "namespace": "Sample.Core",
       "file": "Sample.Core/Container.cs",
       "line": 5,
+      "endLine": 8,
       "visibility": "public",
       "members": [
         {
@@ -73,7 +79,10 @@
           "type": "int",
           "visibility": "public"
         }
-      ]
+      ],
+      "memberLines": {
+        "Value": 7
+      }
     },
     {
       "id": "Sample.Core.Container+Secret",
@@ -83,6 +92,7 @@
       "namespace": "Sample.Core",
       "file": "Sample.Core/Container.cs",
       "line": 10,
+      "endLine": 15,
       "visibility": "private",
       "members": [
         {
@@ -97,7 +107,11 @@
           "type": "Status",
           "visibility": "private"
         }
-      ]
+      ],
+      "memberLines": {
+        "Hidden": 12,
+        "_status": 14
+      }
     },
     {
       "id": "Sample.Core.Features",
@@ -107,6 +121,7 @@
       "namespace": "Sample.Core",
       "file": "Sample.Core/Features.cs",
       "line": 10,
+      "endLine": 46,
       "visibility": "public",
       "members": [
         {
@@ -151,7 +166,16 @@
           "type": "Lazy<Status>",
           "visibility": "public"
         }
-      ]
+      ],
+      "memberLines": {
+        "Statuses": 13,
+        "ReadOnlyStatuses": 16,
+        "StatusMap": 19,
+        "StatusArray": 22,
+        "OptionalStatus": 25,
+        "StatusFactory": 31,
+        "LazyStatus": 34
+      }
     },
     {
       "id": "Sample.Core.Guards",
@@ -170,6 +194,19 @@
       "namespace": "Sample.Core.Guards",
       "file": "Sample.Core/Guards/RepetitionGuard.Extra.cs",
       "line": 3,
+      "endLine": 6,
+      "spans": [
+        {
+          "file": "Sample.Core/Guards/RepetitionGuard.Extra.cs",
+          "line": 3,
+          "endLine": 6
+        },
+        {
+          "file": "Sample.Core/Guards/RepetitionGuard.cs",
+          "line": 3,
+          "endLine": 6
+        }
+      ],
       "visibility": "public",
       "members": [
         {
@@ -184,7 +221,10 @@
           "type": "string",
           "visibility": "internal"
         }
-      ]
+      ],
+      "memberLines": {
+        "Label": 5
+      }
     },
     {
       "id": "Sample.Core.IRepository",
@@ -194,6 +234,7 @@
       "namespace": "Sample.Core",
       "file": "Sample.Core/IRepository.cs",
       "line": 3,
+      "endLine": 10,
       "visibility": "public",
       "members": [
         {
@@ -214,7 +255,12 @@
           "type": "Repo<Status> Snapshot()",
           "visibility": "public"
         }
-      ]
+      ],
+      "memberLines": {
+        "CurrentStatus": 5,
+        "Changed": 7,
+        "Snapshot": 9
+      }
     },
     {
       "id": "Sample.Core.Logger",
@@ -224,6 +270,7 @@
       "namespace": "Sample.Core",
       "file": "Sample.Core/Logger.cs",
       "line": 3,
+      "endLine": 8,
       "visibility": "public",
       "members": [
         {
@@ -238,7 +285,11 @@
           "type": "string",
           "visibility": "public"
         }
-      ]
+      ],
+      "memberLines": {
+        "Created": 5,
+        "Name": 7
+      }
     },
     {
       "id": "Sample.Core.Notify",
@@ -248,6 +299,7 @@
       "namespace": "Sample.Core",
       "file": "Sample.Core/Notify.cs",
       "line": 3,
+      "endLine": 3,
       "visibility": "public"
     },
     {
@@ -258,6 +310,7 @@
       "namespace": "Sample.Core",
       "file": "Sample.Core/Point.cs",
       "line": 3,
+      "endLine": 3,
       "visibility": "public",
       "members": [
         {
@@ -272,7 +325,11 @@
           "type": "int",
           "visibility": "public"
         }
-      ]
+      ],
+      "memberLines": {
+        "X": 3,
+        "Y": 3
+      }
     },
     {
       "id": "Sample.Core.Repo`1",
@@ -282,6 +339,7 @@
       "namespace": "Sample.Core",
       "file": "Sample.Core/Repo.cs",
       "line": 3,
+      "endLine": 8,
       "visibility": "public",
       "members": [
         {
@@ -296,7 +354,11 @@
           "type": "List<T>",
           "visibility": "public"
         }
-      ]
+      ],
+      "memberLines": {
+        "Current": 5,
+        "Items": 7
+      }
     },
     {
       "id": "Sample.Core.Status",
@@ -306,6 +368,7 @@
       "namespace": "Sample.Core",
       "file": "Sample.Core/Status.cs",
       "line": 3,
+      "endLine": 8,
       "visibility": "public",
       "members": [
         {
@@ -323,7 +386,12 @@
           "name": "Archived",
           "type": "2"
         }
-      ]
+      ],
+      "memberLines": {
+        "Draft": 5,
+        "Published": 6,
+        "Archived": 7
+      }
     },
     {
       "id": "Sample.Shared",
@@ -342,6 +410,7 @@
       "namespace": "Sample.Shared",
       "file": "Shared/BuildInfo.cs",
       "line": 5,
+      "endLine": 8,
       "visibility": "internal",
       "members": [
         {
@@ -350,7 +419,10 @@
           "type": "string",
           "visibility": "public"
         }
-      ]
+      ],
+      "memberLines": {
+        "Product": 7
+      }
     },
     {
       "id": "[Sample.App]",
@@ -378,12 +450,14 @@
     {
       "from": "Sample.App.AdvancedRepetitionGuard",
       "to": "Sample.Core.Guards.RepetitionGuard",
-      "kind": "extends"
+      "kind": "extends",
+      "line": 6
     },
     {
       "from": "Sample.App.AdvancedRepetitionGuard",
       "to": "Sample.Core.IRepository",
-      "kind": "implements"
+      "kind": "implements",
+      "line": 6
     },
     {
       "from": "Sample.App.AdvancedRepetitionGuard",
@@ -393,7 +467,8 @@
         "member": "Snapshot",
         "memberKind": "return",
         "text": "Repo<Status>"
-      }
+      },
+      "line": 12
     },
     {
       "from": "Sample.App.AdvancedRepetitionGuard",
@@ -406,7 +481,8 @@
           "public"
         ],
         "text": "Status"
-      }
+      },
+      "line": 8
     },
     {
       "from": "Sample.App.AdvancedRepetitionGuard",
@@ -419,7 +495,8 @@
         "path": [
           "arg:0"
         ]
-      }
+      },
+      "line": 12
     },
     {
       "from": "Sample.Core",
@@ -482,7 +559,8 @@
           "private"
         ],
         "text": "Status"
-      }
+      },
+      "line": 14
     },
     {
       "from": "Sample.Core.Features",
@@ -500,7 +578,8 @@
         ],
         "cardinality": "keyed",
         "mutability": "mutable"
-      }
+      },
+      "line": 19
     },
     {
       "from": "Sample.Core.Features",
@@ -518,7 +597,8 @@
         ],
         "cardinality": "one",
         "deferred": true
-      }
+      },
+      "line": 34
     },
     {
       "from": "Sample.Core.Features",
@@ -532,7 +612,8 @@
         ],
         "text": "Status?",
         "cardinality": "optional"
-      }
+      },
+      "line": 25
     },
     {
       "from": "Sample.Core.Features",
@@ -550,7 +631,8 @@
         ],
         "cardinality": "many",
         "mutability": "readonly"
-      }
+      },
+      "line": 16
     },
     {
       "from": "Sample.Core.Features",
@@ -566,7 +648,8 @@
         "path": [
           "item"
         ]
-      }
+      },
+      "line": 22
     },
     {
       "from": "Sample.Core.Features",
@@ -584,7 +667,8 @@
         ],
         "cardinality": "one",
         "deferred": true
-      }
+      },
+      "line": 31
     },
     {
       "from": "Sample.Core.Features",
@@ -602,7 +686,8 @@
         ],
         "cardinality": "keyed",
         "mutability": "mutable"
-      }
+      },
+      "line": 19
     },
     {
       "from": "Sample.Core.Features",
@@ -619,7 +704,8 @@
           "value",
           "arg:0"
         ]
-      }
+      },
+      "line": 19
     },
     {
       "from": "Sample.Core.Features",
@@ -637,7 +723,8 @@
         ],
         "cardinality": "many",
         "mutability": "mutable"
-      }
+      },
+      "line": 13
     },
     {
       "from": "Sample.Core.Features",
@@ -652,7 +739,8 @@
         ],
         "cardinality": "one",
         "deferred": true
-      }
+      },
+      "line": 28
     },
     {
       "from": "Sample.Core.Features",
@@ -662,7 +750,8 @@
         "member": "initialStatus",
         "memberKind": "constructor",
         "text": "Status"
-      }
+      },
+      "line": 37
     },
     {
       "from": "Sample.Core.Guards",
@@ -680,7 +769,8 @@
           "public"
         ],
         "text": "Notify"
-      }
+      },
+      "line": 7
     },
     {
       "from": "Sample.Core.IRepository",
@@ -690,7 +780,8 @@
         "member": "Snapshot",
         "memberKind": "return",
         "text": "Repo<Status>"
-      }
+      },
+      "line": 9
     },
     {
       "from": "Sample.Core.IRepository",
@@ -704,7 +795,8 @@
           "readonly"
         ],
         "text": "Status"
-      }
+      },
+      "line": 5
     },
     {
       "from": "Sample.Core.IRepository",
@@ -717,7 +809,8 @@
         "path": [
           "arg:0"
         ]
-      }
+      },
+      "line": 9
     },
     {
       "from": "Sample.Core.Notify",
@@ -727,7 +820,8 @@
         "member": "status",
         "memberKind": "parameter",
         "text": "Status"
-      }
+      },
+      "line": 3
     },
     {
       "from": "Sample.Shared",

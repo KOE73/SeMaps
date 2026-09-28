@@ -23,8 +23,18 @@ internal sealed class SymbolFact
     [JsonPropertyName("namespace")] public string Namespace { get; set; } = "";
     [JsonPropertyName("file")] public string File { get; set; } = "";
     [JsonPropertyName("line")] public int? Line { get; set; }
+    [JsonPropertyName("endLine")] public int? EndLine { get; set; }
+    [JsonPropertyName("spans")] public List<SpanFact>? Spans { get; set; }
     [JsonPropertyName("visibility")] public string? Visibility { get; set; }
     [JsonPropertyName("members")] public List<MemberFact>? Members { get; set; }
+    [JsonPropertyName("memberLines")] public Dictionary<string, int>? MemberLines { get; set; }
+}
+
+internal sealed class SpanFact
+{
+    [JsonPropertyName("file")] public string File { get; set; } = "";
+    [JsonPropertyName("line")] public int Line { get; set; }
+    [JsonPropertyName("endLine")] public int? EndLine { get; set; }
 }
 
 internal sealed class MemberFact
@@ -42,6 +52,8 @@ internal sealed class EdgeFact
     [JsonPropertyName("to")] public string To { get; set; } = "";
     [JsonPropertyName("kind")] public string Kind { get; set; } = "";
     [JsonPropertyName("via")] public ViaFact? Via { get; set; }
+    [JsonPropertyName("line")] public int? Line { get; set; }
+    [JsonPropertyName("file")] public string? File { get; set; }
 }
 
 internal sealed class ViaFact
