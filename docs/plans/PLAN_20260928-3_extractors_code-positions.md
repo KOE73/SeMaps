@@ -1,6 +1,8 @@
 # PLAN_20260928-3_extractors — Место в коде: диапазоны строк в фактах
 
-Статус: **в работе** — не начат. Не зависит от остальных планов этого дня.
+Статус: **в работе** — шаги 1–4 и 6 сделаны (форма, схема+сверка, C#, TypeScript, документы).
+Шаг 5 (граф: `core/graph.go`, `fields=position`) и шаг 7 (проверка на NeuroModFlowNet.ONNX)
+не входили в эту сессию — см. «Результат» ниже. Не зависит от остальных планов этого дня.
 Решение: [`ADR_20260928`](../adr/ADR_20260928_host_live-code-graph.md) §5.
 
 ## Зачем
@@ -78,3 +80,36 @@
 - Столбцы.
 - Строки в реестре и в `evidence` связей (контракт допускает `evidence.line`, сверка его не
   пишет — так и остаётся).
+
+## Результат
+
+Сделано (сессия 2026-09-28):
+
+- **Форма** (шаг 1): у символа — `endLine`, `spans: [{file, line, endLine}]` (только при
+  нескольких объявлениях), `memberLines: {<имя>: строка}` рядом с `members`; у ребра —
+  `line`, `file` (только если отличается от файла символа `from`), не для `contains`/`depends`.
+  Все поля необязательны.
+- **Схема и сверка** (шаг 2): `schemas/extractor-facts.schema.json`, `core/facts.go` (структуры
+  `Symbol.EndLine/Spans/MemberLines`, `Edge.Line/File`, `Span`) плюс проверки в `problems()`.
+  `core/facts_positions_test.go`: факты с новыми полями и без них дают байт-в-байт одинаковый
+  реестр после сверки.
+- **C#** (шаг 3): `FactsExtractor.cs` собирает все объявления `partial`-типа (дедуп при линковке
+  файла в две сборки), печатает `endLine`, `spans`; `MembersBuilder.cs` печатает `memberLines`;
+  `ReferenceEdgeCollector.cs` и `AddStructuralEdges` печатают `line`/`file` рёбер. Золотые файлы
+  `testdata/Sample/expected*.json` обновлены.
+- **TypeScript** (шаг 4): `collect.ts` копит объявления символа (`spansById`) — слияние
+  интерфейсов/`namespace` даёт `spans`; печатает `endLine`, `memberLines`, `line`/`file` рёбер
+  (`file` для TS практически никогда не печатается: член всегда в файле своего символа).
+  `types.ts` — новые поля. Золотые файлы `testdata/expected*.json` обновлены.
+- **Документы** (шаг 6): `docs/EXTRACTOR.md` §2.1/§2.2/§3, `docs/extractors/csharp.md`,
+  `docs/extractors/typescript.md` — разделы «Место в коде»; `docs/extractors/go.md`,
+  `python.md`, `java-kotlin.md`, `rust.md` — по одной строке, что поля необязательны.
+
+Не сделано:
+
+- **Шаг 5 (граф).** `core/graph.go`, `core/containers.go` и их тесты — не мои файлы в этой
+  сессии (владеет другой агент, см. `PLAN_20260928_host_graph-provider.md` шаг 4).
+- **Шаг 7 (проверка на NeuroModFlowNet.ONNX).** Не выполнялась в этой сессии; вместо неё —
+  `testdata/Sample` (C#) и `testdata/project` (TypeScript) с явной проверкой детерминизма
+  (`Output_IsDeterministicAcrossRuns`, «two runs produce byte-identical output») и схемы
+  (`Output_IsValidPerSchema`).
