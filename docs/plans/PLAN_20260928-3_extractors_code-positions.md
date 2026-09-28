@@ -1,9 +1,8 @@
 # PLAN_20260928-3_extractors — Место в коде: диапазоны строк в фактах
 
-Статус: **в работе** — шаги 1–6 сделаны (форма, схема+сверка, C#, TypeScript, граф, документы).
-Шаг 5: узел графа несёт `endLine`, `spans`, `memberLines`, ребро — `line` и `file`; всё это
-уходит без `fields=position`. Остался шаг 7 (проверка на NeuroModFlowNet.ONNX) — см. «Результат»
-ниже.
+Статус: **шаги 1–7 сделаны** (форма, схема+сверка, C#, TypeScript, граф, документы, проверка на
+NeuroModFlowNet.ONNX). Шаг 5: узел графа несёт `endLine`, `spans`, `memberLines`, ребро — `line`
+и `file`; всё это уходит без `fields=position`. Шаг 7 — см. «Результат проверки» ниже.
 Решение: [`ADR_20260928`](../adr/ADR_20260928_host_live-code-graph.md) §5.
 
 ## Зачем
@@ -106,11 +105,59 @@
   `docs/extractors/typescript.md` — разделы «Место в коде»; `docs/extractors/go.md`,
   `python.md`, `java-kotlin.md`, `rust.md` — по одной строке, что поля необязательны.
 
-Не сделано:
+Не сделано в предыдущей сессии:
 
 - **Шаг 5 (граф).** `core/graph.go`, `core/containers.go` и их тесты — не мои файлы в этой
   сессии (владеет другой агент, см. `PLAN_20260928_host_graph-provider.md` шаг 4).
-- **Шаг 7 (проверка на NeuroModFlowNet.ONNX).** Не выполнялась в этой сессии; вместо неё —
-  `testdata/Sample` (C#) и `testdata/project` (TypeScript) с явной проверкой детерминизма
-  (`Output_IsDeterministicAcrossRuns`, «two runs produce byte-identical output») и схемы
-  (`Output_IsValidPerSchema`).
+
+### Результат проверки (шаг 7, 2026-09-28)
+
+Экстрактор — свежий `dotnet publish` `SeMaps.Extract.CSharp` из этого коммита. Проект —
+`C:\GitKOE\NeuroModFlowNet.ONNX` (рабочая копия с незакоммиченными правками, только на чтение).
+
+**Размер фактов до/после.** Не «до/после сверки» в буквальном смысле (сверка — код другого
+агента, `core/graph.go`), а до/после двух независимых прогонов извлечения: оба `facts.json` —
+671 167 байт, побайтово идентичны (`md5 c9ab09b0…`), 405 символов, 1361 рёбер. Реестр модели
+(`entities.json`/`relations.json` проекта) не трогался ни разу за всю проверку — файлы кода
+только читались, `git status --short` до и после отличий не показал (см. общий отчёт по обоим
+планам в `PLAN_20260928_host_graph-provider.md`).
+
+**F. Выборка десяти символов.** Правило: символы с `file` и `endLine`, взятые с равным шагом
+`N = floor(387/10) = 38` по списку из `facts.json` (387 символов из 405 несут `endLine`; 18 без
+него — все `module`, см. «H» в `PLAN_20260928_host_graph-provider.md`). Для каждого — первая
+строка (`line`) должна быть объявлением, последняя (`endLine`) — закрывающей скобкой или концом
+однострочного объявления:
+
+| Символ | Файл | line…endLine | Что в этих строках |
+|---|---|---|---|
+| `FrameContext` | `NeuroModFlowNet.CV/Tracking/FrameContext.cs` | 6…9 | `public readonly record struct FrameContext(` … `long? SourceFrameId);` — однострочный `record` без тела, конец на `);` |
+| `ConverterMatSingleNchw<TBuf,TAlgo>` | `.../Inputs/Nchw/ConverterMatSingleNchw.cs` | 12…24 | `public class ConverterMatSingleNchw<…>` … `}` |
+| `ITextRegionGammaCorrectionSettings` | `.../GammaCorrection/ITextRegionGammaCorrectionSettings.cs` | 11…14 | `public interface …` … `}` |
+| `PaddleOCRDetExtractorBase<TOut>` | `.../PaddleOCR/Det/Extractors/PaddleOCRDetExtractorBase.cs` | 8…43 | `public abstract class …` … `}` |
+| `TextRegionGaussianBlurOptions` | `.../GaussianBlur/TextRegionGaussianBlurOptions.cs` | 7…12 | `public sealed class …` … `}` |
+| `YoloClsExtractorBase<TOut>` | `.../Yolo/Cls/Extractors/YoloClsExtractorBase.cs` | 8…22 | `public abstract class …` … `}` |
+| `YoloSeg_FP32` | `.../Yolo/Seg/OutData/YoloSeg_FP32.cs` | 3…25 | `public readonly struct …` … `}` |
+| `OnnxBatchedRequest<TInput,TOutput>` | `.../Resources/OnnxBatchedRequest.cs` | 5…19 | `internal sealed class …` … `}` |
+| `Op_Onnx_Undistort_U8_NHWC` | `.../Operators/Op_Onnx_Undistort_U8_NHWC.cs` | 11…130 | `public sealed class … : Op_Onnx_TensorTransformBase` … `}` |
+| `OpDebugPoint` | `NeuroModFlowNet.Pipeline/Diagnostics/OpDebugPoint.cs` | 10…15 | `public sealed record OpDebugPoint(` … `IReadOnlyList<VarDebugInfo> VariablesBefore);` — однострочный `record`, конец на `);` |
+
+Все десять совпали без расхождений: диапазон строк точно накрывает объявление символа.
+
+**Пять рёбер с `line`.** Правило: рёбра с непустым `line`, шаг `N = floor(585/5) = 117` по списку
+рёбер, несущих `line` (585 из 1361):
+
+| Ребро | line | Что в строке |
+|---|---|---|
+| `ITrackerDebugSnapshot` --holds(`ActiveTracks`)--> `TrackedObject` | 7 | `IReadOnlyList<TrackedObject> ActiveTracks { get; }` |
+| `PaddleOCRRecSingleConverter` --holds(`Model`)--> `OnnxModel` | 8 | `OnnxModel Model => Context.Model;` |
+| `ArrayMapCoordinatesExecutor<…>` --implements--> `IMapCoordinatesExecutor` | 5 | `internal sealed class ArrayMapCoordinatesExecutor<…> : IMapCoordinatesExecutor` — строка списка базовых типов |
+| `Op_Onnx_PadResize_NCHW_Base` --uses(`executionBackend`)--> `InferenceBackend` | 21 | `protected Op_Onnx_PadResize_NCHW_Base(` — начало конструктора, где объявлен параметр |
+| `YoloObbBatchedResource` --holds(`runner`)--> `IRunner<…>` | 12 | `readonly IRunner<List<Mat>, IDetectionResult<YoloObb>> runner;` |
+
+Все пять совпали: строка либо содержит сам член (поле/свойство), либо (для `implements`) — список
+базовых типов, либо (для `uses` через конструктор) — начало конструктора, где объявлен параметр.
+Расхождений не найдено.
+
+**Не проверялось:** столбцы (вне контракта — см. «Не входит»); `evidence.line` связей реестра (не
+пишется намеренно); символы без `endLine` (все 18 — `module`, диапазон им не положен по контракту,
+поэтому вне выборки).
