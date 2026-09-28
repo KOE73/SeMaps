@@ -330,7 +330,7 @@ func contains(ss []string, s string) bool {
 // "calls from Create to Widget" — {count} is empty at 1) all come out of the
 // same template. {via} is only ever non-empty at step >= 2 (defect 6), so
 // the trailing " via {via}" group only shows up there.
-const FactsTemplate = `{step} {fullName}  {file}:{lines}[  in {namespace}[ (assembly {assembly})]]  [\[{relations:{relation}[ {member}[:{memberLine}]][ {memberKind}][ {modifiers}][ [×{count} ]from {fromMethods}[ to {toMethods}]][ @{relationLines}[ in {relationLinesFile}]][ {injected}]|; }\]][ via {via}]`
+const FactsTemplate = `{step} {fullName}  {file}:{lines}[  in {namespace}[ (assembly {assembly})]]  [\[{relations:{relation}[ {member}[:{memberLine}]][ {memberKind}][ {modifiers}][ [×{count} ]from {fromMethods}[ to {toMethods}]][ @{relationLines}[ in {relationLinesFile}]][ {injected}]|; }\]][  \{dynamic: {dynamic}\}][ via {via}]`
 
 type factsFormat struct{}
 
@@ -388,8 +388,9 @@ func viaOf(parents []string, byID map[string]*GraphNode) (short, full string) {
 // own id can run to 250 characters (namespace-qualified container, full
 // parameter type names) and is what {id} is for; the name a reader sees,
 // and can hand back to `around`, is the short one.
-func nodeMacros(n *GraphNode, byID map[string]*GraphNode, methodOf map[string]string) NodeMacros {
+func nodeMacros(n *GraphNode, byID map[string]*GraphNode, methodOf map[string]string, listCap int) NodeMacros {
 	m := NodeMacrosOf(n)
+	m.ListCap = listCap
 	if n.Kind == "method" {
 		m.FullName = methodDisplayName(n, byID, methodOf)
 	}
@@ -416,7 +417,7 @@ func renderPerNodeTemplate(g *Graph, tpl *Template, o FormatOptions) ([]byte, er
 	b.WriteString(cutNotice(g, o))
 	for _, id := range order {
 		n := byID[id]
-		m := nodeMacros(n, byID, methodOf)
+		m := nodeMacros(n, byID, methodOf, listCap)
 		clearContainerPosition(&m, n)
 		clearAssemblyForNonFocus(&m, n, o)
 		m.Relations = combineHoldsAndInjects(relationsReachingNode(g, id, byID, listCap))
@@ -474,7 +475,7 @@ func stepOf(n *GraphNode) int {
 // (defect 7: the same shared functions — relationMacrosFor,
 // combineHoldsAndInjects — so the same words, the same held+injects merge
 // and the same lifted `×N from … to …`/`@lines` for the same edges).
-const LinesTemplate = "[{step}: ]{fullName}[  {file}:{lines}][  in {namespace}]"
+const LinesTemplate = `[{step}: ]{fullName}[  {file}:{lines}][  in {namespace}][  \{dynamic: {dynamic}\}]`
 const LinesRelationTemplate = "{relation}[: {member}[ ({memberKind})][:{memberLine}]][ [×{count} ]from {fromMethods}[ to {toMethods}]][ @{relationLines}[ in {relationLinesFile}]][ {injected}]  {fullName}[  {file}:{lines}]"
 
 type linesFormat struct{}
@@ -498,7 +499,7 @@ func (linesFormat) Format(g *Graph, o FormatOptions) ([]byte, error) {
 	b.WriteString(cutNotice(g, o))
 	for _, id := range order {
 		n := byID[id]
-		m := nodeMacros(n, byID, methodOf)
+		m := nodeMacros(n, byID, methodOf, listCap)
 		clearContainerPosition(&m, n)
 		b.WriteString(header.Render(m))
 		b.WriteString("\n")
@@ -506,7 +507,7 @@ func (linesFormat) Format(g *Graph, o FormatOptions) ([]byte, error) {
 		rels := combineHoldsAndInjects(relationsReachingNode(g, id, byID, listCap))
 		for _, rel := range rels {
 			other := byID[rel.other]
-			om := nodeMacros(other, byID, methodOf)
+			om := nodeMacros(other, byID, methodOf, listCap)
 			clearContainerPosition(&om, other)
 			// relation line uses both node macros (of the neighbour) and
 			// relation macros: mixes both, through the same engine (and its
@@ -538,6 +539,7 @@ func (locationsFormat) Format(g *Graph, o FormatOptions) ([]byte, error) {
 	tpl := MustTemplate(LocationsTemplate)
 	byID := nodeByID(g)
 	methodOf := methodContainerMap(g)
+	listCap := effectiveListCap(o)
 	var b strings.Builder
 	b.WriteString(noticePrefix(o))
 	b.WriteString(cutNotice(g, o))
@@ -546,7 +548,7 @@ func (locationsFormat) Format(g *Graph, o FormatOptions) ([]byte, error) {
 		if isContainerNode(&nn) {
 			nn.File = ""
 		}
-		b.WriteString(tpl.Render(nodeMacros(&nn, byID, methodOf)))
+		b.WriteString(tpl.Render(nodeMacros(&nn, byID, methodOf, listCap)))
 		b.WriteString("\n")
 	}
 	b.WriteString(countsLine(g, o))
@@ -560,7 +562,7 @@ func (locationsFormat) Format(g *Graph, o FormatOptions) ([]byte, error) {
 // format. Indentation and "(see above)" de-duplication are the walk's job
 // (they are not expressible as a per-line template), the line text itself
 // is not.
-const TreeNodeTemplate = "{fullName}[  {file}:{lines}]"
+const TreeNodeTemplate = `{fullName}[  {file}:{lines}][  \{dynamic: {dynamic}\}]`
 const TreeRelationTemplate = "{relation}[ {member}][:{memberLine}][ [×{count} ]from {fromMethods}[ to {toMethods}]][ @{relationLines}[ in {relationLinesFile}]][ {injected}] → "
 
 // treeFormat: indented by walk depth from the focus node. Without a focus
@@ -595,7 +597,7 @@ func (treeFormat) Format(g *Graph, o FormatOptions) ([]byte, error) {
 	var b strings.Builder
 	b.WriteString(noticePrefix(o))
 	b.WriteString(cutNotice(g, o))
-	rm := nodeMacros(root, byID, methodOf)
+	rm := nodeMacros(root, byID, methodOf, listCap)
 	clearContainerPosition(&rm, root)
 	b.WriteString(nodeTpl.Render(rm))
 	b.WriteString("\n")
@@ -648,15 +650,15 @@ func (treeFormat) Format(g *Graph, o FormatOptions) ([]byte, error) {
 				n := byID[k.other]
 				b.WriteString(strings.Repeat("  ", depth+1))
 				kRel := k
-				b.WriteString(relTpl.RenderRelation(nodeMacros(n, byID, methodOf), &kRel))
+				b.WriteString(relTpl.RenderRelation(nodeMacros(n, byID, methodOf, listCap), &kRel))
 				if !printed[k.other] {
 					printed[k.other] = true
-					nm := nodeMacros(n, byID, methodOf)
+					nm := nodeMacros(n, byID, methodOf, listCap)
 					clearContainerPosition(&nm, n)
 					b.WriteString(nodeTpl.Render(nm))
 					next = append(next, item{k.other, depth + 1})
 				} else {
-					b.WriteString(nodeMacros(n, byID, methodOf).FullName)
+					b.WriteString(nodeMacros(n, byID, methodOf, listCap).FullName)
 					b.WriteString("  (see above)")
 				}
 				b.WriteString("\n")

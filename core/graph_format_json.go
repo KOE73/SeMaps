@@ -61,6 +61,20 @@ type compactNode struct {
 	E  string   `json:"e,omitempty"`
 	St string   `json:"st,omitempty"`
 	P  string   `json:"p,omitempty"`
+	// Dy: blind-spot marks (ADR_20260928-5 §4), GraphNode.Dynamic. Kept
+	// readable — full "kind"/"line"/"method" keys — since compactDynamicMark
+	// is small and rare; only the node-level key is shortened.
+	Dy []compactDynamicMark `json:"dy,omitempty"`
+}
+
+// compactDynamicMark is GraphDynamicMark's json-compact shape: readable
+// field names (the list itself is small), only the enclosing node key ("dy")
+// is short.
+type compactDynamicMark struct {
+	Kind   string `json:"kind"`
+	Line   int    `json:"line"`
+	Method string `json:"method,omitempty"`
+	File   string `json:"file,omitempty"`
 }
 
 // compactEdge: f/t are node ids (not indexes: an agent misreads an index
@@ -105,6 +119,7 @@ func (jsonCompactFormat) Format(g *Graph, o FormatOptions) ([]byte, error) {
 			I: n.ID, S: n.Symbol, K: n.Kind, N: n.Name,
 			FI: fileIdx(n.File), L: n.Line, EL: n.EndLine,
 			C: n.Containers, E: n.Entity, St: n.Status, P: n.Presence,
+			Dy: compactDynamicMarks(n.Dynamic),
 		}
 		if n.Language != "" {
 			languages[n.Language] = true
@@ -140,6 +155,17 @@ func (jsonCompactFormat) Format(g *Graph, o FormatOptions) ([]byte, error) {
 		return nil, err
 	}
 	return buf.Bytes(), nil
+}
+
+func compactDynamicMarks(marks []GraphDynamicMark) []compactDynamicMark {
+	if len(marks) == 0 {
+		return nil
+	}
+	out := make([]compactDynamicMark, len(marks))
+	for i, m := range marks {
+		out[i] = compactDynamicMark{Kind: m.Kind, Line: m.Line, Method: m.Method, File: m.File}
+	}
+	return out
 }
 
 func boolMapKeys(m map[string]bool) []string {

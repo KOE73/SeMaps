@@ -379,6 +379,23 @@ func TestStripFieldsDefaults(t *testing.T) {
 	}
 }
 
+// TestStripFieldsDynamic: `fields` without "dynamic" strips GraphNode.Dynamic
+// (PLAN_20260928-7 step 6); with it, the marks are kept.
+func TestStripFieldsDynamic(t *testing.T) {
+	g := &Graph{Nodes: []GraphNode{{ID: "a", Dynamic: []GraphDynamicMark{{Kind: "create", Line: 5}}}}}
+	kept := StripFields(g, map[string]bool{"dynamic": true})
+	if len(kept.Nodes[0].Dynamic) != 1 {
+		t.Fatalf("dynamic asked for should be kept: %+v", kept.Nodes[0])
+	}
+	stripped := StripFields(g, map[string]bool{})
+	if stripped.Nodes[0].Dynamic != nil {
+		t.Fatalf("dynamic not asked for should be stripped: %+v", stripped.Nodes[0])
+	}
+	if g.Nodes[0].Dynamic == nil {
+		t.Fatalf("StripFields must not mutate its input: %+v", g.Nodes[0])
+	}
+}
+
 // TestLiftNoneHintTypeWithCalledMethods is the case PLAN_20260928-7 step 3d
 // names explicitly: a type asked about with follow=called-by, lift=none,
 // whose own edges come back empty while one of its methods is called from

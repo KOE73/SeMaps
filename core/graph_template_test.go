@@ -126,6 +126,76 @@ func TestTemplateEscapedBracketsAroundOptionalGroup(t *testing.T) {
 	}
 }
 
+// TestTemplateEscapedBraces: `\{`/`\}` are literal braces (PLAN_20260928-7
+// step 6) — needed because `{...}` is the macro syntax, and the default
+// templates wrap `{dynamic}` in real ones.
+func TestTemplateEscapedBraces(t *testing.T) {
+	tpl := MustTemplate(`\{{name}\}`)
+	got := tpl.Render(NodeMacrosOf(&GraphNode{Name: "A"}))
+	if got != "{A}" {
+		t.Fatalf("got %q, want %q", got, "{A}")
+	}
+}
+
+// TestTemplateEscapedBracesAroundOptionalGroup: an escaped brace right next
+// to a real macro, wrapped in an optional group — vanishes whole when the
+// macro is empty, same as the bracket case.
+func TestTemplateEscapedBracesAroundOptionalGroup(t *testing.T) {
+	tpl := MustTemplate(`[\{dynamic: {dynamic}\}]`)
+	n := &GraphNode{Dynamic: []GraphDynamicMark{{Kind: "create", Line: 57}}}
+	got := tpl.Render(NodeMacrosOf(n))
+	if got != "{dynamic: create @57}" {
+		t.Fatalf("got %q, want %q", got, "{dynamic: create @57}")
+	}
+	empty := tpl.Render(NodeMacrosOf(&GraphNode{}))
+	if empty != "" {
+		t.Fatalf("expected the escaped braces to vanish with no marks, got %q", empty)
+	}
+}
+
+// TestTemplateDynamicMacroMethod: on a method node, {dynamic} renders the
+// method's own marks, no "in ...".
+func TestTemplateDynamicMacroMethod(t *testing.T) {
+	n := &GraphNode{Kind: "method", Dynamic: []GraphDynamicMark{{Kind: "create", Line: 57}, {Kind: "make-type", Line: 55}}}
+	tpl := MustTemplate("{dynamic}")
+	got := tpl.Render(NodeMacrosOf(n))
+	want := "create @57; make-type @55"
+	if got != want {
+		t.Fatalf("got %q, want %q", got, want)
+	}
+}
+
+// TestTemplateDynamicMacroType: on a type node (after lifting), {dynamic}
+// names each mark's method.
+func TestTemplateDynamicMacroType(t *testing.T) {
+	n := &GraphNode{Kind: "type", Dynamic: []GraphDynamicMark{
+		{Kind: "make-type", Line: 55, Method: "CreateRunner"},
+		{Kind: "create", Line: 57, Method: "CreateRunner"},
+	}}
+	tpl := MustTemplate("{dynamic}")
+	got := tpl.Render(NodeMacrosOf(n))
+	want := "make-type @55 in CreateRunner; create @57 in CreateRunner"
+	if got != want {
+		t.Fatalf("got %q, want %q", got, want)
+	}
+}
+
+// TestTemplateDynamicMacroCap: {dynamic} is capped by NodeMacros.ListCap,
+// then "+N", same rule as {fromMethods}/{toMethods}.
+func TestTemplateDynamicMacroCap(t *testing.T) {
+	n := &GraphNode{Kind: "method", Dynamic: []GraphDynamicMark{
+		{Kind: "create", Line: 1}, {Kind: "create", Line: 2}, {Kind: "create", Line: 3},
+	}}
+	m := NodeMacrosOf(n)
+	m.ListCap = 2
+	tpl := MustTemplate("{dynamic}")
+	got := tpl.Render(m)
+	want := "create @1; create @2; +1"
+	if got != want {
+		t.Fatalf("got %q, want %q", got, want)
+	}
+}
+
 // TestTemplateWhitespaceRuleDropsLeadingSpaceOfEmptyMacro: a leading
 // "{step} " with no step must not leave a stray space before what follows
 // (defect 4/5).

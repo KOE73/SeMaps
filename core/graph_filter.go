@@ -334,8 +334,9 @@ func FilterMissing(g *Graph, include bool) (out *Graph, hiddenNodes int, hiddenE
 
 // validFieldNames are the values `fields=` accepts (docs/API.md §5).
 // `memberLines` is its own name, off by default: `position` no longer
-// includes it (part 3 of the agent-answers rework).
-var validFieldNames = map[string]bool{"via": true, "position": true, "members": true, "memberLines": true}
+// includes it (part 3 of the agent-answers rework). `dynamic` is on by
+// default, alongside `via` and `position` (PLAN_20260928-7 step 6).
+var validFieldNames = map[string]bool{"via": true, "position": true, "members": true, "memberLines": true, "dynamic": true}
 
 // ParseFields turns an already-split list of field names into the set
 // StripFields/AttachMembers expect, rejecting a name that is none of
@@ -356,9 +357,9 @@ func ParseFields(names []string) (map[string]bool, error) {
 
 // StripFields removes GraphEdge.Via when `fields` lacks "via", and
 // every place in the code (file and lines of nodes and edges) when it lacks
-// "position". "members" is handled earlier, by AttachMembers (graph.go):
-// there is nothing to strip for it here, since a node without it asked for
-// was never given one.
+// "position", and GraphNode.Dynamic when it lacks "dynamic". "members" is
+// handled earlier, by AttachMembers (graph.go): there is nothing to strip
+// for it here, since a node without it asked for was never given one.
 func StripFields(g *Graph, fields map[string]bool) *Graph {
 	nodes := make([]GraphNode, len(g.Nodes))
 	copy(nodes, g.Nodes)
@@ -381,6 +382,11 @@ func StripFields(g *Graph, fields map[string]bool) *Graph {
 	if !fields["via"] {
 		for i := range edges {
 			edges[i].Via = nil
+		}
+	}
+	if !fields["dynamic"] {
+		for i := range nodes {
+			nodes[i].Dynamic = nil
 		}
 	}
 	return &Graph{Nodes: nodes, Edges: edges}

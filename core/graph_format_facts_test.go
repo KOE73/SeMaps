@@ -216,13 +216,14 @@ func TestFactsFormatLiftedCountOneStillNamesMethods(t *testing.T) {
 
 // TestFactsFormatGoldenDepth2: the whole `facts` answer, byte for byte, on a
 // small fixed graph at depth 2 — the golden test that protects the format
-// from silent changes (defects 2-6 of the agent-answers-graph task). The
-// graph has: a type held through a member that is also injected (Runner,
-// merged with "(injected)"), a plain inject with no holds counterpart
-// (ImageRunner), an interface implemented by the focus and, one step
-// further, by another type (exercising {via} at step >= 2), a lifted call
-// between two types naming its methods at count 1, and a lifted construct
-// at count 3.
+// from silent changes (defects 2-6 of the agent-answers-graph task, and step
+// 6 of PLAN_20260928-7 for {dynamic}). The graph has: a type held through a
+// member that is also injected (Runner, merged with "(injected)"), a plain
+// inject with no holds counterpart (ImageRunner), an interface implemented
+// by the focus and, one step further, by another type (exercising {via} at
+// step >= 2), a lifted call between two types naming its methods at count 1,
+// a lifted construct at count 3, and a method with two blind-spot marks
+// (Factory.Create) lifted onto its type (Factory) before the walk.
 func TestFactsFormatGoldenDepth2(t *testing.T) {
 	g := &Graph{
 		Nodes: []GraphNode{
@@ -233,6 +234,8 @@ func TestFactsFormatGoldenDepth2(t *testing.T) {
 			{ID: "impl", Symbol: "App.RunnerImpl", Name: "RunnerImpl", Kind: "type", File: "src/RunnerImpl.cs", Line: 1, EndLine: 30},
 			{ID: "factory", Symbol: "App.Factory", Name: "Factory", Kind: "type", File: "src/Factory.cs", Line: 1, EndLine: 15},
 			{ID: "widget", Symbol: "App.Widget", Name: "Widget", Kind: "type", File: "src/Widget.cs", Line: 1, EndLine: 8},
+			{ID: "m:factory.create", Symbol: "App.Factory.Create()", Name: "Create", Kind: "method", NativeKind: "method", File: "src/Factory.cs",
+				Dynamic: []GraphDynamicMark{{Kind: "make-type", Line: 55}, {Kind: "create", Line: 57}}},
 		},
 		Edges: []GraphEdge{
 			// ctx (focus) holds Runner via "Context" and also injects it (same
@@ -249,13 +252,18 @@ func TestFactsFormatGoldenDepth2(t *testing.T) {
 			// factory constructs Widget from 3 methods (lifted, count 3).
 			{From: "ctx", To: "factory", Kind: "calls", Type: "calls", Count: 1, FromMethods: []string{"Setup"}, ToMethods: []string{"Build"}},
 			{From: "factory", To: "widget", Kind: "constructs", Type: "constructs", Count: 3, FromMethods: []string{"Create", "List", "Refresh"}, ToMethods: []string{"Widget"}},
+			// factory contains the method with the blind-spot marks — gathered
+			// onto factory by LiftToTypes below, then the method node itself
+			// disappears from the graph.
+			{From: "factory", To: "m:factory.create", Kind: "contains", Type: "contains"},
 		},
 	}
+	lifted := LiftToTypes(g)
 	follow, err := ParseFollow(nil)
 	if err != nil {
 		t.Fatalf("ParseFollow: %v", err)
 	}
-	walked, _, err := Walk(g, "ctx", 2, follow, 0)
+	walked, _, err := Walk(lifted, "ctx", 2, follow, 0)
 	if err != nil {
 		t.Fatalf("Walk: %v", err)
 	}
@@ -265,7 +273,7 @@ func TestFactsFormatGoldenDepth2(t *testing.T) {
 		t.Fatalf("Format: %v", err)
 	}
 	want := "0 App.Context  src/Context.cs:1-50\n" +
-		"1 App.Factory  src/Factory.cs:1-15  [calls from Setup to Build]\n" +
+		"1 App.Factory  src/Factory.cs:1-15  [calls from Setup to Build]  {dynamic: make-type @55 in Create; create @57 in Create}\n" +
 		"1 App.IRunner  src/IRunner.cs:1-5  [implements]\n" +
 		"1 App.ImageRunner  src/ImageRunner.cs:1-20  [injects runner:13 constructor]\n" +
 		"1 App.Runner  src/Runner.cs:3-10  [holds Context:7 property protected readonly (injected)]\n" +
@@ -277,6 +285,16 @@ func TestFactsFormatGoldenDepth2(t *testing.T) {
 		t.Fatalf("golden facts answer changed.\ngot:\n%s\nwant:\n%s", got, want)
 	}
 }
+
+// old (before PLAN_20260928-7 step 6) golden string, for the report:
+// "0 App.Context  src/Context.cs:1-50\n" +
+// "1 App.Factory  src/Factory.cs:1-15  [calls from Setup to Build]\n" +
+// "1 App.IRunner  src/IRunner.cs:1-5  [implements]\n" +
+// "1 App.ImageRunner  src/ImageRunner.cs:1-20  [injects runner:13 constructor]\n" +
+// "1 App.Runner  src/Runner.cs:3-10  [holds Context:7 property protected readonly (injected)]\n" +
+// "2 App.RunnerImpl  src/RunnerImpl.cs:1-30  [implemented-by] via IRunner\n" +
+// "2 App.Widget  src/Widget.cs:1-8  [constructs ×3 from Create,List,Refresh to Widget] via Factory\n" +
+// "7 nodes (7 types, 0 methods), 7 edges\n"
 
 // pointOfViewFixture: A calls B (lifted, count 1) and A extends B — small
 // enough to check every text format names both relations the same way.

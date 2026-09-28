@@ -138,6 +138,60 @@ func TestLiftToTypesDoesNotMutateInput(t *testing.T) {
 	}
 }
 
+// TestLiftToTypesGathersDynamicMarks: a type's methods' blind-spot marks
+// (ADR_20260928-5 §4) are gathered onto the type, each carrying the method's
+// short name, sorted by (line, kind, method), and no mark is dropped
+// (PLAN_20260928-7 step 6).
+func TestLiftToTypesGathersDynamicMarks(t *testing.T) {
+	m1 := node("Factory.Create", "method", "Create")
+	m1.Dynamic = []GraphDynamicMark{{Kind: "create", Line: 57}}
+	m2 := node("Factory.List", "method", "List")
+	m2.Dynamic = []GraphDynamicMark{{Kind: "make-type", Line: 55}, {Kind: "dynamic", Line: 55}}
+	g := &Graph{
+		Nodes: []GraphNode{node("Factory", "type", "Factory"), m1, m2},
+		Edges: []GraphEdge{containsEdge("Factory", "Factory.Create"), containsEdge("Factory", "Factory.List")},
+	}
+	out := LiftToTypes(g)
+	if len(out.Nodes) != 1 {
+		t.Fatalf("expected only the type node, got %+v", out.Nodes)
+	}
+	got := out.Nodes[0].Dynamic
+	want := []GraphDynamicMark{
+		{Kind: "dynamic", Line: 55, Method: "List"},
+		{Kind: "make-type", Line: 55, Method: "List"},
+		{Kind: "create", Line: 57, Method: "Create"},
+	}
+	if !reflect.DeepEqual(got, want) {
+		t.Fatalf("expected marks gathered, named and sorted by (line, kind, method), got %+v, want %+v", got, want)
+	}
+}
+
+// TestLiftToTypesDynamicMarksPartialTypeCarriesFile: a method's marks are on
+// the type's own file only when the method is; a partial type's method
+// declared elsewhere carries `file` (base name only) on its marks.
+func TestLiftToTypesDynamicMarksPartialTypeCarriesFile(t *testing.T) {
+	sameFile := node("Factory.Create", "method", "Create")
+	sameFile.File = "src/Factory.cs"
+	sameFile.Dynamic = []GraphDynamicMark{{Kind: "create", Line: 10}}
+	otherFile := node("Factory.List", "method", "List")
+	otherFile.File = "src/Factory.More.cs"
+	otherFile.Dynamic = []GraphDynamicMark{{Kind: "invoke", Line: 20}}
+	typ := node("Factory", "type", "Factory")
+	typ.File = "src/Factory.cs"
+	g := &Graph{
+		Nodes: []GraphNode{typ, sameFile, otherFile},
+		Edges: []GraphEdge{containsEdge("Factory", "Factory.Create"), containsEdge("Factory", "Factory.List")},
+	}
+	out := LiftToTypes(g)
+	want := []GraphDynamicMark{
+		{Kind: "create", Line: 10, Method: "Create"},
+		{Kind: "invoke", Line: 20, Method: "List", File: "Factory.More.cs"},
+	}
+	if !reflect.DeepEqual(out.Nodes[0].Dynamic, want) {
+		t.Fatalf("expected the partial type's method to carry its own file's base name, got %+v, want %+v", out.Nodes[0].Dynamic, want)
+	}
+}
+
 func TestLiftToTypesDeterministic(t *testing.T) {
 	g := &Graph{
 		Nodes: []GraphNode{

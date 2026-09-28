@@ -218,10 +218,11 @@ func templateRulesPayload() map[string]any {
 			"Literal text is copied as is, subject to the whitespace rule below.",
 			"{macro} is replaced by that macro's value, or nothing when it has none.",
 			"[...] is an optional group: printed as is when every macro directly inside it (or a nested {relations: ...} block) has a value; dropped whole, literal text included, when any one of them is empty. A nested [...] group is opaque to this check.",
-			"\\[ and \\] are literal '[' and ']': since [ and ] are the optional-group syntax, a literal bracket (the default `facts` template wraps its relations in one) must be escaped this way.",
+			"\\[ and \\] are literal '[' and ']': since [ and ] are the optional-group syntax, a literal bracket (the default `facts` template wraps its relations in one) must be escaped this way. \\{ and \\} are literal '{' and '}' the same way, since {...} is the macro syntax (the default `facts`/`lines`/`tree` templates wrap {dynamic} in literal braces of their own: `{dynamic: create @57 in CreateRunner}`).",
 			"Whitespace rule: after rendering a template's own top-level pieces, a run made only of the space character ' ' is dropped when it falls in the LEADING run (everything from the start up to and including it renders empty) or the TRAILING run (everything from it to the end renders empty); a space run with real content on both sides — even next to an immediately empty macro or dropped group — is kept exactly as written. A tab or a newline is never touched by this rule (so `locations`' tab-separated columns stay put even when a value is empty). This applies once, to the template as a whole (and, the same way, to a `lines`/`tree` relation line) — not separately inside every nested [...] group, so a group that intentionally carries its own leading or trailing separator (e.g. a lifted relation's `×{count} `) keeps it.",
 			"{relations: TEMPLATE | SEPARATOR} renders TEMPLATE once per relation reaching the node from the node it was reached from, joined by SEPARATOR.",
-			"Node macros: step name fullName id kind nativeKind visibility file line endLine lines namespace assembly containers presence status entity via viaFullName.",
+			"Node macros: step name fullName id kind nativeKind visibility file line endLine lines namespace assembly containers presence status entity via viaFullName dynamic.",
+			"{dynamic}: blind-spot marks (ADR_20260928-5 §4) as 'kind @line[; kind @line...]', capped like {fromMethods} then '+N'. On a `method` node, its own marks; on a `type`/`interface`/`module` node after `lift=types`, the marks gathered from its methods, each followed by 'in MethodName' (and, for a partial type whose method lies in another file, that file's name in parentheses). Empty, so the optional group around it disappears, when there are none.",
 			"Relation macros (inside a relations block only): relation member memberKind memberLine modifiers cardinality type text relationLine relationLines relationLinesFile count fromMethods toMethods injected.",
 			"`lines` is `line-endLine`, or just `line` when there is no end.",
 			"`relation` is the directed name, from the point of view of the node it was reached FROM (e.g. `holds`, not `held-by`, when read from the holder) — the SAME rule in `facts`, `lines` and `tree` alike, and the same word a `follow=` request would use to continue the walk in that direction: what an agent reads in any text answer is what it can hand back to keep walking.",
@@ -558,13 +559,13 @@ func parseBoolParam(s string) bool {
 }
 
 // fieldSetParam resolves `fields=`, shared by the HTTP endpoint and the MCP
-// tool: the parameter absent means the default (via,position); present —
-// even as an empty list or an empty string — means exactly what was listed,
-// nothing added back. `present` and `names` must agree: `names` is only
-// consulted when `present` is true.
+// tool: the parameter absent means the default (via,position,dynamic);
+// present — even as an empty list or an empty string — means exactly what
+// was listed, nothing added back. `present` and `names` must agree: `names`
+// is only consulted when `present` is true.
 func fieldSetParam(present bool, names []string) (map[string]bool, error) {
 	if !present {
-		return map[string]bool{"via": true, "position": true}, nil
+		return map[string]bool{"via": true, "position": true, "dynamic": true}, nil
 	}
 	return core.ParseFields(names)
 }

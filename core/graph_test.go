@@ -144,3 +144,31 @@ func TestBuildGraphDeterministic(t *testing.T) {
 		t.Fatalf("expected the extends edge matched to its relation: %+v", last.Edges)
 	}
 }
+
+// TestBuildGraphCarriesDynamicMarks: a method symbol's Dynamic (ADR_20260928-5
+// §4) reaches its GraphNode as is (PLAN_20260928-7 step 6).
+func TestBuildGraphCarriesDynamicMarks(t *testing.T) {
+	m := graphModel(t, `{"entities":[]}`, `{"relations":[]}`)
+	facts := &Facts{Language: "csharp", Root: ".", Symbols: []Symbol{
+		{ID: "A.Factory", Kind: "type", NativeKind: "class", Name: "Factory", File: "src/Factory.cs"},
+		{ID: "A.Factory.Create()", Kind: "method", NativeKind: "method", Name: "Create", File: "src/Factory.cs",
+			Dynamic: []DynamicMark{{Kind: "make-type", Line: 55}, {Kind: "create", Line: 57}}},
+	}}
+	g, err := BuildGraph([]FactsSource{{Extractor: "csharp", Facts: facts}}, m)
+	if err != nil {
+		t.Fatalf("BuildGraph: %v", err)
+	}
+	var method *GraphNode
+	for i := range g.Nodes {
+		if g.Nodes[i].Kind == "method" {
+			method = &g.Nodes[i]
+		}
+	}
+	if method == nil {
+		t.Fatalf("expected the method node, got %+v", g.Nodes)
+	}
+	want := []GraphDynamicMark{{Kind: "make-type", Line: 55}, {Kind: "create", Line: 57}}
+	if !reflect.DeepEqual(method.Dynamic, want) {
+		t.Fatalf("expected the symbol's Dynamic carried as is, got %+v, want %+v", method.Dynamic, want)
+	}
+}

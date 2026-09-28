@@ -60,6 +60,23 @@ type GraphNode struct {
 	// recomputed here. Filled only when asked (`fields=members`,
 	// PLAN_20260928_host_graph-provider.md step 4) by AttachMembers.
 	Members json.RawMessage `json:"members,omitempty"`
+	// Dynamic lists blind-spot marks (ADR_20260928-5 §4): for a method node,
+	// the symbol's own Dynamic as is; for a type node after LiftToTypes, the
+	// marks gathered from its methods, each carrying the method's short name
+	// (and, when a partial type's method lies in another file, that file's
+	// name). Field name "dynamic" (docs/plans/PLAN_20260928-7 step 6).
+	Dynamic []GraphDynamicMark `json:"dynamic,omitempty"`
+}
+
+// GraphDynamicMark is one blind-spot mark on a graph node: a method's own
+// mark (Method and File empty), or one lifted onto its type (Method always
+// set; File set only when that method's declaration is not in the type's
+// own file — a partial type split across files).
+type GraphDynamicMark struct {
+	Kind   string `json:"kind"`
+	Line   int    `json:"line"`
+	Method string `json:"method,omitempty"`
+	File   string `json:"file,omitempty"`
 }
 
 // GraphEdge is a fact edge, a registry relation, or both.
@@ -160,6 +177,12 @@ func BuildGraph(sources []FactsSource, model *Model) (*Graph, error) {
 				ID: key, Symbol: s.ID, Kind: s.Kind, NativeKind: s.NativeKind,
 				Name: s.Name, Namespace: s.Namespace, Visibility: s.Visibility,
 				File: s.File, Line: s.Line, EndLine: s.EndLine, Spans: s.Spans, MemberLines: s.MemberLines, Language: src.Facts.Language, Extractor: src.Extractor,
+			}
+			if len(s.Dynamic) > 0 {
+				n.Dynamic = make([]GraphDynamicMark, len(s.Dynamic))
+				for i, m := range s.Dynamic {
+					n.Dynamic[i] = GraphDynamicMark{Kind: m.Kind, Line: m.Line}
+				}
 			}
 			subjectID := key
 			if e := entityBySymbol[s.ID]; e != nil && !consumed[e] {

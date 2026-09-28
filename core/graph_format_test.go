@@ -108,6 +108,58 @@ func TestJSONCompactFormat(t *testing.T) {
 	}
 }
 
+// TestJSONFormatCarriesDynamic: a node's Dynamic marks (ADR_20260928-5 §4)
+// go through the plain `json` format unchanged (PLAN_20260928-7 step 6).
+func TestJSONFormatCarriesDynamic(t *testing.T) {
+	g := &Graph{Nodes: []GraphNode{{ID: "m", Kind: "method", Dynamic: []GraphDynamicMark{{Kind: "create", Line: 57}}}}}
+	f, _ := GetGraphFormat("json")
+	body, err := f.Format(g, FormatOptions{Fields: map[string]bool{"dynamic": true}})
+	if err != nil {
+		t.Fatalf("Format: %v", err)
+	}
+	var m map[string]any
+	if err := json.Unmarshal(body, &m); err != nil {
+		t.Fatalf("bad JSON: %v: %s", err, body)
+	}
+	nodes := m["nodes"].([]any)
+	n0 := nodes[0].(map[string]any)
+	dyn, ok := n0["dynamic"].([]any)
+	if !ok || len(dyn) != 1 {
+		t.Fatalf("expected node.dynamic with one mark, got %+v", n0)
+	}
+	mark := dyn[0].(map[string]any)
+	if mark["kind"] != "create" || mark["line"] != 57.0 {
+		t.Fatalf("unexpected mark: %+v", mark)
+	}
+}
+
+// TestJSONCompactFormatCarriesDynamic: json-compact keeps the marks under
+// the short node key "dy", readable field names.
+func TestJSONCompactFormatCarriesDynamic(t *testing.T) {
+	g := &Graph{Nodes: []GraphNode{{ID: "t", Kind: "type", Dynamic: []GraphDynamicMark{
+		{Kind: "make-type", Line: 55, Method: "CreateRunner"},
+	}}}}
+	f, _ := GetGraphFormat("json-compact")
+	body, err := f.Format(g, FormatOptions{Fields: map[string]bool{"dynamic": true}})
+	if err != nil {
+		t.Fatalf("Format: %v", err)
+	}
+	var m map[string]any
+	if err := json.Unmarshal(body, &m); err != nil {
+		t.Fatalf("bad JSON: %v: %s", err, body)
+	}
+	nodes := m["nodes"].([]any)
+	n0 := nodes[0].(map[string]any)
+	dyn, ok := n0["dy"].([]any)
+	if !ok || len(dyn) != 1 {
+		t.Fatalf("expected node.dy with one mark, got %+v", n0)
+	}
+	mark := dyn[0].(map[string]any)
+	if mark["kind"] != "make-type" || mark["line"] != 55.0 || mark["method"] != "CreateRunner" {
+		t.Fatalf("unexpected compact mark: %+v", mark)
+	}
+}
+
 func TestLinesFormat(t *testing.T) {
 	g := formatFixtureGraph()
 	f, _ := GetGraphFormat("lines")

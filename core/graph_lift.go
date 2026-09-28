@@ -4,7 +4,10 @@
 // of its methods. Pure and deterministic; the input graph is never mutated.
 package core
 
-import "sort"
+import (
+	"sort"
+	"strings"
+)
 
 // LiftToTypes returns a new graph where every edge with a `method`-kind node
 // at either end is rewritten to use that method's containing type instead
@@ -141,10 +144,52 @@ func LiftToTypes(g *Graph) *Graph {
 		edges = append(edges, merged)
 	}
 
+	// liftedDynamic: container node id -> marks gathered from its methods
+	// (ADR_20260928-5 §4, PLAN_20260928-7 step 6). Each mark carries the
+	// method's short name; File is set only when that method's own file
+	// differs from the container's (a partial type split across files).
+	liftedDynamic := map[string][]GraphDynamicMark{}
+	for _, n := range g.Nodes {
+		if n.Kind != "method" || len(n.Dynamic) == 0 {
+			continue
+		}
+		container, ok := containerOf[n.ID]
+		if !ok {
+			continue
+		}
+		containerFile := ""
+		if cn := byID[container]; cn != nil {
+			containerFile = cn.File
+		}
+		for _, m := range n.Dynamic {
+			mark := GraphDynamicMark{Kind: m.Kind, Line: m.Line, Method: n.Name}
+			if n.File != containerFile {
+				mark.File = fileBase(n.File)
+			}
+			liftedDynamic[container] = append(liftedDynamic[container], mark)
+		}
+	}
+	for id, marks := range liftedDynamic {
+		sort.Slice(marks, func(i, j int) bool {
+			a, b := marks[i], marks[j]
+			if a.Line != b.Line {
+				return a.Line < b.Line
+			}
+			if a.Kind != b.Kind {
+				return a.Kind < b.Kind
+			}
+			return a.Method < b.Method
+		})
+		liftedDynamic[id] = marks
+	}
+
 	nodes := make([]GraphNode, 0, len(g.Nodes))
 	for _, n := range g.Nodes {
 		if n.Kind == "method" {
 			continue
+		}
+		if marks, ok := liftedDynamic[n.ID]; ok {
+			n.Dynamic = marks
 		}
 		nodes = append(nodes, n)
 	}
@@ -190,6 +235,15 @@ func edgeCallFile(e GraphEdge, byID map[string]*GraphNode) string {
 		return n.File
 	}
 	return ""
+}
+
+// fileBase returns a facts file path's last segment (no folders). Facts
+// paths are always "/"-separated (docs/CONTRACT.md), regardless of host OS.
+func fileBase(file string) string {
+	if i := strings.LastIndex(file, "/"); i >= 0 {
+		return file[i+1:]
+	}
+	return file
 }
 
 func sortedStringSet(m map[string]bool) []string {

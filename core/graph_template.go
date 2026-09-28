@@ -14,7 +14,9 @@
 //     macro, e.g. `[:{memberLine}]`.
 //   - `\[` and `\]` are literal `[`/`]`: since `[`/`]` are the optional-group
 //     syntax, a template that wants a literal bracket (the `facts` format
-//     wraps its relations in `[...]`) must escape it.
+//     wraps its relations in `[...]`) must escape it. `\{` and `\}` are
+//     literal `{`/`}` the same way, since `{...}` is the macro syntax (the
+//     `facts` format wraps `{dynamic}` in literal `{`/`}` of its own).
 //   - {relations: TEMPLATE | SEPARATOR} renders TEMPLATE once per relation
 //     reaching the node from the node it was reached from, joined by the
 //     literal SEPARATOR. TEMPLATE may itself use [...] groups.
@@ -62,6 +64,13 @@ type NodeMacros struct {
 	// reached from the focus itself, which the line already names. Left ""
 	// at every other step, so the {via}/{viaFullName} macros are empty there.
 	Via, ViaFullName string
+	// Dynamic: a node's own blind-spot marks (a method), or the marks lifted
+	// onto it from its methods (a type after LiftToTypes) — GraphNode.Dynamic
+	// as is (PLAN_20260928-7 step 6).
+	Dynamic []GraphDynamicMark
+	// ListCap caps {dynamic}, same rule as RelationMacros.ListCap: <= 0 means
+	// DefaultListCap.
+	ListCap int
 }
 
 // RelationMacros is one edge between a node and the node it was reached
@@ -115,7 +124,17 @@ func NodeMacrosOf(n *GraphNode) NodeMacros {
 		File: n.File, Line: n.Line, EndLine: n.EndLine,
 		Namespace: n.Namespace, Assembly: n.Assembly, Containers: n.Containers,
 		Presence: n.Presence, Status: n.Status, Entity: n.Entity,
+		Dynamic: n.Dynamic,
 	}
+}
+
+// listCap: m.ListCap when set, else DefaultListCap (step 3a's rule, extended
+// to node macros for {dynamic}).
+func (m NodeMacros) listCap() int {
+	if m.ListCap > 0 {
+		return m.ListCap
+	}
+	return DefaultListCap
 }
 
 func macroValue(m NodeMacros, name string) (string, bool) {
@@ -167,8 +186,40 @@ func macroValue(m NodeMacros, name string) (string, bool) {
 		return m.Via, m.Via != ""
 	case "viaFullName":
 		return m.ViaFullName, m.ViaFullName != ""
+	case "dynamic":
+		return joinDynamicCapped(m.Dynamic, m.listCap()), len(m.Dynamic) > 0
 	}
 	return "", false
+}
+
+// joinDynamicCapped renders a node's blind-spot marks as
+// "create @57; make-type @55" (a method) or "create @57 in CreateRunner;
+// make-type @55 in CreateRunner" (a type after lifting, each mark carrying
+// its method's short name, and — for a partial type — the method's own
+// file), capped at `max` marks then "+N" for the rest.
+func joinDynamicCapped(marks []GraphDynamicMark, max int) string {
+	n := len(marks)
+	cut := n
+	if cut > max {
+		cut = max
+	}
+	parts := make([]string, cut)
+	for i := 0; i < cut; i++ {
+		mk := marks[i]
+		s := fmt.Sprintf("%s @%d", mk.Kind, mk.Line)
+		if mk.Method != "" {
+			s += " in " + mk.Method
+			if mk.File != "" {
+				s += " (" + mk.File + ")"
+			}
+		}
+		parts[i] = s
+	}
+	out := strings.Join(parts, "; ")
+	if n > cut {
+		out += fmt.Sprintf("; +%d", n-cut)
+	}
+	return out
 }
 
 func macroLines(line, endLine int) (string, bool) {
@@ -270,7 +321,7 @@ var nodeMacroNames = map[string]bool{
 	"nativeKind": true, "visibility": true, "file": true, "line": true,
 	"endLine": true, "lines": true, "namespace": true, "assembly": true,
 	"containers": true, "presence": true, "status": true, "entity": true,
-	"via": true, "viaFullName": true,
+	"via": true, "viaFullName": true, "dynamic": true,
 }
 
 var relationMacroNames = map[string]bool{
@@ -503,9 +554,11 @@ func parseTemplateBody(r []rune, i int, closer rune) ([]tplNode, int, error) {
 		c := r[i]
 		// \[ and \] are literal brackets (defect 4d): [/] are the
 		// optional-group syntax, so a template that wants one printed has to
-		// escape it. Recognised before the closer/group checks, so `\]`
-		// never closes an enclosing group and `\[` never opens one.
-		if c == '\\' && i+1 < len(r) && (r[i+1] == '[' || r[i+1] == ']') {
+		// escape it. \{ and \} are literal braces the same way (step 6 of
+		// PLAN_20260928-7, for {dynamic: ...} wrapped in literal braces).
+		// Recognised before the closer/group checks, so `\]` never closes an
+		// enclosing group and `\[`/`\{` never open one.
+		if c == '\\' && i+1 < len(r) && (r[i+1] == '[' || r[i+1] == ']' || r[i+1] == '{' || r[i+1] == '}') {
 			lit.WriteRune(r[i+1])
 			i += 2
 			continue

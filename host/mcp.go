@@ -157,7 +157,7 @@ type getGraphIn struct {
 	// Fields is a list, not a comma string, so null/absent (the default,
 	// via+position) can be told apart from an explicit empty list (nothing
 	// extra): a plain string can't carry that distinction over JSON.
-	Fields   []string `json:"fields,omitempty" jsonschema:"members, via, position, memberLines; default (omitted/null) via,position; [] for none"`
+	Fields   []string `json:"fields,omitempty" jsonschema:"members, via, position, memberLines, dynamic; default (omitted/null) via,position,dynamic; [] for none"`
 	Missing  bool     `json:"missing,omitempty" jsonschema:"include model-only nodes/edges whose entity/relation has status missing; default false"`
 	Limit    int      `json:"limit,omitempty" jsonschema:"without around or container, cut to this many nodes; default: the .semaps mcp.limit setting (200 unless changed)"`
 	ListCap  int      `json:"listCap,omitempty" jsonschema:"caps the names/lines printed for one relation ({fromMethods},{toMethods},{relationLines}) before '+N'; default: the .semaps mcp.list_cap setting (50 unless changed)"`
