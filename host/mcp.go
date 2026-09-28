@@ -135,9 +135,13 @@ type getGraphIn struct {
 	Kinds     string `json:"kinds,omitempty" jsonschema:"comma list of edge kinds to keep; default: all"`
 	Around    string `json:"around,omitempty" jsonschema:"node id: only its neighbourhood, edges in both directions"`
 	Depth     int    `json:"depth,omitempty" jsonschema:"with around: 1-5, default 1"`
-	Container string `json:"container,omitempty" jsonschema:"a containers.json id: only nodes in it"`
-	Fields    string `json:"fields,omitempty" jsonschema:"comma list from members, via, position; default via,position"`
-	Limit     int    `json:"limit,omitempty" jsonschema:"without around or container, cut to this many nodes; default 200"`
+	Container string `json:"container,omitempty" jsonschema:"a containers.json id: only nodes in it, or in a descendant of it"`
+	// Fields is a list, not a comma string, so null/absent (the default,
+	// via+position) can be told apart from an explicit empty list (nothing
+	// extra): a plain string can't carry that distinction over JSON.
+	Fields  []string `json:"fields,omitempty" jsonschema:"members, via, position; default (omitted/null) via,position; [] for none"`
+	Missing bool     `json:"missing,omitempty" jsonschema:"include model-only nodes/edges whose entity/relation has status missing; default false"`
+	Limit   int      `json:"limit,omitempty" jsonschema:"without around or container, cut to this many nodes; default 200"`
 }
 
 type getViewIn struct {
@@ -497,12 +501,19 @@ func (s *mcpServer) getGraph(_ context.Context, _ *mcp.CallToolRequest, in getGr
 		return nil, nil, err
 	}
 
-	fields := parseFieldSet(in.Fields)
+	fields, err := fieldSetParam(in.Fields != nil, in.Fields)
+	if err != nil {
+		return nil, nil, err
+	}
 	if fields["members"] {
 		if err := core.AttachMembers(graph, m); err != nil {
 			return nil, nil, err
 		}
 	}
+
+	var hiddenNodes, hiddenEdges int
+	graph, hiddenNodes, hiddenEdges = core.FilterMissing(graph, in.Missing)
+
 	if graph, err = core.FilterLevel(graph, in.Level); err != nil {
 		return nil, nil, err
 	}
@@ -525,11 +536,11 @@ func (s *mcpServer) getGraph(_ context.Context, _ *mcp.CallToolRequest, in getGr
 		bounded = true
 	}
 	if in.Container != "" {
-		known, err := knownContainers(m)
+		defs, err := containerDefs(m)
 		if err != nil {
 			return nil, nil, err
 		}
-		if graph, err = core.FilterContainer(graph, in.Container, known); err != nil {
+		if graph, err = core.FilterContainer(graph, in.Container, defs); err != nil {
 			return nil, nil, err
 		}
 		bounded = true
@@ -559,7 +570,7 @@ func (s *mcpServer) getGraph(_ context.Context, _ *mcp.CallToolRequest, in getGr
 
 	resp := map[string]any{
 		"nodes": graph.Nodes, "edges": graph.Edges, "facts": facts,
-		"stats": graphStats(graph), "truncated": truncated,
+		"stats": graphStats(graph, hiddenNodes, hiddenEdges), "truncated": truncated,
 	}
 	if truncated {
 		resp["fullNodes"], resp["fullEdges"] = fullNodes, fullEdges

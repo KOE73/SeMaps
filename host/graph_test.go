@@ -206,6 +206,167 @@ func TestGraphEndpointFieldsDefaultStripsPositionAndVia(t *testing.T) {
 	}
 }
 
+// TestGraphEndpointFieldsEmptyMeansNone: an absent `fields` is the default
+// (via,position), but an explicit empty value means "nothing extra" — the
+// query string cannot tell "absent" from "empty" on its own, so the handler
+// must check presence, not just the value.
+func TestGraphEndpointFieldsEmptyMeansNone(t *testing.T) {
+	gs, _ := graphFixture(t, true)
+	srv := graphServer(gs)
+	defer srv.Close()
+
+	res, body := getGraphJSON(t, srv.URL+"/api/graph/p?fields=")
+	if res.StatusCode != http.StatusOK {
+		t.Fatalf("expected 200, got %d", res.StatusCode)
+	}
+	for _, n := range body["nodes"].([]any) {
+		nm := n.(map[string]any)
+		if nm["file"] != nil {
+			t.Fatalf("fields= (empty) must strip position, got %+v", nm)
+		}
+	}
+	for _, e := range body["edges"].([]any) {
+		em := e.(map[string]any)
+		if em["via"] != nil {
+			t.Fatalf("fields= (empty) must strip via, got %+v", em)
+		}
+	}
+
+	// no parameter at all keeps the default.
+	_, body2 := getGraphJSON(t, srv.URL+"/api/graph/p")
+	found := false
+	for _, n := range body2["nodes"].([]any) {
+		if n.(map[string]any)["file"] != nil {
+			found = true
+		}
+	}
+	if !found {
+		t.Fatalf("no fields parameter must keep the default via,position: %+v", body2["nodes"])
+	}
+}
+
+func TestGraphEndpointFieldsUnknownName(t *testing.T) {
+	gs, _ := graphFixture(t, true)
+	srv := graphServer(gs)
+	defer srv.Close()
+	if res, _ := getGraphJSON(t, srv.URL+"/api/graph/p?fields=bogus"); res.StatusCode != http.StatusBadRequest {
+		t.Fatalf("expected 400 for an unknown field name, got %d", res.StatusCode)
+	}
+}
+
+// TestGraphEndpointContainerGrandchild: container=c_onnx must include a node
+// resolved into a more specific descendant container (fix 2).
+func TestGraphEndpointContainerGrandchild(t *testing.T) {
+	gs, models := graphFixture(t, true)
+	m, err := models.get("p")
+	if err != nil {
+		t.Fatal(err)
+	}
+	containersJSON := `{"containers":[
+		{"id":"c_onnx"},
+		{"id":"c_onnx_core","parent":"c_onnx","match":{"path":["A.cs"]}}
+	]}`
+	if err := os.WriteFile(filepath.Join(m.ProjectDir(), "containers.json"), []byte(containersJSON), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	srv := graphServer(gs)
+	defer srv.Close()
+
+	res, body := getGraphJSON(t, srv.URL+"/api/graph/p?container=c_onnx")
+	if res.StatusCode != http.StatusOK {
+		t.Fatalf("expected 200, got %d: %+v", res.StatusCode, body)
+	}
+	nodes, _ := body["nodes"].([]any)
+	if len(nodes) == 0 {
+		t.Fatalf("expected nodes resolved into the descendant c_onnx_core to show up under c_onnx, got %+v", body)
+	}
+}
+
+func TestGraphEndpointMissingDefaultVsInclude(t *testing.T) {
+	// A dedicated workspace, with a model-only entity with status "missing"
+	// and a model-only relation (also "missing") from the already-joined
+	// entity e_a to it, present from the start — the model loads registry
+	// files once, so they must be right before newModelService, not patched
+	// in afterwards.
+	ws := t.TempDir()
+	dir := filepath.Join(ws, "projects", "p")
+	files := map[string]string{
+		"project.json": `{"id":"p"}`,
+		"entities.json": `{"entities":[
+			{"id":"e_a","name":"A","kind":"class","origin":"code","status":"present","codeRef":"A.cs","symbol":"A"},
+			{"id":"e_gone","name":"Gone","kind":"class","origin":"code","status":"missing"}
+		]}`,
+		"relations.json": `{"relations":[
+			{"id":"r_gone","from":"e_a","to":"e_gone","type":"uses","origin":"code","status":"missing"}
+		]}`,
+	}
+	for name, body := range files {
+		p := filepath.Join(dir, name)
+		if err := os.MkdirAll(filepath.Dir(p), 0o755); err != nil {
+			t.Fatal(err)
+		}
+		if err := os.WriteFile(p, []byte(body), 0o644); err != nil {
+			t.Fatal(err)
+		}
+	}
+	models, err := newModelService(ws)
+	if err != nil {
+		t.Fatal(err)
+	}
+	semapsFile := filepath.Join(ws, "test.semaps")
+	extractors := []extractorConf{{ID: "csharp", Language: "csharp", Project: "p"}}
+	proj := project{File: semapsFile, Extractors: extractors}
+	gs := newGraphService(proj, models)
+	store := newRunStore(semapsFile)
+	info := &runInfo{ID: "20260101-000000-csharp", Extractor: "csharp", Project: "p", Language: "csharp", State: "done", Finished: time.Now()}
+	if err := os.MkdirAll(filepath.Join(store.dir, info.ID), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	facts := core.Facts{Language: "csharp", Root: ".", Symbols: []core.Symbol{
+		{ID: "A", Kind: "type", NativeKind: "class", Name: "A", File: "A.cs"},
+	}}
+	b, _ := json.Marshal(facts)
+	if err := os.WriteFile(store.path(info.ID, "facts.json"), b, 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if err := store.save(info); err != nil {
+		t.Fatal(err)
+	}
+
+	srv := graphServer(gs)
+	defer srv.Close()
+
+	// default: e_gone and r_gone are left out.
+	res, body := getGraphJSON(t, srv.URL+"/api/graph/p")
+	if res.StatusCode != http.StatusOK {
+		t.Fatalf("expected 200, got %d: %+v", res.StatusCode, body)
+	}
+	nodes, _ := body["nodes"].([]any)
+	if len(nodes) != 1 {
+		t.Fatalf("expected 1 node (e_gone hidden), got %d: %+v", len(nodes), nodes)
+	}
+	stats := body["stats"].(map[string]any)
+	hidden := stats["hiddenMissing"].(map[string]any)
+	if hidden["nodes"].(float64) != 1 || hidden["edges"].(float64) != 1 {
+		t.Fatalf("expected hiddenMissing {nodes:1,edges:1}, got %+v", hidden)
+	}
+
+	// missing=1: e_gone and r_gone come back.
+	res2, body2 := getGraphJSON(t, srv.URL+"/api/graph/p?missing=1")
+	if res2.StatusCode != http.StatusOK {
+		t.Fatalf("expected 200, got %d: %+v", res2.StatusCode, body2)
+	}
+	nodes2, _ := body2["nodes"].([]any)
+	if len(nodes2) != 2 {
+		t.Fatalf("expected 2 nodes with missing=1, got %d: %+v", len(nodes2), nodes2)
+	}
+	stats2 := body2["stats"].(map[string]any)
+	hidden2 := stats2["hiddenMissing"].(map[string]any)
+	if hidden2["nodes"].(float64) != 0 || hidden2["edges"].(float64) != 0 {
+		t.Fatalf("expected hiddenMissing {nodes:0,edges:0} with missing=1, got %+v", hidden2)
+	}
+}
+
 // TestGraphServiceNotifyPublishesDiff exercises step 5's wiring end to end:
 // a run finishing calls the callback registered on the run store, which
 // diffs against the previous graph and publishes to /api/events.

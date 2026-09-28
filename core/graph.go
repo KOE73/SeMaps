@@ -61,6 +61,7 @@ type GraphEdge struct {
 	Line     int    `json:"line,omitempty"` // where the edge comes from, in File or in the file of `from`
 	File     string `json:"file,omitempty"`
 	Relation string `json:"relation,omitempty"` // registry relation id, or empty
+	Status   string `json:"status,omitempty"`   // the relation's status ("present"/"missing"), for "both" and "model" edges only
 	Presence string `json:"presence"`           // "both", "code" or "model"
 }
 
@@ -210,6 +211,7 @@ func BuildGraph(sources []FactsSource, model *Model) (*Graph, error) {
 				}
 				if idxs := relByKey[key]; len(idxs) > 0 {
 					ge.Relation, ge.Presence = relations[idxs[0]].str("id"), "both"
+					ge.Status = relations[idxs[0]].str("status")
 					for _, i := range idxs {
 						confirmed[i] = true
 					}
@@ -238,7 +240,7 @@ func BuildGraph(sources []FactsSource, model *Model) (*Graph, error) {
 		}
 		relType := relationType(r)
 		kind, _, _ := strings.Cut(relType, ".")
-		edges = append(edges, GraphEdge{From: from, To: to, Kind: kind, Type: relType, Via: via, Relation: r.str("id"), Presence: "model"})
+		edges = append(edges, GraphEdge{From: from, To: to, Kind: kind, Type: relType, Via: via, Relation: r.str("id"), Status: r.str("status"), Presence: "model"})
 	}
 
 	sort.Slice(edges, func(i, j int) bool { return compareGraphEdges(edges[i], edges[j]) < 0 })

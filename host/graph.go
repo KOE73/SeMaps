@@ -187,13 +187,20 @@ func (g *graphService) serve(w http.ResponseWriter, r *http.Request) {
 	}
 	g.remember(project)
 
-	fields := parseFieldSet(r.URL.Query().Get("fields"))
+	fields, err := fieldSetParam(r.URL.Query().Has("fields"), splitCSV(r.URL.Query().Get("fields")))
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusBadRequest)
+		return
+	}
 	if fields["members"] {
 		if err := core.AttachMembers(graph, m); err != nil {
 			modelError(w, err)
 			return
 		}
 	}
+
+	missing := parseBoolParam(r.URL.Query().Get("missing"))
+	graph, hiddenNodes, hiddenEdges := core.FilterMissing(graph, missing)
 
 	graph, err = core.FilterLevel(graph, r.URL.Query().Get("level"))
 	if err != nil {
@@ -219,12 +226,12 @@ func (g *graphService) serve(w http.ResponseWriter, r *http.Request) {
 	}
 
 	if container := r.URL.Query().Get("container"); container != "" {
-		known, err := knownContainers(m)
+		defs, err := containerDefs(m)
 		if err != nil {
 			modelError(w, err)
 			return
 		}
-		graph, err = core.FilterContainer(graph, container, known)
+		graph, err = core.FilterContainer(graph, container, defs)
 		if err != nil {
 			http.Error(w, err.Error(), http.StatusNotFound)
 			return
@@ -237,22 +244,40 @@ func (g *graphService) serve(w http.ResponseWriter, r *http.Request) {
 		"nodes": graph.Nodes,
 		"edges": graph.Edges,
 		"facts": facts,
-		"stats": graphStats(graph),
+		"stats": graphStats(graph, hiddenNodes, hiddenEdges),
 	})
 }
 
-func knownContainers(m *core.Model) (map[string]bool, error) {
+// containerDefs is the full containers.json list, as core.FilterContainer
+// needs it to find descendants by `parent` — not just which ids exist.
+func containerDefs(m *core.Model) ([]core.Container, error) {
 	containers, err := core.LoadContainers(m.ProjectDir())
 	if err != nil {
 		return nil, err
 	}
-	known := map[string]bool{}
-	if containers != nil {
-		for _, c := range containers.List {
-			known[c.ID] = true
-		}
+	if containers == nil {
+		return nil, nil
 	}
-	return known, nil
+	return containers.List, nil
+}
+
+// parseBoolParam: the `missing` query/tool parameter. Absent, "0" and
+// "false" are all "leave missing stuff out" (the default); "1" or "true"
+// include it.
+func parseBoolParam(s string) bool {
+	return s == "1" || strings.EqualFold(s, "true")
+}
+
+// fieldSetParam resolves `fields=`, shared by the HTTP endpoint and the MCP
+// tool: the parameter absent means the default (via,position); present —
+// even as an empty list or an empty string — means exactly what was listed,
+// nothing added back. `present` and `names` must agree: `names` is only
+// consulted when `present` is true.
+func fieldSetParam(present bool, names []string) (map[string]bool, error) {
+	if !present {
+		return map[string]bool{"via": true, "position": true}, nil
+	}
+	return core.ParseFields(names)
 }
 
 // parseDepth: default 1, must be in 1..5 (docs/plans/PLAN_20260928_host_graph-provider.md step 4).
@@ -270,25 +295,18 @@ func parseDepth(s string) (int, error) {
 	return d, nil
 }
 
-func graphStats(g *core.Graph) map[string]any {
+// graphStats: hiddenMissing is how many nodes/edges FilterMissing left out
+// (0/0 when `missing=1` asked to include them), so a reader knows they exist
+// even though this answer does not carry them.
+func graphStats(g *core.Graph, hiddenNodes, hiddenEdges int) map[string]any {
 	byPresence := map[string]int{}
 	for _, n := range g.Nodes {
 		byPresence[n.Presence]++
 	}
-	return map[string]any{"nodes": len(g.Nodes), "edges": len(g.Edges), "byPresence": byPresence}
-}
-
-// parseFieldSet: default "via,position" (members off by default — it can be
-// large and most consumers do not need it).
-func parseFieldSet(s string) map[string]bool {
-	if s == "" {
-		s = "via,position"
+	return map[string]any{
+		"nodes": len(g.Nodes), "edges": len(g.Edges), "byPresence": byPresence,
+		"hiddenMissing": map[string]any{"nodes": hiddenNodes, "edges": hiddenEdges},
 	}
-	out := map[string]bool{}
-	for _, f := range splitCSV(s) {
-		out[f] = true
-	}
-	return out
 }
 
 func splitCSV(s string) []string {

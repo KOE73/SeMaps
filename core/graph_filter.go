@@ -112,20 +112,49 @@ func Neighborhood(g *Graph, around string, depth int) (*Graph, error) {
 	return &Graph{Nodes: nodes, Edges: edges}, nil
 }
 
-// FilterContainer keeps only nodes in container `id`, and edges between two
-// kept nodes. `known` is the set of container ids that actually exist
-// (containers.json, regardless of whether anything currently resolves into
-// them) — an id absent from it is a typo, not an empty container, so callers
-// turn it into 404.
-func FilterContainer(g *Graph, id string, known map[string]bool) (*Graph, error) {
+// FilterContainer keeps only nodes whose resolved containers include `id`
+// itself or a descendant of it (by `parent`, containers.json), and edges
+// between two kept nodes. `containers` is the full containers.json list, not
+// just the set of known ids: descendants can only be found by walking
+// `parent`. An id absent from it is a typo, not an empty container, so
+// callers turn that into 404. A node's own Containers list is left as
+// resolved — this only widens which containers count as a match, it never
+// adds ancestors to a node.
+//
+// A cycle in `parent` cannot make this loop forever: the descendant walk
+// tracks visited ids, exactly like Neighborhood's frontier walk.
+func FilterContainer(g *Graph, id string, containers []Container) (*Graph, error) {
+	known := map[string]bool{}
+	children := map[string][]string{}
+	for _, c := range containers {
+		known[c.ID] = true
+		if c.Parent != "" {
+			children[c.Parent] = append(children[c.Parent], c.ID)
+		}
+	}
 	if !known[id] {
 		return nil, fmt.Errorf("no such container: %q", id)
 	}
+	inSubtree := map[string]bool{id: true}
+	frontier := []string{id}
+	for len(frontier) > 0 {
+		var next []string
+		for _, cur := range frontier {
+			for _, child := range children[cur] {
+				if !inSubtree[child] {
+					inSubtree[child] = true
+					next = append(next, child)
+				}
+			}
+		}
+		frontier = next
+	}
+
 	nodes := make([]GraphNode, 0)
 	keep := map[string]bool{}
 	for _, n := range g.Nodes {
 		for _, c := range n.Containers {
-			if c == id {
+			if inSubtree[c] {
 				nodes = append(nodes, n)
 				keep[n.ID] = true
 				break
@@ -139,6 +168,61 @@ func FilterContainer(g *Graph, id string, known map[string]bool) (*Graph, error)
 		}
 	}
 	return &Graph{Nodes: nodes, Edges: edges}, nil
+}
+
+// FilterMissing drops model-only nodes whose entity has status "missing",
+// and model-only edges whose relation has status "missing" — old relations
+// and entities the registry has kept from before, which most callers do not
+// want mixed into a live graph (a third of all edges, on a real project).
+// Edges touching a dropped node are dropped too, whatever their own status.
+// Nodes and edges with Presence "both" or "code" are never dropped here,
+// even if Status happens to be "missing" for another reason. `include: true`
+// is a no-op, and the two counts are the number of nodes/edges left out —
+// for the answer's stats.hiddenMissing — always 0 when include is true.
+func FilterMissing(g *Graph, include bool) (out *Graph, hiddenNodes int, hiddenEdges int) {
+	if include {
+		return g, 0, 0
+	}
+	dropNode := map[string]bool{}
+	nodes := make([]GraphNode, 0, len(g.Nodes))
+	for _, n := range g.Nodes {
+		if n.Presence == "model" && n.Status == "missing" {
+			dropNode[n.ID] = true
+			continue
+		}
+		nodes = append(nodes, n)
+	}
+	edges := make([]GraphEdge, 0, len(g.Edges))
+	for _, e := range g.Edges {
+		if dropNode[e.From] || dropNode[e.To] {
+			continue
+		}
+		if e.Presence == "model" && e.Status == "missing" {
+			continue
+		}
+		edges = append(edges, e)
+	}
+	return &Graph{Nodes: nodes, Edges: edges}, len(g.Nodes) - len(nodes), len(g.Edges) - len(edges)
+}
+
+// validFieldNames are the values `fields=` accepts (docs/API.md §5).
+var validFieldNames = map[string]bool{"via": true, "position": true, "members": true}
+
+// ParseFields turns an already-split list of field names into the set
+// StripFields/AttachMembers expect, rejecting a name that is none of
+// "via"/"position"/"members" — a caller's typo, not an empty selection.
+// An empty (but non-nil, from an explicit `fields=`) or nil list both come
+// back as an empty set; distinguishing "absent" (the default) from
+// "explicitly empty" is the caller's job, not this function's.
+func ParseFields(names []string) (map[string]bool, error) {
+	out := make(map[string]bool, len(names))
+	for _, f := range names {
+		if !validFieldNames[f] {
+			return nil, fmt.Errorf("fields: unknown field %q", f)
+		}
+		out[f] = true
+	}
+	return out, nil
 }
 
 // StripFields removes GraphEdge.Via when `fields` lacks "via", and

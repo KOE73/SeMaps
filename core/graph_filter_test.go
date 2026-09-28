@@ -1,6 +1,9 @@
 package core
 
-import "testing"
+import (
+	"testing"
+	"time"
+)
 
 func filterFixtureGraph() *Graph {
 	return &Graph{
@@ -103,8 +106,8 @@ func TestNeighborhoodUnknownNode(t *testing.T) {
 
 func TestFilterContainer(t *testing.T) {
 	g := filterFixtureGraph()
-	known := map[string]bool{"c_app": true, "c_lib": true}
-	out, err := FilterContainer(g, "c_app", known)
+	defs := []Container{{ID: "c_app"}, {ID: "c_lib"}}
+	out, err := FilterContainer(g, "c_app", defs)
 	if err != nil {
 		t.Fatalf("FilterContainer: %v", err)
 	}
@@ -117,9 +120,141 @@ func TestFilterContainer(t *testing.T) {
 }
 
 func TestFilterContainerUnknown(t *testing.T) {
-	known := map[string]bool{"c_app": true}
-	if _, err := FilterContainer(filterFixtureGraph(), "c_typo", known); err == nil {
+	defs := []Container{{ID: "c_app"}}
+	if _, err := FilterContainer(filterFixtureGraph(), "c_typo", defs); err == nil {
 		t.Fatal("expected an error for an unknown container id")
+	}
+}
+
+// TestFilterContainerIncludesGrandchild: a node resolved into the most
+// specific (grandchild) container must still show up under its grandparent
+// container, since containment by longest-prefix resolution otherwise hides
+// everything but the leaf container (the bug this fix addresses).
+func TestFilterContainerIncludesGrandchild(t *testing.T) {
+	g := &Graph{
+		Nodes: []GraphNode{
+			{ID: "n1", Containers: []string{"c_onnx_core"}},
+			{ID: "n2", Containers: []string{"c_other"}},
+		},
+		Edges: []GraphEdge{{From: "n1", To: "n2", Kind: "uses"}},
+	}
+	defs := []Container{
+		{ID: "c_onnx"},
+		{ID: "c_onnx_core", Parent: "c_onnx"},
+		{ID: "c_onnx_core_leaf", Parent: "c_onnx_core"},
+		{ID: "c_other"},
+	}
+	out, err := FilterContainer(g, "c_onnx", defs)
+	if err != nil {
+		t.Fatalf("FilterContainer: %v", err)
+	}
+	if len(out.Nodes) != 1 || out.Nodes[0].ID != "n1" {
+		t.Fatalf("expected n1 kept via its grandparent container, got %+v", out.Nodes)
+	}
+	// the node's own Containers list stays as resolved, not widened with ancestors.
+	if len(out.Nodes[0].Containers) != 1 || out.Nodes[0].Containers[0] != "c_onnx_core" {
+		t.Fatalf("Containers must stay as resolved, got %+v", out.Nodes[0].Containers)
+	}
+	if len(out.Edges) != 0 {
+		t.Fatalf("n2 is outside c_onnx, so the edge must not survive: %+v", out.Edges)
+	}
+}
+
+// TestFilterContainerParentCycle: a cycle in `parent` must not hang the
+// descendant walk.
+func TestFilterContainerParentCycle(t *testing.T) {
+	g := &Graph{Nodes: []GraphNode{{ID: "n1", Containers: []string{"c_b"}}}}
+	defs := []Container{
+		{ID: "c_a", Parent: "c_b"},
+		{ID: "c_b", Parent: "c_a"}, // cycle
+	}
+	done := make(chan struct{})
+	var out *Graph
+	var err error
+	go func() {
+		out, err = FilterContainer(g, "c_a", defs)
+		close(done)
+	}()
+	select {
+	case <-done:
+	case <-time.After(2 * time.Second):
+		t.Fatal("FilterContainer hung on a parent cycle")
+	}
+	if err != nil {
+		t.Fatalf("FilterContainer: %v", err)
+	}
+	if len(out.Nodes) != 1 {
+		t.Fatalf("expected n1 kept (c_b is c_a's descendant despite the cycle), got %+v", out.Nodes)
+	}
+}
+
+func TestFilterMissingDefaultExcludes(t *testing.T) {
+	g := &Graph{
+		Nodes: []GraphNode{
+			{ID: "both1", Presence: "both", Status: "present"},
+			{ID: "code1", Presence: "code"},
+			{ID: "model_present", Presence: "model", Status: "present"},
+			{ID: "model_missing", Presence: "model", Status: "missing"},
+		},
+		Edges: []GraphEdge{
+			{From: "both1", To: "code1", Kind: "uses", Presence: "code"},
+			{From: "both1", To: "model_present", Kind: "uses", Presence: "model", Status: "present"},
+			{From: "both1", To: "model_missing", Kind: "uses", Presence: "model", Status: "missing"},    // touches a dropped node
+			{From: "code1", To: "model_present", Kind: "extends", Presence: "model", Status: "missing"}, // model-only edge itself missing
+		},
+	}
+	out, hiddenNodes, hiddenEdges := FilterMissing(g, false)
+	if hiddenNodes != 1 {
+		t.Fatalf("expected 1 hidden node, got %d: %+v", hiddenNodes, out.Nodes)
+	}
+	if hiddenEdges != 2 {
+		t.Fatalf("expected 2 hidden edges, got %d: %+v", hiddenEdges, out.Edges)
+	}
+	if len(out.Nodes) != 3 {
+		t.Fatalf("expected 3 remaining nodes, got %+v", out.Nodes)
+	}
+	if len(out.Edges) != 2 {
+		t.Fatalf("expected 2 remaining edges, got %+v", out.Edges)
+	}
+}
+
+func TestFilterMissingIncludeKeepsEverything(t *testing.T) {
+	g := &Graph{
+		Nodes: []GraphNode{{ID: "model_missing", Presence: "model", Status: "missing"}},
+		Edges: []GraphEdge{{From: "model_missing", To: "model_missing", Kind: "uses", Presence: "model", Status: "missing"}},
+	}
+	out, hiddenNodes, hiddenEdges := FilterMissing(g, true)
+	if hiddenNodes != 0 || hiddenEdges != 0 {
+		t.Fatalf("include:true must report nothing hidden, got %d/%d", hiddenNodes, hiddenEdges)
+	}
+	if len(out.Nodes) != 1 || len(out.Edges) != 1 {
+		t.Fatalf("include:true must keep everything: %+v", out)
+	}
+}
+
+func TestFilterMissingNeverDropsBothOrCode(t *testing.T) {
+	g := &Graph{
+		Nodes: []GraphNode{
+			{ID: "both1", Presence: "both", Status: "missing"}, // status missing, but presence both: never dropped
+			{ID: "code1", Presence: "code", Status: "missing"},
+		},
+	}
+	out, hiddenNodes, _ := FilterMissing(g, false)
+	if hiddenNodes != 0 || len(out.Nodes) != 2 {
+		t.Fatalf("both/code presence must never be dropped by FilterMissing, got %+v (hidden %d)", out.Nodes, hiddenNodes)
+	}
+}
+
+func TestParseFieldsUnknownName(t *testing.T) {
+	if _, err := ParseFields([]string{"via", "bogus"}); err == nil {
+		t.Fatal("expected an error for an unknown field name")
+	}
+}
+
+func TestParseFieldsEmptyIsEmptySet(t *testing.T) {
+	set, err := ParseFields(nil)
+	if err != nil || len(set) != 0 {
+		t.Fatalf("expected an empty set for an empty list, got %v, %v", set, err)
 	}
 }
 
