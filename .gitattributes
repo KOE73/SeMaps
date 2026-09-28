@@ -1,0 +1,3 @@
+# Golden files of the extractors are compared byte for byte with what an
+# extractor prints, and it prints LF on every system.
+extractors/**/testdata/** text eol=lf
