@@ -1,7 +1,8 @@
 # PLAN_20260928-6_extractors — методы и вызовы
 
-Статус: **в работе** (ядро, сверка, хост и извлекатель C# сделаны; замер на реальном проекте —
-нет). Реализует
+Статус: **в работе** (ядро, сверка, хост и извлекатель C# сделаны; замер на реальном проекте
+(`C:\GitKOE\NeuroModFlowNet.ONNX`) выполнен — см. раздел «Замер на NeuroModFlowNet.ONNX
+(2026-09-28)»). Реализует
 [`ADR_20260928-3`](../adr/ADR_20260928-3_host_calls-live-in-the-graph.md) и
 [`ADR_20260928-4`](../adr/ADR_20260928-4_extractors_methods-and-calls.md).
 
@@ -121,11 +122,8 @@
 - **Первичные конструкторы и позиционные члены `record`** — реализованы «самым буквальным
   прочтением» (как обычный конструктор/свойства), но не проверены отдельным тестом.
 - **`nameof(Метод)`** может дать лишнее ребро `calls` — не отфильтровано.
-- **Замер на `C:\GitKOE\NeuroModFlowNet.ONNX`** (пункт 5 задания): не выполнялся. Публикация
-  извлекателя, три прогона `holds,injects` и `holds,injects,calls`, тайминги, счётчики символов
-  и рёбер, топ-10 методов по числу вызывающих, разбор `YoloObbFactory`, точечная проверка 10
-  рёбер `calls` по коду, сверка на копии реестра — всё это отдельный прогон, теперь имеющий
-  готовый и протестированный извлекатель под собой.
+- **Замер на `C:\GitKOE\NeuroModFlowNet.ONNX`** (пункт 5 задания): выполнен, см. раздел
+  «Замер на NeuroModFlowNet.ONNX (2026-09-28)» ниже.
 
 ## Противоречия и неоднозначности ADR, замеченные по пути
 
@@ -146,7 +144,122 @@
   в коммите C, ни один ADR не редактировался (правило было в коде, не в ADR).
 - Остальных противоречий между двумя ADR или с существующей схемой не найдено.
 
+## Замер на NeuroModFlowNet.ONNX (2026-09-28)
+
+Статус: замер выполнен. Реестр (проверено на копии) не получает ничего из `calls`-части.
+
+Перед этим прогоном на проекте были найдены и исправлены два дефекта: идентификаторы методов
+содержали пробелы из-за `Dictionary<int, T[]>` (пробел после запятой в аргументах générика
+просачивался в id); поле `lines` на ребре `constructs` отклонялось валидацией (validation
+считала `lines` допустимым только для `calls`).
+
+### A. Извлечение — время и размер
+
+| Прогон | 1, с | 2, с | 3, с | мин | медиана | макс | байт | gzip байт | 3 прогона побайтово одинаковы |
+|---|---|---|---|---|---|---|---|---|---|
+| `holds,injects` (plain) | 6.27 | 6.34 | 6.37 | 6.27 | 6.34 | 6.37 | 671 167 | 40 744 | да |
+| `holds,injects,calls` | 8.75 | 8.87 | 9.18 | 8.75 | 8.87 | 9.18 | 2 587 954 | 129 672 | да |
+
+stderr прогона с `calls`: `calls: 7773 call/construct site(s) outside the output` (вызовы/конструирования
+за пределами `--include src`, ожидаемо не печатаются как рёбра). stderr прогона `holds,injects` пуст.
+
+### B. Разбор facts-calls.json
+
+Символы (2344 всего): kind — `method` 1939, `type` 346, `interface` 40, `module` 18, `function` 1.
+nativeKind: `method` 917, `property` 717, `constructor` 301, `class` 167, `static-class` 45,
+`interface` 40, `struct` 36, `abstract-class` 34, `record-struct` 27, `record` 19, `enum` 18,
+`namespace` 11, `assembly` 7, `operator` 3, `delegate` 1, `indexer` 1.
+
+Рёбра (6584 всего) по kind: `calls` 2752, `contains` 2709, `implements` 252, `constructs` 225,
+`holds` 183, `uses` 177, `overrides` 162, `extends` 118, `depends` 6.
+
+| Методов на тип | мин | медиана | p90 | макс |
+|---|---|---|---|---|
+| | 1 | 3 | 11 | 31 |
+
+Топ-5 типов по числу методов: `TrtConfig` (31), `OcrRegionPostprocessor` (23),
+`OnnxExecutionContext` (23), `Op_Onnx_TensorTransformBase` (22), `OnnxModel` (21).
+
+Рёбер `calls`/`constructs` с более чем одной строкой в `lines`: 470. Самый длинный список —
+9 строк, ребро `Op_Onnx_ExtractObbToLetterboxBatch_FP32_NCHW.RunWithFreshBinding(...)` →
+`OnnxExecutionContext.IoBinding`.
+
+10 методов с наибольшим числом РАЗНЫХ вызывающих: `OnnxExecutionContext.Model` (62),
+`ImageRunner\`4..ctor(OnnxExecutionContext)` (58), `OpDescriptor.Create(...)` (34),
+`OnnxModel.Session` (33), `VarRequirement.Read\`1(string,bool)` (32),
+`VarRequirement.Write\`1(string,bool)` (32), `VmRunContext.Set\`1(string,T,bool)` (28),
+`ResultExtractorBase\`1.Model` (27), `IModelMetadataProvider.PrimaryOutputName` (23),
+`OnnxGraphBuilderHelpers.CreateModel(string,GraphProto,long)` (20).
+
+10 методов, вызывающих больше всего РАЗНЫХ целей: `OcrRegionPostprocessorJsonOptions.ToRuntimeOptions(float?)` (38),
+`IouTracker.Process(...)` (34), `TrtConfig.FromDefaultOptions(string)` (27),
+`YoloPoseFP32UniversalExtractor.GetOutput(IOnnxModelOutputs)` (27), `TrtConfig.ToDictionary()` (26),
+`IouTracker+TrackState.Create(int,TrackDetection)` (21), `TextRegionProcessingStageFactory.CreateStage(...)` (20),
+`VmController.WarmupAsync(...)` (20), `VmController.ExecuteRunAsync(...)` (19),
+`VmProgram.ExecuteLoopInternalAsync(...)` (19).
+
+Методов без единого входящего/исходящего `calls`-ребра: 424 (из 1939). Самоссылок (рекурсия) — 8.
+`overrides` — 162. Методических (метод→метод) `implements` — 145 (из 252 `implements` всего).
+Рёбер `calls`, нацеленных на метод интерфейса: 121 (интерфейсных методов всего 77).
+
+### C. Неизменность «обычной» части
+
+Из `facts-calls.json` удалены все символы `kind:method` и все рёбра `calls`, `constructs`,
+`overrides`, а также `contains`/`implements` с методом на одном из концов, и `calls` вычеркнут
+из `edgeKinds`. Результат посимвольно (как разобранный JSON, тот же порядок) совпал с
+`facts-plain.json`: символов 405 = 405, рёбер 1361 = 1361, `edgeKinds` тем же набором. Различий нет.
+
+### D. Точечная проверка 12 рёбер по коду
+
+Проверены 8 `calls`, 2 `constructs`, 1 `overrides`, 1 методический `implements` (фиксированный шаг
+по отсортированному списку). Во всех 12 случаях место в файле по заданной строке (или строкам)
+лежит внутри диапазона `span..endLine` метода `from`, и в исходнике на этой строке действительно
+стоит указанный вызов/конструирование/переопределение/реализация — включая однострочные
+методы-выражения (`=>`), например `YoloObbFactory.List_SymCvdnn_FP32` (строка 28, тело в одну
+строку). Несовпадений не найдено.
+
+### E. YoloObbFactory — мотивирующий случай
+
+У 8 методов `YoloObbFactory` — 17 исходящих рёбер `calls`/`constructs` (в основном `new(context)`
+через `ImageRunner\`4..ctor`, плюс обращения к `context.Model.Session`/`PrimaryInputName`/
+`PrimaryOutputName` и внутренний вызов `GetExtractorType`) и 2 входящих `calls` — оба из
+`YoloObbBatchedResource.Create(YoloObbResourceDefinition)`, вызывающего `List_PosCvdnn_FP32` и
+`List_SymCvdnn_FP32`.
+
+При чтении `YoloObbFactory.cs` в глаза бросается `CreateRunner<TOut>` (строки 36-59): там есть
+`typeof(ImageRunner<,,,>).MakeGenericType(...)` и `Activator.CreateInstance(closedType, context)`
+(строка 57) — динамическое конструирование через reflection. Этого конструирования в рёбрах нет,
+и это ожидаемо: тип и конструктор разрешаются только в рантайме (`MakeGenericType`/
+`Activator.CreateInstance` не являются статическим `new`-выражением), извлекатель работает по
+семантической модели компиляции и не может знать заранее, какой закрытый generic-тип будет
+создан. Других пропущенных механизмов (делегаты, `new T()` по generic-параметру) в этом файле нет.
+
+### F. Идентификаторы
+
+Все 2344 id символов уникальны. Пробелов в id нет (0 штук) — оба ранее найденных дефекта
+(в т.ч. пробелы от `Dictionary<int, T[]>`) уже исправлены. Самый длинный id — 257 символов:
+`NeuroModFlowNet.Pipeline.ONNX.OrtValueBatchedInferenceEndpoint\`1..ctor(string,string,InferenceBackend,OnnxBatchedResourceOptions,IOrtValueBatchInputAssembler,IOrtValueOutputShapeResolver,IOrtValueBatchOutputDecoder<TOutput>,Action<ExecutionProviderConfig>?)`.
+Id методов длиннее 200 символов — 3. Перегрузки: тип `PosCvdnnFP16`, метод `Fill` — id различаются
+по списку параметров (`Fill(List<Mat>,Span<Float16>,int,int,int)` vs `Fill(Mat,Span<Float16>,int)`).
+
+### G. Реестр не должен измениться — проверено на копии
+
+**Главный результат: реестр не меняется.** Копии `docs/diagrams` в
+`C:\GitKOE\SeMaps\.claude\nmfn-calls-check\copy-a` (синхронизирована из `facts-plain.json`,
+проект `a.semaps`) и `copy-b` (синхронизирована из `facts-calls.json`, проект `b.semaps`)
+побайтово идентичны (`diff -rq` — без различий). Оба отчёта `semaps sync` показывают одно и то же:
+«Сверка проекта nmfn с фактами csharp: 405 символов, 1361 рёбер» — хотя `facts-calls.json` содержит
+2344 символа и 6584 ребра, сверка сама отбрасывает всё, что относится к методам и вызовам, ещё до
+записи в реестр. Список «не хватает (80)» в обоих отчётах идентичен. Поиск по `copy-b` не нашёл
+ни `"calls"`, ни `"constructs"`, ни `"overrides"`, ни `..ctor(` ни в одном файле; `relation-types.json`
+в `copy-b` содержит только `references`, `implements`, `extends`, `contains`, `depends`, `holds.*`,
+`injects` — без единого типа отношения, связанного с методами или вызовами.
+
+### Проект NeuroModFlowNet.ONNX
+
+`git status --short` до и после прогона — оба раза пустой вывод, дерево не тронуто.
+
 ## Следующий шаг
 
-Отдельный прогон на замер (пункт 5 задания) на `C:\GitKOE\NeuroModFlowNet.ONNX`, опираясь на
-готовый извлекатель этого прогона.
+Замер выполнен; извлекатель методов и вызовов на реальном проекте подтверждён рабочим и
+безопасным для реестра. Следующий шаг — вне рамок этого плана (интеграция вызовов в UI/граф хоста).
