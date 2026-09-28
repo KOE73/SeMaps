@@ -10,8 +10,6 @@ import { type LayoutKind, applyGroupedLayout, communityGroups, groupKey, runForc
 import { type FilterState, allFilters, buildFilters, nodeVisible } from "./filters.js";
 import { GraphPanel, statsLine } from "./panel.js";
 
-const LARGE_DEGREE_LABEL = 6; // nodes with at least this many edges always show a label
-
 /**
  * Everything that touches sigma/graphology: built once per entry into the
  * graph mode, from `GraphResponse`. Loaded through a dynamic `import()` so
@@ -23,6 +21,7 @@ export class GraphEngine {
   private readonly edges: GraphEdge[];
   private renderer!: Sigma;
   private canvas!: HTMLElement;
+  private resizeObserver: ResizeObserver | undefined;
   private colorBy: ColorBy = "kind";
   private layout: LayoutKind = "force";
   private filters: FilterState;
@@ -123,13 +122,26 @@ export class GraphEngine {
   start(): void {
     this.renderer = new Sigma(this.graph, this.canvas, {
       renderLabels: true,
+      // Looked at the ~900-node demo graph: the default threshold (6) still
+      // let mid-size nodes force their way into the label grid once focused;
+      // 8 keeps the overview to the biggest nodes while the focus branch
+      // below still forces labels on the selection regardless of size.
       labelRenderedSizeThreshold: 8,
+      // Fewer, bigger grid cells than the default (100) so the overview
+      // shows a few dozen labels at most on the ~900-node demo graph, not a
+      // label per node; smaller cells (effectively more labels) apply
+      // automatically as the camera zooms in, since the grid is in screen
+      // pixels (looked at with the demo graph until the overview stopped
+      // being a label cloud).
+      labelGridCellSize: 150,
+      labelDensity: 1,
       // The canvas is dark (graph.css): sigma's default label is black.
       labelColor: { color: "#e6e8ec" },
       nodeReducer: (node, attrs) => this.nodeReducer(node, attrs),
       edgeReducer: (edge, attrs) => this.edgeReducer(edge, attrs),
     });
     this.wireEvents();
+    this.watchResize();
     this.refreshLegend();
     const { root: filtersRoot } = buildFilters(this.data.nodes, [...new Set(this.data.edges.map((e) => e.kind))], this.filters, () => {
       this.renderer.refresh();
@@ -140,7 +152,22 @@ export class GraphEngine {
     this.applyLayout();
   }
 
+  /** Sigma only resizes on `window`'s own `resize` event (checked in
+   * `sigma/dist/sigma.esm.js`); it has no observer of its own container. The
+   * tool-page layout resizes the canvas whenever the ribbon, the side dock or
+   * the window itself changes without necessarily firing a window resize
+   * (e.g. first mount before web fonts/layout settle), so sigma is told
+   * about it explicitly here. */
+  private watchResize(): void {
+    this.resizeObserver = new ResizeObserver(() => {
+      this.renderer.resize();
+      this.renderer.refresh();
+    });
+    this.resizeObserver.observe(this.canvas);
+  }
+
   destroy(): void {
+    this.resizeObserver?.disconnect();
     this.forceHandle?.stop();
     this.renderer?.kill();
   }
@@ -176,9 +203,14 @@ export class GraphEngine {
         res.forceLabel = true;
         res.zIndex = 1;
       }
-    } else if ((attrs.size as number) >= LARGE_DEGREE_LABEL) {
-      res.forceLabel = true;
     }
+    // No unfocused branch forcing a label by degree: that defeated sigma's
+    // own label grid (every node above the threshold showed a label at once,
+    // an unreadable cloud at overview — the defect this page had). Left
+    // alone, the grid (labelGridCellSize/labelDensity above) already favours
+    // the biggest node per screen cell, so only the largest nodes are
+    // labelled zoomed out, with more appearing as cells get smaller on
+    // screen while zooming in.
     return res;
   }
 

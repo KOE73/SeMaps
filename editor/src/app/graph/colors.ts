@@ -76,10 +76,16 @@ export function nodeColor(n: GraphNode, by: ColorBy): string {
   return base;
 }
 
+// `contains` is the majority of edges (most nodes sit inside something) and
+// the original grey (#8a8f98) all but disappeared against the dark canvas
+// background (#1c1e22, graph.css) once ~800 of them overlapped — checked by
+// looking at the demo graph before and after. Lightened towards the label
+// colour so it reads as "structure" without competing with the brighter,
+// rarer relation kinds below.
 const EDGE_PALETTE: Record<string, string> = {
   extends: "#ff7a59",
   implements: "#a35bff",
-  contains: "#8a8f98",
+  contains: "#aeb4bf",
   depends: "#4f8cff",
   holds: "#33c37a",
   uses: "#f2b705",
@@ -92,10 +98,14 @@ export function edgeColor(e: GraphEdge): string {
 /** Thicker for `many`/`keyed` cardinality; deferred edges get a lighter tint
  * since sigma's edge programs used here (line) draw solid strokes only —
  * dashing needs a custom edge program, so "lighter colour" stands in for a
- * dash (said in the report). */
+ * dash (said in the report). Base size raised from 1.4 to 2: at 1.4 the line
+ * program (sigma's default `edge` renderer draws screen-pixel-sized lines,
+ * not zoom-scaled) was a near-invisible hairline against the node clutter at
+ * overview zoom on the demo graph; 2 was the smallest that stayed clearly
+ * visible without the graph looking like it was drawn in marker. */
 export function edgeSize(e: GraphEdge): number {
   const card = e.via?.cardinality;
-  return card === "many" || card === "keyed" ? 3 : 1.4;
+  return card === "many" || card === "keyed" ? 3.6 : 2;
 }
 
 export function edgeRenderColor(e: GraphEdge): string {
