@@ -23,24 +23,24 @@ type FactsSource struct {
 // (CONTRACT.md §3). Named GraphNode, not Node: core.Edge/core.Symbol already
 // name the facts types this joins.
 type GraphNode struct {
-	ID         string   `json:"id"`
-	Symbol     string   `json:"symbol,omitempty"`
-	Kind       string   `json:"kind,omitempty"`
-	NativeKind string   `json:"nativeKind,omitempty"`
-	Name       string   `json:"name,omitempty"`
-	Namespace  string   `json:"namespace,omitempty"`
-	Visibility string   `json:"visibility,omitempty"`
-	File       string   `json:"file,omitempty"`
-	Line       int      `json:"line,omitempty"`
-	EndLine    int      `json:"endLine,omitempty"`
-	Spans      []Span   `json:"spans,omitempty"` // every declaration, when there is more than one
+	ID         string `json:"id"`
+	Symbol     string `json:"symbol,omitempty"`
+	Kind       string `json:"kind,omitempty"`
+	NativeKind string `json:"nativeKind,omitempty"`
+	Name       string `json:"name,omitempty"`
+	Namespace  string `json:"namespace,omitempty"`
+	Visibility string `json:"visibility,omitempty"`
+	File       string `json:"file,omitempty"`
+	Line       int    `json:"line,omitempty"`
+	EndLine    int    `json:"endLine,omitempty"`
+	Spans      []Span `json:"spans,omitempty"` // every declaration, when there is more than one
 	// MemberLines: member name -> line, in File (docs/EXTRACTOR.md §2.1).
 	MemberLines map[string]int `json:"memberLines,omitempty"`
 	Language    string         `json:"language,omitempty"`
-	Extractor  string   `json:"extractor,omitempty"`
-	Entity     string   `json:"entity,omitempty"`
-	Status     string   `json:"status,omitempty"`
-	Containers []string `json:"containers,omitempty"`
+	Extractor   string         `json:"extractor,omitempty"`
+	Entity      string         `json:"entity,omitempty"`
+	Status      string         `json:"status,omitempty"`
+	Containers  []string       `json:"containers,omitempty"`
 	// Presence: "both" (symbol and entity), "code" (symbol only), "model"
 	// (entity only).
 	Presence string `json:"presence"`
