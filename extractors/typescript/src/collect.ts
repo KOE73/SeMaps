@@ -1,6 +1,6 @@
 import ts from "typescript";
 import { declId, moduleId } from "./id.js";
-import type { EdgeKind, EdgeRecord, MemberRecord, SymbolKind, SymbolRecord, ViaRecord } from "./types.js";
+import type { EdgeKind, EdgeRecord, MemberRecord, SpanRecord, SymbolKind, SymbolRecord, ViaRecord } from "./types.js";
 
 export interface SourceFileEntry {
   sourceFile: ts.SourceFile;
@@ -31,6 +31,10 @@ function hasModifier(node: ts.Node, kind: ts.SyntaxKind): boolean {
 
 function lineOf(node: ts.Node, sourceFile: ts.SourceFile): number {
   return sourceFile.getLineAndCharacterOfPosition(node.getStart(sourceFile)).line + 1;
+}
+
+function endLineOf(node: ts.Node, sourceFile: ts.SourceFile): number {
+  return sourceFile.getLineAndCharacterOfPosition(node.getEnd()).line + 1;
 }
 
 function basenameNoExt(relNoExt: string): string {
@@ -267,6 +271,13 @@ function makeMember(kind: string, name: string, type: string | undefined, visibi
   return m;
 }
 
+/** Records a member's line, keeping the smallest for a name with several
+ * declarations (overloads). */
+function addMemberLine(memberLines: Record<string, number>, name: string, line: number): void {
+  const existing = memberLines[name];
+  if (existing === undefined || line < existing) memberLines[name] = line;
+}
+
 export function collectFacts(
   checker: ts.TypeChecker,
   files: SourceFileEntry[],
@@ -276,16 +287,42 @@ export function collectFacts(
   const edgeMap = new Map<string, EdgeRecord>();
   const idBySymbol = new Map<ts.Symbol, string>();
   const declEntries: DeclEntry[] = [];
+  // Every declaration seen for a symbol id, in encounter order; more than
+  // one means merged declarations (interface/namespace), reported as `spans`
+  // the way C# reports `partial`. The first-encountered declaration stays
+  // the record's own `file`/`line`/`endLine`.
+  const spansById = new Map<string, SpanRecord[]>();
+
+  const recordSpan = (id: string, file: string, line: number, endLine: number): void => {
+    let list = spansById.get(id);
+    if (!list) {
+      list = [];
+      spansById.set(id, list);
+    }
+    list.push({ file, line, endLine });
+  };
 
   const wantEdge = (kind: string): boolean => {
     if (!edgeFilter) return false;
     return edgeFilter.includes(kind);
   };
 
-  const addEdge = (from: string, to: string, kind: EdgeKind, via?: ViaRecord): void => {
+  const addEdge = (
+    from: string,
+    to: string,
+    kind: EdgeKind,
+    via?: ViaRecord,
+    location?: { line: number; file?: string },
+  ): void => {
     if (from === to) return;
     const key = `${from}\u0000${to}\u0000${kind}\u0000${via?.member ?? ""}\u0000${JSON.stringify(via?.path ?? [])}`;
-    edgeMap.set(key, { from, to, kind, ...(via ? { via } : {}) });
+    edgeMap.set(key, {
+      from,
+      to,
+      kind,
+      ...(via ? { via } : {}),
+      ...(location ? { line: location.line, ...(location.file ? { file: location.file } : {}) } : {}),
+    });
   };
 
   const pushSymbol = (
@@ -297,6 +334,7 @@ export function collectFacts(
     file: string,
     line: number | undefined,
     visibility: string | undefined,
+    endLine?: number,
   ): SymbolRecord => {
     const record: SymbolRecord = {
       id,
@@ -306,9 +344,11 @@ export function collectFacts(
       namespace: namespacePath.join("."),
       file,
       ...(line !== undefined ? { line } : {}),
+      ...(endLine !== undefined ? { endLine } : {}),
       ...(visibility !== undefined ? { visibility } : {}),
     };
     symbols.push(record);
+    if (line !== undefined) recordSpan(id, file, line, endLine ?? line);
     return record;
   };
 
@@ -352,12 +392,14 @@ export function collectFacts(
         const exportName = isDefault ? "default" : (localName ?? "default");
         const symbol = symbolOfName(checker, stmt.name, stmt);
         if (symbol && idBySymbol.has(symbol)) {
-          addEdge(containerId, idBySymbol.get(symbol)!, "contains");
+          const existingId = idBySymbol.get(symbol)!;
+          recordSpan(existingId, relWithExt, lineOf(stmt, stmt.getSourceFile()), endLineOf(stmt, stmt.getSourceFile()));
+          addEdge(containerId, existingId, "contains");
           continue;
         }
         const id = declId(relNoExt, nsPath, exportName);
         const nativeKind = hasModifier(stmt, ts.SyntaxKind.AbstractKeyword) ? "abstract-class" : "class";
-        pushSymbol(id, "type", nativeKind, localName ?? "default", nsPath, relWithExt, lineOf(stmt, stmt.getSourceFile()), isExported ? "exported" : "file");
+        pushSymbol(id, "type", nativeKind, localName ?? "default", nsPath, relWithExt, lineOf(stmt, stmt.getSourceFile()), isExported ? "exported" : "file", endLineOf(stmt, stmt.getSourceFile()));
         if (symbol) idBySymbol.set(symbol, id);
         declEntries.push({ id, node: stmt, kind: "class" });
         addEdge(containerId, id, "contains");
@@ -371,11 +413,13 @@ export function collectFacts(
         const exportName = isDefault ? "default" : localName;
         const symbol = symbolOfName(checker, stmt.name, stmt);
         if (symbol && idBySymbol.has(symbol)) {
-          addEdge(containerId, idBySymbol.get(symbol)!, "contains");
+          const existingId = idBySymbol.get(symbol)!;
+          recordSpan(existingId, relWithExt, lineOf(stmt, stmt.getSourceFile()), endLineOf(stmt, stmt.getSourceFile()));
+          addEdge(containerId, existingId, "contains");
           continue;
         }
         const id = declId(relNoExt, nsPath, exportName);
-        pushSymbol(id, "interface", "interface", localName, nsPath, relWithExt, lineOf(stmt, stmt.getSourceFile()), isExported ? "exported" : "file");
+        pushSymbol(id, "interface", "interface", localName, nsPath, relWithExt, lineOf(stmt, stmt.getSourceFile()), isExported ? "exported" : "file", endLineOf(stmt, stmt.getSourceFile()));
         if (symbol) idBySymbol.set(symbol, id);
         declEntries.push({ id, node: stmt, kind: "interface" });
         addEdge(containerId, id, "contains");
@@ -390,7 +434,7 @@ export function collectFacts(
         const symbol = symbolOfName(checker, stmt.name, stmt);
         if (symbol && idBySymbol.has(symbol)) continue;
         const id = declId(relNoExt, nsPath, exportName);
-        pushSymbol(id, "type", "type-alias", localName, nsPath, relWithExt, lineOf(stmt, stmt.getSourceFile()), isExported ? "exported" : "file");
+        pushSymbol(id, "type", "type-alias", localName, nsPath, relWithExt, lineOf(stmt, stmt.getSourceFile()), isExported ? "exported" : "file", endLineOf(stmt, stmt.getSourceFile()));
         if (symbol) idBySymbol.set(symbol, id);
         declEntries.push({ id, node: stmt, kind: "typeAlias" });
         addEdge(containerId, id, "contains");
@@ -405,7 +449,7 @@ export function collectFacts(
         const symbol = symbolOfName(checker, stmt.name, stmt);
         if (symbol && idBySymbol.has(symbol)) continue;
         const id = declId(relNoExt, nsPath, exportName);
-        pushSymbol(id, "type", "enum", localName, nsPath, relWithExt, lineOf(stmt, stmt.getSourceFile()), isExported ? "exported" : "file");
+        pushSymbol(id, "type", "enum", localName, nsPath, relWithExt, lineOf(stmt, stmt.getSourceFile()), isExported ? "exported" : "file", endLineOf(stmt, stmt.getSourceFile()));
         if (symbol) idBySymbol.set(symbol, id);
         declEntries.push({ id, node: stmt, kind: "enum" });
         addEdge(containerId, id, "contains");
@@ -419,11 +463,13 @@ export function collectFacts(
         const exportName = isDefault ? "default" : (localName ?? "default");
         const symbol = symbolOfName(checker, stmt.name, stmt);
         if (symbol && idBySymbol.has(symbol)) {
-          addEdge(containerId, idBySymbol.get(symbol)!, "contains");
+          const existingId = idBySymbol.get(symbol)!;
+          recordSpan(existingId, relWithExt, lineOf(stmt, stmt.getSourceFile()), endLineOf(stmt, stmt.getSourceFile()));
+          addEdge(containerId, existingId, "contains");
           continue;
         }
         const id = declId(relNoExt, nsPath, exportName);
-        pushSymbol(id, "function", "function", localName ?? "default", nsPath, relWithExt, lineOf(stmt, stmt.getSourceFile()), isExported ? "exported" : "file");
+        pushSymbol(id, "function", "function", localName ?? "default", nsPath, relWithExt, lineOf(stmt, stmt.getSourceFile()), isExported ? "exported" : "file", endLineOf(stmt, stmt.getSourceFile()));
         if (symbol) idBySymbol.set(symbol, id);
         declEntries.push({ id, name: localName ?? "default", kind: "function", node: stmt, parameters: stmt.parameters, returnType: stmt.type });
         addEdge(containerId, id, "contains");
@@ -437,10 +483,11 @@ export function collectFacts(
         let id: string;
         if (symbol && idBySymbol.has(symbol)) {
           id = idBySymbol.get(symbol)!;
+          recordSpan(id, relWithExt, lineOf(stmt, stmt.getSourceFile()), endLineOf(stmt, stmt.getSourceFile()));
           addEdge(containerId, id, "contains");
         } else {
           id = declId(relNoExt, nsPath, localName);
-          pushSymbol(id, "module", "namespace", localName, nsPath, relWithExt, lineOf(stmt, stmt.getSourceFile()), isExported ? "exported" : "file");
+          pushSymbol(id, "module", "namespace", localName, nsPath, relWithExt, lineOf(stmt, stmt.getSourceFile()), isExported ? "exported" : "file", endLineOf(stmt, stmt.getSourceFile()));
           if (symbol) idBySymbol.set(symbol, id);
           addEdge(containerId, id, "contains");
         }
@@ -461,7 +508,9 @@ export function collectFacts(
           const exportName = isDefault ? "default" : localName;
           const symbol = checker.getSymbolAtLocation(decl.name);
           if (symbol && idBySymbol.has(symbol)) {
-            addEdge(containerId, idBySymbol.get(symbol)!, "contains");
+            const existingId = idBySymbol.get(symbol)!;
+            recordSpan(existingId, relWithExt, lineOf(decl, stmt.getSourceFile()), endLineOf(decl, stmt.getSourceFile()));
+            addEdge(containerId, existingId, "contains");
             continue;
           }
           const id = declId(relNoExt, nsPath, exportName);
@@ -471,10 +520,10 @@ export function collectFacts(
           if (isFunctionValued) {
             const fn = init as ts.ArrowFunction | ts.FunctionExpression;
             const nativeKind = ts.isArrowFunction(fn) ? "arrow-function" : "function-expression";
-            pushSymbol(id, "function", nativeKind, localName, nsPath, relWithExt, lineOf(decl, stmt.getSourceFile()), visibility);
+            pushSymbol(id, "function", nativeKind, localName, nsPath, relWithExt, lineOf(decl, stmt.getSourceFile()), visibility, endLineOf(decl, stmt.getSourceFile()));
             declEntries.push({ id, name: localName, kind: "function", node: decl, parameters: fn.parameters, returnType: fn.type });
           } else {
-            pushSymbol(id, "value", declKeyword, localName, nsPath, relWithExt, lineOf(decl, stmt.getSourceFile()), visibility);
+            pushSymbol(id, "value", declKeyword, localName, nsPath, relWithExt, lineOf(decl, stmt.getSourceFile()), visibility, endLineOf(decl, stmt.getSourceFile()));
             declEntries.push({ id, name: localName, kind: "value", node: decl, typeNode: decl.type });
           }
           if (symbol) idBySymbol.set(symbol, id);
@@ -496,21 +545,25 @@ export function collectFacts(
   for (const entry of declEntries) {
     if (entry.kind === "class") {
       const classDecl = entry.node as ts.ClassDeclaration;
+      const sourceFile = classDecl.getSourceFile();
       const members: MemberRecord[] = [];
+      const memberLines: Record<string, number> = {};
       for (const heritage of classDecl.heritageClauses ?? []) {
         const edgeKind: EdgeKind = heritage.token === ts.SyntaxKind.ExtendsKeyword ? "extends" : "implements";
+        const heritageLine = lineOf(heritage, sourceFile);
         for (const t of heritage.types) {
           const symbol = checker.getSymbolAtLocation(t.expression);
           if (!symbol) continue;
           const resolved = resolveAlias(checker, symbol);
           const targetId = validIds.get(resolved);
-          if (targetId) addEdge(entry.id, targetId, edgeKind);
+          if (targetId) addEdge(entry.id, targetId, edgeKind, undefined, { line: heritageLine });
         }
       }
 
       // Handle constructor parameters (holds/uses with memberKind: constructor)
       for (const member of classDecl.members) {
         if (ts.isConstructorDeclaration(member)) {
+          const ctorLine = lineOf(member, sourceFile);
           for (const param of member.parameters) {
             const paramType = param.type;
             if (paramType) {
@@ -541,7 +594,7 @@ export function collectFacts(
                         ...(tp.mutability ? { mutability: tp.mutability } : {}),
                         ...(tp.deferred ? { deferred: true } : {}),
                       };
-                      addEdge(entry.id, targetId, "holds", via);
+                      addEdge(entry.id, targetId, "holds", via, { line: ctorLine });
                     }
 
                     // Always emit uses edge for constructor
@@ -555,7 +608,7 @@ export function collectFacts(
                         ...(tp.mutability ? { mutability: tp.mutability } : {}),
                         ...(tp.deferred ? { deferred: true } : {}),
                       };
-                      addEdge(entry.id, targetId, "uses", via);
+                      addEdge(entry.id, targetId, "uses", via, { line: ctorLine });
                     }
                   }
                 }
@@ -591,6 +644,8 @@ export function collectFacts(
         if (!kind) continue;
         const typeStr = memberTypeString(checker, member);
         members.push(makeMember(kind, name, typeStr, visibility));
+        const memberLine = lineOf(member, sourceFile);
+        addMemberLine(memberLines, name, memberLine);
 
         if (typeNode && wantEdge("holds")) {
           const paths = collectTypePaths(typeNode, checker, validIds);
@@ -608,7 +663,7 @@ export function collectFacts(
                   ...(tp.mutability ? { mutability: tp.mutability } : {}),
                   ...(tp.deferred ? { deferred: true } : {}),
                 };
-                addEdge(entry.id, targetId, "holds", via);
+                addEdge(entry.id, targetId, "holds", via, { line: memberLine });
               }
             }
           }
@@ -632,7 +687,7 @@ export function collectFacts(
                       ...(tp.mutability ? { mutability: tp.mutability } : {}),
                       ...(tp.deferred ? { deferred: true } : {}),
                     };
-                    addEdge(entry.id, targetId, "uses", via);
+                    addEdge(entry.id, targetId, "uses", via, { line: memberLine });
                   }
                 }
               }
@@ -653,7 +708,7 @@ export function collectFacts(
                     ...(tp.mutability ? { mutability: tp.mutability } : {}),
                     ...(tp.deferred ? { deferred: true } : {}),
                   };
-                  addEdge(entry.id, targetId, "uses", via);
+                  addEdge(entry.id, targetId, "uses", via, { line: memberLine });
                 }
               }
             }
@@ -662,17 +717,21 @@ export function collectFacts(
       }
       const symbolRecord = symbols.find((s) => s.id === entry.id)!;
       symbolRecord.members = members;
+      if (Object.keys(memberLines).length > 0) symbolRecord.memberLines = memberLines;
     } else if (entry.kind === "interface") {
       const ifaceDecl = entry.node as ts.InterfaceDeclaration;
+      const ifaceSourceFile = ifaceDecl.getSourceFile();
       const members: MemberRecord[] = [];
+      const memberLines: Record<string, number> = {};
       for (const heritage of ifaceDecl.heritageClauses ?? []) {
         if (heritage.token !== ts.SyntaxKind.ExtendsKeyword) continue;
+        const heritageLine = lineOf(heritage, ifaceSourceFile);
         for (const t of heritage.types) {
           const symbol = checker.getSymbolAtLocation(t.expression);
           if (!symbol) continue;
           const resolved = resolveAlias(checker, symbol);
           const targetId = validIds.get(resolved);
-          if (targetId) addEdge(entry.id, targetId, "extends");
+          if (targetId) addEdge(entry.id, targetId, "extends", undefined, { line: heritageLine });
         }
       }
       for (const member of ifaceDecl.members) {
@@ -681,6 +740,8 @@ export function collectFacts(
           if (!name) continue;
           const typeStr = memberTypeString(checker, member);
           members.push(makeMember("property", name, typeStr, undefined));
+          const memberLine = lineOf(member, ifaceSourceFile);
+          addMemberLine(memberLines, name, memberLine);
           if (member.type && wantEdge("holds")) {
             const paths = collectTypePaths(member.type, checker, validIds);
             for (const tp of paths) {
@@ -696,7 +757,7 @@ export function collectFacts(
                     ...(tp.mutability ? { mutability: tp.mutability } : {}),
                     ...(tp.deferred ? { deferred: true } : {}),
                   };
-                  addEdge(entry.id, targetId, "holds", via);
+                  addEdge(entry.id, targetId, "holds", via, { line: memberLine });
                 }
               }
             }
@@ -706,6 +767,8 @@ export function collectFacts(
           if (!name) continue;
           const typeStr = memberTypeString(checker, member);
           members.push(makeMember("method", name, typeStr, undefined));
+          const memberLine = lineOf(member, ifaceSourceFile);
+          addMemberLine(memberLines, name, memberLine);
           if (wantEdge("uses")) {
             for (const param of member.parameters) {
               if (param.type) {
@@ -724,7 +787,7 @@ export function collectFacts(
                         ...(tp.mutability ? { mutability: tp.mutability } : {}),
                         ...(tp.deferred ? { deferred: true } : {}),
                       };
-                      addEdge(entry.id, targetId, "uses", via);
+                      addEdge(entry.id, targetId, "uses", via, { line: memberLine });
                     }
                   }
                 }
@@ -745,7 +808,7 @@ export function collectFacts(
                       ...(tp.mutability ? { mutability: tp.mutability } : {}),
                       ...(tp.deferred ? { deferred: true } : {}),
                     };
-                    addEdge(entry.id, targetId, "uses", via);
+                    addEdge(entry.id, targetId, "uses", via, { line: memberLine });
                   }
                 }
               }
@@ -755,20 +818,26 @@ export function collectFacts(
       }
       const symbolRecord = symbols.find((s) => s.id === entry.id)!;
       symbolRecord.members = members;
+      if (Object.keys(memberLines).length > 0) symbolRecord.memberLines = memberLines;
     } else if (entry.kind === "enum") {
       const enumDecl = entry.node as ts.EnumDeclaration;
+      const enumSourceFile = enumDecl.getSourceFile();
       const members: MemberRecord[] = [];
+      const memberLines: Record<string, number> = {};
       for (const member of enumDecl.members) {
         const name = memberName(member.name);
         if (!name) continue;
         const value = checker.getConstantValue(member);
         const typeStr = value === undefined ? undefined : String(value);
         members.push(makeMember("value", name, typeStr, undefined));
+        addMemberLine(memberLines, name, lineOf(member, enumSourceFile));
       }
       const symbolRecord = symbols.find((s) => s.id === entry.id)!;
       symbolRecord.members = members;
+      if (Object.keys(memberLines).length > 0) symbolRecord.memberLines = memberLines;
     } else if (entry.kind === "typeAlias") {
       const aliasDecl = entry.node as ts.TypeAliasDeclaration;
+      const aliasLine = lineOf(aliasDecl, aliasDecl.getSourceFile());
       if (wantEdge("uses")) {
         const paths = collectTypePaths(aliasDecl.type, checker, validIds);
         for (const tp of paths) {
@@ -785,12 +854,13 @@ export function collectFacts(
                 ...(tp.mutability ? { mutability: tp.mutability } : {}),
                 ...(tp.deferred ? { deferred: true } : {}),
               };
-              addEdge(entry.id, targetId, "uses", via);
+              addEdge(entry.id, targetId, "uses", via, { line: aliasLine });
             }
           }
         }
       }
     } else if (entry.kind === "function") {
+      const fnLine = lineOf(entry.node, entry.node.getSourceFile());
       if (wantEdge("uses")) {
         for (const param of entry.parameters ?? []) {
           if (param.type) {
@@ -809,7 +879,7 @@ export function collectFacts(
                     ...(tp.mutability ? { mutability: tp.mutability } : {}),
                     ...(tp.deferred ? { deferred: true } : {}),
                   };
-                  addEdge(entry.id, targetId, "uses", via);
+                  addEdge(entry.id, targetId, "uses", via, { line: fnLine });
                 }
               }
             }
@@ -830,12 +900,13 @@ export function collectFacts(
                 ...(tp.mutability ? { mutability: tp.mutability } : {}),
                 ...(tp.deferred ? { deferred: true } : {}),
               };
-              addEdge(entry.id, targetId, "uses", via);
+              addEdge(entry.id, targetId, "uses", via, { line: fnLine });
             }
           }
         }
       }
     } else if (entry.kind === "value") {
+      const valueLine = lineOf(entry.node, entry.node.getSourceFile());
       if (wantEdge("uses")) {
         const paths = collectTypePaths(entry.typeNode, checker, validIds);
         for (const tp of paths) {
@@ -851,11 +922,18 @@ export function collectFacts(
                 ...(tp.mutability ? { mutability: tp.mutability } : {}),
                 ...(tp.deferred ? { deferred: true } : {}),
               };
-              addEdge(entry.id, targetId, "uses", via);
+              addEdge(entry.id, targetId, "uses", via, { line: valueLine });
             }
           }
         }
       }
+    }
+  }
+
+  for (const record of symbols) {
+    const spans = spansById.get(record.id);
+    if (spans && spans.length > 1) {
+      record.spans = [...spans].sort((a, b) => (a.file < b.file ? -1 : a.file > b.file ? 1 : a.line - b.line));
     }
   }
 

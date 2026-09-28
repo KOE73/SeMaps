@@ -24,6 +24,7 @@
       "namespace": "",
       "file": "a.ts",
       "line": 5,
+      "endLine": 7,
       "visibility": "exported",
       "members": [
         {
@@ -32,7 +33,10 @@
           "type": "string",
           "visibility": "public"
         }
-      ]
+      ],
+      "memberLines": {
+        "label": 6
+      }
     },
     {
       "id": "a#Box",
@@ -42,6 +46,7 @@
       "namespace": "",
       "file": "a.ts",
       "line": 28,
+      "endLine": 30,
       "visibility": "exported",
       "members": [
         {
@@ -49,7 +54,10 @@
           "name": "value",
           "type": "number"
         }
-      ]
+      ],
+      "memberLines": {
+        "value": 29
+      }
     },
     {
       "id": "a#Color",
@@ -59,6 +67,7 @@
       "namespace": "",
       "file": "a.ts",
       "line": 23,
+      "endLine": 26,
       "visibility": "exported",
       "members": [
         {
@@ -71,7 +80,11 @@
           "name": "Green",
           "type": "green"
         }
-      ]
+      ],
+      "memberLines": {
+        "Red": 24,
+        "Green": 25
+      }
     },
     {
       "id": "a#Greeter",
@@ -81,6 +94,7 @@
       "namespace": "",
       "file": "a.ts",
       "line": 1,
+      "endLine": 3,
       "visibility": "exported",
       "members": [
         {
@@ -88,7 +102,10 @@
           "name": "greet",
           "type": "(name: string) => string"
         }
-      ]
+      ],
+      "memberLines": {
+        "greet": 2
+      }
     },
     {
       "id": "a#Hidden",
@@ -98,6 +115,7 @@
       "namespace": "",
       "file": "a.ts",
       "line": 9,
+      "endLine": 12,
       "visibility": "file",
       "members": [
         {
@@ -112,7 +130,11 @@
           "type": "string",
           "visibility": "private"
         }
-      ]
+      ],
+      "memberLines": {
+        "secret": 10,
+        "#password": 11
+      }
     },
     {
       "id": "a#Pair",
@@ -122,6 +144,7 @@
       "namespace": "",
       "file": "a.ts",
       "line": 32,
+      "endLine": 32,
       "visibility": "exported"
     },
     {
@@ -132,6 +155,7 @@
       "namespace": "",
       "file": "a.ts",
       "line": 42,
+      "endLine": 50,
       "visibility": "exported"
     },
     {
@@ -142,6 +166,7 @@
       "namespace": "Registry",
       "file": "a.ts",
       "line": 43,
+      "endLine": 45,
       "visibility": "exported",
       "members": [
         {
@@ -149,7 +174,10 @@
           "name": "box",
           "type": "Box"
         }
-      ]
+      ],
+      "memberLines": {
+        "box": 44
+      }
     },
     {
       "id": "a#Registry.Store",
@@ -159,6 +187,7 @@
       "namespace": "Registry",
       "file": "a.ts",
       "line": 47,
+      "endLine": 49,
       "visibility": "exported",
       "members": [
         {
@@ -167,7 +196,10 @@
           "type": "Entry[]",
           "visibility": "public"
         }
-      ]
+      ],
+      "memberLines": {
+        "items": 48
+      }
     },
     {
       "id": "a#VERSION",
@@ -177,6 +209,7 @@
       "namespace": "",
       "file": "a.ts",
       "line": 38,
+      "endLine": 38,
       "visibility": "exported"
     },
     {
@@ -187,6 +220,7 @@
       "namespace": "",
       "file": "a.ts",
       "line": 14,
+      "endLine": 21,
       "visibility": "exported",
       "members": [
         {
@@ -207,7 +241,12 @@
           "type": "(name: string) => string",
           "visibility": "public"
         }
-      ]
+      ],
+      "memberLines": {
+        "id": 15,
+        "token": 16,
+        "greet": 18
+      }
     },
     {
       "id": "a#build",
@@ -217,6 +256,7 @@
       "namespace": "",
       "file": "a.ts",
       "line": 40,
+      "endLine": 40,
       "visibility": "exported"
     },
     {
@@ -227,6 +267,7 @@
       "namespace": "",
       "file": "a.ts",
       "line": 52,
+      "endLine": 54,
       "visibility": "exported"
     },
     {
@@ -237,6 +278,7 @@
       "namespace": "",
       "file": "a.ts",
       "line": 34,
+      "endLine": 36,
       "visibility": "exported"
     },
     {
@@ -255,6 +297,7 @@
       "namespace": "",
       "file": "b.ts",
       "line": 3,
+      "endLine": 5,
       "visibility": "exported",
       "members": [
         {
@@ -263,7 +306,10 @@
           "type": "Widget",
           "visibility": "public"
         }
-      ]
+      ],
+      "memberLines": {
+        "widget": 4
+      }
     },
     {
       "id": "comprehensive",
@@ -281,6 +327,7 @@
       "namespace": "",
       "file": "comprehensive.ts",
       "line": 48,
+      "endLine": 51,
       "visibility": "exported",
       "members": [
         {
@@ -295,7 +342,11 @@
           "type": "Container",
           "visibility": "public"
         }
-      ]
+      ],
+      "memberLines": {
+        "pending": 49,
+        "awaited": 50
+      }
     },
     {
       "id": "comprehensive#Box",
@@ -305,6 +356,7 @@
       "namespace": "",
       "file": "comprehensive.ts",
       "line": 6,
+      "endLine": 6,
       "visibility": "exported",
       "members": []
     },
@@ -316,6 +368,7 @@
       "namespace": "",
       "file": "comprehensive.ts",
       "line": 9,
+      "endLine": 13,
       "visibility": "exported",
       "members": [
         {
@@ -336,7 +389,12 @@
           "type": "readonly Item[]",
           "visibility": "public"
         }
-      ]
+      ],
+      "memberLines": {
+        "mutableArray": 10,
+        "readonlyArrayType": 11,
+        "readonlyArrayBuiltin": 12
+      }
     },
     {
       "id": "comprehensive#Constructor",
@@ -346,6 +404,7 @@
       "namespace": "",
       "file": "comprehensive.ts",
       "line": 72,
+      "endLine": 75,
       "visibility": "exported",
       "members": []
     },
@@ -357,6 +416,7 @@
       "namespace": "",
       "file": "comprehensive.ts",
       "line": 4,
+      "endLine": 4,
       "visibility": "exported",
       "members": []
     },
@@ -368,6 +428,7 @@
       "namespace": "",
       "file": "comprehensive.ts",
       "line": 69,
+      "endLine": 69,
       "visibility": "exported"
     },
     {
@@ -378,6 +439,7 @@
       "namespace": "",
       "file": "comprehensive.ts",
       "line": 95,
+      "endLine": 98,
       "visibility": "exported",
       "members": [
         {
@@ -392,7 +454,11 @@
           "type": "Box<Item | Widget>",
           "visibility": "public"
         }
-      ]
+      ],
+      "memberLines": {
+        "boxed": 96,
+        "boxedMultiple": 97
+      }
     },
     {
       "id": "comprehensive#IReadable",
@@ -402,6 +468,7 @@
       "namespace": "",
       "file": "comprehensive.ts",
       "line": 87,
+      "endLine": 92,
       "visibility": "exported",
       "members": [
         {
@@ -424,7 +491,13 @@
           "name": "itemsByKey",
           "type": "Record<string, Item>"
         }
-      ]
+      ],
+      "memberLines": {
+        "item": 88,
+        "container": 89,
+        "items": 90,
+        "itemsByKey": 91
+      }
     },
     {
       "id": "comprehensive#Indexed",
@@ -434,6 +507,7 @@
       "namespace": "",
       "file": "comprehensive.ts",
       "line": 35,
+      "endLine": 38,
       "visibility": "exported",
       "members": []
     },
@@ -445,6 +519,7 @@
       "namespace": "",
       "file": "comprehensive.ts",
       "line": 3,
+      "endLine": 3,
       "visibility": "exported",
       "members": []
     },
@@ -456,6 +531,7 @@
       "namespace": "",
       "file": "comprehensive.ts",
       "line": 67,
+      "endLine": 67,
       "visibility": "exported"
     },
     {
@@ -466,6 +542,7 @@
       "namespace": "",
       "file": "comprehensive.ts",
       "line": 68,
+      "endLine": 68,
       "visibility": "exported"
     },
     {
@@ -476,6 +553,7 @@
       "namespace": "",
       "file": "comprehensive.ts",
       "line": 22,
+      "endLine": 26,
       "visibility": "exported",
       "members": [
         {
@@ -496,7 +574,12 @@
           "type": "ReadonlyMap<string, Item>",
           "visibility": "public"
         }
-      ]
+      ],
+      "memberLines": {
+        "byId": 23,
+        "byWidget": 24,
+        "readonlyMap": 25
+      }
     },
     {
       "id": "comprehensive#Methods",
@@ -506,6 +589,7 @@
       "namespace": "",
       "file": "comprehensive.ts",
       "line": 106,
+      "endLine": 118,
       "visibility": "exported",
       "members": [
         {
@@ -526,7 +610,12 @@
           "type": "(widget: Widget) => Box<Widget>",
           "visibility": "public"
         }
-      ]
+      ],
+      "memberLines": {
+        "getItem": 107,
+        "processItems": 111,
+        "getBox": 115
+      }
     },
     {
       "id": "comprehensive#Optional",
@@ -536,6 +625,7 @@
       "namespace": "",
       "file": "comprehensive.ts",
       "line": 41,
+      "endLine": 45,
       "visibility": "exported",
       "members": [
         {
@@ -556,7 +646,12 @@
           "type": "Widget",
           "visibility": "public"
         }
-      ]
+      ],
+      "memberLines": {
+        "optionalField": 42,
+        "nullableField": 43,
+        "nullableField2": 44
+      }
     },
     {
       "id": "comprehensive#ParameterProperty",
@@ -566,6 +661,7 @@
       "namespace": "",
       "file": "comprehensive.ts",
       "line": 78,
+      "endLine": 84,
       "visibility": "exported",
       "members": []
     },
@@ -577,6 +673,7 @@
       "namespace": "",
       "file": "comprehensive.ts",
       "line": 29,
+      "endLine": 32,
       "visibility": "exported",
       "members": [
         {
@@ -591,7 +688,11 @@
           "type": "Readonly<Record<string, Container>>",
           "visibility": "public"
         }
-      ]
+      ],
+      "memberLines": {
+        "itemsByKey": 30,
+        "readonlyRecord": 31
+      }
     },
     {
       "id": "comprehensive#Sets",
@@ -601,6 +702,7 @@
       "namespace": "",
       "file": "comprehensive.ts",
       "line": 16,
+      "endLine": 19,
       "visibility": "exported",
       "members": [
         {
@@ -615,7 +717,11 @@
           "type": "ReadonlySet<Item>",
           "visibility": "public"
         }
-      ]
+      ],
+      "memberLines": {
+        "items": 17,
+        "readonlyItems": 18
+      }
     },
     {
       "id": "comprehensive#Tuples",
@@ -625,6 +731,7 @@
       "namespace": "",
       "file": "comprehensive.ts",
       "line": 60,
+      "endLine": 64,
       "visibility": "exported",
       "members": [
         {
@@ -645,7 +752,12 @@
           "type": "[first: Item, second: Container]",
           "visibility": "public"
         }
-      ]
+      ],
+      "memberLines": {
+        "pair": 61,
+        "triple": 62,
+        "namedTuple": 63
+      }
     },
     {
       "id": "comprehensive#Union",
@@ -655,6 +767,7 @@
       "namespace": "",
       "file": "comprehensive.ts",
       "line": 54,
+      "endLine": 57,
       "visibility": "exported",
       "members": [
         {
@@ -669,7 +782,11 @@
           "type": "Item | Widget | Container",
           "visibility": "public"
         }
-      ]
+      ],
+      "memberLines": {
+        "either": 55,
+        "multiple": 56
+      }
     },
     {
       "id": "comprehensive#Widget",
@@ -679,6 +796,7 @@
       "namespace": "",
       "file": "comprehensive.ts",
       "line": 5,
+      "endLine": 5,
       "visibility": "exported",
       "members": []
     },
@@ -690,6 +808,7 @@
       "namespace": "",
       "file": "comprehensive.ts",
       "line": 101,
+      "endLine": 103,
       "visibility": "exported"
     }
   ],
@@ -767,12 +886,14 @@
     {
       "from": "a#Widget",
       "to": "a#Base",
-      "kind": "extends"
+      "kind": "extends",
+      "line": 14
     },
     {
       "from": "a#Widget",
       "to": "a#Greeter",
-      "kind": "implements"
+      "kind": "implements",
+      "line": 14
     },
     {
       "from": "b",

@@ -20,6 +20,12 @@ export interface ViaRecord {
   deferred?: boolean;
 }
 
+export interface SpanRecord {
+  file: string;
+  line: number;
+  endLine?: number;
+}
+
 export interface SymbolRecord {
   id: string;
   kind: SymbolKind;
@@ -28,8 +34,17 @@ export interface SymbolRecord {
   namespace?: string;
   file: string;
   line?: number;
+  endLine?: number;
+  /** Every declaration of the symbol; printed only when there is more than
+   * one (merged interfaces/namespaces). `file`/`line` above stay the first
+   * declaration, as without this field. */
+  spans?: SpanRecord[];
   visibility?: string;
   members?: MemberRecord[];
+  /** member name -> line, beside `members` (docs/EXTRACTOR.md §2.1): sync
+   * copies `members` verbatim into entities.json, so a line inside it would
+   * make the registry change on every code edit above it. */
+  memberLines?: Record<string, number>;
 }
 
 export interface EdgeRecord {
@@ -37,6 +52,11 @@ export interface EdgeRecord {
   to: string;
   kind: EdgeKind;
   via?: ViaRecord;
+  /** Where the edge comes from: the member for holds/uses, the heritage
+   * clause for extends/implements. Not for contains/depends. `file` only
+   * when it differs from the `from` symbol's file. */
+  line?: number;
+  file?: string;
 }
 
 export interface FactsOutput {
