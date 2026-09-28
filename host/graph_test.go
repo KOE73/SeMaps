@@ -248,13 +248,16 @@ func TestGraphEndpointExactlyAsTheEditorSendsIt(t *testing.T) {
 // The graph page asks for the whole graph: the endpoint must not cut it to
 // the tool's `mcp.limit`, only to a `limit` the request names itself.
 func TestGraphEndpointWholeGraphIsNotCutByTheToolsLimit(t *testing.T) {
-	gs, _ := graphFixture(t, true)
+	gs := liftFixture(t)
 	gs.settings = newMcpSettingsBox(mcpSettings{Limit: 1})
 	srv := graphServer(gs)
 	defer srv.Close()
 	_, whole := getGraphJSON(t, srv.URL+"/api/graph/p?fields=via,position")
 	if n := len(whole["nodes"].([]any)); n < 2 {
 		t.Fatalf("the whole graph was cut to %d node(s) by mcp.limit", n)
+	}
+	if whole["truncated"] == true {
+		t.Fatalf("the whole graph is marked truncated")
 	}
 	_, cut := getGraphJSON(t, srv.URL+"/api/graph/p?limit=1")
 	if n := len(cut["nodes"].([]any)); n != 1 {
