@@ -3,7 +3,8 @@ import type { GraphEdge, GraphNode } from "./types.js";
 /**
  * Colour and legend logic for the graph page. Presence (`code`/`model`/
  * `both`) is always visible, independent of the chosen colouring attribute
- * (PLAN_20260928-2 step 3): `code` is always grey, `model` is the
+ * (PLAN_20260928-2 step 3): `code` is the attribute's colour dulled towards
+ * grey (plain grey when colouring by presence), `model` is the
  * attribute's colour lightened — sigma's built-in node programs
  * (`node-circle`, `node-point`) have no outline-only mode, so an outline is
  * not possible without a custom WebGL program; a lighter tint plus a "◇"
@@ -57,10 +58,20 @@ function lighten(hex: string, amount: number): string {
   return `rgb(${mix(r)}, ${mix(g)}, ${mix(b)})`;
 }
 
+function towards(hex: string, target: string, amount: number): string {
+  const a = parseInt(hex.slice(1), 16), b = parseInt(target.slice(1), 16);
+  const mix = (shift: number) => Math.round(((a >> shift) & 255) * (1 - amount) + ((b >> shift) & 255) * amount);
+  return `rgb(${mix(16)}, ${mix(8)}, ${mix(0)})`;
+}
+
 /** Final fill colour for a node: attribute colour, styled by presence. */
 export function nodeColor(n: GraphNode, by: ColorBy): string {
   const base = colorFor(colorAttribute(n, by));
-  if (n.presence === "code") return PRESENCE_CODE_COLOR;
+  if (by === "presence") return n.presence === "code" ? PRESENCE_CODE_COLOR : base;
+  // A project that was never synced has code-only nodes alone: plain grey
+  // would leave it without any colouring, so the attribute's colour stays,
+  // dulled towards the grey.
+  if (n.presence === "code") return towards(base, PRESENCE_CODE_COLOR, 0.45);
   if (n.presence === "model") return lighten(base, 0.55);
   return base;
 }

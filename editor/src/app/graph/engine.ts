@@ -22,6 +22,7 @@ export class GraphEngine {
   private readonly nodeById = new Map<string, GraphNode>();
   private readonly edges: GraphEdge[];
   private renderer!: Sigma;
+  private canvas!: HTMLElement;
   private colorBy: ColorBy = "kind";
   private layout: LayoutKind = "force";
   private filters: FilterState;
@@ -55,8 +56,9 @@ export class GraphEngine {
     seedCircle(this.graph);
   }
 
-  /** Builds the toolbar + canvas + panel DOM, mounts sigma, and starts the
-   * default (force) layout. */
+  /** Builds the toolbar + canvas + panel DOM. Sigma refuses a container
+   * without a width, so it is started by `start()`, once the caller has put
+   * the returned element into the page. */
   mount(): HTMLElement {
     const search = el("input", { class: "graph-search", placeholder: t.graphSearchPlaceholder }) as HTMLInputElement;
     search.addEventListener("input", () => this.search(search.value));
@@ -113,9 +115,17 @@ export class GraphEngine {
       root.prepend(this.noticeBar());
     }
 
-    this.renderer = new Sigma(this.graph, canvas, {
+    this.canvas = canvas;
+    return root;
+  }
+
+  /** Mounts sigma and starts the default (force) layout. */
+  start(): void {
+    this.renderer = new Sigma(this.graph, this.canvas, {
       renderLabels: true,
       labelRenderedSizeThreshold: 8,
+      // The canvas is dark (graph.css): sigma's default label is black.
+      labelColor: { color: "#e6e8ec" },
       nodeReducer: (node, attrs) => this.nodeReducer(node, attrs),
       edgeReducer: (edge, attrs) => this.edgeReducer(edge, attrs),
     });
@@ -128,7 +138,6 @@ export class GraphEngine {
     this.statsEl.textContent = statsLine(this.data.nodes.length, this.data.edges.length);
 
     this.applyLayout();
-    return root;
   }
 
   destroy(): void {
@@ -249,8 +258,9 @@ export class GraphEngine {
     if (!found) return;
     this.selected = found.id;
     this.showPanel(found.id);
-    const pos = this.graph.getNodeAttributes(found.id);
-    this.renderer.getCamera().animate({ x: pos.x, y: pos.y, ratio: 0.3 }, { duration: 400 });
+    // The camera works in sigma's framed coordinates, not in the graph's own.
+    const pos = this.renderer.getNodeDisplayData(found.id);
+    if (pos) this.renderer.getCamera().animate({ x: pos.x, y: pos.y, ratio: 0.3 }, { duration: 400 });
     this.renderer.refresh();
   }
 

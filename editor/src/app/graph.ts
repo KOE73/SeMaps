@@ -61,4 +61,5 @@ async function render(inner: HTMLElement): Promise<void> {
   mounted.querySelector(".graph-toolbar")?.prepend(el("label", { class: "graph-field" }, [t.graphProject, projectSelect]));
   engine = eng;
   inner.replaceChildren(mounted);
+  eng.start();
 }
