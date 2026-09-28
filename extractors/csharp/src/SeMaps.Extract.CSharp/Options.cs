@@ -83,7 +83,7 @@ internal static class ArgsParser
         return new Options { Root = root, Includes = includes, Excludes = excludes, EdgeKinds = edgeKinds };
     }
 
-    private static bool IsValidEdgeKind(string kind) => kind is "holds" or "uses" or "injects";
+    private static bool IsValidEdgeKind(string kind) => kind is "holds" or "uses" or "injects" or "calls";
 
     private static bool TryTakeValue(string[] args, ref int i, out string value)
     {

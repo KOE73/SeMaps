@@ -54,6 +54,7 @@ internal sealed class EdgeFact
     [JsonPropertyName("via")] public ViaFact? Via { get; set; }
     [JsonPropertyName("line")] public int? Line { get; set; }
     [JsonPropertyName("file")] public string? File { get; set; }
+    [JsonPropertyName("lines")] public List<int>? Lines { get; set; }
 }
 
 internal sealed class ViaFact
