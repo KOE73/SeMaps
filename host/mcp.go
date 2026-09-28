@@ -246,12 +246,15 @@ func write(name, desc string) *mcp.Tool {
 
 func (s *mcpServer) server() *mcp.Server {
 	// settings are read once here, before mcp.NewServer, since Instructions
-	// is fixed for the life of this *mcp.Server (the Go SDK gives no way to
-	// change it on a live server): a later PUT /api/setup change of
-	// mcp.tools/mcp.description rebuilds the tool list (rebuildGraphTools)
-	// but leaves Instructions as they were when server() ran — current for
-	// a brand new host process, not for one already running (docs/API.md
-	// §6, PLAN_20260928-7 step 4).
+	// is fixed for the life of THIS *mcp.Server (the Go SDK gives no way to
+	// change it on a live one): a later PUT /api/setup change of
+	// mcp.tools/mcp.description leaves ITS Instructions as they were.
+	// registerMCPHTTP (host/mcp_http.go, mcpServerPool) is what makes the
+	// change reach a new session at once regardless: it calls server() again
+	// on a settings change and hands the fresh *mcp.Server, with the new
+	// Instructions baked in, to every session that connects from then on,
+	// while the servers still-open sessions are on get their tool lists
+	// rebuilt in place (docs/API.md §6, PLAN_20260928-7 step 4).
 	settings := s.mcpSettingsNow()
 	srv := mcp.NewServer(&mcp.Implementation{Name: "semaps", Version: "1"}, &mcp.ServerOptions{
 		Instructions: "SeMaps registry of this repository. Read with list_*/get_*/find_*; write only through these tools. " +

@@ -488,11 +488,20 @@ is enough for `around`/`name` — are said ONCE, in the server's own `Instructio
 (`serverInstructions`, `PLAN_20260928-7` step 4: the `narrow` set exists for small models, and
 repeating that explanation in each of its ten tools defeated the point), not in every tool's own
 description. `Instructions` is given to a client once, at initialisation, and the Go SDK gives no
-way to change it on a live `*mcp.Server`: a change of `mcp.tools`/`mcp.description` rebuilds the
-tool list at once (above), but a session already connected, and any new session the same host
-process opens, keeps the `Instructions` text the server had when it started — current again only
-after the host restarts. The texts are written out in full in `host/mcp_descriptions.go`, not
-assembled from pieces, and describe only parameters that exist now.
+way to change it on a live `*mcp.Server` — so the host keeps a small pool of them instead of one
+(`mcpServerPool`, `host/mcp_http.go`). A change of `mcp.tools`/`mcp.description` (PUT
+`/api/setup`) does two things at once: every `*mcp.Server` that may still have an open session has
+its graph tools rebuilt in place, exactly as before (`RemoveTools`/`AddTool`, `list_changed`) —
+so an already-connected session sees the new tool list as soon as it next asks for it, still with
+the `Instructions` it was given at `initialize`; and a brand new `*mcp.Server` is built, with the
+new `Instructions` baked in, and becomes the one handed to every session that connects from this
+point on — the stdio proxy included, the next time it starts `semaps mcp` (it copies the tool
+list once at startup and does not watch for a later change, as before). The pool keeps only the
+most recent 8 servers (the SDK gives no way to learn a server's last session has closed, so there
+is no way to prune it sooner); a session open on a server older than that keeps stale
+`Instructions` and stops getting tool-list rebuilds. The texts are written out in full in
+`host/mcp_descriptions.go`, not assembled from pieces, and describe only parameters that exist
+now.
 
 **Log.** Every tool call — the tool, its arguments, time, the error if any — is a JSON line in
 `<project root>/.semaps/logs/mcp-<date>.jsonl` (kept 14 days; the folder carries its own
