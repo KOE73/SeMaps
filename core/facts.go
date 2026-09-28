@@ -30,10 +30,28 @@ type Symbol struct {
 	Namespace  string `json:"namespace,omitempty"`
 	File       string `json:"file"`
 	Line       int    `json:"line,omitempty"`
+	EndLine    int    `json:"endLine,omitempty"` // last line of the declaration named by file/line
+	// Spans lists every declaration of the symbol (C# partial, TypeScript
+	// merged declarations); printed only when there is more than one. File
+	// and Line above stay the first declaration, as before this field
+	// existed.
+	Spans      []Span `json:"spans,omitempty"`
 	Visibility string `json:"visibility,omitempty"`
 	// Members keeps the extractor's array as is: its shape is the `members`
 	// of CONTRACT.md §3, and sync copies it into the entity unchanged.
 	Members json.RawMessage `json:"members,omitempty"`
+	// MemberLines maps member name -> line. It lives beside Members, never
+	// inside a member record: sync copies Members verbatim into entities.json,
+	// and a line there would make the registry change on every code edit
+	// above it. A member declared in a file other than File is left out.
+	MemberLines map[string]int `json:"memberLines,omitempty"`
+}
+
+// Span is one declaration of a symbol with more than one (docs/EXTRACTOR.md §2.1).
+type Span struct {
+	File    string `json:"file"`
+	Line    int    `json:"line"`
+	EndLine int    `json:"endLine,omitempty"`
 }
 
 // Edge joins two symbols of the same output.
@@ -42,6 +60,13 @@ type Edge struct {
 	To   string `json:"to"`
 	Kind string `json:"kind"`
 	Via  *Via   `json:"via,omitempty"` // signature of member relation
+	// Line and File say where the edge comes from: the member for
+	// holds/uses, the base list for extends/implements. Not for contains
+	// and depends. File is set only when it differs from the `from`
+	// symbol's file. Neither is part of the edge's sort order or identity
+	// (docs/EXTRACTOR.md §3).
+	Line int    `json:"line,omitempty"`
+	File string `json:"file,omitempty"`
 }
 
 // Via is the signature of a member relation: docs/EXTRACTOR.md §2.2a.
@@ -165,6 +190,28 @@ func (f *Facts) problems() []string {
 		if s.Line < 0 {
 			bad("%s: line %d, lines start at 1", where, s.Line)
 		}
+		if s.EndLine < 0 {
+			bad("%s: endLine %d, lines start at 1", where, s.EndLine)
+		}
+		for j, sp := range s.Spans {
+			if sp.Line < 1 {
+				bad("%s: spans[%d].line %d, lines start at 1", where, j, sp.Line)
+			}
+			if sp.EndLine < 0 {
+				bad("%s: spans[%d].endLine %d, lines start at 1", where, j, sp.EndLine)
+			}
+			if j > 0 {
+				prev := s.Spans[j-1]
+				if prev.File > sp.File || (prev.File == sp.File && prev.Line > sp.Line) {
+					bad("%s: spans are not sorted by (file, line)", where)
+				}
+			}
+		}
+		for name, line := range s.MemberLines {
+			if line < 1 {
+				bad("%s: memberLines[%q] %d, lines start at 1", where, name, line)
+			}
+		}
 		if len(s.Members) > 0 {
 			var members []struct {
 				Name string `json:"name"`
@@ -201,6 +248,15 @@ func (f *Facts) problems() []string {
 		}
 		if e.Via != nil && (e.Kind == "extends" || e.Kind == "implements" || e.Kind == "contains" || e.Kind == "depends") {
 			bad("%s: `via` is only for holds/uses edges", where)
+		}
+		if e.Line < 0 {
+			bad("%s: line %d, lines start at 1", where, e.Line)
+		}
+		if e.Line != 0 && (e.Kind == "contains" || e.Kind == "depends") {
+			bad("%s: `line` is not for contains/depends edges", where)
+		}
+		if e.File != "" && e.Line == 0 {
+			bad("%s: `file` without `line`", where)
 		}
 		if e.Via != nil {
 			if e.Via.Cardinality != "" && e.Via.Cardinality != "one" && e.Via.Cardinality != "optional" && e.Via.Cardinality != "many" && e.Via.Cardinality != "keyed" {

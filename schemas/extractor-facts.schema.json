@@ -37,11 +37,32 @@
         "namespace": { "type": "string" },
         "file": { "type": "string", "pattern": "^[^\\\\]+$", "description": "relative to root, forward slashes" },
         "line": { "type": "integer", "minimum": 1 },
+        "endLine": { "type": "integer", "minimum": 1, "description": "last line of the declaration named by file/line" },
+        "spans": {
+          "type": "array",
+          "items": { "$ref": "#/$defs/span" },
+          "description": "printed only when the symbol has more than one declaration (C# partial, TypeScript merged declarations); sorted by (file, line)"
+        },
         "visibility": { "type": "string", "minLength": 1 },
         "members": {
           "type": "array",
           "items": { "$ref": "#/$defs/member" }
+        },
+        "memberLines": {
+          "type": "object",
+          "additionalProperties": { "type": "integer", "minimum": 1 },
+          "description": "member name -> line, beside members so sync never copies it into entities.json; a member declared in another file than the symbol's file is left out"
         }
+      }
+    },
+    "span": {
+      "type": "object",
+      "required": ["file", "line"],
+      "additionalProperties": false,
+      "properties": {
+        "file": { "type": "string", "pattern": "^[^\\\\]+$" },
+        "line": { "type": "integer", "minimum": 1 },
+        "endLine": { "type": "integer", "minimum": 1 }
       }
     },
     "member": {
@@ -64,7 +85,9 @@
         "from": { "$ref": "#/$defs/id" },
         "to": { "$ref": "#/$defs/id" },
         "kind": { "enum": ["extends", "implements", "contains", "depends", "holds", "uses"] },
-        "via": { "$ref": "#/$defs/via" }
+        "via": { "$ref": "#/$defs/via" },
+        "line": { "type": "integer", "minimum": 1, "description": "where the edge comes from: the member for holds/uses, the base list for extends/implements. Not for contains and depends" },
+        "file": { "type": "string", "pattern": "^[^\\\\]+$", "description": "only when it differs from the file of the `from` symbol" }
       }
     },
     "via": {
