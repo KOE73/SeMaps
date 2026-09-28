@@ -167,7 +167,7 @@ type getGraphIn struct {
 
 type findNodeIn struct {
 	Project string `json:"project,omitempty"`
-	Q       string `json:"q" jsonschema:"substring of a node's name or id, case-insensitive"`
+	Q       string `json:"q" jsonschema:"substring of a name or id"`
 	Limit   int    `json:"limit,omitempty" jsonschema:"default 50"`
 }
 
@@ -245,9 +245,18 @@ func write(name, desc string) *mcp.Tool {
 }
 
 func (s *mcpServer) server() *mcp.Server {
+	// settings are read once here, before mcp.NewServer, since Instructions
+	// is fixed for the life of this *mcp.Server (the Go SDK gives no way to
+	// change it on a live server): a later PUT /api/setup change of
+	// mcp.tools/mcp.description rebuilds the tool list (rebuildGraphTools)
+	// but leaves Instructions as they were when server() ran — current for
+	// a brand new host process, not for one already running (docs/API.md
+	// §6, PLAN_20260928-7 step 4).
+	settings := s.mcpSettingsNow()
 	srv := mcp.NewServer(&mcp.Implementation{Name: "semaps", Version: "1"}, &mcp.ServerOptions{
 		Instructions: "SeMaps registry of this repository. Read with list_*/get_*/find_*; write only through these tools. " +
-			"Nothing can be deleted; view geometry only with requestedByHuman when a human asked. See docs/ADOPTING.md.",
+			"Nothing can be deleted; view geometry only with requestedByHuman when a human asked. " +
+			serverInstructions(settings.Tools, settings.Description),
 	})
 	// Reading tools say so (readOnlyHint): a client may run them without asking,
 	// and the editor's sandbox asks before any other.
@@ -261,7 +270,6 @@ func (s *mcpServer) server() *mcp.Server {
 	mcp.AddTool(srv, read("get_view", "A view with geometry as a tree: zones with their nodes, absolute rectangles, visible lines, what is unsaved. A zone reference reads only its subtree."), s.getView)
 	mcp.AddTool(srv, read("doctor", "Extractors and runtimes found, and the model check of the workspace."), s.doctor)
 	mcp.AddTool(srv, read("sync_preview", "What sync would change, writing nothing (= semaps sync --dry-run)."), s.syncPreview)
-	settings := s.mcpSettingsNow()
 	s.registerGraphTools(srv, settings.Tools, settings.Description)
 
 	mcp.AddTool(srv, write("set_text", "Write one text field as authored, with at = now."), s.setText)
@@ -289,8 +297,8 @@ func (s *mcpServer) server() *mcp.Server {
 // optional project.
 type narrowIn struct {
 	Project string `json:"project,omitempty"`
-	Name    string `json:"name" jsonschema:"a node name (or id from find_node)"`
-	Depth   int    `json:"depth,omitempty" jsonschema:"hops from name; 1-5, default 1"`
+	Name    string `json:"name"`
+	Depth   int    `json:"depth,omitempty"`
 }
 
 // graphToolNames: every tool name either set can register, so

@@ -56,11 +56,18 @@ type mcpStatus struct {
 // answer's size in bytes and an estimated token count (bytes/4 — an
 // estimate, not a real tokenizer).
 type mcpCombo struct {
-	Tools          string        `json:"tools"`
-	Description    string        `json:"description"`
-	GraphTools     []mcpToolView `json:"graphTools"`
-	Bytes          int           `json:"bytes"`
-	EstimateTokens int           `json:"estimateTokens"` // bytes / 4, an estimate
+	Tools       string        `json:"tools"`
+	Description string        `json:"description"`
+	GraphTools  []mcpToolView `json:"graphTools"`
+	// Instructions is the server Instructions text (serverInstructions,
+	// host/mcp_descriptions.go) this combination's session would receive
+	// once, at initialisation — counted into Bytes/EstimateTokens below
+	// (PLAN_20260928-7 step 4: the narrow set's whole purpose is a smaller
+	// per-session cost, so its size must include what a session actually
+	// gets, not only its tool descriptions).
+	Instructions   string `json:"instructions"`
+	Bytes          int    `json:"bytes"`
+	EstimateTokens int    `json:"estimateTokens"` // bytes / 4, an estimate
 }
 
 func (api *toolAPI) mcpPath() string { return filepath.Join(filepath.Dir(api.file), mcpFile) }
@@ -205,7 +212,8 @@ func mcpCombos() []mcpCombo {
 		for _, description := range []string{"brief", "standard", "full"} {
 			all := mcpTools(toolsSet, description)
 			var graphTools []mcpToolView
-			total := 0
+			instructions := serverInstructions(toolsSet, description)
+			total := len(instructions)
 			for _, t := range all {
 				if !graphNames[t.Name] {
 					continue
@@ -217,7 +225,7 @@ func mcpCombos() []mcpCombo {
 				}
 			}
 			out = append(out, mcpCombo{Tools: toolsSet, Description: description, GraphTools: graphTools,
-				Bytes: total, EstimateTokens: total / 4})
+				Instructions: instructions, Bytes: total, EstimateTokens: total / 4})
 		}
 	}
 	return out

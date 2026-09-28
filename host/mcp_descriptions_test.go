@@ -201,19 +201,54 @@ func TestMCPDescriptionsOnlyNameRealParameters(t *testing.T) {
 	checkTool("find_node", findNodeAllowed, map[string]string{
 		"brief": graphToolDescriptions["find_node"].Brief, "standard": graphToolDescriptions["find_node"].Standard, "full": graphToolDescriptions["find_node"].Full,
 	})
-	// A narrow tool's standard/full text reuses the shared facts-line/traps
-	// prose (factsLineHelp/trapsHelp), which explains the underlying walk in
-	// terms of get_graph's own parameters (around, follow, limit, fanout,
-	// lift) — true and useful context, not a claim that this tool itself
-	// accepts them. So a narrow tool's allowed vocabulary is its own struct
-	// plus get_graph's.
+	// Since PLAN_20260928-7 step 4 (narrow set 3x cheaper), a narrow tool's
+	// own description names only its own parameters (name, depth) — the
+	// shared facts-line/traps prose that used to explain get_graph's own
+	// parameters (around, follow, limit, fanout, lift) moved out to the
+	// server's instructions (serverInstructions), so the old allowance for
+	// naming get_graph's parameters is gone: a narrow tool's vocabulary is
+	// strictly its own struct.
 	narrowAllowed := paramNames(narrowIn{})
-	for k := range paramNames(getGraphIn{}) {
-		narrowAllowed[k] = true
-	}
 	for name, nt := range narrowTools {
 		d := narrowDescriptions(name, nt)
 		checkTool(name, narrowAllowed, map[string]string{"brief": d.Brief, "standard": d.Standard, "full": d.Full})
+	}
+}
+
+// TestServerInstructionsNoForbiddenReferences: the server Instructions text
+// (serverInstructions), at every tools×description combination, names no
+// removed parameter's marker (`set=`), no ADR, and no repository
+// path/markdown file — an agent reading it works in another repository and
+// cannot open ours (step 4 rules, extended to Instructions since the
+// line-reading help and the traps moved there).
+func TestServerInstructionsNoForbiddenReferences(t *testing.T) {
+	forbidden := []string{"set=", "ADR", "docs/", ".md"}
+	for _, toolsSet := range []string{"one", "narrow"} {
+		for _, level := range []string{"brief", "standard", "full"} {
+			text := serverInstructions(toolsSet, level)
+			for _, f := range forbidden {
+				if strings.Contains(text, f) {
+					t.Errorf("%s/%s: instructions contain forbidden %q:\n%s", toolsSet, level, f, text)
+				}
+			}
+		}
+	}
+}
+
+// TestMCPComboBudgets: the six tools×description combinations, sized the
+// way /api/mcp sizes them (name+description+schema of the graph tools, plus
+// the server Instructions text) must not exceed a budget on the `narrow`
+// set (PLAN_20260928-7 step 4: it exists for small models, so its whole
+// point is a small per-session cost). `one` carries no budget here.
+func TestMCPComboBudgets(t *testing.T) {
+	budgets := map[string]int{"brief": 3000, "standard": 8000, "full": 12000}
+	for _, c := range mcpCombos() {
+		if c.Tools != "narrow" {
+			continue
+		}
+		if want, ok := budgets[c.Description]; ok && c.Bytes > want {
+			t.Errorf("narrow/%s: %d bytes, budget %d", c.Description, c.Bytes, want)
+		}
 	}
 }
 
