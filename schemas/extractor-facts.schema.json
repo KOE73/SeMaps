@@ -91,7 +91,7 @@
         "lines": {
           "type": "array",
           "items": { "type": "integer", "minimum": 1 },
-          "description": "every place of a calls edge inside the calling method, sorted ascending; line is the first of them (ADR_20260928-4 §3)"
+          "description": "every place of a calls or constructs edge inside the method, sorted ascending; line is the first of them (ADR_20260928-4 §3)"
         }
       }
     },

@@ -290,8 +290,10 @@ func (f *Facts) problems() []string {
 				bad("%s: lines are not sorted or repeat", where)
 			}
 		}
-		if len(e.Lines) > 0 && e.Kind != "calls" {
-			bad("%s: `lines` is only for calls edges", where)
+		// A method may construct the same type in several places, as it may
+		// call the same method: both carry every place.
+		if len(e.Lines) > 0 && e.Kind != "calls" && e.Kind != "constructs" {
+			bad("%s: `lines` is only for calls and constructs edges", where)
 		}
 		fromKind, toKind := kindOf[e.From], kindOf[e.To]
 		switch e.Kind {

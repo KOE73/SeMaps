@@ -96,6 +96,9 @@ internal static class SymbolIds
     public static string PropertyId(IPropertySymbol property) =>
         $"{TypeId(property.ContainingType)}.{property.Name}";
 
+    // An id has no whitespace (schema: `^\S+$`); the display string of a type puts a space
+    // after each comma of its type arguments and tuple elements: `Dictionary<int, T[]>`.
     private static string ParameterTypeList(System.Collections.Immutable.ImmutableArray<IParameterSymbol> parameters) =>
-        string.Join(",", parameters.Select(p => SymbolDisplayHelpers.TypeToDisplayString(p.Type)));
+        string.Join(",", parameters.Select(p =>
+            string.Concat(SymbolDisplayHelpers.TypeToDisplayString(p.Type).Where(c => !char.IsWhiteSpace(c)))));
 }
