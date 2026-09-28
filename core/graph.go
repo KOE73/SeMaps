@@ -32,7 +32,11 @@ type GraphNode struct {
 	Visibility string   `json:"visibility,omitempty"`
 	File       string   `json:"file,omitempty"`
 	Line       int      `json:"line,omitempty"`
-	Language   string   `json:"language,omitempty"`
+	EndLine    int      `json:"endLine,omitempty"`
+	Spans      []Span   `json:"spans,omitempty"` // every declaration, when there is more than one
+	// MemberLines: member name -> line, in File (docs/EXTRACTOR.md §2.1).
+	MemberLines map[string]int `json:"memberLines,omitempty"`
+	Language    string         `json:"language,omitempty"`
 	Extractor  string   `json:"extractor,omitempty"`
 	Entity     string   `json:"entity,omitempty"`
 	Status     string   `json:"status,omitempty"`
@@ -54,6 +58,8 @@ type GraphEdge struct {
 	Kind     string `json:"kind"` // facts vocabulary; of a model-only edge, the first segment of its type
 	Type     string `json:"type"` // relation type as the registry names it: holds.many, injects, extends…
 	Via      *Via   `json:"via,omitempty"`
+	Line     int    `json:"line,omitempty"` // where the edge comes from, in File or in the file of `from`
+	File     string `json:"file,omitempty"`
 	Relation string `json:"relation,omitempty"` // registry relation id, or empty
 	Presence string `json:"presence"`           // "both", "code" or "model"
 }
@@ -128,7 +134,7 @@ func BuildGraph(sources []FactsSource, model *Model) (*Graph, error) {
 			n := GraphNode{
 				ID: key, Symbol: s.ID, Kind: s.Kind, NativeKind: s.NativeKind,
 				Name: s.Name, Namespace: s.Namespace, Visibility: s.Visibility,
-				File: s.File, Line: s.Line, Language: src.Facts.Language, Extractor: src.Extractor,
+				File: s.File, Line: s.Line, EndLine: s.EndLine, Spans: s.Spans, MemberLines: s.MemberLines, Language: src.Facts.Language, Extractor: src.Extractor,
 			}
 			subjectID := key
 			if e := entityBySymbol[s.ID]; e != nil && !consumed[e] {
@@ -192,7 +198,7 @@ func BuildGraph(sources []FactsSource, model *Model) (*Graph, error) {
 			if (e.Kind == "holds" || e.Kind == "uses") && e.Via != nil {
 				relType = deriveRelationType(e.Kind, e.Via)
 			}
-			ge := GraphEdge{From: from, To: to, Kind: e.Kind, Type: relType, Via: e.Via, Presence: "code"}
+			ge := GraphEdge{From: from, To: to, Kind: e.Kind, Type: relType, Via: e.Via, Line: e.Line, File: e.File, Presence: "code"}
 
 			fromEnt, toEnt := entityBySymbol[e.From], entityBySymbol[e.To]
 			if fromEnt != nil && toEnt != nil {

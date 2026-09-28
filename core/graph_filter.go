@@ -142,19 +142,24 @@ func FilterContainer(g *Graph, id string, known map[string]bool) (*Graph, error)
 }
 
 // StripFields removes GraphEdge.Via when `fields` lacks "via", and
-// GraphNode.File/Line when it lacks "position". "members" is handled
-// earlier, by AttachMembers (graph.go): there is nothing to strip for it
-// here, since a node without it asked for was never given one.
+// every place in the code (file and lines of nodes and edges) when it lacks
+// "position". "members" is handled earlier, by AttachMembers (graph.go):
+// there is nothing to strip for it here, since a node without it asked for
+// was never given one.
 func StripFields(g *Graph, fields map[string]bool) *Graph {
 	nodes := make([]GraphNode, len(g.Nodes))
 	copy(nodes, g.Nodes)
-	if !fields["position"] {
-		for i := range nodes {
-			nodes[i].File, nodes[i].Line = "", 0
-		}
-	}
 	edges := make([]GraphEdge, len(g.Edges))
 	copy(edges, g.Edges)
+	if !fields["position"] {
+		for i := range nodes {
+			nodes[i].File, nodes[i].Line, nodes[i].EndLine = "", 0, 0
+			nodes[i].Spans, nodes[i].MemberLines = nil, nil
+		}
+		for i := range edges {
+			edges[i].File, edges[i].Line = "", 0
+		}
+	}
 	if !fields["via"] {
 		for i := range edges {
 			edges[i].Via = nil
