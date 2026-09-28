@@ -151,6 +151,56 @@ func TestEdgesRoundTrip(t *testing.T) {
 	}
 }
 
+func TestLoadProjectWithWatch(t *testing.T) {
+	file := writeProject(t, `extractors:
+  - id: backend
+    language: csharp
+    project: core
+    watch: true
+  - id: frontend
+    language: typescript
+    project: core
+`)
+	p, err := loadProject(file)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !p.Extractors[0].Watch {
+		t.Errorf("expected watch: true on backend, got %+v", p.Extractors[0])
+	}
+	if p.Extractors[1].Watch {
+		t.Errorf("expected watch to default to false, got %+v", p.Extractors[1])
+	}
+}
+
+func TestLoadProjectRejectsNonBooleanWatch(t *testing.T) {
+	file := writeProject(t, `extractors:
+  - id: backend
+    language: csharp
+    project: core
+    watch: yesplease
+`)
+	if _, err := loadProject(file); err == nil {
+		t.Error("accepted a non-boolean watch")
+	}
+}
+
+func TestPatchExtractorSetsWatch(t *testing.T) {
+	file := writeProject(t, `extractors:
+  - id: backend
+    language: csharp
+    project: core
+`)
+	watch := true
+	if err := patchExtractor(file, "backend", extractorPatch{Watch: &watch}); err != nil {
+		t.Fatal(err)
+	}
+	p, err := loadProject(file)
+	if err != nil || !p.Extractors[0].Watch {
+		t.Errorf("%v %+v", err, p.Extractors)
+	}
+}
+
 func TestFindProjectFileSkipsTheSemapsFolder(t *testing.T) {
 	dir := t.TempDir()
 	os.MkdirAll(filepath.Join(dir, ".semaps", "logs"), 0o755)

@@ -266,7 +266,7 @@ the file through the YAML tree: comments and key order survive.
 | `workspace` | `docs/diagrams` | served at `/`; the only place `/api/save` writes to |
 | `source_root` | `.` | what `codeRef` and `/api/source*` resolve against |
 | `port` | `8777` | if busy, the next free port is taken |
-| `extractors` | — | list; each: `id` (lowercase, digits, `-`), `language`, `project` (model project under `projects/`), `root` (default `.`), `include`, `exclude`, `edges` (optional list: `holds`, `uses`, `injects`), `command` (replaces the found extractor; written by hand only) |
+| `extractors` | — | list; each: `id` (lowercase, digits, `-`), `language`, `project` (model project under `projects/`), `root` (default `.`), `include`, `exclude`, `edges` (optional list: `holds`, `uses`, `injects`), `watch` (default `false`: the host watches this entry's sources and reruns it on a change, `docs/plans/PLAN_20260928-4_host_watch-sources.md`), `command` (replaces the found extractor; written by hand only) |
 
 ### Resolution order
 
@@ -304,9 +304,9 @@ The command line of an extractor cannot be set through the API — only in the f
 | `/api/tools` | `GET` | → `{projectFile, shipped: [language], runtimes: [{name, ok, version?, hint?}], extractors: [Extractor]}` |
 | `/api/setup` | `GET` | → `{projectFile, name, workspace, sourceRoot, port, extractors: [Extractor], languages}` — keys as written |
 | `/api/setup` | `PUT` | `{name?, workspace?, sourceRoot?, port?}` → setup. Workspace, source root and port apply after a restart |
-| `/api/setup/extractors/{id}` | `PUT` | `{language?, project?, root?, include?, exclude?, edges?}` → setup; adds the entry when missing. Any other field (`command`) → `400` |
+| `/api/setup/extractors/{id}` | `PUT` | `{language?, project?, root?, include?, exclude?, edges?, watch?}` → setup; adds the entry when missing. Any other field (`command`) → `400`. Toggling `watch` starts or stops that extractor's watcher at once, no host restart |
 | `/api/setup/extractors/{id}` | `DELETE` | → setup |
-| `/api/runs?extractor=<id>` | `GET` | → `[Run]`, newest first; five kept per extractor |
+| `/api/runs?extractor=<id>` | `GET` | → `[Run]`, newest first; five person/agent runs and two watch runs (`trigger: "watch"`) kept per extractor, counted apart |
 | `/api/runs` | `POST` | `{extractor}` → `202` `Run` (`state: running`) |
 | `/api/runs/{id}` | `GET` | → `Run` |
 | `/api/runs/{id}/log?offset=<n>` | `GET` | → `{text, offset, state}`: the log from byte `n`; ask again with the new `offset` while `state` is `running` |
@@ -314,12 +314,14 @@ The command line of an extractor cannot be set through the API — only in the f
 | `/api/mcp` | `GET` | → `{file, exists, configured, entry, onPath, snippet, tools: [{name, description, readOnly, inputSchema}], error?}`: does `.mcp.json` at the project root start `semaps mcp` (§6), and the tools it offers |
 | `/api/mcp/install` | `POST` | → the same, after adding the `semaps` entry to `.mcp.json` (created when missing; other servers and keys stay; a file that does not parse → `409`) |
 | `/api/mcp/call` | `POST` | `{name, arguments}` → `{messages: [{dir: out \| in, message}], ms, isError, error?}`: the editor's sandbox. Runs one tool through the host's `/mcp` endpoint; `messages` are the JSON-RPC call and answer, with the handshake left out. A writing tool changes the shared working model and remains unsaved. |
-| `/api/graph/{project}` | `GET` | → `{nodes, edges, facts: [{extractor, run, finished, language}], stats: {nodes, edges, byPresence}}`: the live code graph (`docs/adr/ADR_20260928_host_live-code-graph.md`), joining `project`'s live working model with the latest successful run of each of its `.semaps` extractors. No successful run yet: `facts` is empty and the graph carries only model nodes. Query parameters, all optional: `level` (`types` drops `function`/`value` nodes and the edges touching them; `all`, default); `kinds` (comma list of edge kinds to keep); `around` (a node id: only its neighbourhood, edges in both directions) with `depth` (1–5, default 1); `container` (a `containers.json` id: only nodes in it, edges between them); `fields` (comma list from `members`, `via`, `position`; default `via,position` — `members` adds a joined entity's own `members`; `position` is `file`, `line`, `endLine`, `spans`, `memberLines` of a node and `line`, `file` of an edge, [`EXTRACTOR.md`](EXTRACTOR.md) §2). An unknown `around`/`container` → `404` naming it; a bad `level`/`depth` → `400`. Unlike the rest of this table, this is a plain read with no side effect, so it needs no host key — matching the `GET`s of §3.4, which likewise skip `authorize`. |
+| `/api/graph/{project}` | `GET` | → `{nodes, edges, facts: [{extractor, run?, finished?, language, lastRun?, lastRunFailed?}], stats: {nodes, edges, byPresence}}`: the live code graph (`docs/adr/ADR_20260928_host_live-code-graph.md`), joining `project`'s live working model with the latest successful run of each of its `.semaps` extractors. Each `facts` item's `lastRun` is the id of that extractor's newest run in any state, and `lastRunFailed` says whether it failed — apart from `run`/`finished`, which stay whichever done run's facts the graph actually used (a failed run never changes the graph: `docs/plans/PLAN_20260928-4_host_watch-sources.md` step 2). No run at all for an extractor: it is left out of `facts`. No successful run yet for one that has run: `run`/`finished` are absent from its item, and the graph carries only model nodes for it. Query parameters, all optional: `level` (`types` drops `function`/`value` nodes and the edges touching them; `all`, default); `kinds` (comma list of edge kinds to keep); `around` (a node id: only its neighbourhood, edges in both directions) with `depth` (1–5, default 1); `container` (a `containers.json` id: only nodes in it, edges between them); `fields` (comma list from `members`, `via`, `position`; default `via,position` — `members` adds a joined entity's own `members`; `position` is `file`, `line`, `endLine`, `spans`, `memberLines` of a node and `line`, `file` of an edge, [`EXTRACTOR.md`](EXTRACTOR.md) §2). An unknown `around`/`container` → `404` naming it; a bad `level`/`depth` → `400`. Unlike the rest of this table, this is a plain read with no side effect, so it needs no host key — matching the `GET`s of §3.4, which likewise skip `authorize`. |
 
-`Extractor`: `{id, language, project, root, include, exclude, edges, command?, tool: {language, found,
+`Extractor`: `{id, language, project, root, include, exclude, edges, watch, command?, tool: {language, found,
 source?: command|bundled|path, where?, runtime?, problem?}, lastRun?: Run}`.
-`Run`: `{id, extractor, project, language, started, finished?, seconds?, state: running|done|failed,
-exitCode, error?, stats?: {symbols, edges, symbolKinds, edgeKinds, language}}`.
+`Run`: `{id, extractor, project, language, trigger?: "watch", started, finished?, seconds?, state: running|done|failed,
+exitCode, error?, stats?: {symbols, edges, symbolKinds, edgeKinds, language}}`. `trigger` is absent for a run a
+person or an agent started, `"watch"` for one the host started on its own after a source change
+(`docs/plans/PLAN_20260928-4_host_watch-sources.md`).
 
 A run's facts never enter the workspace; they stay in the temp directory beside its log.
 

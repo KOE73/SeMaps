@@ -39,6 +39,10 @@ type extractorConf struct {
 	Include  []string `yaml:"include,omitempty"`
 	Exclude  []string `yaml:"exclude,omitempty"`
 	Edges    []string `yaml:"edges,omitempty"` // optional edge kinds: holds, uses, injects
+	// Watch: the host watches this entry's sources and reruns it on a
+	// change, without a person or an agent asking (PLAN_20260928-4). Default
+	// off; never touches sync or the model (ADR_20260928 §4).
+	Watch bool `yaml:"watch,omitempty"`
 	// Command replaces the found extractor. Only ever written by hand in the
 	// file: nothing from outside sets it (ADR_20260924-3 §5).
 	Command string `yaml:"command,omitempty"`
@@ -129,6 +133,7 @@ type extractorPatch struct {
 	Include  *[]string
 	Exclude  *[]string
 	Edges    *[]string
+	Watch    *bool
 }
 
 // patchExtractor changes, or adds, one entry of `extractors:`. The file is
@@ -172,6 +177,9 @@ func patchExtractor(file, id string, patch extractorPatch) error {
 		setList("include", patch.Include)
 		setList("exclude", patch.Exclude)
 		setList("edges", patch.Edges)
+		if patch.Watch != nil {
+			setMapValue(entry, "watch", &yaml.Node{Kind: yaml.ScalarNode, Tag: "!!bool", Value: fmt.Sprint(*patch.Watch)})
+		}
 		return nil
 	})
 }

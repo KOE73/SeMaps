@@ -122,7 +122,19 @@ extractors:
     root: .
     include: [src]
     edges: [holds, injects]   # optional: which member-relation edge kinds to extract
+    watch: true                # optional, default false: rerun this extractor when its sources change
 ```
+
+`watch: true` only refreshes the host's live code graph — the extra layer next to the model,
+[`ADR_20260928`](adr/ADR_20260928_host_live-code-graph.md): a change under `root`/`include` starts
+this extractor again after a short quiet period, and `GET /api/graph/{project}` (and the editor's
+graph view) picks it up on its own. It never touches the registry: sync is still a separate,
+deliberate step (`semaps sync`, above, or the page's "Sync" button), because otherwise unreviewed
+edits would land in the model without anyone asking for them
+(`docs/plans/PLAN_20260928-4_host_watch-sources.md` step 4). Switch it off the same way, by editing
+the `.semaps` file or (once the editor's «Экстракторы» page has the control) its checkbox; either
+takes effect at once, no restart of the host needed. With `--workspace` (no `.semaps` file) nothing
+is watched.
 
 Then, from anywhere inside the project:
 

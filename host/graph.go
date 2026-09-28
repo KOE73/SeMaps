@@ -34,9 +34,16 @@ func newGraphService(proj project, models *modelService) *graphService {
 // tool report it (docs/plans/PLAN_20260928_host_graph-provider.md step 4).
 type graphFactsInfo struct {
 	Extractor string `json:"extractor"`
-	Run       string `json:"run"`
-	Finished  string `json:"finished"`
+	Run       string `json:"run,omitempty"`
+	Finished  string `json:"finished,omitempty"`
 	Language  string `json:"language"`
+	// LastRun and LastRunFailed are about the newest run of this extractor,
+	// in any state — not necessarily the one Run/Finished/the graph's facts
+	// come from. A failed run never touches the graph (runStore.onFinish
+	// fires only for "done"); this is how a reader of GET /api/graph learns
+	// that anyway (PLAN_20260928-4_host_watch-sources.md step 2).
+	LastRun       string `json:"lastRun,omitempty"`
+	LastRunFailed bool   `json:"lastRunFailed,omitempty"`
 }
 
 // sources finds, for every extractor of the .semaps file that feeds
@@ -62,7 +69,12 @@ func sourcesFor(proj project, projectID string) ([]core.FactsSource, []graphFact
 		if e.Project != projectID {
 			continue
 		}
-		for _, r := range runs.list(e.ID) {
+		all := runs.list(e.ID)
+		if len(all) == 0 {
+			continue // never run: nothing to say about it yet
+		}
+		info := graphFactsInfo{Extractor: e.ID, Language: e.Language, LastRun: all[0].ID, LastRunFailed: all[0].State == "failed"}
+		for _, r := range all {
 			if r.State != "done" {
 				continue
 			}
@@ -71,12 +83,10 @@ func sourcesFor(proj project, projectID string) ([]core.FactsSource, []graphFact
 				break // newest done run is unreadable: no facts for this extractor, not older ones
 			}
 			sources = append(sources, core.FactsSource{Extractor: e.ID, Facts: f})
-			facts = append(facts, graphFactsInfo{
-				Extractor: e.ID, Run: r.ID, Language: e.Language,
-				Finished: r.Finished.UTC().Format(time.RFC3339),
-			})
+			info.Run, info.Finished = r.ID, r.Finished.UTC().Format(time.RFC3339)
 			break
 		}
+		facts = append(facts, info)
 	}
 	return sources, facts
 }

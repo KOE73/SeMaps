@@ -680,7 +680,7 @@ func (s *mcpServer) runs(id string) ([]*runInfo, error) {
 	store.onFinish = s.onRunFinish
 	var out []*runInfo
 	for _, e := range list {
-		info, wait, err := store.start(s.proj, e, os.Stderr)
+		info, wait, err := store.start(s.proj, e, os.Stderr, "")
 		if err != nil {
 			return out, fmt.Errorf("%s: %w", e.ID, err)
 		}
