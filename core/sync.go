@@ -124,6 +124,46 @@ func (r *SyncReport) Print(w io.Writer) {
 	}
 }
 
+// dropMethodsAndCalls removes methods and calls (ADR_20260928-4 §4) before
+// sync does anything else with the facts: they are dynamic data of the live
+// graph and must never reach the registry, git, the workspace, or a missing
+// mark. Dropped by kind, never by extractor: symbols of kind "method", edges
+// of kind "calls"/"constructs"/"overrides", and "contains"/"implements" edges
+// with a method at either end. `calls` in edgeKinds is likewise ignored:
+// nothing is ever marked missing for it and no relation type is minted.
+func dropMethodsAndCalls(facts *Facts) *Facts {
+	out := *facts
+	out.Symbols = make([]Symbol, 0, len(facts.Symbols))
+	isMethod := map[string]bool{}
+	for _, s := range facts.Symbols {
+		if s.Kind == "method" {
+			isMethod[s.ID] = true
+			continue
+		}
+		out.Symbols = append(out.Symbols, s)
+	}
+	out.Edges = make([]Edge, 0, len(facts.Edges))
+	for _, e := range facts.Edges {
+		switch e.Kind {
+		case "calls", "constructs", "overrides":
+			continue
+		}
+		if (e.Kind == "contains" || e.Kind == "implements") && (isMethod[e.From] || isMethod[e.To]) {
+			continue
+		}
+		out.Edges = append(out.Edges, e)
+	}
+	var edgeKinds []string
+	for _, k := range facts.EdgeKinds {
+		if k == "calls" {
+			continue
+		}
+		edgeKinds = append(edgeKinds, k)
+	}
+	out.EdgeKinds = edgeKinds
+	return &out
+}
+
 // structuralTypes are the edge kinds sync writes as relations: all organic ones.
 // Member relations (holds, uses) are not listed here; they are created per-member.
 // Which ones a view shows is the view's decision (CONTRACT.md §8.5).
@@ -135,6 +175,7 @@ func Sync(model *Model, facts *Facts, opt SyncOptions) (*SyncReport, error) {
 	if err := facts.Validate(); err != nil {
 		return nil, err
 	}
+	facts = dropMethodsAndCalls(facts)
 	if model == nil {
 		return nil, errors.New("nil model")
 	}

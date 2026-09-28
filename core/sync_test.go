@@ -144,7 +144,7 @@ func TestReadFactsReportsEveryProblem(t *testing.T) {
   ],
   "edges": [
     {"from":"a","to":"zzz","kind":"references"},
-    {"from":"a","to":"b","kind":"calls"}
+    {"from":"a","to":"b","kind":"invokes"}
   ]
 }`))
 	var fe *FactsError
@@ -153,7 +153,7 @@ func TestReadFactsReportsEveryProblem(t *testing.T) {
 	}
 	for _, want := range []string{
 		"`root` is required", `language "C#"`, `kind "class" is not one of`, "forward slashes",
-		"members[0] has no name", "not sorted by id", "to is not a symbol", `kind "calls"`,
+		"members[0] has no name", "not sorted by id", "to is not a symbol", `kind "invokes"`,
 	} {
 		if !strings.Contains(err.Error(), want) {
 			t.Errorf("missing problem %q in:\n%v", want, err)

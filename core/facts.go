@@ -23,7 +23,11 @@ type Facts struct {
 // Symbol is one declaration. ID is the key within one output (ADR_20260923-5),
 // never a registry id.
 type Symbol struct {
-	ID         string `json:"id"`
+	ID string `json:"id"`
+	// Kind "method" (ADR_20260928-4) covers a method, constructor, property,
+	// indexer, operator or accessor (see NativeKind); it is dynamic data of
+	// the live graph and core/sync.go drops it, and every edge that touches
+	// it, before any other processing.
 	Kind       string `json:"kind"`
 	NativeKind string `json:"nativeKind"`
 	Name       string `json:"name"`
@@ -67,6 +71,10 @@ type Edge struct {
 	// (docs/EXTRACTOR.md §3).
 	Line int    `json:"line,omitempty"`
 	File string `json:"file,omitempty"`
+	// Lines lists every place of a `calls` edge inside the calling method,
+	// sorted ascending (ADR_20260928-4 §3); Line above is the first of them.
+	// Not part of the edge's sort order or identity.
+	Lines []int `json:"lines,omitempty"`
 }
 
 // Via is the signature of a member relation: docs/EXTRACTOR.md §2.2a.
@@ -84,9 +92,13 @@ type Via struct {
 
 // SymbolKinds and EdgeKinds are the closed vocabularies of EXTRACTOR.md §2.2–2.3.
 var (
-	SymbolKinds = []string{"type", "interface", "function", "module", "value"}
-	EdgeKinds   = []string{"extends", "implements", "contains", "depends", "holds", "uses"}
+	SymbolKinds = []string{"type", "interface", "function", "module", "value", "method"}
+	EdgeKinds   = []string{"extends", "implements", "contains", "depends", "holds", "uses", "calls", "constructs", "overrides"}
 )
+
+// methodNativeKinds are the values NativeKind may take for a Kind == "method"
+// symbol (ADR_20260928-4 §1).
+var methodNativeKinds = setOf([]string{"method", "constructor", "property", "indexer", "operator", "accessor"})
 
 // FactsError lists every problem found in a facts document, not just the first.
 type FactsError struct{ Problems []string }
@@ -162,6 +174,7 @@ func (f *Facts) problems() []string {
 
 	kinds := setOf(SymbolKinds)
 	ids := make(map[string]bool, len(f.Symbols))
+	kindOf := make(map[string]string, len(f.Symbols))
 	for i, s := range f.Symbols {
 		where := fmt.Sprintf("symbols[%d] %s", i, s.ID)
 		if !symbolIDPattern.MatchString(s.ID) {
@@ -170,11 +183,15 @@ func (f *Facts) problems() []string {
 			bad("%s: id repeats", where)
 		}
 		ids[s.ID] = true
+		kindOf[s.ID] = s.Kind
 		if !kinds[s.Kind] {
 			bad("%s: kind %q is not one of %s", where, s.Kind, strings.Join(SymbolKinds, ", "))
 		}
 		if s.NativeKind == "" {
 			bad("%s: nativeKind is empty", where)
+		}
+		if s.Kind == "method" && !methodNativeKinds[s.NativeKind] {
+			bad("%s: nativeKind %q is not one of method, constructor, property, indexer, operator, accessor", where, s.NativeKind)
 		}
 		if s.Name == "" {
 			bad("%s: name is empty", where)
@@ -232,6 +249,9 @@ func (f *Facts) problems() []string {
 	}
 
 	edgeKinds := setOf(EdgeKinds)
+	// containedBy counts, for each method symbol, how many `contains` edges
+	// from a type name it (ADR_20260928-4 §1: exactly one).
+	containedBy := make(map[string]int)
 	for i, e := range f.Edges {
 		where := fmt.Sprintf("edges[%d] %s -%s-> %s", i, e.From, e.Kind, e.To)
 		if !edgeKinds[e.Kind] {
@@ -246,7 +266,7 @@ func (f *Facts) problems() []string {
 		if e.From == e.To {
 			bad("%s: an edge to itself", where)
 		}
-		if e.Via != nil && (e.Kind == "extends" || e.Kind == "implements" || e.Kind == "contains" || e.Kind == "depends") {
+		if e.Via != nil && (e.Kind == "extends" || e.Kind == "implements" || e.Kind == "contains" || e.Kind == "depends" || e.Kind == "calls" || e.Kind == "constructs" || e.Kind == "overrides") {
 			bad("%s: `via` is only for holds/uses edges", where)
 		}
 		if e.Line < 0 {
@@ -257,6 +277,52 @@ func (f *Facts) problems() []string {
 		}
 		if e.File != "" && e.Line == 0 {
 			bad("%s: `file` without `line`", where)
+		}
+		for j, ln := range e.Lines {
+			if ln < 1 {
+				bad("%s: lines[%d] %d, lines start at 1", where, j, ln)
+			}
+			if j > 0 && e.Lines[j-1] >= ln {
+				bad("%s: lines are not sorted or repeat", where)
+			}
+		}
+		if len(e.Lines) > 0 && e.Kind != "calls" {
+			bad("%s: `lines` is only for calls edges", where)
+		}
+		fromKind, toKind := kindOf[e.From], kindOf[e.To]
+		switch e.Kind {
+		case "calls":
+			if fromKind != "" && fromKind != "method" {
+				bad("%s: calls is method -> method, from is %s", where, fromKind)
+			}
+			if toKind != "" && toKind != "method" {
+				bad("%s: calls is method -> method, to is %s", where, toKind)
+			}
+		case "constructs":
+			if fromKind != "" && fromKind != "method" {
+				bad("%s: constructs is method -> type, from is %s", where, fromKind)
+			}
+			if toKind != "" && toKind != "type" {
+				bad("%s: constructs is method -> type, to is %s", where, toKind)
+			}
+		case "overrides":
+			if fromKind != "" && fromKind != "method" {
+				bad("%s: overrides is method -> method, from is %s", where, fromKind)
+			}
+			if toKind != "" && toKind != "method" {
+				bad("%s: overrides is method -> method, to is %s", where, toKind)
+			}
+		case "implements":
+			if (fromKind == "method") != (toKind == "method") {
+				bad("%s: implements joins two types or two methods, never a type and a method", where)
+			}
+		case "contains":
+			if toKind == "method" {
+				if fromKind != "" && fromKind != "type" {
+					bad("%s: contains to a method must start at a type", where)
+				}
+				containedBy[e.To]++
+			}
 		}
 		if e.Via != nil {
 			if e.Via.Cardinality != "" && e.Via.Cardinality != "one" && e.Via.Cardinality != "optional" && e.Via.Cardinality != "many" && e.Via.Cardinality != "keyed" {
@@ -273,6 +339,11 @@ func (f *Facts) problems() []string {
 			case 1:
 				bad("%s: edges are not sorted by (from, to, kind, via.member, via.path)", where)
 			}
+		}
+	}
+	for id, n := range containedBy {
+		if n != 1 {
+			bad("symbol %s: a method must be contained by exactly one type of this output, has %d", id, n)
 		}
 	}
 	return out
