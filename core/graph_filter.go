@@ -4,11 +4,17 @@
 // (step 6) share it verbatim.
 package core
 
-import "fmt"
+import (
+	"fmt"
+	"sort"
+)
 
-// FilterLevel is `level=types` (drop nodes of kind `function` and `value`,
-// and every edge touching one) or `level=all` (default, no change). Any
-// other value is a usage mistake, not "no match": callers turn it into 400.
+// FilterLevel is `level=types` (drop nodes of kind `function`, `value` and
+// `method`, and every edge touching one) or `level=all` (no change). `types`
+// is the default of a whole-graph request (no `around`/`container`,
+// ADR_20260928-3 §7); `all` is the default of a neighbourhood request.
+// Any other value is a usage mistake, not "no match": callers turn it into
+// 400.
 func FilterLevel(g *Graph, level string) (*Graph, error) {
 	switch level {
 	case "", "all":
@@ -17,7 +23,7 @@ func FilterLevel(g *Graph, level string) (*Graph, error) {
 		drop := map[string]bool{}
 		nodes := make([]GraphNode, 0, len(g.Nodes))
 		for _, n := range g.Nodes {
-			if n.Kind == "function" || n.Kind == "value" {
+			if n.Kind == "function" || n.Kind == "value" || n.Kind == "method" {
 				drop[n.ID] = true
 				continue
 			}
@@ -56,11 +62,28 @@ func FilterEdgeKinds(g *Graph, kinds []string) *Graph {
 	return &Graph{Nodes: g.Nodes, Edges: edges}
 }
 
-// Neighborhood is the subgraph reachable from `around` within `depth` hops,
-// counting edges in either direction (breadth-first, as the plan asks).
-// `around` naming no node in `g` is an error naming it, for callers to turn
-// into 404.
-func Neighborhood(g *Graph, around string, depth int) (*Graph, error) {
+// FanoutNote is what Walk reports when `fanout` left neighbours out: for
+// `Node` and `Relation` (a follow name, from the point of view of `Node`),
+// `Kept` were taken into the walk and `Left` were not.
+type FanoutNote struct {
+	Node     string
+	Relation string
+	Kept     int
+	Left     int
+}
+
+// Walk is the neighbourhood of `around`, following exactly the directed
+// relations named in `follow` (part 1 of the agent-answers rework: no more
+// undirected `kinds`/named `set` for this case — see core/graph_relations.go).
+// `fanout`, when > 0, caps how many neighbours a single (node, relation) pair
+// contributes to the walk's growth; the excess is reported in the returned
+// notes, never silently dropped from the count. The returned graph's nodes
+// carry `Step`, their BFS distance from `around`; edges are every edge of `g`
+// between two nodes of the resulting set that satisfies one of `follow`'s
+// relations (so several relations to the same neighbour all appear, not just
+// the one that first reached it). `around` naming no node in `g` is an error
+// naming it, for callers to turn into 404.
+func Walk(g *Graph, around string, depth int, follow []Relation, fanout int) (*Graph, []FanoutNote, error) {
 	found := false
 	for _, n := range g.Nodes {
 		if n.ID == around {
@@ -69,47 +92,105 @@ func Neighborhood(g *Graph, around string, depth int) (*Graph, error) {
 		}
 	}
 	if !found {
-		return nil, fmt.Errorf("no such node: %q", around)
+		return nil, nil, fmt.Errorf("no such node: %q", around)
 	}
-	adjacent := map[string][]int{} // node id -> indexes of edges touching it
-	for i, e := range g.Edges {
-		adjacent[e.From] = append(adjacent[e.From], i)
-		adjacent[e.To] = append(adjacent[e.To], i)
+
+	type candidate struct {
+		other    string
+		relation string
 	}
-	visited := map[string]bool{around: true}
+	// neighboursOf: every (other, relationName) this node reaches by walking
+	// one step along `follow`, deterministically ordered (by relation name,
+	// then other id) so fanout's cut and the "kept" set are reproducible.
+	neighboursOf := func(id string) []candidate {
+		var out []candidate
+		for _, r := range follow {
+			for _, e := range g.Edges {
+				if e.Kind != r.Kind || !typeMatches(e.Type, r.TypeMatch) {
+					continue
+				}
+				if r.Forward && e.From == id {
+					out = append(out, candidate{e.To, r.Name})
+				}
+				if !r.Forward && e.To == id {
+					out = append(out, candidate{e.From, r.Name})
+				}
+			}
+		}
+		sort.Slice(out, func(i, j int) bool {
+			if out[i].relation != out[j].relation {
+				return out[i].relation < out[j].relation
+			}
+			return out[i].other < out[j].other
+		})
+		return out
+	}
+
+	step := map[string]int{around: 0}
 	frontier := []string{around}
-	edgeSet := map[int]bool{}
+	var notes []FanoutNote
 	for d := 0; d < depth; d++ {
 		var next []string
 		for _, id := range frontier {
-			for _, ei := range adjacent[id] {
-				edgeSet[ei] = true
-				e := g.Edges[ei]
-				other := e.To
-				if other == id {
-					other = e.From
+			cands := neighboursOf(id)
+			// group by relation, so fanout counts per (node, relation), and
+			// only NEW nodes count toward the cap and the note (a relation
+			// that only re-reaches an already-visited node is never why a
+			// caller lost a neighbour).
+			byRel := map[string][]string{}
+			var order []string
+			for _, c := range cands {
+				if _, ok := byRel[c.relation]; !ok {
+					order = append(order, c.relation)
 				}
-				if !visited[other] {
-					visited[other] = true
+				byRel[c.relation] = append(byRel[c.relation], c.other)
+			}
+			for _, rel := range order {
+				var fresh []string
+				for _, other := range byRel[rel] {
+					if _, ok := step[other]; !ok {
+						fresh = append(fresh, other)
+					}
+				}
+				kept := fresh
+				if fanout > 0 && len(fresh) > fanout {
+					kept = fresh[:fanout]
+					notes = append(notes, FanoutNote{Node: id, Relation: rel, Kept: fanout, Left: len(fresh) - fanout})
+				}
+				for _, other := range kept {
+					step[other] = d + 1
 					next = append(next, other)
 				}
 			}
 		}
 		frontier = next
 	}
-	nodes := make([]GraphNode, 0, len(visited))
+
+	nodes := make([]GraphNode, 0, len(step))
 	for _, n := range g.Nodes {
-		if visited[n.ID] {
-			nodes = append(nodes, n)
+		if s, ok := step[n.ID]; ok {
+			nCopy := n
+			sCopy := s
+			nCopy.Step = &sCopy
+			nodes = append(nodes, nCopy)
 		}
 	}
-	edges := make([]GraphEdge, 0, len(edgeSet))
-	for i, e := range g.Edges {
-		if edgeSet[i] {
-			edges = append(edges, e)
+	edges := make([]GraphEdge, 0)
+	for _, e := range g.Edges {
+		if _, ok := step[e.From]; !ok {
+			continue
+		}
+		if _, ok := step[e.To]; !ok {
+			continue
+		}
+		for _, r := range follow {
+			if e.Kind == r.Kind && typeMatches(e.Type, r.TypeMatch) {
+				edges = append(edges, e)
+				break
+			}
 		}
 	}
-	return &Graph{Nodes: nodes, Edges: edges}, nil
+	return &Graph{Nodes: nodes, Edges: edges}, notes, nil
 }
 
 // FilterContainer keeps only nodes whose resolved containers include `id`
@@ -206,13 +287,15 @@ func FilterMissing(g *Graph, include bool) (out *Graph, hiddenNodes int, hiddenE
 }
 
 // validFieldNames are the values `fields=` accepts (docs/API.md §5).
-var validFieldNames = map[string]bool{"via": true, "position": true, "members": true}
+// `memberLines` is its own name, off by default: `position` no longer
+// includes it (part 3 of the agent-answers rework).
+var validFieldNames = map[string]bool{"via": true, "position": true, "members": true, "memberLines": true}
 
 // ParseFields turns an already-split list of field names into the set
 // StripFields/AttachMembers expect, rejecting a name that is none of
-// "via"/"position"/"members" — a caller's typo, not an empty selection.
-// An empty (but non-nil, from an explicit `fields=`) or nil list both come
-// back as an empty set; distinguishing "absent" (the default) from
+// "via"/"position"/"members"/"memberLines" — a caller's typo, not an empty
+// selection. An empty (but non-nil, from an explicit `fields=`) or nil list
+// both come back as an empty set; distinguishing "absent" (the default) from
 // "explicitly empty" is the caller's job, not this function's.
 func ParseFields(names []string) (map[string]bool, error) {
 	out := make(map[string]bool, len(names))
@@ -238,10 +321,15 @@ func StripFields(g *Graph, fields map[string]bool) *Graph {
 	if !fields["position"] {
 		for i := range nodes {
 			nodes[i].File, nodes[i].Line, nodes[i].EndLine = "", 0, 0
-			nodes[i].Spans, nodes[i].MemberLines = nil, nil
+			nodes[i].Spans = nil
 		}
 		for i := range edges {
 			edges[i].File, edges[i].Line = "", 0
+		}
+	}
+	if !fields["memberLines"] {
+		for i := range nodes {
+			nodes[i].MemberLines = nil
 		}
 	}
 	if !fields["via"] {

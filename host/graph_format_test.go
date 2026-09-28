@@ -82,10 +82,9 @@ func TestGraphEndpointWholeGraphDefaultUnchanged(t *testing.T) {
 	}
 }
 
-// TestGraphEndpointNeighborhoodDefaultDoesNotWalkContains: `around` with
-// neither `set` nor `kinds` uses the default neighbourhood set (links),
-// which does not include `contains` — so Mod's neighbourhood does not pull
-// in the module's whole content.
+// TestGraphEndpointNeighborhoodDefaultDoesNotWalkContains: `around` with no
+// `follow` uses DefaultFollow, which does not include containment — so
+// Mod's neighbourhood does not pull in the module's whole content.
 func TestGraphEndpointNeighborhoodDefaultDoesNotWalkContains(t *testing.T) {
 	gs, _ := setsFixture(t)
 	srv := graphServer(gs)
@@ -100,13 +99,13 @@ func TestGraphEndpointNeighborhoodDefaultDoesNotWalkContains(t *testing.T) {
 	}
 }
 
-// TestGraphEndpointSetContainmentWalksContains: set=containment on the same
-// neighbourhood request does walk `contains`.
-func TestGraphEndpointSetContainmentWalksContains(t *testing.T) {
+// TestGraphEndpointFollowContainsWalksIt: follow=contains on the same
+// neighbourhood request does walk containment.
+func TestGraphEndpointFollowContainsWalksIt(t *testing.T) {
 	gs, _ := setsFixture(t)
 	srv := graphServer(gs)
 	defer srv.Close()
-	res, body := getGraphJSON(t, srv.URL+"/api/graph/p?around=csharp:Mod&depth=2&set=containment")
+	res, body := getGraphJSON(t, srv.URL+"/api/graph/p?around=csharp:Mod&depth=2&follow=contains")
 	if res.StatusCode != http.StatusOK {
 		t.Fatalf("expected 200, got %d: %+v", res.StatusCode, body)
 	}
@@ -116,23 +115,25 @@ func TestGraphEndpointSetContainmentWalksContains(t *testing.T) {
 	}
 }
 
-func TestGraphEndpointSetAndKindsConflict(t *testing.T) {
+// TestGraphEndpointAroundWithKindsRefused: `kinds` is only for a whole-graph
+// request; a neighbourhood names `follow` instead.
+func TestGraphEndpointAroundWithKindsRefused(t *testing.T) {
 	gs, _ := setsFixture(t)
 	srv := graphServer(gs)
 	defer srv.Close()
-	res, _ := getGraphJSON(t, srv.URL+"/api/graph/p?set=links&kinds=extends")
+	res, _ := getGraphJSON(t, srv.URL+"/api/graph/p?around=csharp:Mod&kinds=extends")
 	if res.StatusCode != http.StatusBadRequest {
-		t.Fatalf("expected 400 for set+kinds both given, got %d", res.StatusCode)
+		t.Fatalf("expected 400 for around+kinds both given, got %d", res.StatusCode)
 	}
 }
 
-func TestGraphEndpointUnknownSet(t *testing.T) {
+func TestGraphEndpointUnknownFollow(t *testing.T) {
 	gs, _ := setsFixture(t)
 	srv := graphServer(gs)
 	defer srv.Close()
-	res, _ := getGraphJSON(t, srv.URL+"/api/graph/p?set=bogus")
+	res, _ := getGraphJSON(t, srv.URL+"/api/graph/p?around=csharp:Mod&follow=bogus")
 	if res.StatusCode != http.StatusBadRequest {
-		t.Fatalf("expected 400 for an unknown set, got %d", res.StatusCode)
+		t.Fatalf("expected 400 for an unknown follow name, got %d", res.StatusCode)
 	}
 }
 
@@ -188,15 +189,15 @@ func TestGraphFormatsEndpoint(t *testing.T) {
 		t.Fatalf("expected 200, got %d", res.StatusCode)
 	}
 	formats, _ := body["formats"].([]any)
-	if len(formats) != 5 {
-		t.Fatalf("expected 5 formats listed, got %+v", formats)
+	if len(formats) != 6 {
+		t.Fatalf("expected 6 formats listed, got %+v", formats)
 	}
-	sets, _ := body["sets"].([]any)
-	if len(sets) != 5 {
-		t.Fatalf("expected 5 sets listed, got %+v", sets)
+	relations, _ := body["relations"].([]any)
+	if len(relations) < 20 {
+		t.Fatalf("expected the relation vocabulary (both directions of every relation), got %+v", relations)
 	}
 	defaults, _ := body["defaults"].(map[string]any)
-	if defaults["format"] != "json" || defaults["set"] != "all" || defaults["neighbourhoodSet"] != "links" {
+	if defaults["format"] != "json" {
 		t.Fatalf("unexpected defaults: %+v", defaults)
 	}
 }

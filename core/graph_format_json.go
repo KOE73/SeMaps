@@ -63,10 +63,11 @@ type compactNode struct {
 	P  string   `json:"p,omitempty"`
 }
 
-// compactEdge: f/t are indexes into the node array, not ids.
+// compactEdge: f/t are node ids (not indexes: an agent misreads an index
+// across a large answer — part 1 of the agent-answers rework).
 type compactEdge struct {
-	F  int    `json:"f"`
-	T  int    `json:"t"`
+	F  string `json:"f"`
+	T  string `json:"t"`
 	K  string `json:"k"`
 	Ty string `json:"ty,omitempty"`
 	Vi *Via   `json:"vi,omitempty"`
@@ -96,12 +97,10 @@ func (jsonCompactFormat) Format(g *Graph, o FormatOptions) ([]byte, error) {
 		return i
 	}
 
-	nodeIndex := make(map[string]int, len(g.Nodes))
 	nodes := make([]compactNode, len(g.Nodes))
 	languages := map[string]bool{}
 	extractors := map[string]bool{}
 	for i, n := range g.Nodes {
-		nodeIndex[n.ID] = i
 		nodes[i] = compactNode{
 			I: n.ID, S: n.Symbol, K: n.Kind, N: n.Name,
 			FI: fileIdx(n.File), L: n.Line, EL: n.EndLine,
@@ -118,7 +117,7 @@ func (jsonCompactFormat) Format(g *Graph, o FormatOptions) ([]byte, error) {
 	edges := make([]compactEdge, len(g.Edges))
 	for i, e := range g.Edges {
 		edges[i] = compactEdge{
-			F: nodeIndex[e.From], T: nodeIndex[e.To], K: e.Kind, Ty: e.Type,
+			F: e.From, T: e.To, K: e.Kind, Ty: e.Type,
 			Vi: e.Via, FI: fileIdx(e.File), L: e.Line, R: e.Relation, St: e.Status, P: e.Presence,
 		}
 	}

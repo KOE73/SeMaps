@@ -29,6 +29,12 @@ type GraphNode struct {
 	NativeKind string `json:"nativeKind,omitempty"`
 	Name       string `json:"name,omitempty"`
 	Namespace  string `json:"namespace,omitempty"`
+	// Assembly is the name of the nearest containing node of nativeKind
+	// "assembly" (walked once, at build time, via `contains` edges — never
+	// per request: part 1 of the agent-answers rework, "where it lies").
+	// Empty when no assembly could be found (no `contains` chain, or the
+	// facts predate assembly symbols).
+	Assembly   string `json:"assembly,omitempty"`
 	Visibility string `json:"visibility,omitempty"`
 	File       string `json:"file,omitempty"`
 	Line       int    `json:"line,omitempty"`
@@ -44,6 +50,11 @@ type GraphNode struct {
 	// Presence: "both" (symbol and entity), "code" (symbol only), "model"
 	// (entity only).
 	Presence string `json:"presence"`
+	// Step is the node's BFS distance from `around`, filled only by Walk
+	// (part 1): absent (nil) on a whole-graph answer. A pointer, not an int,
+	// so step 0 (the focus node itself) still prints instead of being
+	// omitted by `omitempty`.
+	Step *int `json:"step,omitempty"`
 	// Members is the joined entity's own `members` field (docs/CONTRACT.md),
 	// as sync already copied it from the extractor's facts — never
 	// recomputed here. Filled only when asked (`fields=members`,
@@ -53,12 +64,17 @@ type GraphNode struct {
 
 // GraphEdge is a fact edge, a registry relation, or both.
 type GraphEdge struct {
-	From     string `json:"from"`
-	To       string `json:"to"`
-	Kind     string `json:"kind"` // facts vocabulary; of a model-only edge, the first segment of its type
-	Type     string `json:"type"` // relation type as the registry names it: holds.many, injects, extends…
-	Via      *Via   `json:"via,omitempty"`
-	Line     int    `json:"line,omitempty"` // where the edge comes from, in File or in the file of `from`
+	From string `json:"from"`
+	To   string `json:"to"`
+	Kind string `json:"kind"` // facts vocabulary; of a model-only edge, the first segment of its type
+	Type string `json:"type"` // relation type as the registry names it: holds.many, injects, extends…
+	Via  *Via   `json:"via,omitempty"`
+	Line int    `json:"line,omitempty"` // where the edge comes from, in File or in the file of `from`
+	// Lines: every call site's line, ascending, for a `calls` edge that
+	// folds several calls to the same target from the same method into one
+	// edge (ADR_20260928-4 §3). Nil for every other kind; Line is always
+	// Lines[0] when Lines is set.
+	Lines    []int  `json:"lines,omitempty"`
 	File     string `json:"file,omitempty"`
 	Relation string `json:"relation,omitempty"` // registry relation id, or empty
 	Status   string `json:"status,omitempty"`   // the relation's status ("present"/"missing"), for "both" and "model" edges only
@@ -245,7 +261,64 @@ func BuildGraph(sources []FactsSource, model *Model) (*Graph, error) {
 
 	sort.Slice(edges, func(i, j int) bool { return compareGraphEdges(edges[i], edges[j]) < 0 })
 
+	attachAssemblies(nodes, edges)
+
 	return &Graph{Nodes: nodes, Edges: edges}, nil
+}
+
+// attachAssemblies fills GraphNode.Assembly by walking `contains` edges
+// upward, once, at build time (part 1, "where it lies"): a node whose
+// container chain reaches a node of NativeKind "assembly" gets that node's
+// name; a cycle cannot loop forever (visited set), and a node contained
+// nowhere, or whose facts predate assembly symbols, is left with "".
+func attachAssemblies(nodes []GraphNode, edges []GraphEdge) {
+	byID := make(map[string]*GraphNode, len(nodes))
+	for i := range nodes {
+		byID[nodes[i].ID] = &nodes[i]
+	}
+	// containerOf: a contained node's id -> its container's id, from
+	// `contains` edges (From = container, To = contained). Deterministic
+	// pick when a node is contained more than once: edges are already
+	// sorted, first one wins.
+	containerOf := map[string]string{}
+	for _, e := range edges {
+		if e.Kind != "contains" {
+			continue
+		}
+		if _, ok := containerOf[e.To]; !ok {
+			containerOf[e.To] = e.From
+		}
+	}
+	for i := range nodes {
+		visited := map[string]bool{nodes[i].ID: true}
+		cur := nodes[i].ID
+		for {
+			parent, ok := containerOf[cur]
+			if !ok || visited[parent] {
+				break
+			}
+			visited[parent] = true
+			if pn := byID[parent]; pn != nil && pn.NativeKind == "assembly" {
+				nodes[i].Assembly = pn.Name
+				break
+			}
+			cur = parent
+		}
+	}
+}
+
+// FullName is a node's fully-qualified name: its symbol id when the join
+// gave it one (already qualified, e.g. `App.Guards.RepetitionGuard`), else
+// namespace+"."+name, else just its name. Used by name resolution (part 2)
+// and by the {fullName} template macro (part 3).
+func FullName(n *GraphNode) string {
+	if n.Symbol != "" {
+		return n.Symbol
+	}
+	if n.Namespace != "" && n.Name != "" {
+		return n.Namespace + "." + n.Name
+	}
+	return n.Name
 }
 
 func compareGraphEdges(a, b GraphEdge) int {

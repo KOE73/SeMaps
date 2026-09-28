@@ -100,10 +100,11 @@ func TestJSONCompactFormat(t *testing.T) {
 	edges, _ := m["edges"].([]any)
 	e0 := edges[0].(map[string]any)
 	if _, hasFromID := e0["from"]; hasFromID {
-		t.Fatalf("json-compact edges must reference nodes by index, not id: %+v", e0)
+		t.Fatalf("json-compact edges must use the short key 'f', not 'from': %+v", e0)
 	}
-	if _, ok := e0["f"].(float64); !ok {
-		t.Fatalf("expected edge.f to be a node index, got %+v", e0)
+	fromID, ok := e0["f"].(string)
+	if !ok || fromID == "" {
+		t.Fatalf("expected edge.f to be a node id (part 1: never an index an agent could misread), got %+v", e0)
 	}
 }
 
@@ -115,20 +116,20 @@ func TestLinesFormat(t *testing.T) {
 		t.Fatalf("Format: %v", err)
 	}
 	out := string(body)
-	if !strings.HasPrefix(out, "RepetitionGuard  src/Guards/RepetitionGuard.cs:10-40  in App.Guards\n") {
-		t.Fatalf("expected the focus node first with its location and namespace, got:\n%s", out)
+	if !strings.HasPrefix(out, "App.Guards.RepetitionGuard  src/Guards/RepetitionGuard.cs:10-40  in App.Guards\n") {
+		t.Fatalf("expected the focus node first with its full name, location and namespace, got:\n%s", out)
 	}
-	if !strings.Contains(out, "extends: Middleware  src/Middleware.cs:1-60\n") {
+	if !strings.Contains(out, "extends  App.Middleware  src/Middleware.cs:1-60\n") {
 		t.Fatalf("expected an 'extends' line, got:\n%s", out)
 	}
-	if !strings.Contains(out, "implements: ILlmMiddleware  src/ILlmMiddleware.cs:5-8\n") {
+	if !strings.Contains(out, "implements  App.ILlmMiddleware  src/ILlmMiddleware.cs:5-8\n") {
 		t.Fatalf("expected an 'implements' line, got:\n%s", out)
 	}
-	if !strings.Contains(out, "holds: Log  src/Guards/RepetitionGuard.cs:12\n") {
-		t.Fatalf("expected a 'holds' line, got:\n%s", out)
+	if !strings.Contains(out, "holds: Log  App.Guards.RepetitionGuard.Log  src/Guards/RepetitionGuard.cs:12\n") {
+		t.Fatalf("expected a 'holds' line with the member name, got:\n%s", out)
 	}
-	if !strings.Contains(out, "implemented by: RepetitionGuard") {
-		t.Fatalf("expected the reverse direction ('implemented by') on ILlmMiddleware's own block, got:\n%s", out)
+	if !strings.Contains(out, "implemented-by  App.Guards.RepetitionGuard") {
+		t.Fatalf("expected the reverse direction ('implemented-by') on ILlmMiddleware's own block, got:\n%s", out)
 	}
 	if !strings.HasSuffix(out, "4 nodes, 3 edges\n") {
 		t.Fatalf("expected a trailing counts line, got:\n%s", out)
@@ -167,11 +168,14 @@ func TestTreeFormat(t *testing.T) {
 		t.Fatalf("Format: %v", err)
 	}
 	out := string(body)
-	if !strings.HasPrefix(out, "RepetitionGuard  src/Guards/RepetitionGuard.cs:10-40\n") {
-		t.Fatalf("expected the focus node as the root, got:\n%s", out)
+	if !strings.HasPrefix(out, "App.Guards.RepetitionGuard  src/Guards/RepetitionGuard.cs:10-40\n") {
+		t.Fatalf("expected the focus node as the root, full name, got:\n%s", out)
 	}
-	if !strings.Contains(out, "extends → Middleware  src/Middleware.cs:1-60\n") {
+	if !strings.Contains(out, "extends → App.Middleware  src/Middleware.cs:1-60\n") {
 		t.Fatalf("expected an indented 'extends -> Middleware' line, got:\n%s", out)
+	}
+	if !strings.Contains(out, "holds Log → App.Guards.RepetitionGuard.Log  src/Guards/RepetitionGuard.cs:12\n") {
+		t.Fatalf("expected the member name on the 'holds' line, got:\n%s", out)
 	}
 	if !strings.HasSuffix(out, "4 nodes, 3 edges\n") {
 		t.Fatalf("expected a trailing counts line, got:\n%s", out)

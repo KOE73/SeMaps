@@ -1,8 +1,8 @@
 // Not a failing assertion: prints a table of answer sizes per format, on a
-// graph shaped like the case the formatter task was measured against
-// (docs/plans/PLAN_20260928_host_graph-provider.md, "Результат проверки"/
-// "Экономия для агента" — a focus type with 6 relations, inside a namespace
-// with 40 other types), at depth 1 and depth 2 with the default set.
+// graph shaped like the experiment's question 3 (docs/plans/PLAN_20260928-5_host_graph-answers-for-agents.md
+// step 2, question 3: "who holds OnnxExecutionContext, and through which
+// member" — 13 holders, two of them through two members apiece, plus 2 that
+// only inject it), at depth 1 with the default `follow`.
 package core
 
 import (
@@ -10,82 +10,73 @@ import (
 	"testing"
 )
 
-func measuredGraph() *Graph {
-	nodes := []GraphNode{}
-	edges := []GraphEdge{}
-	ns := "App.Guards"
-	focus := "cs:App.Guards.RepetitionGuard"
-	nodes = append(nodes, GraphNode{
-		ID: focus, Symbol: "App.Guards.RepetitionGuard", Kind: "type", Name: "RepetitionGuard",
-		Namespace: ns, File: "src/Guards/RepetitionGuard.cs", Line: 10, EndLine: 90,
-		Presence: "code", Language: "csharp", Extractor: "csharp",
-	})
-	// 6 relations off the focus type, each to its own small type.
-	kinds := []string{"implements", "extends", "holds", "holds", "uses", "uses"}
-	for i, k := range kinds {
-		id := fmt.Sprintf("cs:App.Guards.R%d", i)
-		nodes = append(nodes, GraphNode{
-			ID: id, Symbol: fmt.Sprintf("App.Guards.R%d", i), Kind: "type", Name: fmt.Sprintf("R%d", i),
-			Namespace: ns, File: fmt.Sprintf("src/Guards/R%d.cs", i), Line: 1, EndLine: 20,
-			Presence: "code", Language: "csharp", Extractor: "csharp",
-		})
-		var via *Via
-		if k == "holds" || k == "uses" {
-			via = &Via{Member: "m"}
+// question3Graph: X held by 13 types (two of them, H0/H1, through two
+// members each: 15 `holds` edges total), plus 2 types that only inject it
+// through their constructor.
+func question3Graph() *Graph {
+	x := "cs:App.OnnxExecutionContext"
+	nodes := []GraphNode{
+		{ID: x, Symbol: "App.OnnxExecutionContext", Kind: "type", Name: "OnnxExecutionContext", Namespace: "App", File: "src/OnnxExecutionContext.cs", Line: 10, EndLine: 80, Presence: "code", Language: "csharp", Extractor: "csharp"},
+	}
+	var edges []GraphEdge
+	for i := 0; i < 13; i++ {
+		id := fmt.Sprintf("cs:App.Holder%d", i)
+		nodes = append(nodes, GraphNode{ID: id, Symbol: fmt.Sprintf("App.Holder%d", i), Kind: "type", Name: fmt.Sprintf("Holder%d", i), Namespace: "App", File: fmt.Sprintf("src/Holder%d.cs", i), Line: 1, EndLine: 30, Presence: "code", Language: "csharp", Extractor: "csharp"})
+		edges = append(edges, GraphEdge{From: id, To: x, Kind: "holds", Type: "holds.one", Via: &Via{Member: "Context", MemberKind: "field"}, File: fmt.Sprintf("src/Holder%d.cs", i), Line: 7})
+		if i < 2 {
+			// two of them hold it through a second member as well.
+			edges = append(edges, GraphEdge{From: id, To: x, Kind: "holds", Type: "holds.one", Via: &Via{Member: "AltContext", MemberKind: "property"}, File: fmt.Sprintf("src/Holder%d.cs", i), Line: 15})
 		}
-		edges = append(edges, GraphEdge{From: focus, To: id, Kind: k, Type: k, Via: via, File: "src/Guards/RepetitionGuard.cs", Line: 11 + i})
-		// depth-2 neighbours of each relation, one apiece, plus a members
-		// edge among them so depth 2 has something to grow.
-		nb := fmt.Sprintf("cs:App.Guards.R%d.Nb", i)
-		nodes = append(nodes, GraphNode{ID: nb, Symbol: fmt.Sprintf("App.Guards.R%d.Nb", i), Kind: "type", Name: fmt.Sprintf("R%dNb", i), Namespace: ns, File: fmt.Sprintf("src/Guards/R%d.cs", i), Line: 5, EndLine: 8, Presence: "code", Language: "csharp", Extractor: "csharp"})
-		edges = append(edges, GraphEdge{From: id, To: nb, Kind: "uses", Type: "uses", File: fmt.Sprintf("src/Guards/R%d.cs", i), Line: 6})
 	}
-	// 40 other types in the same namespace, containment-linked to a module
-	// node (never walked by the default set), so they inflate a whole-graph
-	// answer but not a `links`-set neighbourhood of the focus type.
-	module := "cs:App.Guards.Module"
-	nodes = append(nodes, GraphNode{ID: module, Kind: "module", NativeKind: "file", Name: "Module", Namespace: ns, File: "src/Guards/Module.cs", Presence: "code", Language: "csharp", Extractor: "csharp"})
-	for i := 0; i < 40; i++ {
-		id := fmt.Sprintf("cs:App.Guards.Other%d", i)
-		nodes = append(nodes, GraphNode{ID: id, Symbol: fmt.Sprintf("App.Guards.Other%d", i), Kind: "type", Name: fmt.Sprintf("Other%d", i), Namespace: ns, File: fmt.Sprintf("src/Guards/Other%d.cs", i), Line: 1, EndLine: 15, Presence: "code", Language: "csharp", Extractor: "csharp"})
-		edges = append(edges, GraphEdge{From: module, To: id, Kind: "contains", Type: "contains"})
+	for i := 0; i < 2; i++ {
+		id := fmt.Sprintf("cs:App.Injector%d", i)
+		nodes = append(nodes, GraphNode{ID: id, Symbol: fmt.Sprintf("App.Injector%d", i), Kind: "type", Name: fmt.Sprintf("Injector%d", i), Namespace: "App", File: fmt.Sprintf("src/Injector%d.cs", i), Line: 1, EndLine: 20, Presence: "code", Language: "csharp", Extractor: "csharp"})
+		edges = append(edges, GraphEdge{From: id, To: x, Kind: "uses", Type: "injects", Via: &Via{Member: "ctx", MemberKind: "constructor"}, File: fmt.Sprintf("src/Injector%d.cs", i), Line: 5})
 	}
-	edges = append(edges, GraphEdge{From: module, To: focus, Kind: "contains", Type: "contains"})
 	return &Graph{Nodes: nodes, Edges: edges}
 }
 
-// TestMeasureFormatSizes prints the byte table asked for by the task; it
-// never fails on its own (go test -v to see it).
+// TestMeasureFormatSizes prints the byte table the task asks for; it never
+// fails on its own (go test -v to see it).
 func TestMeasureFormatSizes(t *testing.T) {
-	full := measuredGraph()
+	full := question3Graph()
 	fields := map[string]bool{"via": true, "position": true}
+	follow, err := ParseFollow(nil) // DefaultFollow
+	if err != nil {
+		t.Fatalf("ParseFollow: %v", err)
+	}
 
-	fmt.Println("\nformat            depth-1 bytes   depth-2 bytes")
+	fmt.Println("\nformat            depth-1 bytes")
 	for _, f := range GraphFormats() {
-		for _, depth := range []int{1, 2} {
-			g, err := Neighborhood(full, "cs:App.Guards.RepetitionGuard", depth)
-			if err != nil {
-				t.Fatalf("Neighborhood: %v", err)
-			}
-			kinds, err := ResolveEdgeKinds("", nil, true) // default neighbourhood set: links
-			if err != nil {
-				t.Fatalf("ResolveEdgeKinds: %v", err)
-			}
-			g = FilterEdgeKinds(full, kinds)
-			g, err = Neighborhood(g, "cs:App.Guards.RepetitionGuard", depth)
-			if err != nil {
-				t.Fatalf("Neighborhood: %v", err)
-			}
-			body, err := f.Format(g, FormatOptions{Focus: "cs:App.Guards.RepetitionGuard", Fields: fields, Facts: []any{}, Stats: map[string]any{}})
-			if err != nil {
-				t.Logf("%-16s depth-%d: refused: %v", f.Name(), depth, err)
-				continue
-			}
-			if depth == 1 {
-				fmt.Printf("%-16s %6d bytes", f.Name(), len(body))
-			} else {
-				fmt.Printf("      %6d bytes\n", len(body))
-			}
+		g, _, err := Walk(full, "cs:App.OnnxExecutionContext", 1, follow, 0)
+		if err != nil {
+			t.Fatalf("Walk: %v", err)
 		}
+		body, err := f.Format(g, FormatOptions{Focus: "cs:App.OnnxExecutionContext", Fields: fields, Facts: []any{}, Stats: map[string]any{}})
+		if err != nil {
+			t.Logf("%-16s refused: %v", f.Name(), err)
+			continue
+		}
+		fmt.Printf("%-16s %6d bytes\n", f.Name(), len(body))
+	}
+}
+
+// TestAllFormatsOnFixtureGraph prints every format's output on the shared
+// golden fixture (go test -v to see it) — a live, always-current worked
+// example of each format side by side.
+func TestAllFormatsOnFixtureGraph(t *testing.T) {
+	full := formatFixtureGraph()
+	follow, _ := ParseFollow(nil)
+	g, _, err := Walk(full, "cs:App.Guards.RepetitionGuard", 2, follow, 0)
+	if err != nil {
+		t.Fatalf("Walk: %v", err)
+	}
+	for _, name := range []string{"facts", "lines", "tree", "locations", "json", "json-compact"} {
+		f, _ := GetGraphFormat(name)
+		body, err := f.Format(g, FormatOptions{Focus: "cs:App.Guards.RepetitionGuard", Fields: map[string]bool{"via": true, "position": true}, Facts: []any{}, Stats: map[string]any{}})
+		if err != nil {
+			continue
+		}
+		fmt.Printf("\n--- %s ---\n%s\n", name, body)
 	}
 }

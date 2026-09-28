@@ -26,6 +26,13 @@ type FormatOptions struct {
 	// formats always show position (it is their point) and never show
 	// via/members as separate data.
 	Fields map[string]bool
+	// FanoutNotes: what `fanout` left out of the walk (part 1), printed by a
+	// text format's trailing counts line. Empty when fanout was not given or
+	// nothing was cut.
+	FanoutNotes []FanoutNote
+	// Notice is the name-resolution notice of part 2 ("asked X, took Y"),
+	// printed as the first line of a text answer when non-empty.
+	Notice string
 }
 
 // GraphFormatter is one named answer format.
@@ -44,6 +51,7 @@ type GraphFormatter interface {
 var graphFormats = []GraphFormatter{
 	jsonFormat{},
 	jsonCompactFormat{},
+	factsFormat{},
 	linesFormat{},
 	locationsFormat{},
 	treeFormat{},
@@ -52,11 +60,11 @@ var graphFormats = []GraphFormatter{
 // DefaultGraphFormat is the HTTP endpoint's default: today's JSON, unchanged.
 const DefaultGraphFormat = "json"
 
-// DefaultToolFormat is get_graph's default. Deliberately NOT "json": the
-// whole point of this task is to have several real formats side by side so
-// a real agent can be asked which one serves it best. Set to "lines" for
-// now; change this one constant once that question has an answer.
-const DefaultToolFormat = "lines"
+// DefaultToolFormat is get_graph's default: `facts`, the format written
+// directly from what the agents of PLAN_20260928-5 asked for. Still marked
+// provisional (one constant to change once a repeat of that experiment has
+// an answer).
+const DefaultToolFormat = "facts"
 
 // GraphFormats lists the registry, in declaration order.
 func GraphFormats() []GraphFormatter {

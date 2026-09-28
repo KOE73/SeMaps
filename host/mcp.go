@@ -130,20 +130,30 @@ type placeIn struct {
 // plus `limit` so an agent never gets the whole graph by accident
 // (docs/plans/PLAN_20260928_host_graph-provider.md step 6).
 type getGraphIn struct {
-	Project   string `json:"project,omitempty"`
-	Level     string `json:"level,omitempty" jsonschema:"types (drop function/value nodes) or all (default)"`
-	Kinds     string `json:"kinds,omitempty" jsonschema:"comma list of edge kinds to keep; default: all"`
-	Around    string `json:"around,omitempty" jsonschema:"node id: only its neighbourhood, edges in both directions"`
-	Depth     int    `json:"depth,omitempty" jsonschema:"with around: 1-5, default 1"`
-	Container string `json:"container,omitempty" jsonschema:"a containers.json id: only nodes in it, or in a descendant of it"`
+	Project string `json:"project,omitempty"`
+	Level   string `json:"level,omitempty" jsonschema:"types (drop function/value/method nodes) or all; default types without around, all with around"`
+	// Kinds is only for a whole-graph request (no Around): a neighbourhood
+	// names Follow instead (part 1 of the agent-answers rework).
+	Kinds     string   `json:"kinds,omitempty" jsonschema:"whole-graph only (no around): comma list of edge kinds to keep; default: all"`
+	Around    string   `json:"around,omitempty" jsonschema:"a node id or a name (part 2: resolved by id, then name, case-insensitively as a last resort) — only its neighbourhood"`
+	Follow    []string `json:"follow,omitempty" jsonschema:"neighbourhood only: directed relation names to walk (call graph_formats for the vocabulary); default: every relation but containment"`
+	Depth     int      `json:"depth,omitempty" jsonschema:"with around: 1-5, default 1"`
+	Fanout    int      `json:"fanout,omitempty" jsonschema:"with around: at most this many neighbours per node per relation; 0 (default) = unlimited"`
+	Container string   `json:"container,omitempty" jsonschema:"a containers.json id: only nodes in it, or in a descendant of it"`
 	// Fields is a list, not a comma string, so null/absent (the default,
 	// via+position) can be told apart from an explicit empty list (nothing
 	// extra): a plain string can't carry that distinction over JSON.
-	Fields  []string `json:"fields,omitempty" jsonschema:"members, via, position; default (omitted/null) via,position; [] for none"`
-	Missing bool     `json:"missing,omitempty" jsonschema:"include model-only nodes/edges whose entity/relation has status missing; default false"`
-	Limit   int      `json:"limit,omitempty" jsonschema:"without around or container, cut to this many nodes; default 200"`
-	Format  string   `json:"format,omitempty" jsonschema:"answer format name; call graph_formats to see them; default: provisional, see graph_formats"`
-	Set     string   `json:"set,omitempty" jsonschema:"named set of edge kinds to walk/keep (call graph_formats to see them); default: links for a neighbourhood (around given), all otherwise. Conflicts with kinds."`
+	Fields   []string `json:"fields,omitempty" jsonschema:"members, via, position, memberLines; default (omitted/null) via,position; [] for none"`
+	Missing  bool     `json:"missing,omitempty" jsonschema:"include model-only nodes/edges whose entity/relation has status missing; default false"`
+	Limit    int      `json:"limit,omitempty" jsonschema:"without around or container, cut to this many nodes; default 200"`
+	Format   string   `json:"format,omitempty" jsonschema:"answer format name, or call graph_formats to see them; default: facts (provisional)"`
+	Template string   `json:"template,omitempty" jsonschema:"a template of your own (see graph_formats for the macro dictionary and rules), instead of a named format's"`
+}
+
+type findNodeIn struct {
+	Project string `json:"project,omitempty"`
+	Q       string `json:"q" jsonschema:"substring of a node's name or id, case-insensitive"`
+	Limit   int    `json:"limit,omitempty" jsonschema:"default 50"`
 }
 
 type getViewIn struct {
@@ -229,7 +239,8 @@ func (s *mcpServer) server() *mcp.Server {
 	mcp.AddTool(srv, read("get_view", "A view with geometry as a tree: zones with their nodes, absolute rectangles, visible lines, what is unsaved. A zone reference reads only its subtree."), s.getView)
 	mcp.AddTool(srv, read("doctor", "Extractors and runtimes found, and the model check of the workspace."), s.doctor)
 	mcp.AddTool(srv, read("get_graph", "The live code graph: symbols and their code positions joined with entities and containers, docs/adr/ADR_20260928_host_live-code-graph.md. Bound it with around+depth or container, or it is cut to limit nodes (truncated: true, with the full counts). format/set pick the answer shape and which edges count; see graph_formats."), s.getGraph)
-	mcp.AddTool(srv, read("graph_formats", "The answer formats and named edge-kind sets get_graph accepts, with their defaults."), s.graphFormats)
+	mcp.AddTool(srv, read("graph_formats", "The answer formats, the relation vocabulary follow accepts, the template macro dictionary and rules, and the defaults."), s.graphFormats)
+	mcp.AddTool(srv, read("find_node", "Substring search over graph node names/ids: candidates to pass as get_graph's around."), s.findNode)
 	mcp.AddTool(srv, read("sync_preview", "What sync would change, writing nothing (= semaps sync --dry-run)."), s.syncPreview)
 
 	mcp.AddTool(srv, write("set_text", "Write one text field as authored, with at = now."), s.setText)
@@ -515,33 +526,61 @@ func (s *mcpServer) getGraph(_ context.Context, _ *mcp.CallToolRequest, in getGr
 	}
 
 	formatName := in.Format
-	if formatName == "" {
+	if formatName == "" && in.Template == "" {
 		formatName = core.DefaultToolFormat
 	}
-	formatter, ok := core.GetGraphFormat(formatName)
-	if !ok {
-		return nil, nil, core.UnknownFormatError(formatName)
+	var formatter core.GraphFormatter
+	if in.Template == "" {
+		var ok bool
+		formatter, ok = core.GetGraphFormat(formatName)
+		if !ok {
+			return nil, nil, core.UnknownFormatError(formatName)
+		}
 	}
 	if formatName == "tree" && in.Around == "" {
 		return nil, nil, errors.New("format=tree needs around=... (a focus node)")
+	}
+	if in.Around != "" && in.Kinds != "" {
+		return nil, nil, errors.New("kinds is only for a whole-graph request (no around); a neighbourhood names follow")
+	}
+
+	var notice string
+	var around string
+	if in.Around != "" {
+		res := core.ResolveNode(graph, in.Around)
+		switch {
+		case len(res.Candidates) > 0:
+			return nil, map[string]any{"error": "ambiguous", "asked": in.Around, "candidates": res.Candidates}, nil
+		case res.Node == nil:
+			return nil, nil, fmt.Errorf("no such node: %q (nearest: %s)", in.Around, strings.Join(res.Suggestions, ", "))
+		case res.MissingHidden && !in.Missing:
+			return nil, nil, fmt.Errorf("node %q is hidden as missing; pass missing:true to include it", res.Node.ID)
+		}
+		around, notice = res.Node.ID, res.Notice
 	}
 
 	var hiddenNodes, hiddenEdges int
 	graph, hiddenNodes, hiddenEdges = core.FilterMissing(graph, in.Missing)
 
-	if graph, err = core.FilterLevel(graph, in.Level); err != nil {
-		return nil, nil, err
+	level := in.Level
+	if level == "" {
+		if around == "" {
+			level = "types"
+		} else {
+			level = "all"
+		}
 	}
-	edgeKinds, err := core.ResolveEdgeKinds(in.Set, splitCSV(in.Kinds), in.Around != "")
-	if err != nil {
+	if graph, err = core.FilterLevel(graph, level); err != nil {
 		return nil, nil, err
-	}
-	if len(edgeKinds) > 0 {
-		graph = core.FilterEdgeKinds(graph, edgeKinds)
 	}
 
 	bounded := false
-	if in.Around != "" {
+	var fanoutNotes []core.FanoutNote
+	if around != "" {
+		follow, err := core.ParseFollow(in.Follow)
+		if err != nil {
+			return nil, nil, err
+		}
 		depth := in.Depth
 		if depth == 0 {
 			depth = 1
@@ -549,10 +588,12 @@ func (s *mcpServer) getGraph(_ context.Context, _ *mcp.CallToolRequest, in getGr
 		if depth < 1 || depth > 5 {
 			return nil, nil, errors.New("depth: must be between 1 and 5")
 		}
-		if graph, err = core.Neighborhood(graph, in.Around, depth); err != nil {
+		if graph, fanoutNotes, err = core.Walk(graph, around, depth, follow, in.Fanout); err != nil {
 			return nil, nil, err
 		}
 		bounded = true
+	} else if in.Kinds != "" {
+		graph = core.FilterEdgeKinds(graph, splitCSV(in.Kinds))
 	}
 	if in.Container != "" {
 		defs, err := containerDefs(m)
@@ -588,10 +629,16 @@ func (s *mcpServer) getGraph(_ context.Context, _ *mcp.CallToolRequest, in getGr
 
 	stats := graphStats(graph, hiddenNodes, hiddenEdges)
 	opts := core.FormatOptions{
-		Focus: in.Around, Facts: facts, Stats: stats, Fields: fields,
+		Focus: around, Facts: facts, Stats: stats, Fields: fields,
 		Truncated: truncated, FullNodes: fullNodes, FullEdges: fullEdges,
+		FanoutNotes: fanoutNotes, Notice: notice,
 	}
-	body, err := formatter.Format(graph, opts)
+	var body []byte
+	if in.Template != "" {
+		body, err = core.FormatWithTemplate(graph, in.Template, opts)
+	} else {
+		body, err = formatter.Format(graph, opts)
+	}
 	if err != nil {
 		return nil, nil, err
 	}
@@ -600,7 +647,7 @@ func (s *mcpServer) getGraph(_ context.Context, _ *mcp.CallToolRequest, in getGr
 	// bytes, parsed back, so text and structured content never disagree); a
 	// text format is returned as the tool's text content only
 	// (docs/API.md §6).
-	if formatName == core.DefaultGraphFormat || formatName == "json-compact" {
+	if in.Template == "" && (formatName == core.DefaultGraphFormat || formatName == "json-compact") {
 		var structured map[string]any
 		if err := json.Unmarshal(body, &structured); err != nil {
 			return nil, nil, err
@@ -612,6 +659,21 @@ func (s *mcpServer) getGraph(_ context.Context, _ *mcp.CallToolRequest, in getGr
 		return &mcp.CallToolResult{Content: []mcp.Content{&mcp.TextContent{Text: string(body)}}}, structured, nil
 	}
 	return &mcp.CallToolResult{Content: []mcp.Content{&mcp.TextContent{Text: string(body)}}}, nil, nil
+}
+
+// findNode is find_node (part 2): a plain substring search over names and
+// ids, for a caller unsure of the exact spelling to give `around`.
+func (s *mcpServer) findNode(_ context.Context, _ *mcp.CallToolRequest, in findNodeIn) (*mcp.CallToolResult, any, error) {
+	m, err := s.model(in.Project)
+	if err != nil {
+		return nil, nil, err
+	}
+	sources, _ := sourcesFor(s.proj, m.ProjectID())
+	graph, err := core.BuildGraph(sources, m)
+	if err != nil {
+		return nil, nil, err
+	}
+	return nil, map[string]any{"candidates": core.FindNodes(graph, in.Q, in.Limit)}, nil
 }
 
 // graphFormats is graph_formats: the same list GET /api/graph-formats gives,

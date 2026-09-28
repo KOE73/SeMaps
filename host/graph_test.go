@@ -7,6 +7,7 @@ import (
 	"net/http/httptest"
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 	"time"
 
@@ -109,13 +110,15 @@ func TestGraphEndpointWithRun(t *testing.T) {
 	srv := graphServer(gs)
 	defer srv.Close()
 
+	// A whole-graph request (no around) now defaults to level=types
+	// (ADR_20260928-3 §7), which drops the function node.
 	res, body := getGraphJSON(t, srv.URL+"/api/graph/p")
 	if res.StatusCode != http.StatusOK {
 		t.Fatalf("expected 200, got %d", res.StatusCode)
 	}
 	nodes, _ := body["nodes"].([]any)
-	if len(nodes) != 2 {
-		t.Fatalf("expected 2 nodes (A joined, A.Run code-only), got %+v", body)
+	if len(nodes) != 1 {
+		t.Fatalf("expected 1 node (default level=types drops the function node), got %+v", body)
 	}
 	facts, _ := body["facts"].([]any)
 	if len(facts) != 1 {
@@ -126,13 +129,13 @@ func TestGraphEndpointWithRun(t *testing.T) {
 		t.Fatalf("unexpected facts entry: %+v", entry)
 	}
 
-	// level=types drops the function node
-	res2, body2 := getGraphJSON(t, srv.URL+"/api/graph/p?level=types")
+	// level=all keeps the function node too
+	res2, body2 := getGraphJSON(t, srv.URL+"/api/graph/p?level=all")
 	if res2.StatusCode != http.StatusOK {
 		t.Fatalf("expected 200, got %d", res2.StatusCode)
 	}
-	if nodes2, _ := body2["nodes"].([]any); len(nodes2) != 1 {
-		t.Fatalf("expected 1 node with level=types, got %+v", body2["nodes"])
+	if nodes2, _ := body2["nodes"].([]any); len(nodes2) != 2 {
+		t.Fatalf("expected 2 nodes with level=all, got %+v", body2["nodes"])
 	}
 }
 
@@ -155,6 +158,58 @@ func TestGraphEndpointAround(t *testing.T) {
 	}
 }
 
+// TestGraphEndpointAroundByName: part 2 — `around` accepts a name, not just
+// an id, resolved against the graph (here, the short name "A" resolves to
+// csharp:A, since it is the only node named that).
+func TestGraphEndpointAroundByName(t *testing.T) {
+	gs, _ := graphFixture(t, true)
+	srv := graphServer(gs)
+	defer srv.Close()
+	res, err := http.Get(srv.URL + "/api/graph/p?around=A&depth=1&format=facts")
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer res.Body.Close()
+	b, _ := io.ReadAll(res.Body)
+	if res.StatusCode != http.StatusOK {
+		t.Fatalf("expected 200 resolving around by name, got %d: %s", res.StatusCode, b)
+	}
+	if !strings.Contains(string(b), "asked `A`, no such id; taken `csharp:A`") {
+		t.Fatalf("expected the part 2 notice as the first line, got:\n%s", b)
+	}
+}
+
+// TestGraphEndpointFanoutNote: `fanout` caps neighbours per (node, relation)
+// and the answer says what was left out.
+func TestGraphEndpointFanoutNote(t *testing.T) {
+	gs, _ := graphFixture(t, true)
+	srv := graphServer(gs)
+	defer srv.Close()
+	res, err := http.Get(srv.URL + "/api/graph/p?around=csharp:A&depth=1&fanout=0&format=facts")
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer res.Body.Close()
+	if res.StatusCode != http.StatusOK {
+		t.Fatalf("expected 200, got %d", res.StatusCode)
+	}
+}
+
+// TestGraphFindEndpoint: part 2's plain substring search.
+func TestGraphFindEndpoint(t *testing.T) {
+	gs, _ := graphFixture(t, true)
+	srv := graphServer(gs)
+	defer srv.Close()
+	res, body := getGraphJSON(t, srv.URL+"/api/graph/p/find?q=run")
+	if res.StatusCode != http.StatusOK {
+		t.Fatalf("expected 200, got %d", res.StatusCode)
+	}
+	candidates, _ := body["candidates"].([]any)
+	if len(candidates) == 0 {
+		t.Fatalf("expected at least one candidate for substring 'run', got %+v", body)
+	}
+}
+
 func TestGraphEndpointBadLevelAndDepth(t *testing.T) {
 	gs, _ := graphFixture(t, true)
 	srv := graphServer(gs)
@@ -165,6 +220,28 @@ func TestGraphEndpointBadLevelAndDepth(t *testing.T) {
 	}
 	if res, _ := getGraphJSON(t, srv.URL+"/api/graph/p?around=csharp:A&depth=99"); res.StatusCode != http.StatusBadRequest {
 		t.Fatalf("expected 400 for depth out of range, got %d", res.StatusCode)
+	}
+}
+
+// TestGraphEndpointExactlyAsTheEditorSendsIt: editor/src/app/graph/types.ts
+// fetchGraph() requests exactly `?fields=via,position` (no `around`, no
+// `set`/`kinds`/`follow`, no `missing`) — this must keep working byte-shape
+// compatible (nodes/edges/facts/stats) after the agent-answers rework, even
+// though the whole-graph default level is now `types` (a no-op here: the
+// fixture carries no function/value/method nodes besides the one the other
+// test already covers under level=types explicitly).
+func TestGraphEndpointExactlyAsTheEditorSendsIt(t *testing.T) {
+	gs, _ := graphFixture(t, true)
+	srv := graphServer(gs)
+	defer srv.Close()
+	res, body := getGraphJSON(t, srv.URL+"/api/graph/p?fields=via,position")
+	if res.StatusCode != http.StatusOK {
+		t.Fatalf("expected 200, got %d", res.StatusCode)
+	}
+	for _, key := range []string{"nodes", "edges", "facts", "stats"} {
+		if _, ok := body[key]; !ok {
+			t.Fatalf("expected key %q in the editor's graph response, got %+v", key, body)
+		}
 	}
 }
 

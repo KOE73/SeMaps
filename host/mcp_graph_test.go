@@ -229,14 +229,14 @@ func TestMCPGetGraphDefaultFormatIsText(t *testing.T) {
 	}
 }
 
-func TestMCPGetGraphSetAndKindsConflict(t *testing.T) {
+func TestMCPGetGraphAroundAndKindsConflict(t *testing.T) {
 	cs := manyEntitiesSession(t, 1)
-	res, err := cs.CallTool(context.Background(), &mcp.CallToolParams{Name: "get_graph", Arguments: map[string]any{"set": "links", "kinds": "extends"}})
+	res, err := cs.CallTool(context.Background(), &mcp.CallToolParams{Name: "get_graph", Arguments: map[string]any{"around": "e1", "kinds": "extends"}})
 	if err != nil {
 		t.Fatalf("get_graph: %v", err)
 	}
 	if !res.IsError {
-		t.Fatalf("expected an error for set+kinds both given, got %+v", res)
+		t.Fatalf("expected an error for around+kinds both given, got %+v", res)
 	}
 }
 
@@ -254,8 +254,8 @@ func TestMCPGraphFormatsTool(t *testing.T) {
 		t.Fatalf("expected an object, got %T", res.StructuredContent)
 	}
 	formats, _ := out["formats"].([]any)
-	if len(formats) != 5 {
-		t.Fatalf("expected 5 formats, got %+v", formats)
+	if len(formats) != 6 {
+		t.Fatalf("expected 6 formats, got %+v", formats)
 	}
 	defaults, _ := out["defaults"].(map[string]any)
 	if defaults["format"] != "json" {

@@ -9,6 +9,7 @@ package main
 
 import (
 	"errors"
+	"fmt"
 	"net/http"
 	"strconv"
 	"strings"
@@ -155,6 +156,7 @@ func (g *graphService) remember(project string) {
 
 func (g *graphService) register(mux *http.ServeMux) {
 	mux.HandleFunc("GET /api/graph/{project}", g.guard(g.serve))
+	mux.HandleFunc("GET /api/graph/{project}/find", g.guard(g.serveFind))
 	mux.HandleFunc("GET /api/graph-formats", g.serveFormats)
 }
 
@@ -165,23 +167,66 @@ func (g *graphService) serveFormats(w http.ResponseWriter, r *http.Request) {
 }
 
 // graphFormatsPayload is shared by the HTTP list and the MCP graph_formats
-// tool, so the two never drift apart.
+// tool, so the two never drift apart: formats (with a text format's own
+// template), the relation vocabulary `follow` accepts, the macro dictionary
+// and template rules (part 3, so an agent can write its own template after
+// reading only this), and the defaults.
 func graphFormatsPayload() map[string]any {
 	formats := []map[string]any{}
 	for _, f := range core.GraphFormats() {
-		formats = append(formats, map[string]any{"name": f.Name(), "description": f.Description(), "mediaType": f.MediaType()})
+		m := map[string]any{"name": f.Name(), "description": f.Description(), "mediaType": f.MediaType()}
+		if t, ok := graphFormatTemplates[f.Name()]; ok {
+			m["template"] = t
+		}
+		formats = append(formats, m)
 	}
-	sets := []map[string]any{}
-	for _, s := range core.RelationSets() {
-		sets = append(sets, map[string]any{"name": s.Name, "description": s.Description, "kinds": s.Kinds})
+	relations := []map[string]any{}
+	for _, r := range core.RelationVocabulary() {
+		relations = append(relations, map[string]any{
+			"name": r.Name, "inverse": r.Inverse, "kind": r.Kind, "typeMatch": r.TypeMatch, "description": r.Description,
+		})
 	}
 	return map[string]any{
-		"formats": formats,
-		"sets":    sets,
+		"formats":       formats,
+		"relations":     relations,
+		"defaultFollow": core.DefaultFollow,
+		"template":      templateRulesPayload(),
 		"defaults": map[string]any{
-			"format":           core.DefaultGraphFormat,
-			"set":              core.DefaultWholeGraphSet,
-			"neighbourhoodSet": core.DefaultNeighborhoodSet,
+			"format": core.DefaultGraphFormat,
+			"level":  map[string]any{"wholeGraph": "types", "neighbourhood": "all"},
+		},
+	}
+}
+
+// graphFormatTemplates: the stored template string of each text format, so
+// graph_formats shows exactly what a caller could pass as `template` to get
+// the same shape (part 3).
+var graphFormatTemplates = map[string]string{
+	"facts":     core.FactsTemplate,
+	"lines":     core.LinesTemplate,
+	"locations": core.LocationsTemplate,
+	"tree":      core.TreeNodeTemplate,
+}
+
+// templateRulesPayload: the ten-line explanation and worked examples part 3
+// asks for, so an agent can write a template after reading only this.
+func templateRulesPayload() map[string]any {
+	return map[string]any{
+		"rules": []string{
+			"Literal text is copied as is.",
+			"{macro} is replaced by that macro's value, or nothing when it has none.",
+			"[...] is an optional group: printed as is when every macro directly inside it has a value; dropped whole, literal text included, when any one of them is empty.",
+			"{relations: TEMPLATE | SEPARATOR} renders TEMPLATE once per relation reaching the node from the node it was reached from, joined by SEPARATOR.",
+			"Node macros: step name fullName id kind nativeKind visibility file line endLine lines namespace assembly containers presence status entity.",
+			"Relation macros (inside a relations block only): relation member memberKind memberLine modifiers cardinality type text relationLine relationLines.",
+			"`lines` is `line-endLine`, or just `line` when there is no end.",
+			"`relation` is the directed name, from the point of view of the node it was reached FROM (e.g. `holds`, not `held-by`, when read from the holder).",
+			"A malformed template (unmatched `{`, `[` or `]`, or an unknown macro) is an error naming the position and the macro.",
+			"A node macro may also be used inside a relations block, to show the neighbour's own data next to the relation.",
+		},
+		"examples": []map[string]string{
+			{"template": core.FactsTemplate, "example": "1 App.Guards.RepetitionGuard  src/Guards/RepetitionGuard.cs:10-40  holds Log:12"},
+			{"template": "{relations: {relation} via {member} | ; }", "example": "holds via Log; extends via "},
 		},
 	}
 }
@@ -228,50 +273,96 @@ func (g *graphService) serve(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 
+	template := r.URL.Query().Get("template")
 	formatName := r.URL.Query().Get("format")
-	if formatName == "" {
+	if formatName == "" && template == "" {
 		formatName = core.DefaultGraphFormat
 	}
-	formatter, ok := core.GetGraphFormat(formatName)
-	if !ok {
-		http.Error(w, core.UnknownFormatError(formatName).Error(), http.StatusBadRequest)
-		return
+	var formatter core.GraphFormatter
+	if template == "" {
+		var ok bool
+		formatter, ok = core.GetGraphFormat(formatName)
+		if !ok {
+			http.Error(w, core.UnknownFormatError(formatName).Error(), http.StatusBadRequest)
+			return
+		}
 	}
-	if formatName == "tree" && r.URL.Query().Get("around") == "" {
+	aroundQuery := r.URL.Query().Get("around")
+	if formatName == "tree" && aroundQuery == "" {
 		http.Error(w, "format=tree needs around=... (a focus node): see docs/API.md §5", http.StatusBadRequest)
 		return
 	}
+	if aroundQuery != "" && r.URL.Query().Get("kinds") != "" {
+		http.Error(w, "kinds is only for a whole-graph request (no around); a neighbourhood names follow=...", http.StatusBadRequest)
+		return
+	}
 
+	// Name resolution (part 2) happens against the graph as built, before
+	// `missing` hides anything, so a hit on a hidden node can be reported as
+	// such rather than as "no such node".
 	missing := parseBoolParam(r.URL.Query().Get("missing"))
+	var notice string
+	var around string
+	if aroundQuery != "" {
+		res := core.ResolveNode(graph, aroundQuery)
+		switch {
+		case len(res.Candidates) > 0:
+			w.Header().Set("Content-Type", "application/json; charset=utf-8")
+			w.WriteHeader(http.StatusConflict)
+			writeJSON(w, map[string]any{"error": "ambiguous", "asked": aroundQuery, "candidates": res.Candidates})
+			return
+		case res.Node == nil:
+			w.Header().Set("Content-Type", "application/json; charset=utf-8")
+			w.WriteHeader(http.StatusNotFound)
+			writeJSON(w, map[string]any{"error": "no such node", "asked": aroundQuery, "suggestions": res.Suggestions})
+			return
+		case res.MissingHidden && !missing:
+			http.Error(w, fmt.Sprintf("node %q is hidden as missing; pass missing=1 to include it", res.Node.ID), http.StatusNotFound)
+			return
+		}
+		around, notice = res.Node.ID, res.Notice
+	}
+
 	graph, hiddenNodes, hiddenEdges := core.FilterMissing(graph, missing)
 
-	graph, err = core.FilterLevel(graph, r.URL.Query().Get("level"))
+	levelParam := r.URL.Query().Get("level")
+	if levelParam == "" {
+		if around == "" {
+			levelParam = "types"
+		} else {
+			levelParam = "all"
+		}
+	}
+	graph, err = core.FilterLevel(graph, levelParam)
 	if err != nil {
 		http.Error(w, err.Error(), http.StatusBadRequest)
 		return
 	}
 
-	around := r.URL.Query().Get("around")
-	edgeKinds, err := core.ResolveEdgeKinds(r.URL.Query().Get("set"), splitCSV(r.URL.Query().Get("kinds")), around != "")
-	if err != nil {
-		http.Error(w, err.Error(), http.StatusBadRequest)
-		return
-	}
-	if len(edgeKinds) > 0 {
-		graph = core.FilterEdgeKinds(graph, edgeKinds)
-	}
-
+	var fanoutNotes []core.FanoutNote
 	if around != "" {
+		follow, err := core.ParseFollow(splitCSV(r.URL.Query().Get("follow")))
+		if err != nil {
+			http.Error(w, err.Error(), http.StatusBadRequest)
+			return
+		}
 		depth, err := parseDepth(r.URL.Query().Get("depth"))
 		if err != nil {
 			http.Error(w, err.Error(), http.StatusBadRequest)
 			return
 		}
-		graph, err = core.Neighborhood(graph, around, depth)
+		fanout, err := parseFanout(r.URL.Query().Get("fanout"))
+		if err != nil {
+			http.Error(w, err.Error(), http.StatusBadRequest)
+			return
+		}
+		graph, fanoutNotes, err = core.Walk(graph, around, depth, follow, fanout)
 		if err != nil {
 			http.Error(w, err.Error(), http.StatusNotFound)
 			return
 		}
+	} else if kinds := splitCSV(r.URL.Query().Get("kinds")); len(kinds) > 0 {
+		graph = core.FilterEdgeKinds(graph, kinds)
 	}
 
 	if container := r.URL.Query().Get("container"); container != "" {
@@ -287,18 +378,54 @@ func (g *graphService) serve(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 
-	body, err := formatter.Format(graph, core.FormatOptions{
-		Focus:  around,
-		Facts:  facts,
-		Stats:  graphStats(graph, hiddenNodes, hiddenEdges),
-		Fields: fields,
-	})
+	opts := core.FormatOptions{
+		Focus:       around,
+		Facts:       facts,
+		Stats:       graphStats(graph, hiddenNodes, hiddenEdges),
+		Fields:      fields,
+		FanoutNotes: fanoutNotes,
+		Notice:      notice,
+	}
+	var body []byte
+	mediaType := "text/plain; charset=utf-8"
+	if template != "" {
+		body, err = core.FormatWithTemplate(graph, template, opts)
+	} else {
+		body, err = formatter.Format(graph, opts)
+		mediaType = formatter.MediaType()
+	}
 	if err != nil {
 		http.Error(w, err.Error(), http.StatusBadRequest)
 		return
 	}
-	w.Header().Set("Content-Type", formatter.MediaType())
+	w.Header().Set("Content-Type", mediaType)
 	_, _ = w.Write(body)
+}
+
+// serveFind: GET /api/graph/{project}/find?q=&limit= — part 2's plain
+// substring search over names and ids, so a caller unsure of the exact
+// `around` spelling gets candidates instead of guessing.
+func (g *graphService) serveFind(w http.ResponseWriter, r *http.Request) {
+	project := r.PathValue("project")
+	graph, _, err := g.build(project)
+	if err != nil {
+		modelError(w, err)
+		return
+	}
+	limit, _ := strconv.Atoi(r.URL.Query().Get("limit"))
+	writeJSON(w, map[string]any{"candidates": core.FindNodes(graph, r.URL.Query().Get("q"), limit)})
+}
+
+// parseFanout: 0 (off, the default) or a positive integer.
+func parseFanout(s string) (int, error) {
+	if s == "" {
+		return 0, nil
+	}
+	n, err := strconv.Atoi(s)
+	if err != nil || n < 0 {
+		return 0, errors.New("fanout: must be a non-negative number")
+	}
+	return n, nil
 }
 
 // containerDefs is the full containers.json list, as core.FilterContainer

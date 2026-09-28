@@ -40,11 +40,36 @@ about the authored architecture — what the model asserts should be connected, 
 whether the latest extraction agrees. Bound `get_graph` with `around` (a node id) or `container`;
 without either it cuts to `limit` nodes (default 200) and reports `truncated: true`.
 
-**`get_graph` formats and sets.** Start with `get_graph`'s default answer shape — it is deliberately
-provisional (`docs/API.md` §6), so do not assume it is JSON. Call `graph_formats` once to see the
-other formats and the named edge-kind sets, with a one-line description of each. Ask for
-`set=containment` on a neighbourhood (`around=...`) to see who is inside a namespace or assembly,
-since the default set does not walk `contains`.
+**Asking the graph: `around`, `follow`, formats.** `around` takes an id *or a name* — `get_graph`
+resolves it (exact id, then progressively looser names, case-insensitive as a last resort,
+docs/API.md §5 part 2); several matches come back as a list to choose from, none come back with
+the nearest names by edit distance, so do not spend calls guessing the exact spelling. Start with
+`get_graph`'s default answer shape — it is deliberately provisional (`core.DefaultToolFormat`,
+docs/API.md §6) — so do not assume it is JSON. Call `graph_formats` once to see the other formats,
+the relation vocabulary `follow` accepts (two names per relation, one per direction — `extends` /
+`extended-by`, `holds` / `held-by`, `calls` / `called-by`, …), the template macro dictionary and
+rules, and the defaults. A neighbourhood walk (`around`) names exactly what to follow: leave
+`follow` out for the default (everything but containment), or name `contains`/`inside` explicitly
+to see what is inside a namespace or assembly. `fanout=N` caps neighbours per node per relation
+when a hub node would otherwise flood the answer; the answer says what was left out.
+
+**Two worked examples.**
+- Descendants two levels deep, without climbing to an interface's other implementers:
+  `get_graph(around: "OpBase", follow: ["extended-by"], depth: 2)`.
+- Who holds `OnnxExecutionContext`, through which member:
+  `get_graph(around: "OnnxExecutionContext", follow: ["held-by", "injected-into"], depth: 1)` — the
+  default `facts` format prints one line per holder with the member name and line.
+
+**Finding a node by name.** Unsure of the exact spelling? Call `find_node(q: "...")` (or `GET
+/api/graph/{project}/find?q=`): a substring search over names and ids, returning candidates to pass
+as `around`.
+
+**Writing your own template.** `format` names a stored format, or pass `template` with your own
+(docs/API.md §6 part 3): a small language of `{macro}` placeholders, `[...]` optional groups that
+drop the literal text around a macro that turned out empty, and a nested
+`{relations: TEMPLATE | SEPARATOR}` block for the relations reaching a node from the node it was
+reached from. `graph_formats` documents every macro with two worked examples — read that before
+writing one, rather than guessing the grammar.
 
 To point an agent at an object of a view, copy its reference in the editor («🔗» in Properties, or
 «Копировать ссылку» in the block/zone menu): `v_ops#z_undistort`. A request that names the
