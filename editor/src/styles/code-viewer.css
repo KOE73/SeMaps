@@ -185,6 +185,10 @@
   color: #d4d4d8;
 }
 
+.semaps-code-line-target {
+  background: rgba(79, 140, 255, 0.22);
+}
+
 /* ------------------------------------------------------------------ Footer */
 
 .semaps-code-foot {

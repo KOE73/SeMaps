@@ -151,6 +151,19 @@ export class CodeViewerDialog {
   }
 
   /**
+   * Like `open`, but scrolls the given line into view once the file has
+   * loaded and highlights it briefly. Used by the graph page's "open
+   * source" link (PLAN_20260928-2 step 4), which knows a node's line but has
+   * no other way to jump to it.
+   */
+  async openAt(codeRef: string, line: number, title?: string): Promise<void> {
+    await this.open(codeRef, title);
+    const target = this.bodyEl.querySelector<HTMLElement>(`.semaps-code-line-num[data-line="${line}"]`);
+    target?.parentElement?.scrollIntoView({ block: "center" });
+    target?.parentElement?.classList.add("semaps-code-line-target");
+  }
+
+  /**
    * Open the modal code viewer for a specific codeRef.
    */
   async open(codeRef: string, title?: string): Promise<void> {

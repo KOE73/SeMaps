@@ -1,0 +1,160 @@
+/*
+ * The Graph mode (PLAN_20260928-2): a full-bleed sigma canvas with a
+ * toolbar above and a side dock (legend, filters, selection panel) to the
+ * right. Unlike the other tool pages, this one does not scroll — the
+ * canvas fills the surface.
+ */
+
+.graph-surface {
+  overflow: hidden;
+}
+
+.graph-page-inner {
+  max-width: none;
+  height: 100%;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+}
+
+.graph-mode {
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+  min-height: 0;
+}
+
+.graph-notice {
+  margin: 0;
+  padding: var(--tp-ctl-py) var(--tp-page-px);
+  background: var(--panel-alt);
+  color: var(--muted);
+  border-bottom: 1px solid var(--line);
+}
+
+.graph-notice a {
+  color: var(--accent);
+}
+
+.graph-toolbar {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: var(--tp-card-px);
+  padding: var(--tp-row-gap) var(--tp-page-px);
+  border-bottom: 1px solid var(--line);
+  background: var(--panel);
+}
+
+.graph-field {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  color: var(--muted);
+}
+
+.graph-field select,
+.graph-project-select {
+  padding: var(--tp-ctl-py) var(--tp-ctl-px);
+  border: 1px solid var(--line);
+  border-radius: 6px;
+  background: var(--input-bg);
+  color: var(--text);
+  font: inherit;
+}
+
+.graph-search {
+  padding: var(--tp-ctl-py) var(--tp-ctl-px);
+  border: 1px solid var(--line);
+  border-radius: 6px;
+  background: var(--input-bg);
+  color: var(--text);
+  font: inherit;
+  min-width: 200px;
+}
+
+.graph-body {
+  flex: 1;
+  min-height: 0;
+  display: flex;
+}
+
+.graph-canvas {
+  flex: 1;
+  min-width: 0;
+  position: relative;
+  background: var(--canvas-bg, #1c1e22);
+}
+
+.graph-side {
+  width: 300px;
+  flex-shrink: 0;
+  overflow: auto;
+  border-left: 1px solid var(--line);
+  background: var(--panel);
+  padding: var(--tp-card-py) var(--tp-card-px);
+  display: flex;
+  flex-direction: column;
+  gap: var(--tp-card-gap);
+}
+
+.graph-legend h2,
+.graph-filters h2,
+.graph-panel h2 {
+  font-size: var(--tp-h2);
+  margin: 0 0 6px;
+}
+
+.graph-legend-list {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+  margin-bottom: 8px;
+  font-size: var(--tp-small);
+}
+
+.graph-legend-item {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  color: var(--text);
+}
+
+.graph-swatch {
+  width: 10px;
+  height: 10px;
+  border-radius: 50%;
+  flex-shrink: 0;
+  display: inline-block;
+}
+
+.graph-swatch-model {
+  background: transparent;
+  border: 2px solid var(--muted);
+}
+
+.graph-filter-group h3 {
+  font-size: var(--tp-small);
+  color: var(--muted);
+  margin: 8px 0 4px;
+  text-transform: uppercase;
+}
+
+.graph-panel-row {
+  display: flex;
+  gap: 6px;
+  font-size: var(--tp-small);
+  padding: 2px 0;
+}
+
+.graph-panel-label {
+  color: var(--muted);
+  min-width: 88px;
+  flex-shrink: 0;
+}
+
+.graph-panel-edges {
+  margin: 4px 0 8px;
+  padding-left: 18px;
+  font-size: var(--tp-small);
+}

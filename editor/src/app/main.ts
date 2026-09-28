@@ -6,6 +6,7 @@ import "../styles/canvas-filters.css";
 import "../styles/doc-editor.css";
 import "../styles/code-viewer.css";
 import "../styles/shell.css";
+import "../styles/graph.css";
 
 import { Workbench } from "../workbench/Workbench.js";
 import { HostModelStore, HttpProjectStore, HttpStyleStore, HttpWorkspaceStore } from "../editor/io/index.js";

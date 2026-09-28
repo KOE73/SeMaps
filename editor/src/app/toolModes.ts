@@ -5,6 +5,7 @@ import type { CommandDefinition } from "../workbench/commands/types.js";
 import { focusNewExtractor, loadExtractors } from "./extract.js";
 import { loadProject, saveProject } from "./setup.js";
 import { installMcp, loadMcp } from "./mcp.js";
+import { loadGraph, refreshGraph } from "./graph.js";
 import { t } from "../shell/strings.js";
 
 /**
@@ -16,6 +17,8 @@ export function addToolModes(workbench: Workbench): void {
   const extract = page();
   const project = page();
   const mcp = page();
+  const graphInner = el("div", { class: "graph-page-inner" });
+  const graph: Page = { surface: el("main", { class: "tool-page graph-surface" }, [graphInner]), inner: graphInner };
 
   const commands: CommandDefinition[] = [
     {
@@ -45,6 +48,13 @@ export function addToolModes(workbench: Workbench): void {
       execute: () => void loadProject(project.inner),
     },
     {
+      id: "tools.graph.refresh",
+      title: t.refresh,
+      description: t.refreshHint,
+      icon: "⟳",
+      execute: () => void refreshGraph(graph.inner),
+    },
+    {
       id: "tools.mcp.install",
       title: t.mcpInstall,
       icon: "🔌",
@@ -70,6 +80,11 @@ export function addToolModes(workbench: Workbench): void {
     { id: "project", title: t.navSetup, items: [
       { type: "button", command: "tools.project.save", size: "large" },
       { type: "button", command: "tools.project.refresh", size: "large" },
+    ] },
+  ]));
+  workbench.addMode(mode("graph", t.navGraph, graph, () => loadGraph(graph.inner), [
+    { id: "graph", title: t.navGraph, items: [
+      { type: "button", command: "tools.graph.refresh", size: "large" },
     ] },
   ]));
   workbench.addMode(mode("mcp", t.navMcp, mcp, () => loadMcp(mcp.inner), [

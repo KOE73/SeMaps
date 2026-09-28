@@ -31,13 +31,19 @@
   "devDependencies": {
     "@types/node": "^26.3.0",
     "@types/prismjs": "^1.26.6",
+    "graphology-types": "^0.24.8",
     "typescript": "^5.9.3",
     "vite": "^7.1.5",
     "vite-plugin-dts": "^4.5.4"
   },
   "dependencies": {
     "dockview-core": "^8.2.0",
+    "graphology": "0.26.0",
+    "graphology-communities-louvain": "2.0.2",
+    "graphology-layout-forceatlas2": "0.10.1",
+    "graphology-layout-noverlap": "0.4.2",
     "marked": "^18.0.11",
-    "prismjs": "^1.30.0"
+    "prismjs": "^1.30.0",
+    "sigma": "3.0.3"
   }
 }
