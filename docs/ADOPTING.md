@@ -40,6 +40,12 @@ about the authored architecture — what the model asserts should be connected, 
 whether the latest extraction agrees. Bound `get_graph` with `around` (a node id) or `container`;
 without either it cuts to `limit` nodes (default 200) and reports `truncated: true`.
 
+**`get_graph` formats and sets.** Start with `get_graph`'s default answer shape — it is deliberately
+provisional (`docs/API.md` §6), so do not assume it is JSON. Call `graph_formats` once to see the
+other formats and the named edge-kind sets, with a one-line description of each. Ask for
+`set=containment` on a neighbourhood (`around=...`) to see who is inside a namespace or assembly,
+since the default set does not walk `contains`.
+
 To point an agent at an object of a view, copy its reference in the editor («🔗» in Properties, or
 «Копировать ссылку» in the block/zone menu): `v_ops#z_undistort`. A request that names the
 reference — «сделай остальные зоны в `v_ops#z_transform` как `v_ops#z_undistort`» — is what

@@ -142,6 +142,8 @@ type getGraphIn struct {
 	Fields  []string `json:"fields,omitempty" jsonschema:"members, via, position; default (omitted/null) via,position; [] for none"`
 	Missing bool     `json:"missing,omitempty" jsonschema:"include model-only nodes/edges whose entity/relation has status missing; default false"`
 	Limit   int      `json:"limit,omitempty" jsonschema:"without around or container, cut to this many nodes; default 200"`
+	Format  string   `json:"format,omitempty" jsonschema:"answer format name; call graph_formats to see them; default: provisional, see graph_formats"`
+	Set     string   `json:"set,omitempty" jsonschema:"named set of edge kinds to walk/keep (call graph_formats to see them); default: links for a neighbourhood (around given), all otherwise. Conflicts with kinds."`
 }
 
 type getViewIn struct {
@@ -226,7 +228,8 @@ func (s *mcpServer) server() *mcp.Server {
 	mcp.AddTool(srv, read("get_text", "Text entry of a key in one language."), s.getText)
 	mcp.AddTool(srv, read("get_view", "A view with geometry as a tree: zones with their nodes, absolute rectangles, visible lines, what is unsaved. A zone reference reads only its subtree."), s.getView)
 	mcp.AddTool(srv, read("doctor", "Extractors and runtimes found, and the model check of the workspace."), s.doctor)
-	mcp.AddTool(srv, read("get_graph", "The live code graph: symbols and their code positions joined with entities and containers, docs/adr/ADR_20260928_host_live-code-graph.md. Bound it with around+depth or container, or it is cut to limit nodes (truncated: true, with the full counts)."), s.getGraph)
+	mcp.AddTool(srv, read("get_graph", "The live code graph: symbols and their code positions joined with entities and containers, docs/adr/ADR_20260928_host_live-code-graph.md. Bound it with around+depth or container, or it is cut to limit nodes (truncated: true, with the full counts). format/set pick the answer shape and which edges count; see graph_formats."), s.getGraph)
+	mcp.AddTool(srv, read("graph_formats", "The answer formats and named edge-kind sets get_graph accepts, with their defaults."), s.graphFormats)
 	mcp.AddTool(srv, read("sync_preview", "What sync would change, writing nothing (= semaps sync --dry-run)."), s.syncPreview)
 
 	mcp.AddTool(srv, write("set_text", "Write one text field as authored, with at = now."), s.setText)
@@ -511,14 +514,30 @@ func (s *mcpServer) getGraph(_ context.Context, _ *mcp.CallToolRequest, in getGr
 		}
 	}
 
+	formatName := in.Format
+	if formatName == "" {
+		formatName = core.DefaultToolFormat
+	}
+	formatter, ok := core.GetGraphFormat(formatName)
+	if !ok {
+		return nil, nil, core.UnknownFormatError(formatName)
+	}
+	if formatName == "tree" && in.Around == "" {
+		return nil, nil, errors.New("format=tree needs around=... (a focus node)")
+	}
+
 	var hiddenNodes, hiddenEdges int
 	graph, hiddenNodes, hiddenEdges = core.FilterMissing(graph, in.Missing)
 
 	if graph, err = core.FilterLevel(graph, in.Level); err != nil {
 		return nil, nil, err
 	}
-	if kinds := splitCSV(in.Kinds); len(kinds) > 0 {
-		graph = core.FilterEdgeKinds(graph, kinds)
+	edgeKinds, err := core.ResolveEdgeKinds(in.Set, splitCSV(in.Kinds), in.Around != "")
+	if err != nil {
+		return nil, nil, err
+	}
+	if len(edgeKinds) > 0 {
+		graph = core.FilterEdgeKinds(graph, edgeKinds)
 	}
 
 	bounded := false
@@ -545,7 +564,6 @@ func (s *mcpServer) getGraph(_ context.Context, _ *mcp.CallToolRequest, in getGr
 		}
 		bounded = true
 	}
-	graph = core.StripFields(graph, fields)
 
 	limit := in.Limit
 	if limit <= 0 {
@@ -568,14 +586,39 @@ func (s *mcpServer) getGraph(_ context.Context, _ *mcp.CallToolRequest, in getGr
 		graph, truncated = &core.Graph{Nodes: nodes, Edges: edges}, true
 	}
 
-	resp := map[string]any{
-		"nodes": graph.Nodes, "edges": graph.Edges, "facts": facts,
-		"stats": graphStats(graph, hiddenNodes, hiddenEdges), "truncated": truncated,
+	stats := graphStats(graph, hiddenNodes, hiddenEdges)
+	opts := core.FormatOptions{
+		Focus: in.Around, Facts: facts, Stats: stats, Fields: fields,
+		Truncated: truncated, FullNodes: fullNodes, FullEdges: fullEdges,
 	}
-	if truncated {
-		resp["fullNodes"], resp["fullEdges"] = fullNodes, fullEdges
+	body, err := formatter.Format(graph, opts)
+	if err != nil {
+		return nil, nil, err
 	}
-	return nil, resp, nil
+
+	// A JSON format also carries structuredContent, as before (the same
+	// bytes, parsed back, so text and structured content never disagree); a
+	// text format is returned as the tool's text content only
+	// (docs/API.md §6).
+	if formatName == core.DefaultGraphFormat || formatName == "json-compact" {
+		var structured map[string]any
+		if err := json.Unmarshal(body, &structured); err != nil {
+			return nil, nil, err
+		}
+		// The tool always reports truncated (true/false), unlike the HTTP
+		// JSON body, which (unchanged from before this task) only carries it
+		// when true.
+		structured["truncated"] = truncated
+		return &mcp.CallToolResult{Content: []mcp.Content{&mcp.TextContent{Text: string(body)}}}, structured, nil
+	}
+	return &mcp.CallToolResult{Content: []mcp.Content{&mcp.TextContent{Text: string(body)}}}, nil, nil
+}
+
+// graphFormats is graph_formats: the same list GET /api/graph-formats gives,
+// so a client (or an agent) can see the available formats/sets and defaults
+// without guessing.
+func (s *mcpServer) graphFormats(_ context.Context, _ *mcp.CallToolRequest, _ struct{}) (*mcp.CallToolResult, any, error) {
+	return nil, graphFormatsPayload(), nil
 }
 
 func (s *mcpServer) getText(_ context.Context, _ *mcp.CallToolRequest, in textIn) (*mcp.CallToolResult, any, error) {

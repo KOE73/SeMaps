@@ -80,7 +80,7 @@ func callGraph(t *testing.T, cs *mcp.ClientSession, args map[string]any) map[str
 
 func TestMCPGetGraphTruncates(t *testing.T) {
 	cs := manyEntitiesSession(t, 10)
-	out := callGraph(t, cs, map[string]any{"limit": float64(3)})
+	out := callGraph(t, cs, map[string]any{"limit": float64(3), "format": "json"})
 	if out["truncated"] != true {
 		t.Fatalf("expected truncated:true, got %+v", out)
 	}
@@ -95,7 +95,7 @@ func TestMCPGetGraphTruncates(t *testing.T) {
 
 func TestMCPGetGraphNotTruncatedUnderLimit(t *testing.T) {
 	cs := manyEntitiesSession(t, 3)
-	out := callGraph(t, cs, map[string]any{"limit": float64(200)})
+	out := callGraph(t, cs, map[string]any{"limit": float64(200), "format": "json"})
 	if out["truncated"] != false {
 		t.Fatalf("expected truncated:false under the limit, got %+v", out)
 	}
@@ -107,7 +107,7 @@ func TestMCPGetGraphNotTruncatedUnderLimit(t *testing.T) {
 
 func TestMCPGetGraphAroundIsNeverTruncated(t *testing.T) {
 	cs := manyEntitiesSession(t, 5)
-	out := callGraph(t, cs, map[string]any{"around": "e_0", "limit": float64(1)})
+	out := callGraph(t, cs, map[string]any{"around": "e_0", "limit": float64(1), "format": "json"})
 	if out["truncated"] != false {
 		t.Fatalf("expected around to bypass truncation, got %+v", out)
 	}
@@ -117,7 +117,7 @@ func TestMCPGetGraphAroundIsNeverTruncated(t *testing.T) {
 // the default (via,position) — file positions show up on the nodes.
 func TestMCPGetGraphFieldsAbsentIsDefault(t *testing.T) {
 	cs := manyEntitiesSession(t, 1)
-	out := callGraph(t, cs, map[string]any{})
+	out := callGraph(t, cs, map[string]any{"format": "json"})
 	nodes, _ := out["nodes"].([]any)
 	if len(nodes) == 0 {
 		t.Fatalf("expected at least one node, got %+v", out)
@@ -129,7 +129,7 @@ func TestMCPGetGraphFieldsAbsentIsDefault(t *testing.T) {
 // slice (nil vs non-nil empty) rather than a plain string.
 func TestMCPGetGraphFieldsEmptyListIsNone(t *testing.T) {
 	cs := manyEntitiesSession(t, 1)
-	out := callGraph(t, cs, map[string]any{"fields": []any{}})
+	out := callGraph(t, cs, map[string]any{"fields": []any{}, "format": "json"})
 	nodes, _ := out["nodes"].([]any)
 	for _, n := range nodes {
 		nm := n.(map[string]any)
@@ -187,7 +187,7 @@ func TestMCPGetGraphMissingDefaultVsInclude(t *testing.T) {
 	}
 	t.Cleanup(func() { cs.Close() })
 
-	out := callGraph(t, cs, map[string]any{})
+	out := callGraph(t, cs, map[string]any{"format": "json"})
 	nodes, _ := out["nodes"].([]any)
 	if len(nodes) != 1 {
 		t.Fatalf("expected 1 node (e_gone hidden by default), got %+v", nodes)
@@ -198,9 +198,67 @@ func TestMCPGetGraphMissingDefaultVsInclude(t *testing.T) {
 		t.Fatalf("expected hiddenMissing {nodes:1,edges:1}, got %+v", hidden)
 	}
 
-	out2 := callGraph(t, cs, map[string]any{"missing": true})
+	out2 := callGraph(t, cs, map[string]any{"missing": true, "format": "json"})
 	nodes2, _ := out2["nodes"].([]any)
 	if len(nodes2) != 2 {
 		t.Fatalf("expected 2 nodes with missing:true, got %+v", nodes2)
+	}
+}
+
+// TestMCPGetGraphDefaultFormatIsText: the provisional tool default (lines)
+// returns text content, not a JSON node/edge structure, and no
+// structuredContent.
+func TestMCPGetGraphDefaultFormatIsText(t *testing.T) {
+	cs := manyEntitiesSession(t, 1)
+	res, err := cs.CallTool(context.Background(), &mcp.CallToolParams{Name: "get_graph", Arguments: map[string]any{}})
+	if err != nil {
+		t.Fatalf("get_graph: %v", err)
+	}
+	if res.IsError {
+		t.Fatalf("get_graph returned an error: %+v", res)
+	}
+	if res.StructuredContent != nil {
+		t.Fatalf("expected no structuredContent for the default (text) format, got %+v", res.StructuredContent)
+	}
+	if len(res.Content) != 1 {
+		t.Fatalf("expected one text content item, got %+v", res.Content)
+	}
+	tc, ok := res.Content[0].(*mcp.TextContent)
+	if !ok || tc.Text == "" {
+		t.Fatalf("expected non-empty text content, got %+v", res.Content[0])
+	}
+}
+
+func TestMCPGetGraphSetAndKindsConflict(t *testing.T) {
+	cs := manyEntitiesSession(t, 1)
+	res, err := cs.CallTool(context.Background(), &mcp.CallToolParams{Name: "get_graph", Arguments: map[string]any{"set": "links", "kinds": "extends"}})
+	if err != nil {
+		t.Fatalf("get_graph: %v", err)
+	}
+	if !res.IsError {
+		t.Fatalf("expected an error for set+kinds both given, got %+v", res)
+	}
+}
+
+func TestMCPGraphFormatsTool(t *testing.T) {
+	cs := manyEntitiesSession(t, 1)
+	res, err := cs.CallTool(context.Background(), &mcp.CallToolParams{Name: "graph_formats", Arguments: map[string]any{}})
+	if err != nil {
+		t.Fatalf("graph_formats: %v", err)
+	}
+	if res.IsError {
+		t.Fatalf("graph_formats returned an error: %+v", res)
+	}
+	out, ok := res.StructuredContent.(map[string]any)
+	if !ok {
+		t.Fatalf("expected an object, got %T", res.StructuredContent)
+	}
+	formats, _ := out["formats"].([]any)
+	if len(formats) != 5 {
+		t.Fatalf("expected 5 formats, got %+v", formats)
+	}
+	defaults, _ := out["defaults"].(map[string]any)
+	if defaults["format"] != "json" {
+		t.Fatalf("expected the HTTP default (json) reported, got %+v", defaults)
 	}
 }

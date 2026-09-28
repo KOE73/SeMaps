@@ -155,6 +155,35 @@ func (g *graphService) remember(project string) {
 
 func (g *graphService) register(mux *http.ServeMux) {
 	mux.HandleFunc("GET /api/graph/{project}", g.guard(g.serve))
+	mux.HandleFunc("GET /api/graph-formats", g.serveFormats)
+}
+
+// serveFormats: GET /api/graph-formats, the list a caller needs to build a
+// `format=`/`set=` request without guessing (docs/API.md §5).
+func (g *graphService) serveFormats(w http.ResponseWriter, r *http.Request) {
+	writeJSON(w, graphFormatsPayload())
+}
+
+// graphFormatsPayload is shared by the HTTP list and the MCP graph_formats
+// tool, so the two never drift apart.
+func graphFormatsPayload() map[string]any {
+	formats := []map[string]any{}
+	for _, f := range core.GraphFormats() {
+		formats = append(formats, map[string]any{"name": f.Name(), "description": f.Description(), "mediaType": f.MediaType()})
+	}
+	sets := []map[string]any{}
+	for _, s := range core.RelationSets() {
+		sets = append(sets, map[string]any{"name": s.Name, "description": s.Description, "kinds": s.Kinds})
+	}
+	return map[string]any{
+		"formats": formats,
+		"sets":    sets,
+		"defaults": map[string]any{
+			"format":           core.DefaultGraphFormat,
+			"set":              core.DefaultWholeGraphSet,
+			"neighbourhoodSet": core.DefaultNeighborhoodSet,
+		},
+	}
 }
 
 // guard: the graph needs the .semaps file to know a project's extractors,
@@ -199,6 +228,20 @@ func (g *graphService) serve(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 
+	formatName := r.URL.Query().Get("format")
+	if formatName == "" {
+		formatName = core.DefaultGraphFormat
+	}
+	formatter, ok := core.GetGraphFormat(formatName)
+	if !ok {
+		http.Error(w, core.UnknownFormatError(formatName).Error(), http.StatusBadRequest)
+		return
+	}
+	if formatName == "tree" && r.URL.Query().Get("around") == "" {
+		http.Error(w, "format=tree needs around=... (a focus node): see docs/API.md §5", http.StatusBadRequest)
+		return
+	}
+
 	missing := parseBoolParam(r.URL.Query().Get("missing"))
 	graph, hiddenNodes, hiddenEdges := core.FilterMissing(graph, missing)
 
@@ -208,11 +251,17 @@ func (g *graphService) serve(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	if kinds := splitCSV(r.URL.Query().Get("kinds")); len(kinds) > 0 {
-		graph = core.FilterEdgeKinds(graph, kinds)
+	around := r.URL.Query().Get("around")
+	edgeKinds, err := core.ResolveEdgeKinds(r.URL.Query().Get("set"), splitCSV(r.URL.Query().Get("kinds")), around != "")
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusBadRequest)
+		return
+	}
+	if len(edgeKinds) > 0 {
+		graph = core.FilterEdgeKinds(graph, edgeKinds)
 	}
 
-	if around := r.URL.Query().Get("around"); around != "" {
+	if around != "" {
 		depth, err := parseDepth(r.URL.Query().Get("depth"))
 		if err != nil {
 			http.Error(w, err.Error(), http.StatusBadRequest)
@@ -238,14 +287,18 @@ func (g *graphService) serve(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 
-	graph = core.StripFields(graph, fields)
-
-	writeJSON(w, map[string]any{
-		"nodes": graph.Nodes,
-		"edges": graph.Edges,
-		"facts": facts,
-		"stats": graphStats(graph, hiddenNodes, hiddenEdges),
+	body, err := formatter.Format(graph, core.FormatOptions{
+		Focus:  around,
+		Facts:  facts,
+		Stats:  graphStats(graph, hiddenNodes, hiddenEdges),
+		Fields: fields,
 	})
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusBadRequest)
+		return
+	}
+	w.Header().Set("Content-Type", formatter.MediaType())
+	_, _ = w.Write(body)
 }
 
 // containerDefs is the full containers.json list, as core.FilterContainer
