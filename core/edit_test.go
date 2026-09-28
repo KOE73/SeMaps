@@ -176,7 +176,9 @@ func TestConfirmRenames(t *testing.T) {
 	if ents.Entities[0]["symbol"] != "N.A2" {
 		t.Fatalf("symbol %v", ents.Entities[0]["symbol"])
 	}
-	var rels struct{ Relations []struct{ Via map[string]any } }
+	var rels struct {
+		Relations []struct{ Via map[string]any }
+	}
 	readAs(t, ws, "relations.json", &rels)
 	if rels.Relations[0].Via["member"] != "entries" || rels.Relations[0].Via["path"] == nil {
 		t.Fatalf("via %v", rels.Relations[0].Via)
