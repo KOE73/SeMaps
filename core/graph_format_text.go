@@ -72,7 +72,15 @@ func nodeByID(g *Graph) map[string]*GraphNode {
 //   - for a `calls`/`constructs` edge, e.Line/e.Lines are the call/construct
 //     site(s), reported as {relationLine}/{relationLines} — never as
 //     {memberLine}, which stays empty there (no member is involved).
-func relationMacrosFor(e GraphEdge, fromID string, byID map[string]*GraphNode) RelationMacros {
+//
+// subjectID is the id of the node THIS text line/block is actually about —
+// not always `fromID`'s "other end": relationsReachingNode's own-perspective
+// fallback (no walk/step data) calls this with fromID == subjectID (the
+// block's own outward view), while a walked answer and `tree` call it with
+// fromID == the parent and subjectID == the child being printed. Needed only
+// for defect B ("places of calls"): whether the call/construct site's file
+// is already the one printed on this specific line.
+func relationMacrosFor(e GraphEdge, fromID, subjectID string, byID map[string]*GraphNode) RelationMacros {
 	names := edgeRelationNames(e, fromID)
 	name := strings.Join(names, "/")
 	rm := RelationMacros{Relation: name, other: otherEnd(e, fromID)}
@@ -80,6 +88,28 @@ func relationMacrosFor(e GraphEdge, fromID string, byID map[string]*GraphNode) R
 		rm.RelationLine = e.Line
 		if len(e.Lines) > 0 {
 			rm.RelationLines = e.Lines
+		}
+		// The call/construct site is always in e.From's file (whoever does
+		// the calling/constructing) — which, on THIS line, is either the
+		// node the relation is about (a `called-by`/`constructed-by` line:
+		// e.From == that node, so its file is already printed) or the
+		// parent it was reached from (a `calls`/`constructs` line: e.From is
+		// the parent, a file the reader has not seen on this line) — defect
+		// B, "places of calls". Only set when it actually differs.
+		if rm.RelationLine != 0 || len(rm.RelationLines) > 0 {
+			doerFile := e.File
+			if doerFile == "" {
+				if n := byID[e.From]; n != nil {
+					doerFile = n.File
+				}
+			}
+			var subjectFile string
+			if n := byID[subjectID]; n != nil {
+				subjectFile = n.File
+			}
+			if doerFile != "" && doerFile != subjectFile {
+				rm.RelationLinesFile = doerFile
+			}
 		}
 	}
 	if e.Via != nil {
@@ -211,7 +241,7 @@ func relationsReachingNode(g *Graph, id string, byID map[string]*GraphNode) []Re
 		if haveParents {
 			perspective = other
 		}
-		rels = append(rels, relationMacrosFor(e, perspective, byID))
+		rels = append(rels, relationMacrosFor(e, perspective, id, byID))
 	}
 	sort.Slice(rels, func(i, j int) bool {
 		if rels[i].Relation != rels[j].Relation {
@@ -245,7 +275,7 @@ func contains(ss []string, s string) bool {
 // "calls from Create to Widget" — {count} is empty at 1) all come out of the
 // same template. {via} is only ever non-empty at step >= 2 (defect 6), so
 // the trailing " via {via}" group only shows up there.
-const FactsTemplate = `{step} {fullName}  {file}:{lines}  [\[{relations:{relation}[ {member}[:{memberLine}]][ {memberKind}][ {modifiers}][ [×{count} ]from {fromMethods}[ to {toMethods}]][ {injected}]|; }\]][ via {via}]`
+const FactsTemplate = `{step} {fullName}  {file}:{lines}  [\[{relations:{relation}[ {member}[:{memberLine}]][ {memberKind}][ {modifiers}][ [×{count} ]from {fromMethods}[ to {toMethods}]][ @{relationLines}[ in {relationLinesFile}]][ {injected}]|; }\]][ via {via}]`
 
 type factsFormat struct{}
 
@@ -298,14 +328,28 @@ func viaOf(parents []string, byID map[string]*GraphNode) (short, full string) {
 	return strings.Join(shorts, ","), strings.Join(fulls, ",")
 }
 
+// nodeMacros is NodeMacrosOf, plus defect 11's fix: a `method`-kind node's
+// {fullName} is its short printed signature (methodDisplayName) — a method's
+// own id can run to 250 characters (namespace-qualified container, full
+// parameter type names) and is what {id} is for; the name a reader sees,
+// and can hand back to `around`, is the short one.
+func nodeMacros(n *GraphNode, byID map[string]*GraphNode, methodOf map[string]string) NodeMacros {
+	m := NodeMacrosOf(n)
+	if n.Kind == "method" {
+		m.FullName = methodDisplayName(n, byID, methodOf)
+	}
+	return m
+}
+
 func renderPerNodeTemplate(g *Graph, tpl *Template, o FormatOptions) ([]byte, error) {
 	byID := nodeByID(g)
+	methodOf := methodContainerMap(g)
 	order := orderedIDs(g, o.Focus)
 	var b strings.Builder
 	b.WriteString(noticePrefix(o))
 	for _, id := range order {
 		n := byID[id]
-		m := NodeMacrosOf(n)
+		m := nodeMacros(n, byID, methodOf)
 		clearContainerPosition(&m, n)
 		m.Relations = combineHoldsAndInjects(relationsReachingNode(g, id, byID))
 		if n.Step != nil && *n.Step >= 2 {
@@ -357,10 +401,13 @@ func stepOf(n *GraphNode) int {
 // ---------------------------------------------------------------- lines
 
 // LinesTemplate is the stored template of the `lines` format's header line
-// (one per node); its relations print one per following line, indented,
-// via LinesRelationTemplate.
+// (one per node); its relations print one per following line, indented, via
+// LinesRelationTemplate. Its relation clause is the same shape as `facts`'
+// (defect 7: the same shared functions — relationMacrosFor,
+// combineHoldsAndInjects — so the same words, the same held+injects merge
+// and the same lifted `×N from … to …`/`@lines` for the same edges).
 const LinesTemplate = "[{step}: ]{fullName}[  {file}:{lines}][  in {namespace}]"
-const LinesRelationTemplate = "{relation}[: {member}[ ({memberKind})][:{memberLine}]]  {fullName}[  {file}:{lines}]"
+const LinesRelationTemplate = "{relation}[: {member}[ ({memberKind})][:{memberLine}]][ [×{count} ]from {fromMethods}[ to {toMethods}]][ @{relationLines}[ in {relationLinesFile}]][ {injected}]  {fullName}[  {file}:{lines}]"
 
 type linesFormat struct{}
 
@@ -372,67 +419,36 @@ func (linesFormat) MediaType() string { return "text/plain; charset=utf-8" }
 
 func (linesFormat) Format(g *Graph, o FormatOptions) ([]byte, error) {
 	byID := nodeByID(g)
+	methodOf := methodContainerMap(g)
 	order := orderedIDs(g, o.Focus)
 	header := MustTemplate(LinesTemplate)
+	relTpl := MustTemplate(LinesRelationTemplate)
 
 	var b strings.Builder
 	b.WriteString(noticePrefix(o))
 	for _, id := range order {
 		n := byID[id]
-		m := NodeMacrosOf(n)
+		m := nodeMacros(n, byID, methodOf)
 		clearContainerPosition(&m, n)
 		b.WriteString(header.Render(m))
 		b.WriteString("\n")
 
-		rels := relationsReachingNodeAllDirections(g, id, byID)
+		rels := combineHoldsAndInjects(relationsReachingNode(g, id, byID))
 		for _, rel := range rels {
-			other := byID[rel.otherID]
-			om := NodeMacrosOf(other)
+			other := byID[rel.other]
+			om := nodeMacros(other, byID, methodOf)
 			clearContainerPosition(&om, other)
-			rm := rel.rm
 			// relation line uses both node macros (of the neighbour) and
 			// relation macros: mixes both, through the same engine (and its
 			// whitespace rule) as every other template.
-			t := MustTemplate(LinesRelationTemplate)
 			b.WriteString("  ")
-			b.WriteString(t.RenderRelation(om, &rm))
+			b.WriteString(relTpl.RenderRelation(om, &rel))
 			b.WriteString("\n")
 		}
 	}
 	b.WriteString(countsLine(g, o))
 	b.WriteString("\n")
 	return []byte(b.String()), nil
-}
-
-type namedRelation struct {
-	otherID string
-	rm      RelationMacros
-}
-
-// relationsReachingNodeAllDirections: every edge touching `id`, in both
-// directions (the classic `lines` behaviour — every direct neighbour, not
-// only the walk's parent), sorted by relation name then neighbour name.
-func relationsReachingNodeAllDirections(g *Graph, id string, byID map[string]*GraphNode) []namedRelation {
-	var out []namedRelation
-	for _, e := range g.Edges {
-		var other, fromID string
-		switch {
-		case e.From == id:
-			other, fromID = e.To, id
-		case e.To == id:
-			other, fromID = e.From, id
-		default:
-			continue
-		}
-		out = append(out, namedRelation{otherID: other, rm: relationMacrosFor(e, fromID, byID)})
-	}
-	sort.Slice(out, func(i, j int) bool {
-		if out[i].rm.Relation != out[j].rm.Relation {
-			return out[i].rm.Relation < out[j].rm.Relation
-		}
-		return FullName(byID[out[i].otherID]) < FullName(byID[out[j].otherID])
-	})
-	return out
 }
 
 // ------------------------------------------------------------ locations
@@ -450,6 +466,8 @@ func (locationsFormat) MediaType() string { return "text/plain; charset=utf-8" }
 
 func (locationsFormat) Format(g *Graph, o FormatOptions) ([]byte, error) {
 	tpl := MustTemplate(LocationsTemplate)
+	byID := nodeByID(g)
+	methodOf := methodContainerMap(g)
 	var b strings.Builder
 	b.WriteString(noticePrefix(o))
 	for _, n := range g.Nodes {
@@ -457,7 +475,7 @@ func (locationsFormat) Format(g *Graph, o FormatOptions) ([]byte, error) {
 		if isContainerNode(&nn) {
 			nn.File = ""
 		}
-		b.WriteString(tpl.Render(NodeMacrosOf(&nn)))
+		b.WriteString(tpl.Render(nodeMacros(&nn, byID, methodOf)))
 		b.WriteString("\n")
 	}
 	b.WriteString(countsLine(g, o))
@@ -472,7 +490,7 @@ func (locationsFormat) Format(g *Graph, o FormatOptions) ([]byte, error) {
 // (they are not expressible as a per-line template), the line text itself
 // is not.
 const TreeNodeTemplate = "{fullName}[  {file}:{lines}]"
-const TreeRelationTemplate = "{relation}[ {member}][:{memberLine}] → "
+const TreeRelationTemplate = "{relation}[ {member}][:{memberLine}][ [×{count} ]from {fromMethods}[ to {toMethods}]][ @{relationLines}[ in {relationLinesFile}]][ {injected}] → "
 
 // treeFormat: indented by walk depth from the focus node. Without a focus
 // this format is refused — there is no "depth from" without one.
@@ -489,6 +507,7 @@ func (treeFormat) Format(g *Graph, o FormatOptions) ([]byte, error) {
 		return nil, fmt.Errorf("tree needs a focus node (around=...): there is no depth to indent by without one")
 	}
 	byID := nodeByID(g)
+	methodOf := methodContainerMap(g)
 	root := byID[o.Focus]
 	if root == nil {
 		return nil, fmt.Errorf("tree: focus node %q not in the graph", o.Focus)
@@ -503,7 +522,7 @@ func (treeFormat) Format(g *Graph, o FormatOptions) ([]byte, error) {
 
 	var b strings.Builder
 	b.WriteString(noticePrefix(o))
-	rm := NodeMacrosOf(root)
+	rm := nodeMacros(root, byID, methodOf)
 	clearContainerPosition(&rm, root)
 	b.WriteString(nodeTpl.Render(rm))
 	b.WriteString("\n")
@@ -513,15 +532,11 @@ func (treeFormat) Format(g *Graph, o FormatOptions) ([]byte, error) {
 		id    string
 		depth int
 	}
-	type child struct {
-		id string
-		rm RelationMacros
-	}
 	frontier := []item{{o.Focus, 0}}
 	visitedAsParent := map[string]bool{}
 	for len(frontier) > 0 {
 		var next []item
-		byParent := map[string][]child{}
+		byParent := map[string][]RelationMacros{}
 		var parents []string
 		for _, it := range frontier {
 			if visitedAsParent[it.id] {
@@ -531,26 +546,23 @@ func (treeFormat) Format(g *Graph, o FormatOptions) ([]byte, error) {
 			parents = append(parents, it.id)
 			for _, ei := range adjacent[it.id] {
 				e := g.Edges[ei]
-				var otherID string
-				switch {
-				case e.From == it.id:
-					otherID = e.To
-				case e.To == it.id:
-					otherID = e.From
-				default:
+				if e.From != it.id && e.To != it.id {
 					continue
 				}
-				byParent[it.id] = append(byParent[it.id], child{otherID, relationMacrosFor(e, it.id, byID)})
+				byParent[it.id] = append(byParent[it.id], relationMacrosFor(e, it.id, otherEnd(e, it.id), byID))
 			}
 		}
 		sort.Strings(parents)
 		for _, pid := range parents {
-			kids := byParent[pid]
+			// held-and-injects merge (defect 7: the same shared function as
+			// `facts`/`lines`) — RelationMacros.other already carries each
+			// child's id (relationMacrosFor set it to otherEnd(e, pid)).
+			kids := combineHoldsAndInjects(byParent[pid])
 			sort.Slice(kids, func(i, j int) bool {
-				if kids[i].rm.Relation != kids[j].rm.Relation {
-					return kids[i].rm.Relation < kids[j].rm.Relation
+				if kids[i].Relation != kids[j].Relation {
+					return kids[i].Relation < kids[j].Relation
 				}
-				return FullName(byID[kids[i].id]) < FullName(byID[kids[j].id])
+				return FullName(byID[kids[i].other]) < FullName(byID[kids[j].other])
 			})
 			depth := 0
 			for _, it := range frontier {
@@ -560,18 +572,18 @@ func (treeFormat) Format(g *Graph, o FormatOptions) ([]byte, error) {
 				}
 			}
 			for _, k := range kids {
-				n := byID[k.id]
+				n := byID[k.other]
 				b.WriteString(strings.Repeat("  ", depth+1))
-				kRel := k.rm
-				b.WriteString(relTpl.RenderRelation(NodeMacrosOf(n), &kRel))
-				if !printed[k.id] {
-					printed[k.id] = true
-					nm := NodeMacrosOf(n)
+				kRel := k
+				b.WriteString(relTpl.RenderRelation(nodeMacros(n, byID, methodOf), &kRel))
+				if !printed[k.other] {
+					printed[k.other] = true
+					nm := nodeMacros(n, byID, methodOf)
 					clearContainerPosition(&nm, n)
 					b.WriteString(nodeTpl.Render(nm))
-					next = append(next, item{k.id, depth + 1})
+					next = append(next, item{k.other, depth + 1})
 				} else {
-					b.WriteString(FullName(n))
+					b.WriteString(nodeMacros(n, byID, methodOf).FullName)
 					b.WriteString("  (see above)")
 				}
 				b.WriteString("\n")

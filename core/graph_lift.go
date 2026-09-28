@@ -93,11 +93,13 @@ func LiftToTypes(g *Graph) *Graph {
 				b.toMethods[n.Name] = true
 			}
 		}
-		for _, l := range edgeLines(e) {
-			if e.File != "" {
-				b.files[e.File] = true
+		if lines := edgeLines(e); len(lines) > 0 {
+			if f := edgeCallFile(e, byID); f != "" {
+				b.files[f] = true
 			}
-			b.lines[l] = true
+			for _, l := range lines {
+				b.lines[l] = true
+			}
 		}
 	}
 
@@ -119,8 +121,17 @@ func LiftToTypes(g *Graph) *Graph {
 		}
 		if len(b.files) == 1 && len(b.lines) > 0 {
 			lines := sortedIntSet(b.lines)
+			var callFile string
 			for f := range b.files {
-				merged.File = f
+				callFile = f
+			}
+			// GraphEdge.File is "only if different from file of `from`"
+			// (EXTRACTOR.md §2.2): after lifting, `from` is the type, so the
+			// call sites' actual file is only stored explicitly when it
+			// differs from the type's own file — otherwise left implicit,
+			// exactly like an ordinary unlifted calls/constructs edge.
+			if fromNode := byID[key.from]; fromNode == nil || fromNode.File != callFile {
+				merged.File = callFile
 			}
 			merged.Line = lines[0]
 			if len(lines) > 1 {
@@ -165,6 +176,20 @@ func edgeLines(e GraphEdge) []int {
 		return []int{e.Line}
 	}
 	return nil
+}
+
+// edgeCallFile: the file a `calls`/`constructs` edge's line(s) actually lie
+// in — e.File when the extractor printed one (it differed from the caller's
+// own file), else the caller's (e.From's) own declared file (EXTRACTOR.md
+// §2.2's "only if different from file of `from`" convention).
+func edgeCallFile(e GraphEdge, byID map[string]*GraphNode) string {
+	if e.File != "" {
+		return e.File
+	}
+	if n := byID[e.From]; n != nil {
+		return n.File
+	}
+	return ""
 }
 
 func sortedStringSet(m map[string]bool) []string {

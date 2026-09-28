@@ -42,8 +42,16 @@ without either it cuts to `limit` nodes (default 200) and reports `truncated: tr
 
 **Asking the graph: `around`, `follow`, formats.** `around` takes an id *or a name* — `get_graph`
 resolves it (exact id, then progressively looser names, case-insensitive as a last resort,
-docs/API.md §5 part 2); several matches come back as a list to choose from, none come back with
-the nearest names by edit distance, so do not spend calls guessing the exact spelling. Start with
+docs/API.md §5 part 2); types/interfaces/modules are tried before methods, so a common name like
+`Runner` resolves to the type, never made ambiguous by a same-named constructor or method — a
+method is only tried when nothing else matched, or the query itself is method-shaped (`(`, or
+`Type.Member`). Several matches come back as a list to choose from, none come back with the
+nearest short names (with their full ids) by edit distance, so do not spend calls guessing the
+exact spelling; a resolved answer that isn't an exact id match says what kind of match it was
+("a short name", "no `X` without type parameters", "case differs"), not a blanket "no such id".
+A `method`-kind node prints its short signature (`Type.Method(ShortParamTypes)`), not its
+(possibly 250-character) full id — pasting that printed name back into `around` resolves to the
+same method, or lists every overload sharing it. Start with
 `get_graph`'s default answer shape — it is deliberately provisional (`core.DefaultToolFormat`,
 docs/API.md §6) — so do not assume it is JSON. Call `graph_formats` once to see the other formats,
 the relation vocabulary `follow` accepts (two names per relation, one per direction — `extends` /
@@ -66,10 +74,15 @@ as `around`.
 
 **Writing your own template.** `format` names a stored format, or pass `template` with your own
 (docs/API.md §6 part 3): a small language of `{macro}` placeholders, `[...]` optional groups that
-drop the literal text around a macro that turned out empty, and a nested
-`{relations: TEMPLATE | SEPARATOR}` block for the relations reaching a node from the node it was
-reached from. `graph_formats` documents every macro with two worked examples — read that before
-writing one, rather than guessing the grammar.
+drop the literal text around a macro that turned out empty (`\[`/`\]` for a literal bracket), and a
+nested `{relations: TEMPLATE | SEPARATOR}` block for the relations reaching a node from the node it
+was reached from. `relation` is always named from that reached-from node's point of view — the
+same rule in `facts`, `lines` and `tree`, and the same word `follow=` would take to keep walking in
+that direction. A lifted `calls`/`constructs` relation (`lift=types`) names its methods
+(`{fromMethods}`/`{toMethods}`) and, when the call sites are in one file, that file's lines
+(`{relationLines}`, plus `{relationLinesFile}` when that file isn't the one already printed on the
+line). `graph_formats` documents every macro with worked examples — read that before writing one,
+rather than guessing the grammar.
 
 To point an agent at an object of a view, copy its reference in the editor («🔗» in Properties, or
 «Копировать ссылку» in the block/zone menu): `v_ops#z_undistort`. A request that names the

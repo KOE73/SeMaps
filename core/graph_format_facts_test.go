@@ -277,3 +277,115 @@ func TestFactsFormatGoldenDepth2(t *testing.T) {
 		t.Fatalf("golden facts answer changed.\ngot:\n%s\nwant:\n%s", got, want)
 	}
 }
+
+// pointOfViewFixture: A calls B (lifted, count 1) and A extends B — small
+// enough to check every text format names both relations the same way.
+func pointOfViewFixture() *Graph {
+	step0, step1 := 0, 1
+	return &Graph{
+		Nodes: []GraphNode{
+			{ID: "a", Symbol: "App.A", Name: "A", Kind: "type", File: "A.cs", Line: 1, EndLine: 10, Step: &step0},
+			{ID: "b", Symbol: "App.B", Name: "B", Kind: "type", File: "B.cs", Line: 1, EndLine: 10, Step: &step1},
+		},
+		Edges: []GraphEdge{
+			{From: "a", To: "b", Kind: "calls", Type: "calls", Count: 1, FromMethods: []string{"Run"}, ToMethods: []string{"Go"}},
+			{From: "a", To: "b", Kind: "extends", Type: "extends"},
+		},
+	}
+}
+
+// TestOnePointOfViewAcrossFormats: defect 7 — facts, lines and tree all name
+// the same edges the same way (from the point of view of the node the walk
+// came from), and lines/tree get the lifted `from … to …` naming too,
+// through the same shared functions.
+func TestOnePointOfViewAcrossFormats(t *testing.T) {
+	g := pointOfViewFixture()
+	for _, name := range []string{"facts", "lines", "tree"} {
+		f, ok := GetGraphFormat(name)
+		if !ok {
+			t.Fatalf("format %q not registered", name)
+		}
+		body, err := f.Format(g, FormatOptions{Focus: "a"})
+		if err != nil {
+			t.Fatalf("%s: Format: %v", name, err)
+		}
+		out := string(body)
+		if !strings.Contains(out, "calls from Run to Go") {
+			t.Fatalf("%s: expected 'calls from Run to Go' (A's own forward view), got:\n%s", name, out)
+		}
+		// The relation about B, reached from A, must say "extends" (A's own
+		// forward direction), never "extended-by" (B's own). `tree` also
+		// prints B's own outward edges once it expands B as a parent in its
+		// own right — correctly, in B's own words — so only the first
+		// relation line (depth 1, reached from A) is checked for it.
+		checked := out
+		if name == "tree" {
+			lines := strings.SplitN(out, "\n", 4)
+			checked = strings.Join(lines[1:3], "\n")
+		}
+		if !strings.Contains(checked, "extends") || strings.Contains(checked, "extended-by") {
+			t.Fatalf("%s: expected 'extends' (A's forward view), not 'extended-by', in:\n%s", name, checked)
+		}
+	}
+}
+
+// TestPlacesOfCallsShowFileWhenNotOnTheLine: defect B — a lifted `calls`
+// relation names the call sites, and when the caller's file differs from
+// the file already printed on that line, says so.
+func TestPlacesOfCallsShowFileWhenNotOnTheLine(t *testing.T) {
+	g := pointOfViewFixture()
+	g.Edges[0].Line = 38
+	g.Edges[0].Lines = []int{38, 41, 44}
+	g.Edges[0].Count = 3
+	g.Edges[0].ToMethods = []string{"Go1", "Go2", "Go3"}
+
+	f, _ := GetGraphFormat("facts")
+	body, err := f.Format(g, FormatOptions{Focus: "a"})
+	if err != nil {
+		t.Fatalf("Format: %v", err)
+	}
+	out := string(body)
+	// B's own line (reached via "calls" from A, the caller) must say the
+	// sites are in A's file (A.cs), since B's own line already prints B.cs.
+	if !strings.Contains(out, "@38,41,44 in A.cs") {
+		t.Fatalf("expected the call sites with 'in A.cs' (not B's own file), got:\n%s", out)
+	}
+}
+
+// TestPlacesOfCallsNoFileWhenAlreadyOnTheLine: the reverse direction
+// (`called-by`, viewed from the callee back to the caller) needs no "in
+// FILE" suffix — the caller's file is the callee's OWN file, already
+// printed on that very line.
+func TestPlacesOfCallsNoFileWhenAlreadyOnTheLine(t *testing.T) {
+	// No Step data (a plain whole-graph list): relationsReachingNode falls
+	// back to each node's own forward perspective, so B's own line shows
+	// its OWN outward relation to A — here that is "called-by" (B is called
+	// by A), and the call site is in A.From's file... no: e.From is "a"
+	// regardless of viewing direction, so the site is in A's file, which
+	// IS printed on A's own line elsewhere, but NOT on B's line — so this
+	// checks the opposite pairing: A's own line, viewed from A itself,
+	// where the site file (A.cs) equals A's own printed file.
+	g := &Graph{
+		Nodes: []GraphNode{
+			{ID: "a", Symbol: "App.A", Name: "A", Kind: "type", File: "A.cs", Line: 1, EndLine: 10},
+			{ID: "b", Symbol: "App.B", Name: "B", Kind: "type", File: "B.cs", Line: 1, EndLine: 10},
+		},
+		Edges: []GraphEdge{
+			{From: "a", To: "b", Kind: "calls", Type: "calls", Line: 38, Lines: []int{38, 41, 44}},
+		},
+	}
+	f, _ := GetGraphFormat("facts")
+	body, err := f.Format(g, FormatOptions{})
+	if err != nil {
+		t.Fatalf("Format: %v", err)
+	}
+	out := string(body)
+	if !strings.Contains(out, "@38,41,44") {
+		t.Fatalf("expected the call sites, got:\n%s", out)
+	}
+	for _, line := range strings.Split(out, "\n") {
+		if strings.Contains(line, "App.A") && strings.Contains(line, "@38,41,44 in") {
+			t.Fatalf("A's own 'calls' line must not say 'in FILE': the site is already in A's own printed file, got:\n%s", line)
+		}
+	}
+}

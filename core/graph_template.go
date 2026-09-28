@@ -76,6 +76,13 @@ type RelationMacros struct {
 	Cardinality, Type, Text string
 	RelationLine            int
 	RelationLines           []int
+	// RelationLinesFile: set only when the call/construct sites named by
+	// RelationLines are NOT in the file already printed on this line (defect
+	// B, "places of calls") — the file of the node the relation starts FROM
+	// (e.From, whichever of the two nodes on the line that is), computed by
+	// relationMacrosFor. Empty when the sites are in the same file as the
+	// node this relation entry is about (nothing extra to say).
+	RelationLinesFile string
 	// Count, FromMethods, ToMethods mirror GraphEdge's lifted-edge fields
 	// (core/graph_lift.go): set only for an edge LiftToTypes produced from
 	// one or more method-level edges.
@@ -203,11 +210,9 @@ func relationMacroValue(r RelationMacros, name string) (string, bool) {
 			}
 			return strconv.Itoa(r.RelationLine), true
 		}
-		parts := make([]string, len(r.RelationLines))
-		for i, l := range r.RelationLines {
-			parts[i] = strconv.Itoa(l)
-		}
-		return strings.Join(parts, ","), true
+		return joinIntsCapped(r.RelationLines, 8), true
+	case "relationLinesFile":
+		return r.RelationLinesFile, r.RelationLinesFile != ""
 	case "count":
 		if r.Count <= 1 {
 			return "", false // a single, non-merged edge has nothing worth showing
@@ -235,6 +240,19 @@ func joinCapped(names []string, max int) string {
 	return strings.Join(names[:max], ",") + fmt.Sprintf("+%d", len(names)-max)
 }
 
+// joinIntsCapped: like joinCapped, for the call/construct site line numbers
+// (defect B: "at most 8 numbers, then +N").
+func joinIntsCapped(nums []int, max int) string {
+	parts := make([]string, len(nums))
+	for i, n := range nums {
+		parts[i] = strconv.Itoa(n)
+	}
+	if len(parts) <= max {
+		return strings.Join(parts, ",")
+	}
+	return strings.Join(parts[:max], ",") + fmt.Sprintf("+%d", len(parts)-max)
+}
+
 var nodeMacroNames = map[string]bool{
 	"step": true, "name": true, "fullName": true, "id": true, "kind": true,
 	"nativeKind": true, "visibility": true, "file": true, "line": true,
@@ -246,7 +264,7 @@ var nodeMacroNames = map[string]bool{
 var relationMacroNames = map[string]bool{
 	"relation": true, "member": true, "memberKind": true, "memberLine": true,
 	"modifiers": true, "cardinality": true, "type": true, "text": true,
-	"relationLine": true, "relationLines": true,
+	"relationLine": true, "relationLines": true, "relationLinesFile": true,
 	"count": true, "fromMethods": true, "toMethods": true, "injected": true,
 }
 
