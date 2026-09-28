@@ -351,8 +351,10 @@ internal sealed class FactsExtractor(string rootArgument, string rootFullPath, P
 
             // Third pass: calls/constructs, which need every method symbol of
             // every type known first (a call target may belong to a type
-            // visited earlier or later than its caller).
+            // visited earlier or later than its caller). Blind-spot marks
+            // (ADR_20260928-5 §4) are collected over the same bodies.
             var collector = new CallsCollector();
+            var marksCollector = new DynamicMarksCollector();
             foreach (var (id, symbol) in _methodSymbols)
             {
                 foreach (var node in BodyNodesOf(symbol))
@@ -364,6 +366,7 @@ internal sealed class FactsExtractor(string rootArgument, string rootFullPath, P
 
                     var model = compilation.GetSemanticModel(node.SyntaxTree);
                     collector.Collect(id, model, node, outputIds, _methodSymbols);
+                    marksCollector.Collect(id, model, node);
                 }
             }
 
@@ -373,6 +376,24 @@ internal sealed class FactsExtractor(string rootArgument, string rootFullPath, P
             }
 
             UnresolvedCallTargets = collector.OutsideOutput;
+
+            if (marksCollector.Marks.Count > 0)
+            {
+                foreach (var symbolFact in symbols)
+                {
+                    if (symbolFact.Kind != "method")
+                    {
+                        continue;
+                    }
+
+                    if (marksCollector.Marks.TryGetValue(symbolFact.Id, out var marks) && marks.Count > 0)
+                    {
+                        symbolFact.Dynamic = marks
+                            .Select(m => new DynamicMarkFact { Kind = m.Kind, Line = m.Line })
+                            .ToList();
+                    }
+                }
+            }
         }
 
         symbols.Sort((a, b) => string.CompareOrdinal(a.Id, b.Id));

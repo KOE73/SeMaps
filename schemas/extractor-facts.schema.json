@@ -52,6 +52,11 @@
           "type": "object",
           "additionalProperties": { "type": "integer", "minimum": 1 },
           "description": "member name -> line, beside members so sync never copies it into entities.json; a member declared in another file than the symbol's file is left out"
+        },
+        "dynamic": {
+          "type": "array",
+          "items": { "$ref": "#/$defs/dynamicMark" },
+          "description": "blind-spot marks (ADR_20260928-5 §4): only for kind method, only printed with --edges calls, sorted by (line, kind), no duplicates"
         }
       }
     },
@@ -63,6 +68,15 @@
         "file": { "type": "string", "pattern": "^[^\\\\]+$" },
         "line": { "type": "integer", "minimum": 1 },
         "endLine": { "type": "integer", "minimum": 1 }
+      }
+    },
+    "dynamicMark": {
+      "type": "object",
+      "required": ["kind", "line"],
+      "additionalProperties": false,
+      "properties": {
+        "kind": { "enum": ["create", "invoke", "make-type", "dynamic"], "description": "no target: create (Activator/ConstructorInfo.Invoke), invoke (MethodBase.Invoke/Delegate.DynamicInvoke), make-type (Type.MakeGenericType/GetType, Assembly.GetType, MethodInfo.MakeGenericMethod), dynamic (an operation on an expression of the C# type dynamic)" },
+        "line": { "type": "integer", "minimum": 1 }
       }
     },
     "member": {

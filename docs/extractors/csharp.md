@@ -295,6 +295,35 @@ output») — библиотечный код, код не под `--include`, �
 `calls A -> A` (рекурсия) — не ошибка: `core/facts.go` запрещает ребро на себя для всех видов,
 кроме `calls`, ровно ради этого случая.
 
+### Отметки слепых мест (`dynamic`)
+
+Нормативно: [`ADR_20260928-5`](../adr/ADR_20260928-5_extractors_only-unambiguous-facts.md) §3–4.
+Метод получает отметку `{kind, line}` в поле `dynamic` (§2.1 `EXTRACTOR.md`), когда его тело
+вызывает один из членов базовой библиотеки платформы ниже, или оперирует выражением типа
+`dynamic`. Разрешение — через семантическую модель (`SemanticModel.GetSymbolInfo`/`GetTypeInfo`
+на `IMethodSymbol.OriginalDefinition`/`ITypeSymbol.TypeKind`), никогда по тексту: не по имени
+рядом, не по `typeof`. Цели у отметки нет. Отметка внутри лямбды или локальной функции
+приписывается объемлющему методу — как и вызов (см. выше).
+
+Список членов, единственное место в коде: `DynamicMarksCollector.KnownCalls`
+(`extractors/csharp/src/SeMaps.Extract.CSharp/DynamicMarksCollector.cs`).
+
+| Метод базовой библиотеки | `kind` |
+|---|---|
+| `System.Activator.CreateInstance` (все перегрузки, включая обобщённую) | `create` |
+| `System.Reflection.ConstructorInfo.Invoke` | `create` |
+| `System.Reflection.MethodBase.Invoke` (значит, и `MethodInfo.Invoke`) | `invoke` |
+| `System.Delegate.DynamicInvoke` | `invoke` |
+| `System.Type.MakeGenericType` | `make-type` |
+| `System.Type.GetType` (статический, по строке) | `make-type` |
+| `System.Reflection.Assembly.GetType` (по строке) | `make-type` |
+| `System.Reflection.MethodInfo.MakeGenericMethod` | `make-type` |
+
+`kind: dynamic` — отдельно от списка: любая операция (вызов, обращение к члену, обращение по
+индексу, бинарный оператор), чей собственный тип по семантической модели — `TypeKind.Dynamic`.
+Несколько таких операций на одной строке метода дают одну отметку (метка вида `(line, kind)`
+без повторов, как и требует схема).
+
 ### Что не сделано в этом прогоне
 
 - Инициализаторы полей/свойств не привязаны к конструктору (см. выше).

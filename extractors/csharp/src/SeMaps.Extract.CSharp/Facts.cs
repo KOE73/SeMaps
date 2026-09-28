@@ -28,6 +28,15 @@ internal sealed class SymbolFact
     [JsonPropertyName("visibility")] public string? Visibility { get; set; }
     [JsonPropertyName("members")] public List<MemberFact>? Members { get; set; }
     [JsonPropertyName("memberLines")] public Dictionary<string, int>? MemberLines { get; set; }
+    // Blind-spot marks (ADR_20260928-5 §4, PLAN_20260928-7 step 6): only for kind
+    // "method", only printed with --edges calls, only when not empty.
+    [JsonPropertyName("dynamic")] public List<DynamicMarkFact>? Dynamic { get; set; }
+}
+
+internal sealed class DynamicMarkFact
+{
+    [JsonPropertyName("kind")] public string Kind { get; set; } = "";
+    [JsonPropertyName("line")] public int Line { get; set; }
 }
 
 internal sealed class SpanFact

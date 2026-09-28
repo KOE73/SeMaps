@@ -49,6 +49,20 @@ type Symbol struct {
 	// and a line there would make the registry change on every code edit
 	// above it. A member declared in a file other than File is left out.
 	MemberLines map[string]int `json:"memberLines,omitempty"`
+	// Dynamic lists blind-spot marks on a method (ADR_20260928-5 §4): the
+	// method creates or invokes something through platform reflection, or
+	// operates on an expression of the C# type `dynamic`. Only for Kind ==
+	// "method", only printed with --edges calls, sorted by (Line, Kind), no
+	// duplicates. There is never a target. Dynamic data of the live graph,
+	// like the method itself: core/sync.go drops it whole.
+	Dynamic []DynamicMark `json:"dynamic,omitempty"`
+}
+
+// DynamicMark is one blind spot inside a method (ADR_20260928-5 §4). Kind is
+// one of the closed list in DynamicMarkKinds; there is no target.
+type DynamicMark struct {
+	Kind string `json:"kind"`
+	Line int    `json:"line"`
 }
 
 // Span is one declaration of a symbol with more than one (docs/EXTRACTOR.md §2.1).
@@ -99,6 +113,11 @@ var (
 // methodNativeKinds are the values NativeKind may take for a Kind == "method"
 // symbol (ADR_20260928-4 §1).
 var methodNativeKinds = setOf([]string{"method", "constructor", "property", "indexer", "operator", "accessor"})
+
+// DynamicMarkKinds is the closed vocabulary of blind-spot marks (ADR_20260928-5 §4).
+var DynamicMarkKinds = []string{"create", "invoke", "make-type", "dynamic"}
+
+var dynamicMarkKinds = setOf(DynamicMarkKinds)
 
 // FactsError lists every problem found in a facts document, not just the first.
 type FactsError struct{ Problems []string }
@@ -240,6 +259,23 @@ func (f *Facts) problems() []string {
 					if m.Name == "" {
 						bad("%s: members[%d] has no name", where, j)
 					}
+				}
+			}
+		}
+		if len(s.Dynamic) > 0 && s.Kind != "method" {
+			bad("%s: dynamic is only for kind method", where)
+		}
+		for j, m := range s.Dynamic {
+			if !dynamicMarkKinds[m.Kind] {
+				bad("%s: dynamic[%d].kind %q is not one of %s", where, j, m.Kind, strings.Join(DynamicMarkKinds, ", "))
+			}
+			if m.Line < 1 {
+				bad("%s: dynamic[%d].line %d, lines start at 1", where, j, m.Line)
+			}
+			if j > 0 {
+				prev := s.Dynamic[j-1]
+				if prev.Line > m.Line || (prev.Line == m.Line && prev.Kind >= m.Kind) {
+					bad("%s: dynamic is not sorted by (line, kind), or repeats", where)
 				}
 			}
 		}

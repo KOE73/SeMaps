@@ -53,6 +53,118 @@
       "visibility": "public"
     },
     {
+      "id": "CallsSample.App.BlindSpots",
+      "kind": "type",
+      "nativeKind": "class",
+      "name": "BlindSpots",
+      "namespace": "CallsSample.App",
+      "file": "CallsSample.App/BlindSpots.cs",
+      "line": 8,
+      "endLine": 37,
+      "visibility": "public",
+      "members": []
+    },
+    {
+      "id": "CallsSample.App.BlindSpots..ctor()",
+      "kind": "method",
+      "nativeKind": "constructor",
+      "name": ".ctor",
+      "namespace": "",
+      "file": "CallsSample.App/BlindSpots.cs",
+      "line": 8,
+      "endLine": 8,
+      "visibility": "public"
+    },
+    {
+      "id": "CallsSample.App.BlindSpots.BuildGenericType(Type,Type)",
+      "kind": "method",
+      "nativeKind": "method",
+      "name": "BuildGenericType",
+      "namespace": "",
+      "file": "CallsSample.App/BlindSpots.cs",
+      "line": 20,
+      "endLine": 23,
+      "visibility": "public",
+      "dynamic": [
+        {
+          "kind": "make-type",
+          "line": 22
+        }
+      ]
+    },
+    {
+      "id": "CallsSample.App.BlindSpots.CreateTwice(Type)",
+      "kind": "method",
+      "nativeKind": "method",
+      "name": "CreateTwice",
+      "namespace": "",
+      "file": "CallsSample.App/BlindSpots.cs",
+      "line": 31,
+      "endLine": 36,
+      "visibility": "public",
+      "dynamic": [
+        {
+          "kind": "create",
+          "line": 33
+        },
+        {
+          "kind": "create",
+          "line": 34
+        }
+      ]
+    },
+    {
+      "id": "CallsSample.App.BlindSpots.CreateViaActivator(Type)",
+      "kind": "method",
+      "nativeKind": "method",
+      "name": "CreateViaActivator",
+      "namespace": "",
+      "file": "CallsSample.App/BlindSpots.cs",
+      "line": 10,
+      "endLine": 13,
+      "visibility": "public",
+      "dynamic": [
+        {
+          "kind": "create",
+          "line": 12
+        }
+      ]
+    },
+    {
+      "id": "CallsSample.App.BlindSpots.DynamicCallInLambda(dynamic)",
+      "kind": "method",
+      "nativeKind": "method",
+      "name": "DynamicCallInLambda",
+      "namespace": "",
+      "file": "CallsSample.App/BlindSpots.cs",
+      "line": 25,
+      "endLine": 29,
+      "visibility": "public",
+      "dynamic": [
+        {
+          "kind": "dynamic",
+          "line": 27
+        }
+      ]
+    },
+    {
+      "id": "CallsSample.App.BlindSpots.InvokeViaReflection(MethodInfo,object)",
+      "kind": "method",
+      "nativeKind": "method",
+      "name": "InvokeViaReflection",
+      "namespace": "",
+      "file": "CallsSample.App/BlindSpots.cs",
+      "line": 15,
+      "endLine": 18,
+      "visibility": "public",
+      "dynamic": [
+        {
+          "kind": "invoke",
+          "line": 17
+        }
+      ]
+    },
+    {
       "id": "CallsSample.App.Calculator",
       "kind": "type",
       "nativeKind": "class",
@@ -696,6 +808,11 @@
     },
     {
       "from": "CallsSample.App",
+      "to": "CallsSample.App.BlindSpots",
+      "kind": "contains"
+    },
+    {
+      "from": "CallsSample.App",
       "to": "CallsSample.App.Calculator",
       "kind": "contains"
     },
@@ -782,6 +899,36 @@
     {
       "from": "CallsSample.App.Animal",
       "to": "CallsSample.App.Animal.Speak()",
+      "kind": "contains"
+    },
+    {
+      "from": "CallsSample.App.BlindSpots",
+      "to": "CallsSample.App.BlindSpots..ctor()",
+      "kind": "contains"
+    },
+    {
+      "from": "CallsSample.App.BlindSpots",
+      "to": "CallsSample.App.BlindSpots.BuildGenericType(Type,Type)",
+      "kind": "contains"
+    },
+    {
+      "from": "CallsSample.App.BlindSpots",
+      "to": "CallsSample.App.BlindSpots.CreateTwice(Type)",
+      "kind": "contains"
+    },
+    {
+      "from": "CallsSample.App.BlindSpots",
+      "to": "CallsSample.App.BlindSpots.CreateViaActivator(Type)",
+      "kind": "contains"
+    },
+    {
+      "from": "CallsSample.App.BlindSpots",
+      "to": "CallsSample.App.BlindSpots.DynamicCallInLambda(dynamic)",
+      "kind": "contains"
+    },
+    {
+      "from": "CallsSample.App.BlindSpots",
+      "to": "CallsSample.App.BlindSpots.InvokeViaReflection(MethodInfo,object)",
       "kind": "contains"
     },
     {
@@ -1121,6 +1268,11 @@
     {
       "from": "[CallsSample.App]",
       "to": "CallsSample.App.Animal",
+      "kind": "contains"
+    },
+    {
+      "from": "[CallsSample.App]",
+      "to": "CallsSample.App.BlindSpots",
       "kind": "contains"
     },
     {

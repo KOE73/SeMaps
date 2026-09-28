@@ -43,6 +43,23 @@ func TestSyncDropsMethodsAndCalls(t *testing.T) {
   ]
 }`
 
+	const factsWithDynamicMarks = `{
+  "language": "csharp", "root": ".",
+  "edgeKinds": ["extends","contains","calls"],
+  "symbols": [
+    {"id":"N.Base","kind":"type","nativeKind":"class","name":"Base","namespace":"N","file":"src/Base.cs"},
+    {"id":"N.Base.Run()","kind":"method","nativeKind":"method","name":"Run","namespace":"N","file":"src/Base.cs","line":3,"dynamic":[{"kind":"create","line":4},{"kind":"dynamic","line":5}]},
+    {"id":"N.X","kind":"type","nativeKind":"class","name":"X","namespace":"N","file":"src/X.cs"},
+    {"id":"N.X.Go()","kind":"method","nativeKind":"method","name":"Go","namespace":"N","file":"src/X.cs","line":5,"dynamic":[{"kind":"invoke","line":6}]}
+  ],
+  "edges": [
+    {"from":"N.Base","to":"N.Base.Run()","kind":"contains"},
+    {"from":"N.X","to":"N.Base","kind":"extends"},
+    {"from":"N.X","to":"N.X.Go()","kind":"contains"},
+    {"from":"N.X.Go()","to":"N.Base.Run()","kind":"calls","line":6,"lines":[6,7]}
+  ]
+}`
+
 	const entities = `{"entities":[
     {"id":"N.Base","kind":"type","name":"Base"},
     {"id":"N.X","kind":"type","name":"X"}
@@ -64,6 +81,25 @@ func TestSyncDropsMethodsAndCalls(t *testing.T) {
 			want := readFile(t, dirWithout+"/"+name)
 			if got != want {
 				t.Fatalf("%s differs between facts with and without methods/calls:\nwith:    %s\nwithout: %s", name, got, want)
+			}
+		}
+		assertNoMethodsOrCalls(t, rep, dirWith)
+	})
+
+	// Methods carrying `dynamic` blind-spot marks (ADR_20260928-5 §4) are still
+	// dropped whole by dropMethodsAndCalls: the marks never reach the registry.
+	t.Run("methods with dynamic marks", func(t *testing.T) {
+		wsWithout, dirWithout := workspace(t, project, "", "", "")
+		sync(t, wsWithout, facts(t, factsWithoutMethods), SyncOptions{})
+
+		wsWith, dirWith := workspace(t, project, "", "", "")
+		rep := sync(t, wsWith, facts(t, factsWithDynamicMarks), SyncOptions{})
+
+		for _, name := range []string{"entities.json", "relations.json", "relation-types.json"} {
+			got := readFile(t, dirWith+"/"+name)
+			want := readFile(t, dirWithout+"/"+name)
+			if got != want {
+				t.Fatalf("%s differs between facts with dynamic marks and without methods:\nwith:    %s\nwithout: %s", name, got, want)
 			}
 		}
 		assertNoMethodsOrCalls(t, rep, dirWith)
