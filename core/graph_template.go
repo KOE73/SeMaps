@@ -4,7 +4,7 @@
 // the macro dictionary graph_formats returns (docs/API.md §5/§6).
 //
 // Grammar, in full (this is also what graph_formats explains):
-//   - literal text is copied as is.
+//   - literal text is copied as is, subject to the whitespace rule below.
 //   - {macro} is replaced by that macro's value, or by nothing when the
 //     macro has no value for the node/relation being rendered.
 //   - [...] is an optional group: rendered as is when every macro directly
@@ -12,9 +12,25 @@
 //     one of them is empty. This is the one rule that keeps `holds Context:7`
 //     and a bare `extends` both clean: wrap the part that depends on a
 //     macro, e.g. `[:{memberLine}]`.
+//   - `\[` and `\]` are literal `[`/`]`: since `[`/`]` are the optional-group
+//     syntax, a template that wants a literal bracket (the `facts` format
+//     wraps its relations in `[...]`) must escape it.
 //   - {relations: TEMPLATE | SEPARATOR} renders TEMPLATE once per relation
 //     reaching the node from the node it was reached from, joined by the
 //     literal SEPARATOR. TEMPLATE may itself use [...] groups.
+//
+// Whitespace rule (defect 4/5 of the agent-answers-graph task): after
+// rendering, a run made ONLY of the space character ' ' that sits directly
+// next to an empty macro or a dropped optional group (on either side) is
+// removed together with it; a run of spaces the template author wrote
+// between two parts that BOTH have a value is kept exactly as written — this
+// is what lets `facts` print the deliberate two spaces between name,
+// position and relations, while still cleaning up `[{modifiers}]` when there
+// are none. A tab or newline is never touched by this rule (so `locations`'
+// tab-separated columns stay put even when a value is empty), and a run of
+// spaces at the very end of a rendered piece, with nothing non-empty after
+// it, is always dropped (no trailing spaces). The rule applies once, in the
+// engine, to every stored and custom template alike — never per format.
 //
 // A malformed template (unmatched `{`/`[`/`]`, or an unknown macro name) is
 // a parse error naming the position and the macro.
@@ -40,6 +56,12 @@ type NodeMacros struct {
 	Containers               []string
 	Presence, Status, Entity string
 	Relations                []RelationMacros
+	// Via, ViaFullName: short names / full names of the node(s) this node was
+	// reached from, comma-separated, sorted, de-duplicated — only at step >=
+	// 2 (defect 6): at step 0 the node is the focus, and at step 1 it was
+	// reached from the focus itself, which the line already names. Left ""
+	// at every other step, so the {via}/{viaFullName} macros are empty there.
+	Via, ViaFullName string
 }
 
 // RelationMacros is one edge between a node and the node it was reached
@@ -59,6 +81,19 @@ type RelationMacros struct {
 	// one or more method-level edges.
 	Count                  int
 	FromMethods, ToMethods []string
+	// Injected: true when this relation is a `holds`/`held-by` that
+	// combineHoldsAndInjects folded the matching `injects`/`injected-into` of
+	// the same member of the same pair into (defect 3/2b). Rendered by the
+	// {injected} macro as the literal "(injected)", empty otherwise — kept as
+	// a flag rather than baked into Relation, so a template controls its own
+	// placement (the default `facts` template puts it at the end of the
+	// relation clause, not right after the relation word).
+	Injected bool
+	// other: the id at the far end of the edge from the node this relation
+	// list belongs to. Not a macro — used only to pair a holds/injects
+	// relation with the same neighbour (core/graph_format_text.go's
+	// combineHoldsAndInjects).
+	other string
 }
 
 // NodeMacrosOf builds the plain (no relations) macro set of a node.
@@ -117,6 +152,10 @@ func macroValue(m NodeMacros, name string) (string, bool) {
 		return m.Status, m.Status != ""
 	case "entity":
 		return m.Entity, m.Entity != ""
+	case "via":
+		return m.Via, m.Via != ""
+	case "viaFullName":
+		return m.ViaFullName, m.ViaFullName != ""
 	}
 	return "", false
 }
@@ -178,6 +217,11 @@ func relationMacroValue(r RelationMacros, name string) (string, bool) {
 		return joinCapped(r.FromMethods, 5), len(r.FromMethods) > 0
 	case "toMethods":
 		return joinCapped(r.ToMethods, 5), len(r.ToMethods) > 0
+	case "injected":
+		if !r.Injected {
+			return "", false
+		}
+		return "(injected)", true
 	}
 	return "", false
 }
@@ -196,22 +240,32 @@ var nodeMacroNames = map[string]bool{
 	"nativeKind": true, "visibility": true, "file": true, "line": true,
 	"endLine": true, "lines": true, "namespace": true, "assembly": true,
 	"containers": true, "presence": true, "status": true, "entity": true,
+	"via": true, "viaFullName": true,
 }
 
 var relationMacroNames = map[string]bool{
 	"relation": true, "member": true, "memberKind": true, "memberLine": true,
 	"modifiers": true, "cardinality": true, "type": true, "text": true,
 	"relationLine": true, "relationLines": true,
-	"count": true, "fromMethods": true, "toMethods": true,
+	"count": true, "fromMethods": true, "toMethods": true, "injected": true,
 }
 
 // tplNode is one piece of a parsed template.
 type tplNode interface {
 	// render appends its text to b, given the enclosing node's macros and
-	// (only meaningful inside a relations block) the current relation.
+	// (only meaningful inside a relations block) the current relation. Plain
+	// concatenation — the whitespace rule (defect 4/5) is applied once, by
+	// trimLeadingTrailingBlanks, around a whole *top-level* render (a
+	// Template's own node list); it is deliberately NOT reapplied inside
+	// every nested `[...]` group, so a group that intentionally carries its
+	// own leading or trailing separator (`[×{count} ]from ...`) keeps it
+	// even when the group next to it renders empty. Template authors get a
+	// clean line by giving each optional piece its own leading separator, so
+	// two adjacent empty groups never need "collapsing into" one another.
 	render(b *strings.Builder, m NodeMacros, rel *RelationMacros)
 	// empty reports whether this piece has no value at all — used by the
-	// optional-group rule ("a macro with no value").
+	// optional-group rule ("a macro with no value") and by the top-level
+	// trim.
 	empty(m NodeMacros, rel *RelationMacros) bool
 }
 
@@ -220,6 +274,10 @@ type literalNode string
 func (l literalNode) render(b *strings.Builder, _ NodeMacros, _ *RelationMacros) {
 	b.WriteString(string(l))
 }
+
+// empty: a literal is text the author wrote, never "empty" in the
+// macro-value sense — even when it is pure whitespace. Its fate under the
+// top-level whitespace rule is decided separately, by isSpacesOnly.
 func (l literalNode) empty(_ NodeMacros, _ *RelationMacros) bool { return false }
 
 type macroNode string
@@ -261,8 +319,10 @@ func (o optionalNode) empty(m NodeMacros, rel *RelationMacros) bool {
 	return hasEmptyMacro(o.inner, m, rel)
 }
 
-// hasEmptyMacro: the group-drop rule — true when ANY macro directly in
-// `nodes` has no value (nested literal-only groups never make it empty).
+// hasEmptyMacro: the group-drop rule — true when a macro, or a nested
+// `{relations: ...}` block, directly in `nodes` has no value (a nested
+// *optional* group is opaque to this check: if it renders as nothing, that
+// alone does not empty the outer group — see `[×{count} ]` above).
 func hasEmptyMacro(nodes []tplNode, m NodeMacros, rel *RelationMacros) bool {
 	for _, n := range nodes {
 		switch t := n.(type) {
@@ -270,9 +330,12 @@ func hasEmptyMacro(nodes []tplNode, m NodeMacros, rel *RelationMacros) bool {
 			if t.empty(m, rel) {
 				return true
 			}
+		case relationsBlockNode:
+			if t.empty(m, rel) {
+				return true
+			}
 		case optionalNode:
-			// a nested optional group is opaque to the outer one: if it
-			// renders as nothing, that alone does not empty the outer group.
+			// opaque, as documented above.
 		}
 	}
 	return false
@@ -304,11 +367,79 @@ type Template struct {
 
 func (t *Template) String() string { return t.src }
 
-// Render produces one node's line(s).
+// Render produces one node's line.
 func (t *Template) Render(m NodeMacros) string {
+	return renderTopLevel(t.nodes, m, nil)
+}
+
+// RenderRelation renders a template (typically a `lines`/`tree` relation
+// template, which mixes a neighbour's own node macros with one relation's
+// macros) for one specific relation, through the same top-level whitespace
+// rule as Render — so it applies there too, not just inside `facts`'
+// `{relations: ...}` block.
+func (t *Template) RenderRelation(m NodeMacros, rel *RelationMacros) string {
+	return renderTopLevel(t.nodes, m, rel)
+}
+
+// isSpacesOnly: every rune of s is the space character ' ', and s is not
+// empty (an empty literal is never produced by the parser). Only this exact
+// kind of literal is ever dropped by the whitespace rule — a tab or a
+// newline, or a literal that mixes spaces with other characters, is always
+// kept as written (defect 4/5: `locations`' tab-separated columns must not
+// move when a value is empty).
+func isSpacesOnly(s string) bool {
+	if s == "" {
+		return false
+	}
+	for _, r := range s {
+		if r != ' ' {
+			return false
+		}
+	}
+	return true
+}
+
+// renderTopLevel renders `nodes` (always a Template's own top-level list,
+// never a nested `[...]` group's — see tplNode.render's comment) and applies
+// the whitespace rule once: a space-only literal that falls in the LEADING
+// run (from the start of the sequence, everything up to and including it
+// renders empty) or the TRAILING run (from it to the end, everything renders
+// empty) is dropped; a space-only literal with real content somewhere before
+// it AND somewhere after it — even if the immediate neighbour on one side
+// happens to be an empty macro or a dropped group — is kept exactly as
+// written. This is what keeps the deliberate two spaces of `{fullName}
+// {file}:{lines}` (both sides always have content) while still dropping a
+// leading `{step} ` when there is no step, or a trailing `  ` before a
+// `{relations: ...}` block that turned out empty.
+func renderTopLevel(nodes []tplNode, m NodeMacros, rel *RelationMacros) string {
+	texts := make([]string, len(nodes))
+	blank := make([]bool, len(nodes))
+	for i, n := range nodes {
+		if lit, ok := n.(literalNode); ok {
+			s := string(lit)
+			texts[i] = s
+			blank[i] = isSpacesOnly(s)
+			continue
+		}
+		var b strings.Builder
+		n.render(&b, m, rel)
+		texts[i] = b.String()
+		blank[i] = n.empty(m, rel)
+	}
+	lead := 0
+	for lead < len(nodes) && blank[lead] {
+		lead++
+	}
+	trail := len(nodes)
+	for trail > lead && blank[trail-1] {
+		trail--
+	}
 	var b strings.Builder
-	for _, n := range t.nodes {
-		n.render(&b, m, nil)
+	for i, n := range nodes {
+		if lit, ok := n.(literalNode); ok && isSpacesOnly(string(lit)) && (i < lead || i >= trail) {
+			continue // a space-only literal in the leading/trailing blank run
+		}
+		b.WriteString(texts[i])
 	}
 	return b.String()
 }
@@ -340,6 +471,15 @@ func parseTemplateBody(r []rune, i int, closer rune) ([]tplNode, int, error) {
 	}
 	for i < len(r) {
 		c := r[i]
+		// \[ and \] are literal brackets (defect 4d): [/] are the
+		// optional-group syntax, so a template that wants one printed has to
+		// escape it. Recognised before the closer/group checks, so `\]`
+		// never closes an enclosing group and `\[` never opens one.
+		if c == '\\' && i+1 < len(r) && (r[i+1] == '[' || r[i+1] == ']') {
+			lit.WriteRune(r[i+1])
+			i += 2
+			continue
+		}
 		if closer >= 0 && c == closer {
 			flush()
 			return nodes, i + 1, nil

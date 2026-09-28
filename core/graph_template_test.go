@@ -98,3 +98,100 @@ func TestTemplateUnmatchedClosingBracket(t *testing.T) {
 		t.Fatal("expected an error for a stray ']'")
 	}
 }
+
+// TestTemplateEscapedBrackets: `\[`/`\]` are literal brackets (defect 4d) —
+// needed because `[`/`]` are the optional-group syntax, and `facts` wraps
+// its relations in real ones.
+func TestTemplateEscapedBrackets(t *testing.T) {
+	tpl := MustTemplate(`\[{name}\]`)
+	got := tpl.Render(NodeMacrosOf(&GraphNode{Name: "A"}))
+	if got != "[A]" {
+		t.Fatalf("got %q, want %q", got, "[A]")
+	}
+}
+
+// TestTemplateEscapedBracketsAroundOptionalGroup: an escaped bracket right
+// next to a real (unescaped) optional group — the escape must not confuse
+// the parser about which `]` closes the real group.
+func TestTemplateEscapedBracketsAroundOptionalGroup(t *testing.T) {
+	tpl := MustTemplate(`[\[{relations:{relation}|; }\]]`)
+	m := NodeMacros{Relations: []RelationMacros{{Relation: "extends"}}}
+	got := tpl.Render(m)
+	if got != "[extends]" {
+		t.Fatalf("got %q, want %q", got, "[extends]")
+	}
+	empty := tpl.Render(NodeMacros{})
+	if empty != "" {
+		t.Fatalf("expected the escaped brackets, wrapped in a real optional group, to vanish with the empty relations block, got %q", empty)
+	}
+}
+
+// TestTemplateWhitespaceRuleDropsLeadingSpaceOfEmptyMacro: a leading
+// "{step} " with no step must not leave a stray space before what follows
+// (defect 4/5).
+func TestTemplateWhitespaceRuleDropsLeadingSpaceOfEmptyMacro(t *testing.T) {
+	tpl := MustTemplate("{step} {name}")
+	got := tpl.Render(NodeMacrosOf(&GraphNode{Name: "A"})) // no Step
+	if got != "A" {
+		t.Fatalf("got %q, want %q (leading space of an empty {step} must be dropped)", got, "A")
+	}
+}
+
+// TestTemplateWhitespaceRuleDropsTrailingSpaceOfDroppedGroup: a trailing
+// "  [...]" whose group turns out empty must leave no trailing space.
+func TestTemplateWhitespaceRuleDropsTrailingSpaceOfDroppedGroup(t *testing.T) {
+	tpl := MustTemplate("{name}  [{namespace}]")
+	got := tpl.Render(NodeMacrosOf(&GraphNode{Name: "A"})) // no Namespace
+	if got != "A" {
+		t.Fatalf("got %q, want %q (trailing space before a dropped group must be dropped)", got, "A")
+	}
+	if strings.HasSuffix(got, " ") {
+		t.Fatalf("got a trailing space: %q", got)
+	}
+}
+
+// TestTemplateWhitespaceRuleKeepsSandwichedSpace: a space that has real
+// content on BOTH sides (even if the atom immediately touching it on one
+// side is empty) is kept exactly as written — this is what keeps `facts`'
+// deliberate double space between name and position, and what a `lines`
+// relation clause needs when its own optional member group is empty but a
+// neighbour's name still follows.
+func TestTemplateWhitespaceRuleKeepsSandwichedSpace(t *testing.T) {
+	tpl := MustTemplate("{relation}[: {member}]  {name}")
+	m := NodeMacros{Name: "Nb"}
+	rel := RelationMacros{Relation: "extends"} // Member empty: the "[: {member}]" group drops
+	got := tpl.RenderRelation(m, &rel)
+	if got != "extends  Nb" {
+		t.Fatalf("got %q, want %q (the two spaces must survive even though the group between them is empty)", got, "extends  Nb")
+	}
+}
+
+// TestTemplateWhitespaceRuleNeverTouchesTabs: a tab is not the space
+// character, so it is never dropped by the whitespace rule, even next to an
+// empty macro — this is what keeps `locations`' column count fixed.
+func TestTemplateWhitespaceRuleNeverTouchesTabs(t *testing.T) {
+	tpl := MustTemplate("{fullName}\t{file}\t{line}\t{endLine}")
+	got := tpl.Render(NodeMacrosOf(&GraphNode{Name: "B"})) // no File/Line/EndLine
+	want := "B\t\t\t"
+	if got != want {
+		t.Fatalf("got %q, want %q (tabs must survive even with every later macro empty)", got, want)
+	}
+}
+
+// TestTemplateViaOnlyFromStepTwo: {via} is empty unless NodeMacros.Via was
+// explicitly set (defect 6: the default `facts` template only ever sets it
+// at step >= 2 — this test is the macro's own contract, independent of that
+// population rule, which core/graph_format_text.go's renderPerNodeTemplate
+// tests separately).
+func TestTemplateViaOnlyFromStepTwo(t *testing.T) {
+	tpl := MustTemplate("{name}[ via {via}]")
+	withVia := NodeMacrosOf(&GraphNode{Name: "A"})
+	withVia.Via = "Base"
+	if got := tpl.Render(withVia); got != "A via Base" {
+		t.Fatalf("got %q, want %q", got, "A via Base")
+	}
+	withoutVia := NodeMacrosOf(&GraphNode{Name: "A"})
+	if got := tpl.Render(withoutVia); got != "A" {
+		t.Fatalf("got %q, want %q (no stray ' via' with Via unset)", got, "A")
+	}
+}

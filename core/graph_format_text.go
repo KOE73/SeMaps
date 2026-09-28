@@ -56,12 +56,31 @@ func nodeByID(g *Graph) map[string]*GraphNode {
 // relationMacrosFor builds a nested {relations: …} entry for edge `e`, seen
 // from the point of view of `fromID` (the node it was reached FROM): the
 // relation name is directed from there, per core/graph_relations.go.
+//
+// {memberLine} and {relationLine}/{relationLines} are two different numbers,
+// not two names for one (defect 2 of the agent-answers-graph task):
+//   - for a `holds`/`uses` edge (which covers `injects`, a `uses` narrowed to
+//     a constructor parameter), the member is always declared on e.From,
+//     whichever direction the relation is being read from (`holds` or its
+//     reverse `held-by`, `injects` or `injected-into`) — and EXTRACTOR.md §2.2
+//     says e.Line is exactly that member's declaration line for this Kind.
+//     So {memberLine} is simply e.Line, computed once, not looked up via a
+//     MemberLines map keyed by whichever node happened to be "fromID" (the
+//     walk-parent) — that lookup broke whenever fromID was the reverse
+//     direction's parent (the held/injected TYPE, not its holder), which is
+//     exactly the `held-by`/`injected-into` case the real project surfaced.
+//   - for a `calls`/`constructs` edge, e.Line/e.Lines are the call/construct
+//     site(s), reported as {relationLine}/{relationLines} — never as
+//     {memberLine}, which stays empty there (no member is involved).
 func relationMacrosFor(e GraphEdge, fromID string, byID map[string]*GraphNode) RelationMacros {
 	names := edgeRelationNames(e, fromID)
 	name := strings.Join(names, "/")
-	rm := RelationMacros{Relation: name, RelationLine: e.Line}
-	if len(e.Lines) > 0 {
-		rm.RelationLines = e.Lines
+	rm := RelationMacros{Relation: name, other: otherEnd(e, fromID)}
+	if e.Kind == "calls" || e.Kind == "constructs" {
+		rm.RelationLine = e.Line
+		if len(e.Lines) > 0 {
+			rm.RelationLines = e.Lines
+		}
 	}
 	if e.Via != nil {
 		rm.Member = e.Via.Member
@@ -69,11 +88,7 @@ func relationMacrosFor(e GraphEdge, fromID string, byID map[string]*GraphNode) R
 		rm.Modifiers = e.Via.Modifiers
 		rm.Cardinality = e.Via.Cardinality
 		rm.Text = e.Via.Text
-		if n := byID[fromID]; n != nil && n.MemberLines != nil {
-			if l, ok := n.MemberLines[e.Via.Member]; ok {
-				rm.MemberLine = l
-			}
-		}
+		rm.MemberLine = e.Line
 	}
 	rm.Type = e.Type
 	rm.Count = e.Count
@@ -82,29 +97,82 @@ func relationMacrosFor(e GraphEdge, fromID string, byID map[string]*GraphNode) R
 	return rm
 }
 
-// combineHoldsAndInjects folds a `holds` and the `injects` of the same
-// member of the same pair into one relation, printed as `holds … (injected)`
-// (the `facts` format's rule, part 3).
+// otherEnd: the id at the far end of `e` from `fromID` — used only to pair a
+// `holds`/`held-by` relation with the `injects`/`injected-into` of the same
+// member of the same pair (combineHoldsAndInjects): "same pair" means the
+// same two nodes, not merely the same member name anywhere on the line.
+func otherEnd(e GraphEdge, fromID string) string {
+	if e.From == fromID {
+		return e.To
+	}
+	return e.From
+}
+
+// normalizeMemberName: for matching a holds/injects pair (defect 3): a
+// field, a property and a constructor parameter for the same thing are
+// often spelled differently (`_context` the field, `context` the parameter,
+// `Context` the property) — compared case-insensitively, with at most one
+// leading underscore stripped.
+func normalizeMemberName(s string) string {
+	s = strings.TrimPrefix(s, "_")
+	return strings.ToLower(s)
+}
+
+// combineHoldsAndInjects folds a `holds`/`held-by` and the
+// `injects`/`injected-into` of the same member (normalizeMemberName) of the
+// same pair (otherEnd) into one relation — the holds one, its Injected flag
+// set so a template can print "(injected)" wherever it likes (defect 3): an
+// `injects`/`injected-into` with no matching holds relation is left plain,
+// with Injected still false.
 func combineHoldsAndInjects(rels []RelationMacros) []RelationMacros {
-	type key struct{ member, relation string }
-	holdsIdx := map[string]int{}
+	type pairKey struct{ other, member string }
+	holdsIdx := map[pairKey]int{}
 	out := make([]RelationMacros, 0, len(rels))
 	for _, r := range rels {
-		if strings.HasPrefix(r.Relation, "holds") || strings.HasPrefix(r.Relation, "held-by") {
-			holdsIdx[r.Member] = len(out)
+		switch {
+		case strings.HasPrefix(r.Relation, "holds") || strings.HasPrefix(r.Relation, "held-by"):
+			holdsIdx[pairKey{r.other, normalizeMemberName(r.Member)}] = len(out)
 			out = append(out, r)
-			continue
-		}
-		if strings.HasPrefix(r.Relation, "injects") || strings.HasPrefix(r.Relation, "injected-into") {
-			if i, ok := holdsIdx[r.Member]; ok {
-				out[i].Relation += " (injected)"
+		case strings.HasPrefix(r.Relation, "injects") || strings.HasPrefix(r.Relation, "injected-into"):
+			if i, ok := holdsIdx[pairKey{r.other, normalizeMemberName(r.Member)}]; ok {
+				out[i].Injected = true
 				continue
 			}
-			r.Relation += " (injected)"
+			out = append(out, r)
+		default:
+			out = append(out, r)
 		}
-		out = append(out, r)
 	}
 	return out
+}
+
+// stepParents: the id(s) of the node(s) one step closer to the focus than
+// `id` that reach it directly by an edge — `id`'s walk parent(s). Nil when
+// `id` carries no Step (a plain whole-graph list, no walk) or is the focus
+// itself (step 0). Shared by relationsReachingNode (the "reached from" set
+// a relation is named from) and the {via}/{viaFullName} macros (defect 6).
+func stepParents(g *Graph, id string, byID map[string]*GraphNode) []string {
+	n := byID[id]
+	if n == nil || n.Step == nil || *n.Step == 0 {
+		return nil
+	}
+	want := *n.Step - 1
+	var parents []string
+	for _, e := range g.Edges {
+		var other string
+		switch {
+		case e.From == id:
+			other = e.To
+		case e.To == id:
+			other = e.From
+		default:
+			continue
+		}
+		if on := byID[other]; on != nil && on.Step != nil && *on.Step == want {
+			parents = append(parents, other)
+		}
+	}
+	return parents
 }
 
 // relationsReachingNode: every edge of `g` connecting `id` to a node one
@@ -118,24 +186,7 @@ func relationsReachingNode(g *Graph, id string, byID map[string]*GraphNode) []Re
 	if n.Step != nil && *n.Step == 0 {
 		return nil // the focus node itself: nothing reached it from anywhere
 	}
-	var parents []string
-	if n.Step != nil {
-		want := *n.Step - 1
-		for _, e := range g.Edges {
-			var other string
-			switch {
-			case e.From == id:
-				other = e.To
-			case e.To == id:
-				other = e.From
-			default:
-				continue
-			}
-			if on := byID[other]; on != nil && on.Step != nil && *on.Step == want {
-				parents = append(parents, other)
-			}
-		}
-	}
+	parents := stepParents(g, id, byID)
 	// perspective: whose point of view {relation} is named from. With step
 	// data, that is the node it was reached FROM (the parent); with none (a
 	// plain whole-graph list, no walk), there is no "reached from", so each
@@ -182,10 +233,19 @@ func contains(ss []string, s string) bool {
 
 // -------------------------------------------------------------------- facts
 
-// FactsTemplate is the stored template of the `facts` format (part 3): one
-// line per neighbour, focus node first, relations to the node it was reached
-// from folded into the same line.
-const FactsTemplate = "{step} {fullName}  {file}:{lines}  [{relations: {relation} {member}[:{memberLine}] [{memberKind}] [{modifiers}][ ×{count} from {fromMethods}[ to {toMethods}]] | ; }]"
+// FactsTemplate is the stored template of the `facts` format (part 3, then
+// defects 2-6 of the agent-answers-graph task): one line per neighbour,
+// focus node first, relations to the node it was reached from folded into
+// the same line, in square brackets (escaped: `\[`/`\]`), separated by "; ".
+// Every optional piece after {relation} carries its own leading space, so
+// the whitespace rule (core/graph_template.go) cleans up whichever pieces
+// are absent without any manual spacing per case: a bare "extends", a
+// "holds Context:7 property protected readonly (injected)", a lifted
+// "calls ×3 from Create,List to Widget,Gadget" (or, unmerged, just
+// "calls from Create to Widget" — {count} is empty at 1) all come out of the
+// same template. {via} is only ever non-empty at step >= 2 (defect 6), so
+// the trailing " via {via}" group only shows up there.
+const FactsTemplate = `{step} {fullName}  {file}:{lines}  [\[{relations:{relation}[ {member}[:{memberLine}]][ {memberKind}][ {modifiers}][ [×{count} ]from {fromMethods}[ to {toMethods}]][ {injected}]|; }\]][ via {via}]`
 
 type factsFormat struct{}
 
@@ -212,6 +272,32 @@ func FormatWithTemplate(g *Graph, templateSrc string, o FormatOptions) ([]byte, 
 	return renderPerNodeTemplate(g, tpl, o)
 }
 
+// viaOf: the {via}/{viaFullName} macro values for a node reached from
+// `parents` (its walk parents, stepParents) — short names and full names,
+// sorted and de-duplicated, comma-joined (defect 6: several parents at the
+// same step are all named, once each).
+func viaOf(parents []string, byID map[string]*GraphNode) (short, full string) {
+	seenS, seenF := map[string]bool{}, map[string]bool{}
+	var shorts, fulls []string
+	for _, p := range parents {
+		n := byID[p]
+		if n == nil {
+			continue
+		}
+		if s := n.Name; s != "" && !seenS[s] {
+			seenS[s] = true
+			shorts = append(shorts, s)
+		}
+		if f := FullName(n); f != "" && !seenF[f] {
+			seenF[f] = true
+			fulls = append(fulls, f)
+		}
+	}
+	sort.Strings(shorts)
+	sort.Strings(fulls)
+	return strings.Join(shorts, ","), strings.Join(fulls, ",")
+}
+
 func renderPerNodeTemplate(g *Graph, tpl *Template, o FormatOptions) ([]byte, error) {
 	byID := nodeByID(g)
 	order := orderedIDs(g, o.Focus)
@@ -222,6 +308,9 @@ func renderPerNodeTemplate(g *Graph, tpl *Template, o FormatOptions) ([]byte, er
 		m := NodeMacrosOf(n)
 		clearContainerPosition(&m, n)
 		m.Relations = combineHoldsAndInjects(relationsReachingNode(g, id, byID))
+		if n.Step != nil && *n.Step >= 2 {
+			m.Via, m.ViaFullName = viaOf(stepParents(g, id, byID), byID)
+		}
 		b.WriteString(tpl.Render(m))
 		b.WriteString("\n")
 	}
@@ -301,15 +390,12 @@ func (linesFormat) Format(g *Graph, o FormatOptions) ([]byte, error) {
 			om := NodeMacrosOf(other)
 			clearContainerPosition(&om, other)
 			rm := rel.rm
-			var rb strings.Builder
-			rb.WriteString("  ")
 			// relation line uses both node macros (of the neighbour) and
-			// relation macros: render manually since it mixes both spaces.
+			// relation macros: mixes both, through the same engine (and its
+			// whitespace rule) as every other template.
 			t := MustTemplate(LinesRelationTemplate)
-			for _, tn := range t.nodes {
-				tn.render(&rb, om, &rm)
-			}
-			b.WriteString(rb.String())
+			b.WriteString("  ")
+			b.WriteString(t.RenderRelation(om, &rm))
 			b.WriteString("\n")
 		}
 	}
@@ -476,12 +562,8 @@ func (treeFormat) Format(g *Graph, o FormatOptions) ([]byte, error) {
 			for _, k := range kids {
 				n := byID[k.id]
 				b.WriteString(strings.Repeat("  ", depth+1))
-				var rb strings.Builder
 				kRel := k.rm
-				for _, tn := range relTpl.nodes {
-					tn.render(&rb, NodeMacrosOf(n), &kRel)
-				}
-				b.WriteString(rb.String())
+				b.WriteString(relTpl.RenderRelation(NodeMacrosOf(n), &kRel))
 				if !printed[k.id] {
 					printed[k.id] = true
 					nm := NodeMacrosOf(n)

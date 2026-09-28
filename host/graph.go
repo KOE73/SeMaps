@@ -208,24 +208,31 @@ var graphFormatTemplates = map[string]string{
 	"tree":      core.TreeNodeTemplate,
 }
 
-// templateRulesPayload: the ten-line explanation and worked examples part 3
-// asks for, so an agent can write a template after reading only this.
+// templateRulesPayload: the explanation and worked examples part 3 (then
+// defects 2-6 of the agent-answers-graph task) ask for, so an agent can
+// write a template after reading only this.
 func templateRulesPayload() map[string]any {
 	return map[string]any{
 		"rules": []string{
-			"Literal text is copied as is.",
+			"Literal text is copied as is, subject to the whitespace rule below.",
 			"{macro} is replaced by that macro's value, or nothing when it has none.",
-			"[...] is an optional group: printed as is when every macro directly inside it has a value; dropped whole, literal text included, when any one of them is empty.",
+			"[...] is an optional group: printed as is when every macro directly inside it (or a nested {relations: ...} block) has a value; dropped whole, literal text included, when any one of them is empty. A nested [...] group is opaque to this check.",
+			"\\[ and \\] are literal '[' and ']': since [ and ] are the optional-group syntax, a literal bracket (the default `facts` template wraps its relations in one) must be escaped this way.",
+			"Whitespace rule: after rendering a template's own top-level pieces, a run made only of the space character ' ' is dropped when it falls in the LEADING run (everything from the start up to and including it renders empty) or the TRAILING run (everything from it to the end renders empty); a space run with real content on both sides — even next to an immediately empty macro or dropped group — is kept exactly as written. A tab or a newline is never touched by this rule (so `locations`' tab-separated columns stay put even when a value is empty). This applies once, to the template as a whole (and, the same way, to a `lines`/`tree` relation line) — not separately inside every nested [...] group, so a group that intentionally carries its own leading or trailing separator (e.g. a lifted relation's `×{count} `) keeps it.",
 			"{relations: TEMPLATE | SEPARATOR} renders TEMPLATE once per relation reaching the node from the node it was reached from, joined by SEPARATOR.",
-			"Node macros: step name fullName id kind nativeKind visibility file line endLine lines namespace assembly containers presence status entity.",
-			"Relation macros (inside a relations block only): relation member memberKind memberLine modifiers cardinality type text relationLine relationLines.",
+			"Node macros: step name fullName id kind nativeKind visibility file line endLine lines namespace assembly containers presence status entity via viaFullName.",
+			"Relation macros (inside a relations block only): relation member memberKind memberLine modifiers cardinality type text relationLine relationLines count fromMethods toMethods injected.",
 			"`lines` is `line-endLine`, or just `line` when there is no end.",
-			"`relation` is the directed name, from the point of view of the node it was reached FROM (e.g. `holds`, not `held-by`, when read from the holder).",
+			"`relation` is the directed name, from the point of view of the node it was reached FROM (e.g. `holds`, not `held-by`, when read from the holder) — the same rule in every text format, and the same word a `follow=` request would use to continue the walk in that direction.",
+			"{memberLine} is where the member is declared (holds/uses/injects: the edge's own line); {relationLine}/{relationLines} is the call/construct site(s) (calls/constructs only) — two different numbers, never printed for the other edge kind.",
+			"{via}/{viaFullName} (short name / full name of the node(s) this node was reached from, comma-separated) are non-empty only at step >= 2 — at step 0 there is nothing to name, at step 1 it is the focus, which the line already gives.",
+			"{count} is the number of method-level edges LiftToTypes (lift=types) merged into a relation; empty (no '×N') when <= 1. {fromMethods}/{toMethods} (comma-separated short method names, capped at 5 then '+N') are set whenever the relation was lifted, even at count 1 — only the '×N' is skipped there.",
+			"{injected} is the literal '(injected)' on a `holds`/`held-by` relation that the same member of the same pair's `injects`/`injected-into` was folded into (member names compared case-insensitively, ignoring one leading underscore); empty on every other relation, including a lone `injects`/`injected-into` with no matching holds.",
 			"A malformed template (unmatched `{`, `[` or `]`, or an unknown macro) is an error naming the position and the macro.",
 			"A node macro may also be used inside a relations block, to show the neighbour's own data next to the relation.",
 		},
 		"examples": []map[string]string{
-			{"template": core.FactsTemplate, "example": "1 App.Guards.RepetitionGuard  src/Guards/RepetitionGuard.cs:10-40  holds Log:12"},
+			{"template": core.FactsTemplate, "example": "1 App.Guards.RepetitionGuard  src/Guards/RepetitionGuard.cs:10-40  [held-by Context:7 property protected readonly (injected)]"},
 			{"template": "{relations: {relation} via {member} | ; }", "example": "holds via Log; extends via "},
 		},
 	}
