@@ -38,7 +38,7 @@ type extractorConf struct {
 	Root     string   `yaml:"root,omitempty"`
 	Include  []string `yaml:"include,omitempty"`
 	Exclude  []string `yaml:"exclude,omitempty"`
-	Edges    []string `yaml:"edges,omitempty"` // optional edge kinds: holds, uses, injects
+	Edges    []string `yaml:"edges,omitempty"` // optional edge kinds: holds, uses, injects, calls
 	// Watch: the host watches this entry's sources and reruns it on a
 	// change, without a person or an agent asking (PLAN_20260928-4). Default
 	// off; never touches sync or the model (ADR_20260928 §4).
@@ -88,7 +88,7 @@ func loadProject(file string) (project, error) {
 }
 
 func validateExtractors(list []extractorConf) error {
-	validEdges := map[string]bool{"holds": true, "uses": true, "injects": true}
+	validEdges := map[string]bool{"holds": true, "uses": true, "injects": true, "calls": true}
 	var problems []string
 	seen := map[string]bool{}
 	for i, e := range list {
@@ -114,7 +114,7 @@ func validateExtractors(list []extractorConf) error {
 		}
 		for _, edge := range e.Edges {
 			if !validEdges[edge] {
-				problems = append(problems, fmt.Sprintf("%s: edge kind %q must be holds, uses, or injects", where, edge))
+				problems = append(problems, fmt.Sprintf("%s: edge kind %q must be holds, uses, injects, or calls", where, edge))
 			}
 		}
 	}
