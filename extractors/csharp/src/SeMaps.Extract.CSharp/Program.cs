@@ -81,6 +81,14 @@ static async Task<int> Run(string[] args)
 
     var document = extractor.Build();
 
+    if (options.EdgeKinds.Contains("calls"))
+    {
+        // ADR_20260928-4: how many call/construct sites did not become an edge because
+        // their target is not printed in this output (library code, code outside
+        // --include, or a lambda/local function, which is never a symbol).
+        Console.Error.WriteLine($"calls: {extractor.UnresolvedCallTargets} call/construct site(s) outside the output");
+    }
+
     var jsonOptions = new JsonSerializerOptions
     {
         WriteIndented = true,

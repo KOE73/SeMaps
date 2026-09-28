@@ -31,6 +31,17 @@
       "members": []
     },
     {
+      "id": "CallsSample.App.Animal..ctor()",
+      "kind": "method",
+      "nativeKind": "constructor",
+      "name": ".ctor",
+      "namespace": "",
+      "file": "CallsSample.App/Animals.cs",
+      "line": 3,
+      "endLine": 3,
+      "visibility": "protected"
+    },
+    {
       "id": "CallsSample.App.Animal.Speak()",
       "kind": "method",
       "nativeKind": "method",
@@ -39,6 +50,117 @@
       "file": "CallsSample.App/Animals.cs",
       "line": 5,
       "endLine": 5,
+      "visibility": "public"
+    },
+    {
+      "id": "CallsSample.App.Calculator",
+      "kind": "type",
+      "nativeKind": "class",
+      "name": "Calculator",
+      "namespace": "CallsSample.App",
+      "file": "CallsSample.App/Calculator.cs",
+      "line": 3,
+      "endLine": 20,
+      "visibility": "public",
+      "members": []
+    },
+    {
+      "id": "CallsSample.App.Calculator..ctor()",
+      "kind": "method",
+      "nativeKind": "constructor",
+      "name": ".ctor",
+      "namespace": "",
+      "file": "CallsSample.App/Calculator.cs",
+      "line": 3,
+      "endLine": 3,
+      "visibility": "public"
+    },
+    {
+      "id": "CallsSample.App.Calculator.Add(int,int)",
+      "kind": "method",
+      "nativeKind": "method",
+      "name": "Add",
+      "namespace": "",
+      "file": "CallsSample.App/Calculator.cs",
+      "line": 7,
+      "endLine": 7,
+      "visibility": "public"
+    },
+    {
+      "id": "CallsSample.App.Calculator.Add(int,int,int)",
+      "kind": "method",
+      "nativeKind": "method",
+      "name": "Add",
+      "namespace": "",
+      "file": "CallsSample.App/Calculator.cs",
+      "line": 9,
+      "endLine": 9,
+      "visibility": "public"
+    },
+    {
+      "id": "CallsSample.App.Calculator.Identity`1(T)",
+      "kind": "method",
+      "nativeKind": "method",
+      "name": "Identity",
+      "namespace": "",
+      "file": "CallsSample.App/Calculator.cs",
+      "line": 13,
+      "endLine": 13,
+      "visibility": "public"
+    },
+    {
+      "id": "CallsSample.App.Calculator.UseIdentity()",
+      "kind": "method",
+      "nativeKind": "method",
+      "name": "UseIdentity",
+      "namespace": "",
+      "file": "CallsSample.App/Calculator.cs",
+      "line": 15,
+      "endLine": 19,
+      "visibility": "public"
+    },
+    {
+      "id": "CallsSample.App.ChainCtor",
+      "kind": "type",
+      "nativeKind": "class",
+      "name": "ChainCtor",
+      "namespace": "CallsSample.App",
+      "file": "CallsSample.App/Misc.cs",
+      "line": 46,
+      "endLine": 59,
+      "visibility": "public",
+      "members": [
+        {
+          "kind": "field",
+          "name": "Seed",
+          "type": "int",
+          "visibility": "public"
+        }
+      ],
+      "memberLines": {
+        "Seed": 58
+      }
+    },
+    {
+      "id": "CallsSample.App.ChainCtor..ctor()",
+      "kind": "method",
+      "nativeKind": "constructor",
+      "name": ".ctor",
+      "namespace": "",
+      "file": "CallsSample.App/Misc.cs",
+      "line": 48,
+      "endLine": 51,
+      "visibility": "public"
+    },
+    {
+      "id": "CallsSample.App.ChainCtor..ctor(int)",
+      "kind": "method",
+      "nativeKind": "constructor",
+      "name": ".ctor",
+      "namespace": "",
+      "file": "CallsSample.App/Misc.cs",
+      "line": 53,
+      "endLine": 56,
       "visibility": "public"
     },
     {
@@ -64,6 +186,17 @@
       }
     },
     {
+      "id": "CallsSample.App.Circle..ctor()",
+      "kind": "method",
+      "nativeKind": "constructor",
+      "name": ".ctor",
+      "namespace": "",
+      "file": "CallsSample.App/Shapes.cs",
+      "line": 8,
+      "endLine": 8,
+      "visibility": "public"
+    },
+    {
       "id": "CallsSample.App.Circle.Area()",
       "kind": "method",
       "nativeKind": "method",
@@ -85,6 +218,17 @@
       "endLine": 13,
       "visibility": "public",
       "members": []
+    },
+    {
+      "id": "CallsSample.App.Dog..ctor()",
+      "kind": "method",
+      "nativeKind": "constructor",
+      "name": ".ctor",
+      "namespace": "",
+      "file": "CallsSample.App/Animals.cs",
+      "line": 10,
+      "endLine": 10,
+      "visibility": "public"
     },
     {
       "id": "CallsSample.App.Dog.Speak()",
@@ -154,6 +298,208 @@
       "visibility": "public"
     },
     {
+      "id": "CallsSample.App.LambdaHost",
+      "kind": "type",
+      "nativeKind": "class",
+      "name": "LambdaHost",
+      "namespace": "CallsSample.App",
+      "file": "CallsSample.App/Misc.cs",
+      "line": 7,
+      "endLine": 18,
+      "visibility": "public",
+      "members": []
+    },
+    {
+      "id": "CallsSample.App.LambdaHost..ctor()",
+      "kind": "method",
+      "nativeKind": "constructor",
+      "name": ".ctor",
+      "namespace": "",
+      "file": "CallsSample.App/Misc.cs",
+      "line": 7,
+      "endLine": 7,
+      "visibility": "public"
+    },
+    {
+      "id": "CallsSample.App.LambdaHost.Helper()",
+      "kind": "method",
+      "nativeKind": "method",
+      "name": "Helper",
+      "namespace": "",
+      "file": "CallsSample.App/Misc.cs",
+      "line": 15,
+      "endLine": 17,
+      "visibility": "private"
+    },
+    {
+      "id": "CallsSample.App.LambdaHost.Run()",
+      "kind": "method",
+      "nativeKind": "method",
+      "name": "Run",
+      "namespace": "",
+      "file": "CallsSample.App/Misc.cs",
+      "line": 9,
+      "endLine": 13,
+      "visibility": "public"
+    },
+    {
+      "id": "CallsSample.App.LocalFnHost",
+      "kind": "type",
+      "nativeKind": "class",
+      "name": "LocalFnHost",
+      "namespace": "CallsSample.App",
+      "file": "CallsSample.App/Misc.cs",
+      "line": 21,
+      "endLine": 32,
+      "visibility": "public",
+      "members": []
+    },
+    {
+      "id": "CallsSample.App.LocalFnHost..ctor()",
+      "kind": "method",
+      "nativeKind": "constructor",
+      "name": ".ctor",
+      "namespace": "",
+      "file": "CallsSample.App/Misc.cs",
+      "line": 21,
+      "endLine": 21,
+      "visibility": "public"
+    },
+    {
+      "id": "CallsSample.App.LocalFnHost.Helper()",
+      "kind": "method",
+      "nativeKind": "method",
+      "name": "Helper",
+      "namespace": "",
+      "file": "CallsSample.App/Misc.cs",
+      "line": 29,
+      "endLine": 31,
+      "visibility": "private"
+    },
+    {
+      "id": "CallsSample.App.LocalFnHost.Run()",
+      "kind": "method",
+      "nativeKind": "method",
+      "name": "Run",
+      "namespace": "",
+      "file": "CallsSample.App/Misc.cs",
+      "line": 23,
+      "endLine": 27,
+      "visibility": "public"
+    },
+    {
+      "id": "CallsSample.App.MutualA",
+      "kind": "type",
+      "nativeKind": "class",
+      "name": "MutualA",
+      "namespace": "CallsSample.App",
+      "file": "CallsSample.App/Mutual.cs",
+      "line": 5,
+      "endLine": 14,
+      "visibility": "public",
+      "members": []
+    },
+    {
+      "id": "CallsSample.App.MutualA..ctor()",
+      "kind": "method",
+      "nativeKind": "constructor",
+      "name": ".ctor",
+      "namespace": "",
+      "file": "CallsSample.App/Mutual.cs",
+      "line": 5,
+      "endLine": 5,
+      "visibility": "public"
+    },
+    {
+      "id": "CallsSample.App.MutualA.Ping(int)",
+      "kind": "method",
+      "nativeKind": "method",
+      "name": "Ping",
+      "namespace": "",
+      "file": "CallsSample.App/Mutual.cs",
+      "line": 7,
+      "endLine": 13,
+      "visibility": "public"
+    },
+    {
+      "id": "CallsSample.App.MutualB",
+      "kind": "type",
+      "nativeKind": "static-class",
+      "name": "MutualB",
+      "namespace": "CallsSample.App",
+      "file": "CallsSample.App/Mutual.cs",
+      "line": 16,
+      "endLine": 25,
+      "visibility": "public",
+      "members": []
+    },
+    {
+      "id": "CallsSample.App.MutualB.Pong(int)",
+      "kind": "method",
+      "nativeKind": "method",
+      "name": "Pong",
+      "namespace": "",
+      "file": "CallsSample.App/Mutual.cs",
+      "line": 18,
+      "endLine": 24,
+      "visibility": "public"
+    },
+    {
+      "id": "CallsSample.App.PropertyHost",
+      "kind": "type",
+      "nativeKind": "class",
+      "name": "PropertyHost",
+      "namespace": "CallsSample.App",
+      "file": "CallsSample.App/Misc.cs",
+      "line": 34,
+      "endLine": 43,
+      "visibility": "public",
+      "members": [
+        {
+          "kind": "property",
+          "name": "Value",
+          "type": "int",
+          "visibility": "public"
+        }
+      ],
+      "memberLines": {
+        "Value": 36
+      }
+    },
+    {
+      "id": "CallsSample.App.PropertyHost..ctor()",
+      "kind": "method",
+      "nativeKind": "constructor",
+      "name": ".ctor",
+      "namespace": "",
+      "file": "CallsSample.App/Misc.cs",
+      "line": 34,
+      "endLine": 34,
+      "visibility": "public"
+    },
+    {
+      "id": "CallsSample.App.PropertyHost.Touch()",
+      "kind": "method",
+      "nativeKind": "method",
+      "name": "Touch",
+      "namespace": "",
+      "file": "CallsSample.App/Misc.cs",
+      "line": 38,
+      "endLine": 42,
+      "visibility": "public"
+    },
+    {
+      "id": "CallsSample.App.PropertyHost.Value",
+      "kind": "method",
+      "nativeKind": "property",
+      "name": "Value",
+      "namespace": "",
+      "file": "CallsSample.App/Misc.cs",
+      "line": 36,
+      "endLine": 36,
+      "visibility": "public"
+    },
+    {
       "id": "CallsSample.App.Puppy",
       "kind": "type",
       "nativeKind": "class",
@@ -164,6 +510,17 @@
       "endLine": 19,
       "visibility": "public",
       "members": []
+    },
+    {
+      "id": "CallsSample.App.Puppy..ctor()",
+      "kind": "method",
+      "nativeKind": "constructor",
+      "name": ".ctor",
+      "namespace": "",
+      "file": "CallsSample.App/Animals.cs",
+      "line": 16,
+      "endLine": 16,
+      "visibility": "public"
     },
     {
       "id": "CallsSample.App.Puppy.Speak()",
@@ -177,6 +534,40 @@
       "visibility": "public"
     },
     {
+      "id": "CallsSample.App.Recursive",
+      "kind": "type",
+      "nativeKind": "class",
+      "name": "Recursive",
+      "namespace": "CallsSample.App",
+      "file": "CallsSample.App/Calculator.cs",
+      "line": 22,
+      "endLine": 27,
+      "visibility": "public",
+      "members": []
+    },
+    {
+      "id": "CallsSample.App.Recursive..ctor()",
+      "kind": "method",
+      "nativeKind": "constructor",
+      "name": ".ctor",
+      "namespace": "",
+      "file": "CallsSample.App/Calculator.cs",
+      "line": 22,
+      "endLine": 22,
+      "visibility": "public"
+    },
+    {
+      "id": "CallsSample.App.Recursive.Fib(int)",
+      "kind": "method",
+      "nativeKind": "method",
+      "name": "Fib",
+      "namespace": "",
+      "file": "CallsSample.App/Calculator.cs",
+      "line": 26,
+      "endLine": 26,
+      "visibility": "public"
+    },
+    {
       "id": "CallsSample.App.Robot",
       "kind": "type",
       "nativeKind": "class",
@@ -187,6 +578,17 @@
       "endLine": 27,
       "visibility": "public",
       "members": []
+    },
+    {
+      "id": "CallsSample.App.Robot..ctor()",
+      "kind": "method",
+      "nativeKind": "constructor",
+      "name": ".ctor",
+      "namespace": "",
+      "file": "CallsSample.App/Shapes.cs",
+      "line": 24,
+      "endLine": 24,
+      "visibility": "public"
     },
     {
       "id": "CallsSample.App.Robot.Area()",
@@ -210,6 +612,17 @@
       "endLine": 34,
       "visibility": "public",
       "members": []
+    },
+    {
+      "id": "CallsSample.App.ShapeUser..ctor()",
+      "kind": "method",
+      "nativeKind": "constructor",
+      "name": ".ctor",
+      "namespace": "",
+      "file": "CallsSample.App/Shapes.cs",
+      "line": 29,
+      "endLine": 29,
+      "visibility": "public"
     },
     {
       "id": "CallsSample.App.ShapeUser.Measure(IShape)",
@@ -245,6 +658,17 @@
       }
     },
     {
+      "id": "CallsSample.App.Square..ctor()",
+      "kind": "method",
+      "nativeKind": "constructor",
+      "name": ".ctor",
+      "namespace": "",
+      "file": "CallsSample.App/Shapes.cs",
+      "line": 15,
+      "endLine": 15,
+      "visibility": "public"
+    },
+    {
       "id": "CallsSample.App.Square.Area()",
       "kind": "method",
       "nativeKind": "method",
@@ -272,6 +696,16 @@
     },
     {
       "from": "CallsSample.App",
+      "to": "CallsSample.App.Calculator",
+      "kind": "contains"
+    },
+    {
+      "from": "CallsSample.App",
+      "to": "CallsSample.App.ChainCtor",
+      "kind": "contains"
+    },
+    {
+      "from": "CallsSample.App",
       "to": "CallsSample.App.Circle",
       "kind": "contains"
     },
@@ -292,7 +726,37 @@
     },
     {
       "from": "CallsSample.App",
+      "to": "CallsSample.App.LambdaHost",
+      "kind": "contains"
+    },
+    {
+      "from": "CallsSample.App",
+      "to": "CallsSample.App.LocalFnHost",
+      "kind": "contains"
+    },
+    {
+      "from": "CallsSample.App",
+      "to": "CallsSample.App.MutualA",
+      "kind": "contains"
+    },
+    {
+      "from": "CallsSample.App",
+      "to": "CallsSample.App.MutualB",
+      "kind": "contains"
+    },
+    {
+      "from": "CallsSample.App",
+      "to": "CallsSample.App.PropertyHost",
+      "kind": "contains"
+    },
+    {
+      "from": "CallsSample.App",
       "to": "CallsSample.App.Puppy",
+      "kind": "contains"
+    },
+    {
+      "from": "CallsSample.App",
+      "to": "CallsSample.App.Recursive",
       "kind": "contains"
     },
     {
@@ -312,7 +776,74 @@
     },
     {
       "from": "CallsSample.App.Animal",
+      "to": "CallsSample.App.Animal..ctor()",
+      "kind": "contains"
+    },
+    {
+      "from": "CallsSample.App.Animal",
       "to": "CallsSample.App.Animal.Speak()",
+      "kind": "contains"
+    },
+    {
+      "from": "CallsSample.App.Calculator",
+      "to": "CallsSample.App.Calculator..ctor()",
+      "kind": "contains"
+    },
+    {
+      "from": "CallsSample.App.Calculator",
+      "to": "CallsSample.App.Calculator.Add(int,int)",
+      "kind": "contains"
+    },
+    {
+      "from": "CallsSample.App.Calculator",
+      "to": "CallsSample.App.Calculator.Add(int,int,int)",
+      "kind": "contains"
+    },
+    {
+      "from": "CallsSample.App.Calculator",
+      "to": "CallsSample.App.Calculator.Identity`1(T)",
+      "kind": "contains"
+    },
+    {
+      "from": "CallsSample.App.Calculator",
+      "to": "CallsSample.App.Calculator.UseIdentity()",
+      "kind": "contains"
+    },
+    {
+      "from": "CallsSample.App.Calculator.Add(int,int,int)",
+      "to": "CallsSample.App.Calculator.Add(int,int)",
+      "kind": "calls",
+      "line": 9
+    },
+    {
+      "from": "CallsSample.App.Calculator.UseIdentity()",
+      "to": "CallsSample.App.Calculator.Identity`1(T)",
+      "kind": "calls",
+      "line": 17,
+      "lines": [
+        17,
+        18
+      ]
+    },
+    {
+      "from": "CallsSample.App.ChainCtor",
+      "to": "CallsSample.App.ChainCtor..ctor()",
+      "kind": "contains"
+    },
+    {
+      "from": "CallsSample.App.ChainCtor",
+      "to": "CallsSample.App.ChainCtor..ctor(int)",
+      "kind": "contains"
+    },
+    {
+      "from": "CallsSample.App.ChainCtor..ctor()",
+      "to": "CallsSample.App.ChainCtor..ctor(int)",
+      "kind": "calls",
+      "line": 49
+    },
+    {
+      "from": "CallsSample.App.Circle",
+      "to": "CallsSample.App.Circle..ctor()",
       "kind": "contains"
     },
     {
@@ -339,8 +870,19 @@
     },
     {
       "from": "CallsSample.App.Dog",
+      "to": "CallsSample.App.Dog..ctor()",
+      "kind": "contains"
+    },
+    {
+      "from": "CallsSample.App.Dog",
       "to": "CallsSample.App.Dog.Speak()",
       "kind": "contains"
+    },
+    {
+      "from": "CallsSample.App.Dog.Speak()",
+      "to": "CallsSample.App.Animal.Speak()",
+      "kind": "calls",
+      "line": 12
     },
     {
       "from": "CallsSample.App.Dog.Speak()",
@@ -353,9 +895,127 @@
       "kind": "contains"
     },
     {
+      "from": "CallsSample.App.Factory.MakeCircle(double)",
+      "to": "CallsSample.App.Circle",
+      "kind": "constructs",
+      "line": 42
+    },
+    {
+      "from": "CallsSample.App.Factory.MakeCircle(double)",
+      "to": "CallsSample.App.Circle..ctor()",
+      "kind": "calls",
+      "line": 42
+    },
+    {
       "from": "CallsSample.App.IShape",
       "to": "CallsSample.App.IShape.Area()",
       "kind": "contains"
+    },
+    {
+      "from": "CallsSample.App.LambdaHost",
+      "to": "CallsSample.App.LambdaHost..ctor()",
+      "kind": "contains"
+    },
+    {
+      "from": "CallsSample.App.LambdaHost",
+      "to": "CallsSample.App.LambdaHost.Helper()",
+      "kind": "contains"
+    },
+    {
+      "from": "CallsSample.App.LambdaHost",
+      "to": "CallsSample.App.LambdaHost.Run()",
+      "kind": "contains"
+    },
+    {
+      "from": "CallsSample.App.LambdaHost.Run()",
+      "to": "CallsSample.App.LambdaHost.Helper()",
+      "kind": "calls",
+      "line": 11
+    },
+    {
+      "from": "CallsSample.App.LocalFnHost",
+      "to": "CallsSample.App.LocalFnHost..ctor()",
+      "kind": "contains"
+    },
+    {
+      "from": "CallsSample.App.LocalFnHost",
+      "to": "CallsSample.App.LocalFnHost.Helper()",
+      "kind": "contains"
+    },
+    {
+      "from": "CallsSample.App.LocalFnHost",
+      "to": "CallsSample.App.LocalFnHost.Run()",
+      "kind": "contains"
+    },
+    {
+      "from": "CallsSample.App.LocalFnHost.Run()",
+      "to": "CallsSample.App.LocalFnHost.Helper()",
+      "kind": "calls",
+      "line": 25
+    },
+    {
+      "from": "CallsSample.App.MutualA",
+      "to": "CallsSample.App.MutualA..ctor()",
+      "kind": "contains"
+    },
+    {
+      "from": "CallsSample.App.MutualA",
+      "to": "CallsSample.App.MutualA.Ping(int)",
+      "kind": "contains"
+    },
+    {
+      "from": "CallsSample.App.MutualA.Ping(int)",
+      "to": "CallsSample.App.MutualB.Pong(int)",
+      "kind": "calls",
+      "line": 11
+    },
+    {
+      "from": "CallsSample.App.MutualB",
+      "to": "CallsSample.App.MutualB.Pong(int)",
+      "kind": "contains"
+    },
+    {
+      "from": "CallsSample.App.MutualB.Pong(int)",
+      "to": "CallsSample.App.MutualA",
+      "kind": "constructs",
+      "line": 22
+    },
+    {
+      "from": "CallsSample.App.MutualB.Pong(int)",
+      "to": "CallsSample.App.MutualA..ctor()",
+      "kind": "calls",
+      "line": 22
+    },
+    {
+      "from": "CallsSample.App.MutualB.Pong(int)",
+      "to": "CallsSample.App.MutualA.Ping(int)",
+      "kind": "calls",
+      "line": 22
+    },
+    {
+      "from": "CallsSample.App.PropertyHost",
+      "to": "CallsSample.App.PropertyHost..ctor()",
+      "kind": "contains"
+    },
+    {
+      "from": "CallsSample.App.PropertyHost",
+      "to": "CallsSample.App.PropertyHost.Touch()",
+      "kind": "contains"
+    },
+    {
+      "from": "CallsSample.App.PropertyHost",
+      "to": "CallsSample.App.PropertyHost.Value",
+      "kind": "contains"
+    },
+    {
+      "from": "CallsSample.App.PropertyHost.Touch()",
+      "to": "CallsSample.App.PropertyHost.Value",
+      "kind": "calls",
+      "line": 40,
+      "lines": [
+        40,
+        41
+      ]
     },
     {
       "from": "CallsSample.App.Puppy",
@@ -365,8 +1025,19 @@
     },
     {
       "from": "CallsSample.App.Puppy",
+      "to": "CallsSample.App.Puppy..ctor()",
+      "kind": "contains"
+    },
+    {
+      "from": "CallsSample.App.Puppy",
       "to": "CallsSample.App.Puppy.Speak()",
       "kind": "contains"
+    },
+    {
+      "from": "CallsSample.App.Puppy.Speak()",
+      "to": "CallsSample.App.Dog.Speak()",
+      "kind": "calls",
+      "line": 18
     },
     {
       "from": "CallsSample.App.Puppy.Speak()",
@@ -374,10 +1045,31 @@
       "kind": "overrides"
     },
     {
+      "from": "CallsSample.App.Recursive",
+      "to": "CallsSample.App.Recursive..ctor()",
+      "kind": "contains"
+    },
+    {
+      "from": "CallsSample.App.Recursive",
+      "to": "CallsSample.App.Recursive.Fib(int)",
+      "kind": "contains"
+    },
+    {
+      "from": "CallsSample.App.Recursive.Fib(int)",
+      "to": "CallsSample.App.Recursive.Fib(int)",
+      "kind": "calls",
+      "line": 26
+    },
+    {
       "from": "CallsSample.App.Robot",
       "to": "CallsSample.App.IShape",
       "kind": "implements",
       "line": 24
+    },
+    {
+      "from": "CallsSample.App.Robot",
+      "to": "CallsSample.App.Robot..ctor()",
+      "kind": "contains"
     },
     {
       "from": "CallsSample.App.Robot",
@@ -391,14 +1083,30 @@
     },
     {
       "from": "CallsSample.App.ShapeUser",
+      "to": "CallsSample.App.ShapeUser..ctor()",
+      "kind": "contains"
+    },
+    {
+      "from": "CallsSample.App.ShapeUser",
       "to": "CallsSample.App.ShapeUser.Measure(IShape)",
       "kind": "contains"
+    },
+    {
+      "from": "CallsSample.App.ShapeUser.Measure(IShape)",
+      "to": "CallsSample.App.IShape.Area()",
+      "kind": "calls",
+      "line": 33
     },
     {
       "from": "CallsSample.App.Square",
       "to": "CallsSample.App.IShape",
       "kind": "implements",
       "line": 15
+    },
+    {
+      "from": "CallsSample.App.Square",
+      "to": "CallsSample.App.Square..ctor()",
+      "kind": "contains"
     },
     {
       "from": "CallsSample.App.Square",
@@ -413,6 +1121,16 @@
     {
       "from": "[CallsSample.App]",
       "to": "CallsSample.App.Animal",
+      "kind": "contains"
+    },
+    {
+      "from": "[CallsSample.App]",
+      "to": "CallsSample.App.Calculator",
+      "kind": "contains"
+    },
+    {
+      "from": "[CallsSample.App]",
+      "to": "CallsSample.App.ChainCtor",
       "kind": "contains"
     },
     {
@@ -437,7 +1155,37 @@
     },
     {
       "from": "[CallsSample.App]",
+      "to": "CallsSample.App.LambdaHost",
+      "kind": "contains"
+    },
+    {
+      "from": "[CallsSample.App]",
+      "to": "CallsSample.App.LocalFnHost",
+      "kind": "contains"
+    },
+    {
+      "from": "[CallsSample.App]",
+      "to": "CallsSample.App.MutualA",
+      "kind": "contains"
+    },
+    {
+      "from": "[CallsSample.App]",
+      "to": "CallsSample.App.MutualB",
+      "kind": "contains"
+    },
+    {
+      "from": "[CallsSample.App]",
+      "to": "CallsSample.App.PropertyHost",
+      "kind": "contains"
+    },
+    {
+      "from": "[CallsSample.App]",
       "to": "CallsSample.App.Puppy",
+      "kind": "contains"
+    },
+    {
+      "from": "[CallsSample.App]",
+      "to": "CallsSample.App.Recursive",
       "kind": "contains"
     },
     {

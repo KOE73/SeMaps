@@ -263,7 +263,11 @@ func (f *Facts) problems() []string {
 		if !ids[e.To] {
 			bad("%s: to is not a symbol of this output", where)
 		}
-		if e.From == e.To {
+		if e.From == e.To && e.Kind != "calls" {
+			// calls is the one edge kind self-reference makes sense for: a
+			// method can call itself (recursion). Every other kind (extends,
+			// implements, contains, depends, holds, uses, constructs,
+			// overrides) forbids it as before.
 			bad("%s: an edge to itself", where)
 		}
 		if e.Via != nil && (e.Kind == "extends" || e.Kind == "implements" || e.Kind == "contains" || e.Kind == "depends" || e.Kind == "calls" || e.Kind == "constructs" || e.Kind == "overrides") {

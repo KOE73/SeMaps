@@ -528,6 +528,8 @@ internal sealed class EdgeWithVia
     // they are excluded from Equals/GetHashCode below.
     public int? Line { get; set; }
     public string? File { get; set; }
+    // Every call site of a `calls` edge, sorted; also not part of identity.
+    public List<int>? Lines { get; set; }
 
     public override bool Equals(object? obj)
     {

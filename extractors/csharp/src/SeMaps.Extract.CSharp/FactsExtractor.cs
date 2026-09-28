@@ -19,6 +19,11 @@ internal sealed class FactsExtractor(string rootArgument, string rootFullPath, P
     // that need to resolve a call target back to a symbol of this output.
     private readonly Dictionary<string, ISymbol> _methodSymbols = new(StringComparer.Ordinal);
 
+    // Which compilation a syntax tree came from, so `calls`/`constructs` (resolved from a
+    // method's own DeclaringSyntaxReferences, discovered only once every type is known) can
+    // get a SemanticModel for that tree without re-loading projects.
+    private readonly Dictionary<SyntaxTree, Compilation> _treeToCompilation = new();
+
     private sealed class AssemblyEntry
     {
         public required string Name;
@@ -46,6 +51,14 @@ internal sealed class FactsExtractor(string rootArgument, string rootFullPath, P
     }
 
     private readonly HashSet<string>? _requestedEdgeKinds;
+
+    /// <summary>
+    /// Call/construct sites whose target is not printed in this output (library code, code
+    /// outside <c>--include</c>, or a lambda/local function). Zero until <see cref="Build"/>
+    /// runs with <c>calls</c> requested. Printed in the tool's stderr summary, never in the
+    /// facts (docs/extractors/csharp.md).
+    /// </summary>
+    public int UnresolvedCallTargets { get; private set; }
 
     /// <summary>
     /// Constructor that accepts options for edge kinds filtering.
@@ -87,6 +100,7 @@ internal sealed class FactsExtractor(string rootArgument, string rootFullPath, P
 
             var semanticModel = compilation.GetSemanticModel(tree);
             var root = tree.GetRoot();
+            _treeToCompilation[tree] = compilation;
 
             foreach (var node in root.DescendantNodes().Where(IsTypeLikeDeclaration))
             {
@@ -327,13 +341,38 @@ internal sealed class FactsExtractor(string rootArgument, string rootFullPath, P
             // of a type visited later) already known.
             foreach (var (id, entry) in _types)
             {
-                CollectMethods(id, entry.Symbol, entry.File, symbols, edges);
+                CollectMethods(id, entry.Symbol, entry, symbols, edges);
             }
 
             foreach (var (id, entry) in _types)
             {
                 AddMethodLevelEdges(id, entry.Symbol, edges);
             }
+
+            // Third pass: calls/constructs, which need every method symbol of
+            // every type known first (a call target may belong to a type
+            // visited earlier or later than its caller).
+            var collector = new CallsCollector();
+            foreach (var (id, symbol) in _methodSymbols)
+            {
+                foreach (var node in BodyNodesOf(symbol))
+                {
+                    if (!_treeToCompilation.TryGetValue(node.SyntaxTree, out var compilation))
+                    {
+                        continue;
+                    }
+
+                    var model = compilation.GetSemanticModel(node.SyntaxTree);
+                    collector.Collect(id, model, node, outputIds, _methodSymbols);
+                }
+            }
+
+            foreach (var edge in collector.BuildEdges())
+            {
+                edges.Add(edge);
+            }
+
+            UnresolvedCallTargets = collector.OutsideOutput;
         }
 
         symbols.Sort((a, b) => string.CompareOrdinal(a.Id, b.Id));
@@ -352,6 +391,7 @@ internal sealed class FactsExtractor(string rootArgument, string rootFullPath, P
                 Via = e.Via,
                 Line = e.Line,
                 File = e.File,
+                Lines = e.Lines,
             })
             .ToList();
 
@@ -599,7 +639,7 @@ internal sealed class FactsExtractor(string rootArgument, string rootFullPath, P
     private void CollectMethods(
         string typeId,
         INamedTypeSymbol symbol,
-        string typeFile,
+        TypeEntry entry,
         List<SymbolFact> symbols,
         HashSet<EdgeWithVia> edges)
     {
@@ -641,9 +681,64 @@ internal sealed class FactsExtractor(string rootArgument, string rootFullPath, P
                 }
             }
         }
+
+        AddImplicitConstructorIfNeeded(typeId, symbol, entry, symbols, edges, seen);
     }
 
-    private static bool IsCallsEligibleMethod(IMethodSymbol method)
+    /// <summary>
+    /// ADR_20260928-4 §3: a `new T(...)` naming no constructor of its own still constructs a
+    /// real object, and that constructor is a symbol of this output when the type is — so a
+    /// type declaring no instance constructor prints Roslyn's implicit parameterless one, with
+    /// the type's own location (it has no declaration of its own). This is the case that used
+    /// to have zero edges: a static factory returning `new Circle()` now gets a `calls` edge to
+    /// Circle's constructor, not just `constructs` to Circle.
+    ///
+    /// Not implemented in this run: attributing field/property initialisers to this
+    /// constructor (or to an explicit one) — documented as a known gap in
+    /// docs/extractors/csharp.md, tracked for a follow-up.
+    /// </summary>
+    private void AddImplicitConstructorIfNeeded(
+        string typeId,
+        INamedTypeSymbol symbol,
+        TypeEntry entry,
+        List<SymbolFact> symbols,
+        HashSet<EdgeWithVia> edges,
+        HashSet<string> seen)
+    {
+        if (symbol.TypeKind is not (TypeKind.Class or TypeKind.Struct) || symbol.IsStatic)
+        {
+            return;
+        }
+
+        if (symbol.InstanceConstructors.Length != 1 || !symbol.InstanceConstructors[0].IsImplicitlyDeclared)
+        {
+            return; // an explicit instance constructor exists: nothing implicit to add
+        }
+
+        var implicitCtor = symbol.InstanceConstructors[0];
+        var id = SymbolIds.MethodId(implicitCtor);
+        if (!seen.Add(id))
+        {
+            return;
+        }
+
+        symbols.Add(new SymbolFact
+        {
+            Id = id,
+            Kind = "method",
+            NativeKind = "constructor",
+            Name = ".ctor",
+            Namespace = "",
+            File = entry.File,
+            Line = entry.Line,
+            EndLine = entry.Line,
+            Visibility = SymbolDisplayHelpers.Visibility(implicitCtor.DeclaredAccessibility),
+        });
+        edges.Add(new EdgeWithVia { From = typeId, To = id, Kind = "contains" });
+        _methodSymbols[id] = implicitCtor;
+    }
+
+    internal static bool IsCallsEligibleMethod(IMethodSymbol method)
     {
         // The implicit parameterless constructor is handled where field/property
         // initialisers are attributed to it (docs/extractors/csharp.md); every
@@ -670,7 +765,7 @@ internal sealed class FactsExtractor(string rootArgument, string rootFullPath, P
     /// Every declaring syntax reference of a partial method's canonical (implementation)
     /// part, plus its definition part's — so `spans` sees both halves of a `partial` pair.
     /// </summary>
-    private static List<SyntaxReference> PartialSyntaxRefs(IMethodSymbol canonical)
+    internal static List<SyntaxReference> PartialSyntaxRefs(IMethodSymbol canonical)
     {
         var refs = canonical.DeclaringSyntaxReferences.ToList();
         if (canonical.PartialDefinitionPart is { } definition)
@@ -789,6 +884,42 @@ internal sealed class FactsExtractor(string rootArgument, string rootFullPath, P
                     edges.Add(new EdgeWithVia { From = fromId, To = toId, Kind = "implements" });
                 }
             }
+        }
+    }
+
+    /// <summary>
+    /// Every syntax node whose body the calls pass should walk for <paramref name="symbol"/>:
+    /// a method's own declaration(s) (both halves of a `partial` pair), or a property/indexer's
+    /// get and set accessors. An implicit constructor (no declaration at all) yields nothing —
+    /// this run does not attribute field/property initialisers to it (docs/extractors/csharp.md).
+    /// </summary>
+    private static IEnumerable<SyntaxNode> BodyNodesOf(ISymbol symbol)
+    {
+        switch (symbol)
+        {
+            case IMethodSymbol method:
+                foreach (var syntaxRef in PartialSyntaxRefs(method))
+                {
+                    yield return syntaxRef.GetSyntax();
+                }
+
+                break;
+
+            case IPropertySymbol property:
+                foreach (var accessor in new[] { property.GetMethod, property.SetMethod })
+                {
+                    if (accessor is null)
+                    {
+                        continue;
+                    }
+
+                    foreach (var syntaxRef in accessor.DeclaringSyntaxReferences)
+                    {
+                        yield return syntaxRef.GetSyntax();
+                    }
+                }
+
+                break;
         }
     }
 

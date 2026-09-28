@@ -41,6 +41,17 @@
       }
     },
     {
+      "id": "Sample.App.AdvancedRepetitionGuard..ctor()",
+      "kind": "method",
+      "nativeKind": "constructor",
+      "name": ".ctor",
+      "namespace": "",
+      "file": "Sample.App/AdvancedRepetitionGuard.cs",
+      "line": 6,
+      "endLine": 6,
+      "visibility": "public"
+    },
+    {
       "id": "Sample.App.AdvancedRepetitionGuard.CurrentStatus",
       "kind": "method",
       "nativeKind": "property",
@@ -106,6 +117,17 @@
       }
     },
     {
+      "id": "Sample.Core.Container+Inner..ctor()",
+      "kind": "method",
+      "nativeKind": "constructor",
+      "name": ".ctor",
+      "namespace": "",
+      "file": "Sample.Core/Container.cs",
+      "line": 5,
+      "endLine": 5,
+      "visibility": "public"
+    },
+    {
       "id": "Sample.Core.Container+Inner.Value",
       "kind": "method",
       "nativeKind": "property",
@@ -146,6 +168,17 @@
       }
     },
     {
+      "id": "Sample.Core.Container+Secret..ctor()",
+      "kind": "method",
+      "nativeKind": "constructor",
+      "name": ".ctor",
+      "namespace": "",
+      "file": "Sample.Core/Container.cs",
+      "line": 10,
+      "endLine": 10,
+      "visibility": "public"
+    },
+    {
       "id": "Sample.Core.Container+Secret.Hidden",
       "kind": "method",
       "nativeKind": "property",
@@ -154,6 +187,17 @@
       "file": "Sample.Core/Container.cs",
       "line": 12,
       "endLine": 12,
+      "visibility": "public"
+    },
+    {
+      "id": "Sample.Core.Container..ctor()",
+      "kind": "method",
+      "nativeKind": "constructor",
+      "name": ".ctor",
+      "namespace": "",
+      "file": "Sample.Core/Container.cs",
+      "line": 3,
+      "endLine": 3,
       "visibility": "public"
     },
     {
@@ -380,6 +424,17 @@
       }
     },
     {
+      "id": "Sample.Core.Guards.RepetitionGuard..ctor()",
+      "kind": "method",
+      "nativeKind": "constructor",
+      "name": ".ctor",
+      "namespace": "",
+      "file": "Sample.Core/Guards/RepetitionGuard.Extra.cs",
+      "line": 3,
+      "endLine": 3,
+      "visibility": "public"
+    },
+    {
       "id": "Sample.Core.Guards.RepetitionGuard.Count",
       "kind": "method",
       "nativeKind": "property",
@@ -476,6 +531,17 @@
         "Created": 5,
         "Name": 7
       }
+    },
+    {
+      "id": "Sample.Core.Logger..ctor()",
+      "kind": "method",
+      "nativeKind": "constructor",
+      "name": ".ctor",
+      "namespace": "",
+      "file": "Sample.Core/Logger.cs",
+      "line": 3,
+      "endLine": 3,
+      "visibility": "public"
     },
     {
       "id": "Sample.Core.Logger.Created",
@@ -602,6 +668,17 @@
       }
     },
     {
+      "id": "Sample.Core.Repo`1..ctor()",
+      "kind": "method",
+      "nativeKind": "constructor",
+      "name": ".ctor",
+      "namespace": "",
+      "file": "Sample.Core/Repo.cs",
+      "line": 3,
+      "endLine": 3,
+      "visibility": "public"
+    },
+    {
       "id": "Sample.Core.Repo`1.Current",
       "kind": "method",
       "nativeKind": "property",
@@ -712,6 +789,11 @@
     },
     {
       "from": "Sample.App.AdvancedRepetitionGuard",
+      "to": "Sample.App.AdvancedRepetitionGuard..ctor()",
+      "kind": "contains"
+    },
+    {
+      "from": "Sample.App.AdvancedRepetitionGuard",
       "to": "Sample.App.AdvancedRepetitionGuard.CurrentStatus",
       "kind": "contains"
     },
@@ -741,6 +823,18 @@
       "from": "Sample.App.AdvancedRepetitionGuard.Snapshot()",
       "to": "Sample.Core.IRepository.Snapshot()",
       "kind": "implements"
+    },
+    {
+      "from": "Sample.App.AdvancedRepetitionGuard.Snapshot()",
+      "to": "Sample.Core.Repo`1",
+      "kind": "constructs",
+      "line": 12
+    },
+    {
+      "from": "Sample.App.AdvancedRepetitionGuard.Snapshot()",
+      "to": "Sample.Core.Repo`1..ctor()",
+      "kind": "calls",
+      "line": 12
     },
     {
       "from": "Sample.Core",
@@ -793,8 +887,23 @@
       "kind": "contains"
     },
     {
+      "from": "Sample.Core.Container",
+      "to": "Sample.Core.Container..ctor()",
+      "kind": "contains"
+    },
+    {
+      "from": "Sample.Core.Container+Inner",
+      "to": "Sample.Core.Container+Inner..ctor()",
+      "kind": "contains"
+    },
+    {
       "from": "Sample.Core.Container+Inner",
       "to": "Sample.Core.Container+Inner.Value",
+      "kind": "contains"
+    },
+    {
+      "from": "Sample.Core.Container+Secret",
+      "to": "Sample.Core.Container+Secret..ctor()",
       "kind": "contains"
     },
     {
@@ -853,8 +962,19 @@
       "kind": "contains"
     },
     {
+      "from": "Sample.Core.Features..ctor(Status)",
+      "to": "Sample.Core.Features.OptionalStatus",
+      "kind": "calls",
+      "line": 39
+    },
+    {
       "from": "Sample.Core.Guards",
       "to": "Sample.Core.Guards.RepetitionGuard",
+      "kind": "contains"
+    },
+    {
+      "from": "Sample.Core.Guards.RepetitionGuard",
+      "to": "Sample.Core.Guards.RepetitionGuard..ctor()",
       "kind": "contains"
     },
     {
@@ -870,6 +990,11 @@
     {
       "from": "Sample.Core.IRepository",
       "to": "Sample.Core.IRepository.Snapshot()",
+      "kind": "contains"
+    },
+    {
+      "from": "Sample.Core.Logger",
+      "to": "Sample.Core.Logger..ctor()",
       "kind": "contains"
     },
     {
@@ -895,6 +1020,11 @@
     {
       "from": "Sample.Core.Point",
       "to": "Sample.Core.Point.Y",
+      "kind": "contains"
+    },
+    {
+      "from": "Sample.Core.Repo`1",
+      "to": "Sample.Core.Repo`1..ctor()",
       "kind": "contains"
     },
     {
