@@ -193,6 +193,52 @@ func Walk(g *Graph, around string, depth int, follow []Relation, fanout int) (*G
 	return &Graph{Nodes: nodes, Edges: edges}, notes, nil
 }
 
+// LiftNoneHint is step 3d: asked with lift=none, a type/interface/module
+// whose own edges (after `follow`) come back empty while its methods (found
+// in `full`, the graph as it stood right before Walk ran) have some of the
+// relations `follow` asked for — the answer would otherwise look like the
+// node simply has no such relation, when really it has them one level down.
+// `full` must still carry method nodes (lift=none never lifted them away).
+// Returns "" when there is nothing to say: the focus is a method itself, it
+// already has edges of its own in `walked`, or its methods have none either.
+func LiftNoneHint(full, walked *Graph, focusID string, follow []Relation) string {
+	byID := make(map[string]*GraphNode, len(full.Nodes))
+	for i := range full.Nodes {
+		byID[full.Nodes[i].ID] = &full.Nodes[i]
+	}
+	focus := byID[focusID]
+	if focus == nil || focus.Kind == "method" {
+		return ""
+	}
+	for _, e := range walked.Edges {
+		if e.From == focusID || e.To == focusID {
+			return "" // the focus already has relations of its own
+		}
+	}
+	methods := map[string]bool{}
+	for _, e := range full.Edges {
+		if e.Kind == "contains" && e.From == focusID {
+			if m := byID[e.To]; m != nil && m.Kind == "method" {
+				methods[e.To] = true
+			}
+		}
+	}
+	if len(methods) == 0 {
+		return ""
+	}
+	for _, e := range full.Edges {
+		for _, r := range follow {
+			if e.Kind != r.Kind || !typeMatches(e.Type, r.TypeMatch) {
+				continue
+			}
+			if (r.Forward && methods[e.From]) || (!r.Forward && methods[e.To]) {
+				return fmt.Sprintf("%s has no relations of its own; its methods do — ask again with lift=types (the default) to see them.", FullName(focus))
+			}
+		}
+	}
+	return ""
+}
+
 // FilterContainer keeps only nodes whose resolved containers include `id`
 // itself or a descendant of it (by `parent`, containers.json), and edges
 // between two kept nodes. `containers` is the full containers.json list, not

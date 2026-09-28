@@ -23,17 +23,24 @@ func isContainerNode(n *GraphNode) bool {
 	return n.Kind == "module" && (n.NativeKind == "namespace" || n.NativeKind == "assembly")
 }
 
-// countsLine is the short trailing line every text format ends with, plus a
-// note when the answer was cut by a limit or by fanout.
+// countsLine is the short trailing line every text format ends with: counts
+// only (step 3b moved every cut notice to the first line — see cutNotice —
+// so this line never needs to be read to know whether the answer was cut).
+// Step 3e: types and methods are named apart, a module counting as a type;
+// any node kind this graph does not carry (e.g. only edges, or only
+// functions/values in a `level=all` answer of a language with no separate
+// method kind) is silently 0 and left out of nothing — the two named buckets
+// always sum to len(g.Nodes) since every GraphNode is one or the other here.
 func countsLine(g *Graph, o FormatOptions) string {
-	s := fmt.Sprintf("%d nodes, %d edges", len(g.Nodes), len(g.Edges))
-	if o.Truncated {
-		s += fmt.Sprintf(" (cut to a limit: %d of %d nodes, %d of %d edges)", len(g.Nodes), o.FullNodes, len(g.Edges), o.FullEdges)
+	types, methods := 0, 0
+	for _, n := range g.Nodes {
+		if n.Kind == "method" {
+			methods++
+		} else {
+			types++
+		}
 	}
-	for _, n := range o.FanoutNotes {
-		s += fmt.Sprintf("\n(fanout: %s %s cut to %d, %d more not taken)", n.Node, n.Relation, n.Kept, n.Left)
-	}
-	return s
+	return fmt.Sprintf("%d nodes (%d types, %d methods), %d edges", len(g.Nodes), types, methods, len(g.Edges))
 }
 
 // noticePrefix: the name-resolution notice of part 2, as the first line of a
@@ -43,6 +50,51 @@ func noticePrefix(o FormatOptions) string {
 		return ""
 	}
 	return o.Notice + "\n"
+}
+
+// cutNotice is the first line (after the name-resolution notice, if any) of
+// a text answer that was cut — by `limit`, by `fanout`, by `list_cap`, or
+// because a type/module asked with lift=none has no relations of its own
+// while its methods do (step 3b/3d): names what was cut and how to get the
+// rest. Empty when nothing was cut.
+func cutNotice(g *Graph, o FormatOptions) string {
+	var parts []string
+	if o.LiftHint != "" {
+		parts = append(parts, o.LiftHint)
+	}
+	if o.Truncated {
+		parts = append(parts, fmt.Sprintf("cut by limit: %d of %d nodes, %d of %d edges; ask again with a larger limit=, or bound the answer with around= or container=, for the rest", len(g.Nodes), o.FullNodes, len(g.Edges), o.FullEdges))
+	}
+	for _, n := range o.FanoutNotes {
+		parts = append(parts, fmt.Sprintf("fanout cut %s's %s to %d, %d more not taken; ask again with a larger fanout= for the rest", n.Node, n.Relation, n.Kept, n.Left))
+	}
+	if listCapCut(g, effectiveListCap(o)) {
+		parts = append(parts, fmt.Sprintf("some relations' names or lines were cut to list_cap=%d; ask again with a larger list_cap= for the rest", effectiveListCap(o)))
+	}
+	if len(parts) == 0 {
+		return ""
+	}
+	return strings.Join(parts, "; ") + "\n"
+}
+
+// effectiveListCap: o.ListCap when set, else DefaultListCap.
+func effectiveListCap(o FormatOptions) int {
+	if o.ListCap > 0 {
+		return o.ListCap
+	}
+	return DefaultListCap
+}
+
+// listCapCut: true when at least one edge's method list or call/construct
+// site list would print a "+N" at `cap` (step 3b: whether to mention
+// list_cap in the first-line cut notice at all).
+func listCapCut(g *Graph, cap int) bool {
+	for _, e := range g.Edges {
+		if len(e.FromMethods) > cap || len(e.ToMethods) > cap || len(e.Lines) > cap {
+			return true
+		}
+	}
+	return false
 }
 
 func nodeByID(g *Graph) map[string]*GraphNode {
@@ -80,10 +132,10 @@ func nodeByID(g *Graph) map[string]*GraphNode {
 // fromID == the parent and subjectID == the child being printed. Needed only
 // for defect B ("places of calls"): whether the call/construct site's file
 // is already the one printed on this specific line.
-func relationMacrosFor(e GraphEdge, fromID, subjectID string, byID map[string]*GraphNode) RelationMacros {
+func relationMacrosFor(e GraphEdge, fromID, subjectID string, byID map[string]*GraphNode, listCap int) RelationMacros {
 	names := edgeRelationNames(e, fromID)
 	name := strings.Join(names, "/")
-	rm := RelationMacros{Relation: name, other: otherEnd(e, fromID)}
+	rm := RelationMacros{Relation: name, other: otherEnd(e, fromID), ListCap: listCap}
 	if e.Kind == "calls" || e.Kind == "constructs" {
 		rm.RelationLine = e.Line
 		if len(e.Lines) > 0 {
@@ -211,7 +263,7 @@ func stepParents(g *Graph, id string, byID map[string]*GraphNode) []string {
 // relationsReachingNode: every edge of `g` connecting `id` to a node one
 // step closer to the focus (its "reached from" set), or — with no focus/step
 // data — every edge touching `id` at all (a plain per-node relation list).
-func relationsReachingNode(g *Graph, id string, byID map[string]*GraphNode) []RelationMacros {
+func relationsReachingNode(g *Graph, id string, byID map[string]*GraphNode, listCap int) []RelationMacros {
 	n := byID[id]
 	if n == nil {
 		return nil
@@ -244,7 +296,7 @@ func relationsReachingNode(g *Graph, id string, byID map[string]*GraphNode) []Re
 		if haveParents {
 			perspective = other
 		}
-		rels = append(rels, relationMacrosFor(e, perspective, id, byID))
+		rels = append(rels, relationMacrosFor(e, perspective, id, byID, listCap))
 	}
 	sort.Slice(rels, func(i, j int) bool {
 		if rels[i].Relation != rels[j].Relation {
@@ -278,7 +330,7 @@ func contains(ss []string, s string) bool {
 // "calls from Create to Widget" — {count} is empty at 1) all come out of the
 // same template. {via} is only ever non-empty at step >= 2 (defect 6), so
 // the trailing " via {via}" group only shows up there.
-const FactsTemplate = `{step} {fullName}  {file}:{lines}  [\[{relations:{relation}[ {member}[:{memberLine}]][ {memberKind}][ {modifiers}][ [×{count} ]from {fromMethods}[ to {toMethods}]][ @{relationLines}[ in {relationLinesFile}]][ {injected}]|; }\]][ via {via}]`
+const FactsTemplate = `{step} {fullName}  {file}:{lines}[  in {namespace}[ (assembly {assembly})]]  [\[{relations:{relation}[ {member}[:{memberLine}]][ {memberKind}][ {modifiers}][ [×{count} ]from {fromMethods}[ to {toMethods}]][ @{relationLines}[ in {relationLinesFile}]][ {injected}]|; }\]][ via {via}]`
 
 type factsFormat struct{}
 
@@ -344,17 +396,30 @@ func nodeMacros(n *GraphNode, byID map[string]*GraphNode, methodOf map[string]st
 	return m
 }
 
+// clearAssemblyForNonFocus blanks namespace/assembly on every node but the
+// focus one (step 3c): the assembly line is deliberately only printed once,
+// for the node the answer is actually about; a neighbour stays short.
+func clearAssemblyForNonFocus(m *NodeMacros, n *GraphNode, o FormatOptions) {
+	if o.Focus != "" && n.ID == o.Focus {
+		return
+	}
+	m.Namespace, m.Assembly = "", ""
+}
+
 func renderPerNodeTemplate(g *Graph, tpl *Template, o FormatOptions) ([]byte, error) {
 	byID := nodeByID(g)
 	methodOf := methodContainerMap(g)
 	order := orderedIDs(g, o.Focus)
+	listCap := effectiveListCap(o)
 	var b strings.Builder
 	b.WriteString(noticePrefix(o))
+	b.WriteString(cutNotice(g, o))
 	for _, id := range order {
 		n := byID[id]
 		m := nodeMacros(n, byID, methodOf)
 		clearContainerPosition(&m, n)
-		m.Relations = combineHoldsAndInjects(relationsReachingNode(g, id, byID))
+		clearAssemblyForNonFocus(&m, n, o)
+		m.Relations = combineHoldsAndInjects(relationsReachingNode(g, id, byID, listCap))
 		if n.Step != nil && *n.Step >= 2 {
 			m.Via, m.ViaFullName = viaOf(stepParents(g, id, byID), byID)
 		}
@@ -427,8 +492,10 @@ func (linesFormat) Format(g *Graph, o FormatOptions) ([]byte, error) {
 	header := MustTemplate(LinesTemplate)
 	relTpl := MustTemplate(LinesRelationTemplate)
 
+	listCap := effectiveListCap(o)
 	var b strings.Builder
 	b.WriteString(noticePrefix(o))
+	b.WriteString(cutNotice(g, o))
 	for _, id := range order {
 		n := byID[id]
 		m := nodeMacros(n, byID, methodOf)
@@ -436,7 +503,7 @@ func (linesFormat) Format(g *Graph, o FormatOptions) ([]byte, error) {
 		b.WriteString(header.Render(m))
 		b.WriteString("\n")
 
-		rels := combineHoldsAndInjects(relationsReachingNode(g, id, byID))
+		rels := combineHoldsAndInjects(relationsReachingNode(g, id, byID, listCap))
 		for _, rel := range rels {
 			other := byID[rel.other]
 			om := nodeMacros(other, byID, methodOf)
@@ -473,6 +540,7 @@ func (locationsFormat) Format(g *Graph, o FormatOptions) ([]byte, error) {
 	methodOf := methodContainerMap(g)
 	var b strings.Builder
 	b.WriteString(noticePrefix(o))
+	b.WriteString(cutNotice(g, o))
 	for _, n := range g.Nodes {
 		nn := n
 		if isContainerNode(&nn) {
@@ -516,6 +584,7 @@ func (treeFormat) Format(g *Graph, o FormatOptions) ([]byte, error) {
 		return nil, fmt.Errorf("tree: focus node %q not in the graph", o.Focus)
 	}
 	nodeTpl, relTpl := MustTemplate(TreeNodeTemplate), MustTemplate(TreeRelationTemplate)
+	listCap := effectiveListCap(o)
 
 	adjacent := map[string][]int{}
 	for i, e := range g.Edges {
@@ -525,6 +594,7 @@ func (treeFormat) Format(g *Graph, o FormatOptions) ([]byte, error) {
 
 	var b strings.Builder
 	b.WriteString(noticePrefix(o))
+	b.WriteString(cutNotice(g, o))
 	rm := nodeMacros(root, byID, methodOf)
 	clearContainerPosition(&rm, root)
 	b.WriteString(nodeTpl.Render(rm))
@@ -552,7 +622,7 @@ func (treeFormat) Format(g *Graph, o FormatOptions) ([]byte, error) {
 				if e.From != it.id && e.To != it.id {
 					continue
 				}
-				byParent[it.id] = append(byParent[it.id], relationMacrosFor(e, it.id, otherEnd(e, it.id), byID))
+				byParent[it.id] = append(byParent[it.id], relationMacrosFor(e, it.id, otherEnd(e, it.id), byID, listCap))
 			}
 		}
 		sort.Strings(parents)

@@ -31,6 +31,19 @@ type mcpServer struct {
 	// about MCP-triggered runs too, not only ones started through the tool
 	// API (PLAN_20260928_host_graph-provider.md step 3/5).
 	onRunFinish func(*runInfo)
+	// settings: the mcp: section of the .semaps file, live (PLAN_20260928-7
+	// step 2) — nil in tests that build an mcpServer directly, in which case
+	// getGraph falls back to the file's own defaults.
+	settings *mcpSettingsBox
+}
+
+// mcpSettingsNow: s.settings.Get(), or the plain defaults when s.settings is
+// nil (a test-constructed mcpServer, or --workspace with no .semaps file).
+func (s *mcpServer) mcpSettingsNow() mcpSettings {
+	if s.settings != nil {
+		return s.settings.Get()
+	}
+	return s.proj.Mcp.withDefaults()
 }
 
 // Every structured answer is a JSON object: MCP clients (Claude Code among
@@ -146,8 +159,9 @@ type getGraphIn struct {
 	// extra): a plain string can't carry that distinction over JSON.
 	Fields   []string `json:"fields,omitempty" jsonschema:"members, via, position, memberLines; default (omitted/null) via,position; [] for none"`
 	Missing  bool     `json:"missing,omitempty" jsonschema:"include model-only nodes/edges whose entity/relation has status missing; default false"`
-	Limit    int      `json:"limit,omitempty" jsonschema:"without around or container, cut to this many nodes; default 200"`
-	Format   string   `json:"format,omitempty" jsonschema:"answer format name, or call graph_formats to see them; default: facts (provisional)"`
+	Limit    int      `json:"limit,omitempty" jsonschema:"without around or container, cut to this many nodes; default: the .semaps mcp.limit setting (200 unless changed)"`
+	ListCap  int      `json:"listCap,omitempty" jsonschema:"caps the names/lines printed for one relation ({fromMethods},{toMethods},{relationLines}) before '+N'; default: the .semaps mcp.list_cap setting (50 unless changed)"`
+	Format   string   `json:"format,omitempty" jsonschema:"answer format name, or call graph_formats to see them; default: the .semaps mcp.format setting (facts unless changed)"`
 	Template string   `json:"template,omitempty" jsonschema:"a template of your own (see graph_formats for the macro dictionary and rules), instead of a named format's"`
 }
 
@@ -506,6 +520,7 @@ func (s *mcpServer) getRelationTypes(_ context.Context, _ *mcp.CallToolRequest, 
 // gets a cut answer with `truncated: true` and the full counts, not
 // everything at once.
 func (s *mcpServer) getGraph(_ context.Context, _ *mcp.CallToolRequest, in getGraphIn) (*mcp.CallToolResult, any, error) {
+	settings := s.mcpSettingsNow()
 	m, err := s.model(in.Project)
 	if err != nil {
 		return nil, nil, err
@@ -528,7 +543,7 @@ func (s *mcpServer) getGraph(_ context.Context, _ *mcp.CallToolRequest, in getGr
 
 	formatName := in.Format
 	if formatName == "" && in.Template == "" {
-		formatName = core.DefaultToolFormat
+		formatName = settings.Format
 	}
 	var formatter core.GraphFormatter
 	if in.Template == "" {
@@ -589,6 +604,7 @@ func (s *mcpServer) getGraph(_ context.Context, _ *mcp.CallToolRequest, in getGr
 
 	bounded := false
 	var fanoutNotes []core.FanoutNote
+	var liftHint string
 	if around != "" {
 		follow, err := core.ParseFollow(in.Follow)
 		if err != nil {
@@ -601,10 +617,14 @@ func (s *mcpServer) getGraph(_ context.Context, _ *mcp.CallToolRequest, in getGr
 		if depth < 1 || depth > 5 {
 			return nil, nil, errors.New("depth: must be between 1 and 5")
 		}
+		preWalk := graph
 		if graph, fanoutNotes, err = core.Walk(graph, around, depth, follow, in.Fanout); err != nil {
 			return nil, nil, err
 		}
 		bounded = true
+		if lift == "none" {
+			liftHint = core.LiftNoneHint(preWalk, graph, around, follow)
+		}
 	} else if in.Kinds != "" {
 		graph = core.FilterEdgeKinds(graph, splitCSV(in.Kinds))
 	}
@@ -621,30 +641,22 @@ func (s *mcpServer) getGraph(_ context.Context, _ *mcp.CallToolRequest, in getGr
 
 	limit := in.Limit
 	if limit <= 0 {
-		limit = 200
+		limit = settings.Limit
 	}
-	fullNodes, fullEdges := len(graph.Nodes), len(graph.Edges)
-	truncated := false
-	if !bounded && len(graph.Nodes) > limit {
-		keep := map[string]bool{}
-		nodes := append([]core.GraphNode{}, graph.Nodes[:limit]...)
-		for _, n := range nodes {
-			keep[n.ID] = true
-		}
-		var edges []core.GraphEdge
-		for _, e := range graph.Edges {
-			if keep[e.From] && keep[e.To] {
-				edges = append(edges, e)
-			}
-		}
-		graph, truncated = &core.Graph{Nodes: nodes, Edges: edges}, true
+	var truncated bool
+	var fullNodes, fullEdges int
+	graph, truncated, fullNodes, fullEdges = truncateGraph(graph, bounded, limit)
+
+	listCap := in.ListCap
+	if listCap <= 0 {
+		listCap = settings.ListCap
 	}
 
 	stats := graphStats(graph, hiddenNodes, hiddenEdges)
 	opts := core.FormatOptions{
 		Focus: around, Facts: facts, Stats: stats, Fields: fields,
 		Truncated: truncated, FullNodes: fullNodes, FullEdges: fullEdges,
-		FanoutNotes: fanoutNotes, Notice: notice,
+		FanoutNotes: fanoutNotes, Notice: notice, ListCap: listCap, LiftHint: liftHint,
 	}
 	var body []byte
 	if in.Template != "" {

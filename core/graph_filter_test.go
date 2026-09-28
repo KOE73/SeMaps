@@ -2,6 +2,7 @@ package core
 
 import (
 	"fmt"
+	"strings"
 	"testing"
 	"time"
 )
@@ -375,5 +376,67 @@ func TestStripFieldsDefaults(t *testing.T) {
 	// the input graph itself must not be mutated
 	if g.Nodes[2].File == "" || g.Edges[0].Via == nil {
 		t.Fatalf("StripFields must not mutate its input: %+v", g)
+	}
+}
+
+// TestLiftNoneHintTypeWithCalledMethods is the case PLAN_20260928-7 step 3d
+// names explicitly: a type asked about with follow=called-by, lift=none,
+// whose own edges come back empty while one of its methods is called from
+// elsewhere.
+func TestLiftNoneHintTypeWithCalledMethods(t *testing.T) {
+	full := &Graph{
+		Nodes: []GraphNode{
+			{ID: "T", Kind: "type", Name: "T"},
+			{ID: "T.M", Kind: "method", Name: "M"},
+			{ID: "X.M2", Kind: "method", Name: "M2"},
+		},
+		Edges: []GraphEdge{
+			{From: "T", To: "T.M", Kind: "contains"},
+			{From: "X.M2", To: "T.M", Kind: "calls"},
+		},
+	}
+	follow, err := ParseFollow([]string{"called-by"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	walked, _, err := Walk(full, "T", 1, follow, 0)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(walked.Edges) != 0 {
+		t.Fatalf("expected T to have no edges of its own with follow=called-by, got %+v", walked.Edges)
+	}
+	hint := LiftNoneHint(full, walked, "T", follow)
+	if hint == "" || !strings.Contains(hint, "lift=types") {
+		t.Fatalf("expected a hint pointing at lift=types, got %q", hint)
+	}
+}
+
+// TestLiftNoneHintEmptyWhenFocusHasItsOwnEdges: no hint when the focus type
+// already has an edge of the asked-for relation.
+func TestLiftNoneHintEmptyWhenFocusHasItsOwnEdges(t *testing.T) {
+	full := &Graph{
+		Nodes: []GraphNode{
+			{ID: "T", Kind: "type"},
+			{ID: "U", Kind: "type"},
+		},
+		Edges: []GraphEdge{{From: "U", To: "T", Kind: "calls"}},
+	}
+	follow, _ := ParseFollow([]string{"called-by"})
+	walked, _, err := Walk(full, "T", 1, follow, 0)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if hint := LiftNoneHint(full, walked, "T", follow); hint != "" {
+		t.Fatalf("expected no hint, got %q", hint)
+	}
+}
+
+// TestLiftNoneHintEmptyForMethodFocus: a method is already the finest level,
+// nothing to lift to.
+func TestLiftNoneHintEmptyForMethodFocus(t *testing.T) {
+	full := &Graph{Nodes: []GraphNode{{ID: "T.M", Kind: "method"}}}
+	if hint := LiftNoneHint(full, full, "T.M", nil); hint != "" {
+		t.Fatalf("expected no hint for a method focus, got %q", hint)
 	}
 }

@@ -48,7 +48,7 @@ func graphFixture(t *testing.T, withRun bool) (*graphService, *modelService) {
 		extractors = []extractorConf{{ID: "csharp", Language: "csharp", Project: "p"}}
 	}
 	proj := project{File: semapsFile, Extractors: extractors}
-	gs := newGraphService(proj, models)
+	gs := newGraphService(proj, models, nil)
 
 	if withRun {
 		store := newRunStore(semapsFile)
@@ -245,6 +245,23 @@ func TestGraphEndpointExactlyAsTheEditorSendsIt(t *testing.T) {
 	}
 }
 
+// The graph page asks for the whole graph: the endpoint must not cut it to
+// the tool's `mcp.limit`, only to a `limit` the request names itself.
+func TestGraphEndpointWholeGraphIsNotCutByTheToolsLimit(t *testing.T) {
+	gs, _ := graphFixture(t, true)
+	gs.settings = newMcpSettingsBox(mcpSettings{Limit: 1})
+	srv := graphServer(gs)
+	defer srv.Close()
+	_, whole := getGraphJSON(t, srv.URL+"/api/graph/p?fields=via,position")
+	if n := len(whole["nodes"].([]any)); n < 2 {
+		t.Fatalf("the whole graph was cut to %d node(s) by mcp.limit", n)
+	}
+	_, cut := getGraphJSON(t, srv.URL+"/api/graph/p?limit=1")
+	if n := len(cut["nodes"].([]any)); n != 1 {
+		t.Fatalf("limit=1 of the request gave %d nodes", n)
+	}
+}
+
 func TestGraphEndpointUnknownContainer(t *testing.T) {
 	gs, _ := graphFixture(t, true)
 	srv := graphServer(gs)
@@ -393,7 +410,7 @@ func TestGraphEndpointMissingDefaultVsInclude(t *testing.T) {
 	semapsFile := filepath.Join(ws, "test.semaps")
 	extractors := []extractorConf{{ID: "csharp", Language: "csharp", Project: "p"}}
 	proj := project{File: semapsFile, Extractors: extractors}
-	gs := newGraphService(proj, models)
+	gs := newGraphService(proj, models, nil)
 	store := newRunStore(semapsFile)
 	info := &runInfo{ID: "20260101-000000-csharp", Extractor: "csharp", Project: "p", Language: "csharp", State: "done", Finished: time.Now()}
 	if err := os.MkdirAll(filepath.Join(store.dir, info.ID), 0o755); err != nil {
@@ -474,7 +491,7 @@ func liftFixture(t *testing.T) *graphService {
 	}
 	semapsFile := filepath.Join(ws, "test.semaps")
 	proj := project{File: semapsFile, Extractors: []extractorConf{{ID: "csharp", Language: "csharp", Project: "p"}}}
-	gs := newGraphService(proj, models)
+	gs := newGraphService(proj, models, nil)
 
 	store := newRunStore(semapsFile)
 	info := &runInfo{ID: "20260101-000000-csharp", Extractor: "csharp", Project: "p", Language: "csharp", State: "done", Finished: time.Now()}

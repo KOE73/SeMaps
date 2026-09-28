@@ -417,9 +417,14 @@ func main() {
 	})))
 	http.Handle("/", noCacheHandler(workspaceHandler(absWorkspace, defaultsFS)))
 	models.register(http.DefaultServeMux)
-	graphSvc := newGraphService(proj, models)
+	// mcpSettings live in one box, shared by the HTTP graph endpoint, the MCP
+	// server and the tool API (PLAN_20260928-7 step 2): PUT /api/setup writes
+	// the .semaps file, then updates this box, so every reader sees the new
+	// format/list_cap/limit from the next request on, no restart needed.
+	mcpSettingsBoxVal := newMcpSettingsBox(proj.Mcp)
+	graphSvc := newGraphService(proj, models, mcpSettingsBoxVal)
 	graphSvc.register(http.DefaultServeMux)
-	registerMCPHTTP(http.DefaultServeMux, proj, absWorkspace, absRoot, models, graphSvc.notifyRunFinished)
+	registerMCPHTTP(http.DefaultServeMux, proj, absWorkspace, absRoot, models, graphSvc.notifyRunFinished, mcpSettingsBoxVal)
 	// Watchers start with the host and stop on its shutdown (below); with
 	// --workspace (proj.File == "") there is no .semaps file and so no
 	// watchManager at all (PLAN_20260928-4_host_watch-sources.md step 5).
@@ -436,7 +441,7 @@ func main() {
 			os.Exit(0)
 		}()
 	}
-	registerToolAPI(http.DefaultServeMux, proj.File, absWorkspace, models, graphSvc.notifyRunFinished, watch)
+	registerToolAPI(http.DefaultServeMux, proj.File, absWorkspace, models, graphSvc.notifyRunFinished, watch, mcpSettingsBoxVal)
 	// Short addresses of the tool pages (ADR_20260924-3 §4).
 	for short, page := range map[string]string{"/setup": "/app/#project", "/extract": "/app/#extract"} {
 		http.Handle("GET "+short, http.RedirectHandler(page, http.StatusFound))

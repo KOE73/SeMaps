@@ -38,7 +38,10 @@ actual code — "where is this declared", "what does this file currently define"
 still there" — or needs a symbol's file and line to open it. Call `get_relations` when the task is
 about the authored architecture — what the model asserts should be connected, independent of
 whether the latest extraction agrees. Bound `get_graph` with `around` (a node id) or `container`;
-without either it cuts to `limit` nodes (default 200) and reports `truncated: true`.
+without either it cuts to `limit` nodes (default from the `.semaps` `mcp.limit` setting, `200`
+unless changed) and reports `truncated: true`; a text answer says so on its own first line too,
+with how to ask again for the rest (`limit`, `fanout` and `list_cap` cuts all show up there; the
+trailing counts line then carries only the counts, split into types and methods).
 
 **Asking the graph: `around`, `follow`, formats.** `around` takes an id *or a name* — `get_graph`
 resolves it (exact id, then progressively looser names, case-insensitive as a last resort,

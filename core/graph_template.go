@@ -96,6 +96,10 @@ type RelationMacros struct {
 	// placement (the default `facts` template puts it at the end of the
 	// relation clause, not right after the relation word).
 	Injected bool
+	// ListCap caps {fromMethods}/{toMethods}/{relationLines} (step 3a of
+	// PLAN_20260928-7): <= 0 means DefaultListCap, same rule as
+	// FormatOptions.ListCap (relationMacrosFor sets this from there).
+	ListCap int
 	// other: the id at the far end of the edge from the node this relation
 	// list belongs to. Not a macro — used only to pair a holds/injects
 	// relation with the same neighbour (core/graph_format_text.go's
@@ -177,6 +181,14 @@ func macroLines(line, endLine int) (string, bool) {
 	return strconv.Itoa(line), true
 }
 
+// listCap: r.ListCap when set, else DefaultListCap (step 3a).
+func (r RelationMacros) listCap() int {
+	if r.ListCap > 0 {
+		return r.ListCap
+	}
+	return DefaultListCap
+}
+
 func relationMacroValue(r RelationMacros, name string) (string, bool) {
 	switch name {
 	case "relation":
@@ -210,7 +222,7 @@ func relationMacroValue(r RelationMacros, name string) (string, bool) {
 			}
 			return strconv.Itoa(r.RelationLine), true
 		}
-		return joinIntsCapped(r.RelationLines, 8), true
+		return joinIntsCapped(r.RelationLines, r.listCap()), true
 	case "relationLinesFile":
 		return r.RelationLinesFile, r.RelationLinesFile != ""
 	case "count":
@@ -219,9 +231,9 @@ func relationMacroValue(r RelationMacros, name string) (string, bool) {
 		}
 		return strconv.Itoa(r.Count), true
 	case "fromMethods":
-		return joinCapped(r.FromMethods, 5), len(r.FromMethods) > 0
+		return joinCapped(r.FromMethods, r.listCap()), len(r.FromMethods) > 0
 	case "toMethods":
-		return joinCapped(r.ToMethods, 5), len(r.ToMethods) > 0
+		return joinCapped(r.ToMethods, r.listCap()), len(r.ToMethods) > 0
 	case "injected":
 		if !r.Injected {
 			return "", false

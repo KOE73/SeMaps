@@ -8,8 +8,8 @@ import (
 	"github.com/modelcontextprotocol/go-sdk/mcp"
 )
 
-func registerMCPHTTP(mux *http.ServeMux, proj project, workspace, sourceRoot string, models *modelService, onRunFinish func(*runInfo)) {
-	s := &mcpServer{proj: proj, workspace: workspace, sourceRoot: sourceRoot, models: models, onRunFinish: onRunFinish}
+func registerMCPHTTP(mux *http.ServeMux, proj project, workspace, sourceRoot string, models *modelService, onRunFinish func(*runInfo), settings *mcpSettingsBox) {
+	s := &mcpServer{proj: proj, workspace: workspace, sourceRoot: sourceRoot, models: models, onRunFinish: onRunFinish, settings: settings}
 	srv := s.server()
 	root := proj.Root
 	if root == "" {

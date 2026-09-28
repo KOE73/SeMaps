@@ -29,16 +29,17 @@ type toolAPI struct {
 	// watchers) and in tests that do not exercise step 5. When set, an edit
 	// to `extractors:` reloads it so a `watch` toggle takes effect at once,
 	// with no host restart (PLAN_20260928-4_host_watch-sources.md step 5).
-	watch  *watchManager
-	syncMu sync.Mutex // one sync at a time: both write the same registry
+	watch    *watchManager
+	settings *mcpSettingsBox // the `mcp:` section, live (PLAN_20260928-7 step 2)
+	syncMu   sync.Mutex      // one sync at a time: both write the same registry
 }
 
 // onFinish, when not nil, is attached to the run store so something outside
 // the tool API (the graph service, PLAN_20260928_host_graph-provider.md step
 // 3/5) hears about a finished run without the tool API knowing it exists.
 // watch, when not nil, is reloaded after every change to `extractors:`.
-func registerToolAPI(mux *http.ServeMux, file, workspace string, models *modelService, onFinish func(*runInfo), watch *watchManager) {
-	api := &toolAPI{file: file, workspace: workspace, models: models, watch: watch}
+func registerToolAPI(mux *http.ServeMux, file, workspace string, models *modelService, onFinish func(*runInfo), watch *watchManager, settings *mcpSettingsBox) {
+	api := &toolAPI{file: file, workspace: workspace, models: models, watch: watch, settings: settings}
 	if file != "" {
 		api.runs = newRunStore(file)
 		api.runs.onFinish = onFinish
@@ -179,18 +180,40 @@ func (api *toolAPI) getSetup(w http.ResponseWriter, r *http.Request) {
 		"port":        f.Port,
 		"extractors":  api.extractorViews(f.Extractors),
 		"languages":   knownLanguages,
+		"mcp":         f.Mcp.withDefaults(),
 	})
 }
 
+// putSetupBody is settingsPatch plus the optional `mcp` patch (step 1/2):
+// kept as its own body type since mcp's keys are not settingsPatch's.
+type putSetupBody struct {
+	settingsPatch
+	Mcp *mcpPatch `json:"mcp"`
+}
+
 func (api *toolAPI) putSetup(w http.ResponseWriter, r *http.Request) {
-	var patch settingsPatch
-	if err := readJSON(r, &patch); err != nil {
+	var body putSetupBody
+	if err := readJSON(r, &body); err != nil {
 		http.Error(w, "Bad JSON: "+err.Error(), http.StatusBadRequest)
 		return
 	}
-	if err := patchSettings(api.file, patch); err != nil {
+	if err := patchSettings(api.file, body.settingsPatch); err != nil {
 		http.Error(w, err.Error(), http.StatusBadRequest)
 		return
+	}
+	if body.Mcp != nil {
+		if err := patchMcp(api.file, *body.Mcp); err != nil {
+			http.Error(w, err.Error(), http.StatusBadRequest)
+			return
+		}
+		// Take effect at once (step 2): re-read the file and update the
+		// shared box, so the HTTP graph endpoint and the MCP server both use
+		// the new format/list_cap/limit from the next call on, no restart.
+		if api.settings != nil {
+			if f, err := readProjectFile(api.file); err == nil {
+				api.settings.Set(f.Mcp)
+			}
+		}
 	}
 	api.getSetup(w, r)
 }

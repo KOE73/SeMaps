@@ -200,7 +200,7 @@ func TestWatchRunEndsInGraphEvent(t *testing.T) {
 	semapsFile := filepath.Join(t.TempDir(), "test.semaps")
 	proj := project{File: semapsFile, Root: srcRoot, Extractors: []extractorConf{entry}}
 
-	gs := newGraphService(proj, models)
+	gs := newGraphService(proj, models, nil)
 	gs.prev["p"] = &core.Graph{Nodes: []core.GraphNode{{ID: "csharp:A", Presence: "both"}}}
 
 	runs := newRunStore(semapsFile)

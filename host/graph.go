@@ -20,15 +20,16 @@ import (
 )
 
 type graphService struct {
-	proj   project
-	models *modelService
+	proj     project
+	models   *modelService
+	settings *mcpSettingsBox // list_cap/limit defaults, live (step 2)
 
 	mu   sync.Mutex
 	prev map[string]*core.Graph // project id -> the last graph built for it
 }
 
-func newGraphService(proj project, models *modelService) *graphService {
-	return &graphService{proj: proj, models: models, prev: map[string]*core.Graph{}}
+func newGraphService(proj project, models *modelService, settings *mcpSettingsBox) *graphService {
+	return &graphService{proj: proj, models: models, settings: settings, prev: map[string]*core.Graph{}}
 }
 
 // graphFactsInfo is one extractor's contribution, as the API and the MCP
@@ -258,6 +259,10 @@ func (g *graphService) guard(h http.HandlerFunc) http.HandlerFunc {
 }
 
 func (g *graphService) serve(w http.ResponseWriter, r *http.Request) {
+	settings := mcpSettings{}.withDefaults()
+	if g.settings != nil {
+		settings = g.settings.Get()
+	}
 	project := r.PathValue("project")
 	graph, facts, err := g.build(project)
 	if err != nil {
@@ -366,6 +371,8 @@ func (g *graphService) serve(w http.ResponseWriter, r *http.Request) {
 	}
 
 	var fanoutNotes []core.FanoutNote
+	bounded := false
+	var liftHint string
 	if around != "" {
 		follow, err := core.ParseFollow(splitCSV(r.URL.Query().Get("follow")))
 		if err != nil {
@@ -382,10 +389,15 @@ func (g *graphService) serve(w http.ResponseWriter, r *http.Request) {
 			http.Error(w, err.Error(), http.StatusBadRequest)
 			return
 		}
+		preWalk := graph
 		graph, fanoutNotes, err = core.Walk(graph, around, depth, follow, fanout)
 		if err != nil {
 			http.Error(w, err.Error(), http.StatusNotFound)
 			return
+		}
+		bounded = true
+		if liftParam == "none" {
+			liftHint = core.LiftNoneHint(preWalk, graph, around, follow)
 		}
 	} else if kinds := splitCSV(r.URL.Query().Get("kinds")); len(kinds) > 0 {
 		graph = core.FilterEdgeKinds(graph, kinds)
@@ -402,6 +414,16 @@ func (g *graphService) serve(w http.ResponseWriter, r *http.Request) {
 			http.Error(w, err.Error(), http.StatusNotFound)
 			return
 		}
+		bounded = true
+	}
+
+	// The endpoint cuts only when asked to: the graph page draws the whole
+	// graph. `mcp.limit` is the default of the tool, not of this endpoint.
+	var truncated bool
+	var fullNodes, fullEdges int
+	if r.URL.Query().Has("limit") {
+		limit := intParam(r.URL.Query().Get("limit"), settings.Limit)
+		graph, truncated, fullNodes, fullEdges = truncateGraph(graph, bounded, limit)
 	}
 
 	opts := core.FormatOptions{
@@ -411,6 +433,11 @@ func (g *graphService) serve(w http.ResponseWriter, r *http.Request) {
 		Fields:      fields,
 		FanoutNotes: fanoutNotes,
 		Notice:      notice,
+		Truncated:   truncated,
+		FullNodes:   fullNodes,
+		FullEdges:   fullEdges,
+		ListCap:     intParam(r.URL.Query().Get("list_cap"), settings.ListCap),
+		LiftHint:    liftHint,
 	}
 	var body []byte
 	mediaType := "text/plain; charset=utf-8"
@@ -458,6 +485,44 @@ func defaultLift(hasAround bool, aroundKind, level string) string {
 		return "types"
 	}
 	return "none"
+}
+
+// truncateGraph is the `limit` cut shared by GET /api/graph/{project} and the
+// MCP get_graph tool (step 2): unbounded requests (no around, no container)
+// are cut to `limit` nodes, edges between two cut nodes kept, edges to a
+// dropped node dropped. `bounded` requests (around or container) are never
+// cut here — their own size is the point of asking for them.
+func truncateGraph(g *core.Graph, bounded bool, limit int) (out *core.Graph, truncated bool, fullNodes, fullEdges int) {
+	fullNodes, fullEdges = len(g.Nodes), len(g.Edges)
+	if bounded || len(g.Nodes) <= limit {
+		return g, false, fullNodes, fullEdges
+	}
+	keep := map[string]bool{}
+	nodes := append([]core.GraphNode{}, g.Nodes[:limit]...)
+	for _, n := range nodes {
+		keep[n.ID] = true
+	}
+	var edges []core.GraphEdge
+	for _, e := range g.Edges {
+		if keep[e.From] && keep[e.To] {
+			edges = append(edges, e)
+		}
+	}
+	return &core.Graph{Nodes: nodes, Edges: edges}, true, fullNodes, fullEdges
+}
+
+// intParam parses a query/tool integer parameter that falls back to
+// `def` (the effective mcp.list_cap/limit setting) when absent or <= 0 — the
+// request wins over the setting exactly when it actually names one (step 2).
+func intParam(s string, def int) int {
+	if s == "" {
+		return def
+	}
+	n, err := strconv.Atoi(s)
+	if err != nil || n <= 0 {
+		return def
+	}
+	return n
 }
 
 // parseFanout: 0 (off, the default) or a positive integer.

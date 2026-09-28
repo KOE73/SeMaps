@@ -33,7 +33,20 @@ type FormatOptions struct {
 	// Notice is the name-resolution notice of part 2 ("asked X, took Y"),
 	// printed as the first line of a text answer when non-empty.
 	Notice string
+	// ListCap caps the names/lines of one relation ({fromMethods},
+	// {toMethods}, {relationLines}) a text format prints before "+N"
+	// (PLAN_20260928-7 step 3a: the `.semaps` mcp.list_cap setting, or the
+	// request's own list_cap=). <= 0 means DefaultListCap.
+	ListCap int
+	// LiftHint, when non-empty, is a first-line notice (step 3d): the focus
+	// node has no relations of its own at lift=none while its methods do —
+	// named here because computing it needs the graph before Walk/lift ran,
+	// which the formatter never sees.
+	LiftHint string
 }
+
+// DefaultListCap is used wherever FormatOptions.ListCap is <= 0.
+const DefaultListCap = 50
 
 // GraphFormatter is one named answer format.
 type GraphFormatter interface {
@@ -61,9 +74,7 @@ var graphFormats = []GraphFormatter{
 const DefaultGraphFormat = "json"
 
 // DefaultToolFormat is get_graph's default: `facts`, the format written
-// directly from what the agents of PLAN_20260928-5 asked for. Still marked
-// provisional (one constant to change once a repeat of that experiment has
-// an answer).
+// directly from what the agents of PLAN_20260928-5 asked for.
 const DefaultToolFormat = "facts"
 
 // GraphFormats lists the registry, in declaration order.

@@ -201,6 +201,87 @@ func TestPatchExtractorSetsWatch(t *testing.T) {
 	}
 }
 
+func TestLoadProjectMcpDefaults(t *testing.T) {
+	p, err := loadProject(writeProject(t, "# nothing yet\n"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	want := mcpSettings{Tools: "one", Description: "standard", Format: "facts", ListCap: 50, Limit: 200}
+	if p.Mcp != want {
+		t.Errorf("got %+v, want %+v", p.Mcp, want)
+	}
+}
+
+func TestLoadProjectMcpValues(t *testing.T) {
+	p, err := loadProject(writeProject(t, "mcp:\n  tools: narrow\n  description: full\n  format: lines\n  list_cap: 10\n  limit: 20\n"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	want := mcpSettings{Tools: "narrow", Description: "full", Format: "lines", ListCap: 10, Limit: 20}
+	if p.Mcp != want {
+		t.Errorf("got %+v, want %+v", p.Mcp, want)
+	}
+}
+
+func TestLoadProjectRejectsBadMcp(t *testing.T) {
+	for _, text := range []string{
+		"mcp:\n  tools: wide\n",
+		"mcp:\n  description: verbose\n",
+		"mcp:\n  format: no-such-format\n",
+		"mcp:\n  list_cap: -1\n",
+		"mcp:\n  limit: -1\n",
+		"mcp:\n  bogus: 1\n",
+	} {
+		if _, err := loadProject(writeProject(t, text)); err == nil {
+			t.Errorf("accepted: %q", text)
+		}
+	}
+}
+
+func TestPatchMcpKeepsCommentsAndKeyOrder(t *testing.T) {
+	file := writeProject(t, `# SeMaps project file.
+name: Demo   # shown in the console
+mcp:
+  tools: one   # default
+  format: lines
+`)
+	tools, listCap := "narrow", 25
+	if err := patchMcp(file, mcpPatch{Tools: &tools, ListCap: &listCap}); err != nil {
+		t.Fatal(err)
+	}
+	raw, err := os.ReadFile(file)
+	if err != nil {
+		t.Fatal(err)
+	}
+	text := string(raw)
+	if !strings.Contains(text, "tools: narrow # default") {
+		t.Errorf("expected the comment to survive on the changed key, got:\n%s", text)
+	}
+	if !strings.Contains(text, "format: lines") {
+		t.Errorf("expected the untouched key to survive, got:\n%s", text)
+	}
+	p, err := loadProject(file)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if p.Mcp.Tools != "narrow" || p.Mcp.Format != "lines" || p.Mcp.ListCap != 25 {
+		t.Errorf("%+v", p.Mcp)
+	}
+}
+
+func TestPatchMcpRejectsBadValue(t *testing.T) {
+	file := writeProject(t, "name: Demo\n")
+	bad := "wide"
+	if err := patchMcp(file, mcpPatch{Tools: &bad}); err == nil {
+		t.Error("expected patchMcp to refuse an invalid mcp.tools")
+	}
+	// Left as it was: the file still loads with the tools default.
+	p, err := loadProject(file)
+	if err != nil || p.Mcp.Tools != "one" {
+		t.Errorf("%v %+v", err, p.Mcp)
+	}
+}
+
 func TestFindProjectFileSkipsTheSemapsFolder(t *testing.T) {
 	dir := t.TempDir()
 	os.MkdirAll(filepath.Join(dir, ".semaps", "logs"), 0o755)

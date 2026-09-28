@@ -131,7 +131,7 @@ func TestLinesFormat(t *testing.T) {
 	if !strings.Contains(out, "implemented-by  App.Guards.RepetitionGuard") {
 		t.Fatalf("expected the reverse direction ('implemented-by') on ILlmMiddleware's own block, got:\n%s", out)
 	}
-	if !strings.HasSuffix(out, "4 nodes, 3 edges\n") {
+	if !strings.HasSuffix(out, "4 nodes (4 types, 0 methods), 3 edges\n") {
 		t.Fatalf("expected a trailing counts line, got:\n%s", out)
 	}
 }
@@ -146,7 +146,7 @@ func TestLocationsFormat(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Format: %v", err)
 	}
-	want := "A\tsrc/A.cs\t3\t9\nB\t\t\t\n2 nodes, 0 edges\n"
+	want := "A\tsrc/A.cs\t3\t9\nB\t\t\t\n2 nodes (2 types, 0 methods), 0 edges\n"
 	if string(body) != want {
 		t.Fatalf("locations format mismatch:\ngot:  %q\nwant: %q", body, want)
 	}
@@ -177,7 +177,7 @@ func TestTreeFormat(t *testing.T) {
 	if !strings.Contains(out, "holds Log:15 → App.Guards.RepetitionGuard.Log  src/Guards/RepetitionGuard.cs:12\n") {
 		t.Fatalf("expected the member name and its line on the 'holds' line, got:\n%s", out)
 	}
-	if !strings.HasSuffix(out, "4 nodes, 3 edges\n") {
+	if !strings.HasSuffix(out, "4 nodes (4 types, 0 methods), 3 edges\n") {
 		t.Fatalf("expected a trailing counts line, got:\n%s", out)
 	}
 }

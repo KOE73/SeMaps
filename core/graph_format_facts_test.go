@@ -271,7 +271,7 @@ func TestFactsFormatGoldenDepth2(t *testing.T) {
 		"1 App.Runner  src/Runner.cs:3-10  [holds Context:7 property protected readonly (injected)]\n" +
 		"2 App.RunnerImpl  src/RunnerImpl.cs:1-30  [implemented-by] via IRunner\n" +
 		"2 App.Widget  src/Widget.cs:1-8  [constructs ×3 from Create,List,Refresh to Widget] via Factory\n" +
-		"7 nodes, 7 edges\n"
+		"7 nodes (7 types, 0 methods), 7 edges\n"
 	got := string(body)
 	if got != want {
 		t.Fatalf("golden facts answer changed.\ngot:\n%s\nwant:\n%s", got, want)
@@ -389,3 +389,87 @@ func TestPlacesOfCallsNoFileWhenAlreadyOnTheLine(t *testing.T) {
 		}
 	}
 }
+
+// TestFactsFormatListCapFromOptions: {fromMethods}/{toMethods}/{relationLines}
+// are capped by FormatOptions.ListCap, not the old fixed 5/8 (step 3a).
+func TestFactsFormatListCapFromOptions(t *testing.T) {
+	g := &Graph{
+		Nodes: []GraphNode{
+			{ID: "a", Name: "A", Kind: "type", File: "A.cs", Line: 1},
+			{ID: "b", Name: "B", Kind: "type", File: "B.cs", Line: 1},
+		},
+		Edges: []GraphEdge{
+			{From: "a", To: "b", Kind: "calls", Type: "calls", Count: 3,
+				FromMethods: []string{"M1", "M2", "M3"}, ToMethods: []string{"N1", "N2", "N3"},
+				Lines: []int{1, 2, 3, 4}},
+		},
+	}
+	f, _ := GetGraphFormat("facts")
+	body, err := f.Format(g, FormatOptions{ListCap: 2})
+	if err != nil {
+		t.Fatalf("Format: %v", err)
+	}
+	out := string(body)
+	if !strings.Contains(out, "from M1,M2+1 to N1,N2+1") {
+		t.Fatalf("expected fromMethods/toMethods capped at 2, got:\n%s", out)
+	}
+	if !strings.Contains(out, "@1,2+2") {
+		t.Fatalf("expected relationLines capped at 2, got:\n%s", out)
+	}
+}
+
+// TestFactsFormatCutNoticeFirstLine (step 3b): a limit-truncated answer says
+// so on the first line (after any name-resolution notice), and the trailing
+// counts line carries only the counts.
+func TestFactsFormatCutNoticeFirstLine(t *testing.T) {
+	g := &Graph{Nodes: []GraphNode{{ID: "a", Name: "A", Kind: "type"}}}
+	f, _ := GetGraphFormat("facts")
+	body, err := f.Format(g, FormatOptions{
+		Notice: `asked "a", took "A"`, Truncated: true, FullNodes: 50, FullEdges: 10,
+		FanoutNotes: []FanoutNote{{Node: "a", Relation: "calls", Kept: 2, Left: 8}},
+	})
+	if err != nil {
+		t.Fatalf("Format: %v", err)
+	}
+	lines := strings.Split(string(body), "\n")
+	if lines[0] != `asked "a", took "A"` {
+		t.Fatalf("expected the resolution notice first, got:\n%s", lines[0])
+	}
+	if !strings.Contains(lines[1], "cut by limit") || !strings.Contains(lines[1], "fanout cut") {
+		t.Fatalf("expected the cut notice as the second line (right after the resolution notice), got:\n%s", lines[1])
+	}
+	last := lines[len(lines)-2] // len-1 is the trailing "" after the final \n
+	if strings.Contains(last, "cut") || strings.Contains(last, "limit") || strings.Contains(last, "fanout") {
+		t.Fatalf("expected the counts line to carry counts only, got:\n%s", last)
+	}
+	if !strings.Contains(last, "nodes (") || !strings.Contains(last, "edges") {
+		t.Fatalf("expected a counts line, got:\n%s", last)
+	}
+}
+
+// TestFactsFormatAssemblyOnlyForFocus (step 3c): the focus node's line
+// carries namespace and assembly; a neighbour's does not, even though it has
+// the same data.
+func TestFactsFormatAssemblyOnlyForFocus(t *testing.T) {
+	g := &Graph{
+		Nodes: []GraphNode{
+			{ID: "a", Name: "A", Kind: "type", File: "A.cs", Line: 1, Namespace: "App.NS", Assembly: "App.Asm", Step: intPtr(0)},
+			{ID: "b", Name: "B", Kind: "type", File: "B.cs", Line: 1, Namespace: "App.NS", Assembly: "App.Asm", Step: intPtr(1)},
+		},
+		Edges: []GraphEdge{{From: "a", To: "b", Kind: "holds"}},
+	}
+	f, _ := GetGraphFormat("facts")
+	body, err := f.Format(g, FormatOptions{Focus: "a"})
+	if err != nil {
+		t.Fatalf("Format: %v", err)
+	}
+	lines := strings.Split(string(body), "\n")
+	if !strings.Contains(lines[0], "in App.NS (assembly App.Asm)") {
+		t.Fatalf("expected the focus line to carry namespace/assembly, got:\n%s", lines[0])
+	}
+	if strings.Contains(lines[1], "(assembly") || strings.Contains(lines[1], "  in App.NS") {
+		t.Fatalf("expected the neighbour's line to stay short, got:\n%s", lines[1])
+	}
+}
+
+func intPtr(n int) *int { return &n }

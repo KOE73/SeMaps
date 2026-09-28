@@ -17,7 +17,7 @@ func TestMCPHTTPUsesLiveModelAndRequiresHumanSave(t *testing.T) {
 	models, fixture := hostModelFixture(t)
 	defer fixture.Close()
 	mux := http.NewServeMux()
-	registerMCPHTTP(mux, project{Root: models.workspace}, models.workspace, models.workspace, models, nil)
+	registerMCPHTTP(mux, project{Root: models.workspace}, models.workspace, models.workspace, models, nil, nil)
 	srv := httptest.NewServer(mux)
 	defer srv.Close()
 	res, err := srv.Client().Post(srv.URL+"/mcp", "application/json", strings.NewReader(`{}`))

@@ -40,7 +40,7 @@ func setsFixture(t *testing.T) (*graphService, *modelService) {
 	semapsFile := filepath.Join(ws, "test.semaps")
 	extractors := []extractorConf{{ID: "csharp", Language: "csharp", Project: "p"}}
 	proj := project{File: semapsFile, Extractors: extractors}
-	gs := newGraphService(proj, models)
+	gs := newGraphService(proj, models, nil)
 	store := newRunStore(semapsFile)
 	info := &runInfo{ID: "20260101-000000-csharp", Extractor: "csharp", Project: "p", Language: "csharp", State: "done"}
 	if err := os.MkdirAll(filepath.Join(store.dir, info.ID), 0o755); err != nil {
