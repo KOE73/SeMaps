@@ -103,6 +103,8 @@ export interface DiagramEditorFacade {
   createNode(): void;
   createZone(): void;
   deleteSelection(): void;
+  /** Paste nodes copied from the graph mode (system clipboard, else the last copy). */
+  pasteGraph(): Promise<void>;
   undo(): void;
   redo(): void;
   save(): Promise<void>;

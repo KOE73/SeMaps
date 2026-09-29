@@ -28,6 +28,7 @@ import type { NodesView } from "./nodesView.js";
 import { HIERARCHY_KINDS, type Reach, nodeSelection, reachFrom, workingSet } from "./workset.js";
 import { type MenuItem, openContextMenu } from "../../workbench/menus/ContextMenu.js";
 import { icons } from "../../ui/icons.js";
+import { GRAPH_CLIPBOARD_FORMAT, GRAPH_CLIPBOARD_VERSION, type GraphClipboard, type GraphClipboardNode } from "../../model/graphClipboard.js";
 import { kindIcon, kindIconEl } from "../../ui/kindIcons.js";
 
 /** The dock's panels the engine fills: it never owns them, so they outlive it. */
@@ -37,6 +38,8 @@ export interface GraphUi {
   readonly nodes: NodesView;
   /** Opens (or focuses) the «Экстракторы» panel. */
   openExtractors(): void;
+  /** Copy the highlighted nodes, or the chosen ones, to the clipboard. */
+  copy(which: "selection" | "chosen"): void;
 }
 
 const edgeKey = (from: string, to: string, kind: string): string => `${from}\u0000${to}\u0000${kind}`;
@@ -48,6 +51,17 @@ const drawNodeLabel: NodeLabelDrawingFunction = (context, data, settings) => {
   context.fillStyle = settings.labelColor.attribute ? ((data as Record<string, unknown>)[settings.labelColor.attribute] as string) || settings.labelColor.color || "#000" : settings.labelColor.color || "#000";
   context.font = `${italic}${settings.labelWeight} ${settings.labelSize}px ${settings.labelFont}`;
   context.fillText(data.label, data.x + data.size + 3, data.y + settings.labelSize / 3);
+};
+
+/** A highlighted or hovered node gets a ring round its circle; its label stays a
+ * plain label (sigma's own hover drawing boxes the label in white). */
+const drawNodeHover: NodeLabelDrawingFunction = (context, data, settings) => {
+  context.beginPath();
+  context.arc(data.x, data.y, data.size + 2, 0, Math.PI * 2);
+  context.lineWidth = 2;
+  context.strokeStyle = "#ffffff";
+  context.stroke();
+  drawNodeLabel(context, data, settings);
 };
 
 /** Abstract: a ring round a pale fill. Static: a double ring. (`ringColor` is set by the node reducer.) */
@@ -179,6 +193,7 @@ export class GraphEngine {
       enableEdgeEvents: true,
       nodeProgramClasses,
       defaultDrawNodeLabel: drawNodeLabel,
+      defaultDrawNodeHover: drawNodeHover,
       // Looked at the ~900-node demo graph: the default threshold (6) still
       // let mid-size nodes force their way into the label grid once focused;
       // 8 keeps the overview to the biggest nodes while the focus branch
@@ -686,6 +701,9 @@ export class GraphEngine {
         { label: t.graphMenuKeepSelected, icon: icons.focus2, onSelect: () => workingSet.setTo(nodeSelection.members) },
         { label: t.graphMenuUnchoose, icon: icons.playlistX, onSelect: () => workingSet.remove(targets) },
         { kind: "separator" },
+        { label: t.graphCopySelection, icon: icons.copy, note: "Ctrl+C", onSelect: () => this.ui.copy("selection") },
+        { label: t.graphCopyChosen, icon: icons.copyCheck, disabled: workingSet.size === 0, onSelect: () => this.ui.copy("chosen") },
+        { kind: "separator" },
         this.kindsItem(t.graphMenuDescendantsBy, icons.arrowDown, "descendants", found, take),
         this.kindsItem(t.graphMenuAncestorsBy, icons.arrowUp, "ancestors", found, take),
         this.kindsItem(t.graphMenuNeighbours, icons.arrowsDiff, "neighbours", found, take),
@@ -728,6 +746,32 @@ export class GraphEngine {
       icon,
       submenu: () => [kindItem(t.graphMenuAllKinds, null), { kind: "separator" }, ...this.edgeKindsOrdered().map((k) => kindItem(k, [k]))],
     };
+  }
+
+  /**
+   * What copying these nodes puts on the clipboard: for each node its registry
+   * entity (when it has one), name, base kind and current position, plus the
+   * edge kinds drawn now and the edges among the copied nodes of those kinds.
+   */
+  clipboardPayload(ids: readonly string[]): GraphClipboard {
+    const nodes: GraphClipboardNode[] = [];
+    for (const id of new Set(ids)) {
+      const n = this.nodeById.get(id);
+      if (!n || !this.graph.hasNode(id)) continue;
+      nodes.push({
+        id,
+        ...(n.entity && n.presence !== "code" ? { entity: n.entity } : {}),
+        name: n.name ?? id,
+        kind: n.symbolKind ?? n.kind ?? "",
+        x: this.graph.getNodeAttribute(id, "x") as number,
+        y: this.graph.getNodeAttribute(id, "y") as number,
+      });
+    }
+    const copied = new Set(nodes.map((n) => n.id));
+    const edgeKinds = [...filterStore.state.edgeKinds];
+    const drawn = new Set(edgeKinds);
+    const edges = this.edges.filter((e) => copied.has(e.from) && copied.has(e.to) && drawn.has(e.kind)).map((e) => ({ from: e.from, to: e.to, kind: e.kind }));
+    return { format: GRAPH_CLIPBOARD_FORMAT, version: GRAPH_CLIPBOARD_VERSION, nodes, edgeKinds, edges };
   }
 
   /** Centres the camera on a node and selects it (double click in the list). */

@@ -1,5 +1,7 @@
 import { el } from "../util/dom.js";
-import { t } from "../shell/strings.js";
+import { fmt, t } from "../shell/strings.js";
+import { toast } from "../ui/toast.js";
+import { encodeGraphClipboard } from "../model/graphClipboard.js";
 import { GraphDock, type GRAPH_PANEL } from "./graph/dock.js";
 import { filterStore } from "./graph/filters.js";
 import { nodeSelection, workingSet } from "./graph/workset.js";
@@ -49,7 +51,48 @@ export function bindGraphRibbon(notify: () => void): void {
   filterStore.onChange(() => notifyRibbon());
 }
 
+/** The graph mode is the one shown: Ctrl+C copies its selection. */
+let graphActive = false;
+let copyKeyBound = false;
+
+function bindCopyKey(): void {
+  if (copyKeyBound) return;
+  copyKeyBound = true;
+  window.addEventListener("keydown", (e) => {
+    if (!graphActive || !(e.ctrlKey || e.metaKey) || e.code !== "KeyC" || e.shiftKey || e.altKey) return;
+    const target = e.target;
+    if (target instanceof HTMLElement && (target.tagName === "INPUT" || target.tagName === "TEXTAREA" || target.isContentEditable)) return;
+    if (window.getSelection()?.toString()) return; // text is selected somewhere: an ordinary copy
+    e.preventDefault();
+    copyGraphNodes("selection");
+  });
+}
+
+/**
+ * Copy nodes of the graph — the highlighted ones or the chosen ones — for the
+ * Схемы editor's paste: JSON text on the system clipboard (with an in-app copy
+ * as the fallback), and a toast saying how many, and how many are in the model.
+ */
+export function copyGraphNodes(which: "selection" | "chosen"): void {
+  const ids = which === "selection" ? [...nodeSelection.members] : [...workingSet.members];
+  const payload = engine?.clipboardPayload(ids);
+  if (!payload || payload.nodes.length === 0) {
+    toast(t.graphCopyNothing);
+    return;
+  }
+  const text = encodeGraphClipboard(payload);
+  const inModel = payload.nodes.filter((n) => n.entity).length;
+  const said = fmt(t.graphCopied, { n: String(payload.nodes.length), m: String(inModel) });
+  // The in-app copy is already kept; the system clipboard may refuse (no focus, no permission).
+  void navigator.clipboard.writeText(text).then(
+    () => toast(said),
+    () => toast(said),
+  );
+}
+
 export async function loadGraph(inner: HTMLElement): Promise<void> {
+  graphActive = true;
+  bindCopyKey();
   inner.replaceChildren(el("p", { class: "tool-muted", text: t.loading }));
   if (projects.length === 0) {
     const { fetchProjects } = await import("./graph/types.js");
@@ -70,6 +113,7 @@ export async function loadGraph(inner: HTMLElement): Promise<void> {
     dock.onPanelStateChange(() => notifyRibbon());
     // A run has ended: fetch the graph at once (the host's event will find it already current).
     dock.ui.extractors.onRunFinished = () => void onGraphEvent();
+    dock.copyHandler = copyGraphNodes;
   }
   notifyRibbon();
   await render();
@@ -83,12 +127,14 @@ export async function refreshGraph(): Promise<void> {
 
 /** Closes the live subscription; called when another mode is selected. */
 export function leaveGraph(): void {
+  graphActive = false;
   events?.close();
   events = undefined;
 }
 
 /** Back in the mode after `leaveGraph`: follows the host again and catches up. */
 export function resumeGraph(): void {
+  graphActive = true;
   if (!engine || events) return;
   subscribe();
   void onGraphEvent();

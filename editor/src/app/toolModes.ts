@@ -7,6 +7,7 @@ import { loadProject, saveProject } from "./setup.js";
 import { installMcp, loadMcp, saveMcp } from "./mcp.js";
 import {
   bindGraphRibbon,
+  copyGraphNodes,
   graphColorBy,
   graphLayout,
   graphProject,
@@ -51,6 +52,8 @@ function graphCommands(): CommandDefinition[] {
   });
   return [
     { id: "tools.graph.refresh", title: t.refresh, description: t.refreshHint, icon: graphIcons.refresh, execute: () => void refreshGraph() },
+    { id: "tools.graph.copy.selection", title: t.graphCopySelection, icon: icons.copy, shortcut: "Ctrl+C", execute: () => copyGraphNodes("selection") },
+    { id: "tools.graph.copy.chosen", title: t.graphCopyChosen, icon: icons.copyCheck, execute: () => copyGraphNodes("chosen") },
     { id: "tools.graph.project.set", title: t.graphProject, icon: icons.folder, execute: (_c, v) => setGraphProject(String(v)) },
     { id: "tools.graph.missing.toggle", title: t.graphShowMissing, icon: graphIcons.ghost, isChecked: () => graphShowsMissing(), execute: () => toggleGraphMissing() },
     { id: "tools.graph.color.set", title: t.graphColorBy, icon: icons.palette, execute: (_c, v) => setGraphColorBy(String(v)) },
@@ -178,6 +181,9 @@ export function addToolModes(workbench: Workbench): void {
         getValue: () => graphProject(),
       },
       { type: "toggle", command: "tools.graph.missing.toggle", size: "medium", showLabel: false },
+      { type: "separator" },
+      { type: "button", command: "tools.graph.copy.selection", size: "medium", showLabel: false },
+      { type: "button", command: "tools.graph.copy.chosen", size: "medium", showLabel: false },
     ] },
     { id: "graph-view", title: t.graphGroupView, items: [
       {

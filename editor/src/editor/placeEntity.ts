@@ -2,11 +2,32 @@ import type { EntityEntry } from "../model/wire-types.js";
 import type { DiagramEditor } from "./DiagramEditor.js";
 import { relationShownByDefault } from "../model/relationVisibility.js";
 
-const WIDTH = 180;
-const HEIGHT = 60;
-const GAP_X = 40;
-const GAP_Y = 40;
+export const WIDTH = 180;
+export const HEIGHT = 60;
+export const GAP_X = 40;
+export const GAP_Y = 40;
 const PER_ROW = 4;
+
+/** The box of a registry entity at (x, y): its name and description come from the view's texts. */
+export function blockFor(doc: NonNullable<DiagramEditor["canvas"]["model"]>, entity: EntityEntry, x: number, y: number): any {
+  const text = (doc.bundle?.text?.entries || {})[entity.id] as { name?: string; description?: string } | undefined;
+  return {
+    id: entity.id,
+    kind: "node" as const,
+    type: entity.kind,
+    label: text?.name || entity.name || entity.id,
+    tags: [],
+    metadata: { description: text?.description, codeRef: entity.codeRef },
+    x,
+    y,
+    width: WIDTH,
+    height: HEIGHT,
+    parent: null,
+    children: [],
+    wireOrder: Number.POSITIVE_INFINITY,
+    raw: { _entity: entity },
+  };
+}
 
 /**
  * Put registry entities on the open view as boxes, one undo step for all of
@@ -22,34 +43,14 @@ export function placeEntities(
 ): string[] {
   const doc = editor.canvas.model;
   if (!doc) return [];
-  const texts = doc.bundle?.text?.entries || {};
 
   const placed: string[] = [];
   for (const entity of entities) {
     if (doc.element(entity.id) !== undefined || placed.includes(entity.id)) continue;
-    const text = texts[entity.id] as { name?: string; description?: string } | undefined;
     const i = placed.length;
     const x = at.x + (i % PER_ROW) * (WIDTH + GAP_X);
     const y = at.y + Math.floor(i / PER_ROW) * (HEIGHT + GAP_Y);
-    doc.add(
-      {
-        id: entity.id,
-        kind: "node" as const,
-        type: entity.kind,
-        label: text?.name || entity.name || entity.id,
-        tags: [],
-        metadata: { description: text?.description, codeRef: entity.codeRef },
-        x,
-        y,
-        width: WIDTH,
-        height: HEIGHT,
-        parent: null,
-        children: [],
-        wireOrder: Number.POSITIVE_INFINITY,
-        raw: { _entity: entity },
-      } as any,
-      doc.containerAt({ x: x + WIDTH / 2, y: y + HEIGHT / 2 }),
-    );
+    doc.add(blockFor(doc, entity, x, y), doc.containerAt({ x: x + WIDTH / 2, y: y + HEIGHT / 2 }));
     placed.push(entity.id);
   }
 
@@ -97,7 +98,7 @@ export function placeAround(
  * never show a relation that reached the registry after that save.
  * The type's `visibility` and the view's `relations.default` / `except` still decide.
  */
-function drawRelations(editor: DiagramEditor, placed: readonly string[]): void {
+export function drawRelations(editor: DiagramEditor, placed: readonly string[]): void {
   const doc = editor.canvas.model;
   if (!doc) return;
   const policy = doc.bundle?.view?.relations as { default?: string; except?: string[] } | undefined;

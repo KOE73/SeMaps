@@ -38,6 +38,7 @@ export interface GraphDockUi {
   readonly nodes: NodesView;
   readonly extractors: ExtractorsView;
   openExtractors(): void;
+  copy(which: "selection" | "chosen"): void;
 }
 
 export class GraphDock {
@@ -53,6 +54,8 @@ export class GraphDock {
   readonly ui: GraphDockUi;
   /** Where the engine puts its canvas (and where messages go). */
   readonly canvasSlot = el("div", { class: "graph-canvas-slot" });
+  /** Set by graph.ts, which owns the engine the copy is read from. */
+  copyHandler: (which: "selection" | "chosen") => void = () => {};
   private readonly dockview: DockviewApi;
   private readonly elements: Record<string, HTMLElement>;
 
@@ -62,7 +65,14 @@ export class GraphDock {
     const filters = new FiltersView(filterStore);
     const nodes = new NodesView();
     const extractors = new ExtractorsView();
-    this.ui = { legend, panel, nodes, extractors, openExtractors: () => this.panels.focus(GRAPH_PANEL.extractors) };
+    this.ui = {
+      legend,
+      panel,
+      nodes,
+      extractors,
+      openExtractors: () => this.panels.focus(GRAPH_PANEL.extractors),
+      copy: (which) => this.copyHandler(which),
+    };
     this.elements = {
       [GRAPH_PANEL.canvas]: this.canvasSlot,
       [GRAPH_PANEL.legend]: el("div", { class: "graph-dock-pane" }, [legend]),

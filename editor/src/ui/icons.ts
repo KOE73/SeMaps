@@ -118,6 +118,7 @@ const names = {
   chevronDown: "chevron-down",
   cornerRightDown: "corner-right-down",
   template: "template",
+  copyCheck: "copy-check",
 } as const;
 
 export const icons = Object.fromEntries(Object.entries(names).map(([key, name]) => [key, tablerSvg(name)])) as { [K in keyof typeof names]: string };

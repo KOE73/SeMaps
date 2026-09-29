@@ -8,6 +8,7 @@ import {
 } from "../dialogs/WorkspaceDialogs.js";
 import { openHelpDialog } from "../dialogs/HelpDialog.js";
 import { icons } from "../../ui/icons.js";
+import { t as shellStrings } from "../../shell/strings.js";
 
 const ICONS = {
   SAVE: icons.save,
@@ -101,6 +102,17 @@ export function createBuiltinCommands(): CommandDefinition[] {
       keyTip: "X",
       isEnabled: (ctx) => ctx.selection.hasSelection,
       execute: (ctx) => ctx.editor.deleteSelection(),
+    },
+    {
+      id: "edit.paste",
+      get title() { return shellStrings.graphPaste; },
+      description: "Вставить узлы, скопированные в режиме «Граф»: только те, что есть в модели; реестр не меняется",
+      icon: icons.clipboard,
+      category: "Edit",
+      shortcut: "Ctrl+V",
+      keyTip: "PS",
+      isEnabled: (ctx) => ctx.document !== null,
+      execute: (ctx) => ctx.editor.pasteGraph(),
     },
     {
       id: "diagram.doc.edit",

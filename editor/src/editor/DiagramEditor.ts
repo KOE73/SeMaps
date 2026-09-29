@@ -23,6 +23,10 @@ import { StyleEditor } from "./StyleEditor.js";
 import { StyleList, type StylePanelHost } from "./StyleList.js";
 import { BasePanel } from "./BasePanel.js";
 import { FiltersPanel } from "./FiltersPanel.js";
+import { toast as showToast } from "../ui/toast.js";
+import { decodeGraphClipboard, lastGraphCopy } from "../model/graphClipboard.js";
+import { pasteGraphNodes } from "./pasteGraph.js";
+import { fmt, t as shellStrings } from "../shell/strings.js";
 import {
   drawioFileName,
   exportDrawio,
@@ -668,6 +672,17 @@ export class DiagramEditor implements InspectorHost, StylePanelHost, DiagramEdit
   }
 
   private bindKeyboard(): void {
+    // Ctrl+V with nodes copied from the graph on the clipboard: paste them on the view.
+    // Anything else on the clipboard is left to the browser.
+    document.addEventListener("paste", (e) => {
+      const target = e.target;
+      if (target instanceof HTMLElement && (target.tagName === "INPUT" || target.tagName === "TEXTAREA" || target.isContentEditable)) return;
+      if (this.canvas.hostElement.offsetParent === null) return; // the diagram is not what is shown
+      const text = e.clipboardData?.getData("text/plain");
+      if (decodeGraphClipboard(text) === null) return;
+      e.preventDefault();
+      void this.pasteGraph(text);
+    });
     window.addEventListener("keydown", (e) => {
       const target = e.target;
       if (target instanceof HTMLElement) {
@@ -1830,11 +1845,33 @@ export class DiagramEditor implements InspectorHost, StylePanelHost, DiagramEdit
   }
 
   toast(message: string): void {
-    const box = document.createElement("div");
-    box.textContent = message;
-    box.setAttribute("role", "status");
-    Object.assign(box.style, { position: "fixed", left: "50%", bottom: "24px", transform: "translateX(-50%)", padding: "8px 14px", background: "#222", color: "#fff", borderRadius: "6px", font: "13px sans-serif", zIndex: "10000", maxWidth: "80vw" });
-    document.body.append(box);
-    setTimeout(() => box.remove(), 2200);
+    showToast(message);
+  }
+
+  /**
+   * Paste nodes copied from the graph mode: from `text`, else the system
+   * clipboard, else this page's last copy. One undo step; the registry is never
+   * written (nodes without an entity are counted, not placed).
+   */
+  async pasteGraph(text?: string): Promise<void> {
+    let payload = decodeGraphClipboard(text);
+    if (payload === null && text === undefined) {
+      try {
+        payload = decodeGraphClipboard(await navigator.clipboard.readText());
+      } catch {
+        // The clipboard cannot be read here: the last copy made in this page will do.
+      }
+    }
+    payload ??= lastGraphCopy() ?? null;
+    if (payload === null) {
+      this.toast(shellStrings.graphPasteEmpty);
+      return;
+    }
+    if (this.canvas.model === null) return;
+    const r = pasteGraphNodes(this, payload);
+    const parts = [fmt(shellStrings.graphPasted, { n: String(r.placed.length) })];
+    if (r.notInModel > 0) parts.push(fmt(shellStrings.graphPasteSkipped, { k: String(r.notInModel) }));
+    if (r.alreadyOnView > 0) parts.push(fmt(shellStrings.graphPasteExisting, { n: String(r.alreadyOnView) }));
+    this.toast(parts.join(" · "));
   }
 }

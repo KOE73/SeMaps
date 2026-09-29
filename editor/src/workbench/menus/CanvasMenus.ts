@@ -4,6 +4,7 @@ import type { RoutingMode } from "../../model/style-types.js";
 import { entityOf, type DiagramEdge, type DiagramElement } from "../../model/types.js";
 import { i18n } from "../i18n/I18nService.js";
 import { icons } from "../../ui/icons.js";
+import { t as shellStrings } from "../../shell/strings.js";
 import { openContextMenu, type MenuItem } from "./ContextMenu.js";
 import { relationItems } from "./EntityMenu.js";
 
@@ -54,9 +55,14 @@ export function openCanvasMenu(
     if (edge) items = edgeItems(editor, host, edge);
     else if (doc.relations.some((r) => r.id === id)) items = ghostEdgeItems(editor, host, id);
   } else {
-    items = [viewRoutingItem(editor)];
+    items = [viewRoutingItem(editor), { kind: "separator" }, pasteItem(editor)];
   }
   if (items.length > 0) openContextMenu(items, clientX, clientY);
+}
+
+/** Nodes copied from the graph go onto the view (into the selected zone, when there is one). */
+function pasteItem(editor: DiagramEditor): MenuItem {
+  return { label: shellStrings.graphPaste, icon: icons.clipboard, note: "Ctrl+V", onSelect: () => void editor.pasteGraph() };
 }
 
 // ------------------------------------------------------------------ boxes
@@ -136,6 +142,7 @@ function blockItems(editor: DiagramEditor, host: MenuHost, el: DiagramElement): 
   items.push({ label: t.properties, icon: icons.listDetails, onSelect: () => host.openPanel("properties") });
   items.push({ label: t.blockStyle, icon: icons.palette, onSelect: () => host.openStyleEditor(styles.blockStyleIdFor(el)) });
   if (entity) items.push({ label: t.neighbourhood, icon: icons.hierarchy, onSelect: () => host.openPanel("neighbourhood") });
+  if (isZone) items.push(pasteItem(editor));
   items.push({ kind: "separator" }, { label: t.remove, icon: icons.trash, onSelect: () => editor.deleteSelection() });
   return items;
 }

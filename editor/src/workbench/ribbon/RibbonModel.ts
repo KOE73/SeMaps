@@ -24,6 +24,7 @@ export function createDefaultRibbonSpec(): RibbonSpec {
             get title() { return i18n.d.ribbon.groups.edit; },
             items: [
               { type: "button", command: "edit.delete", size: "medium" },
+              { type: "button", command: "edit.paste", size: "medium" },
             ],
           },
           {
