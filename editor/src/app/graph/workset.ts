@@ -148,6 +148,20 @@ export class NodeSelection {
     this.emit();
   }
 
+  /** Ctrl+A: exactly these nodes (the ones visible / listed now). */
+  selectAll(ids: Iterable<string>): void {
+    this.ids = new Set(ids);
+    this.lead = [...this.ids].pop();
+    this.emit();
+  }
+
+  /** Ctrl+I: within `scope` (the visible / listed nodes) what was selected is not, and the other way round. */
+  invert(scope: Iterable<string>): void {
+    this.ids = new Set([...scope].filter((id) => !this.ids.has(id)));
+    this.lead = [...this.ids].pop();
+    this.emit();
+  }
+
   /** Drops members that no longer exist (a live update removed the node). */
   prune(existing: ReadonlySet<string>): void {
     let changed = false;

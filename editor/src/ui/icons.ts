@@ -119,6 +119,13 @@ const names = {
   cornerRightDown: "corner-right-down",
   template: "template",
   copyCheck: "copy-check",
+  topologyStar3: "topology-star-3",
+  target: "target",
+  circle: "circle",
+  pkg: "package",
+  binaryTree: "binary-tree",
+  boxMultiple: "box-multiple",
+  brackets: "brackets",
 } as const;
 
 export const icons = Object.fromEntries(Object.entries(names).map(([key, name]) => [key, tablerSvg(name)])) as { [K in keyof typeof names]: string };

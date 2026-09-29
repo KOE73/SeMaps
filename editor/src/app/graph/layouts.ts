@@ -9,12 +9,10 @@ import random from "graphology-layout/random";
 import * as dagre from "@dagrejs/dagre";
 import type { GraphNode } from "./types.js";
 
+/** `grouped` is the one layout that groups (what by is `GroupBy`, `grouping.ts`). */
 export type LayoutKind =
   | "force"
-  | "folder"
-  | "namespace"
-  | "community"
-  | "container"
+  | "grouped"
   | "hierarchy"
   | "radial"
   | "circlepack"
@@ -29,10 +27,24 @@ function dirOf(file: string | undefined): string {
 
 /** The grouping key of a node for a grouped layout; "" groups ungrouped
  * nodes together rather than dropping them. */
-export function groupKey(n: GraphNode, kind: "folder" | "namespace" | "container"): string {
-  if (kind === "folder") return dirOf(n.file);
-  if (kind === "namespace") return n.namespace ?? "";
-  return n.containers?.[0] ?? "";
+/**
+ * A node's `containers` are the ones its rules matched, listed in containers.json
+ * order (core/containers.go) — that order says nothing about depth, and the graph
+ * answer carries no hierarchy. The most specific one is taken to be the container
+ * with the fewest members in this graph (ties: the later one); grouping by the
+ * first in the list, as before, put nodes into whichever container was declared first.
+ */
+export function deepestContainer(n: GraphNode, memberCount: ReadonlyMap<string, number>): string {
+  let best = "";
+  let bestCount = Infinity;
+  for (const c of n.containers ?? []) {
+    const count = memberCount.get(c) ?? Infinity;
+    if (count <= bestCount) {
+      best = c;
+      bestCount = count;
+    }
+  }
+  return best;
 }
 
 /** Runs Louvain on the current graph and returns node id -> community id. */
@@ -96,37 +108,70 @@ const INHERITANCE = ["implements", "extends"];
  * where elkjs would add ~1.4 MB for nothing this needs. Sigma's y axis points
  * up, hence the sign. Nodes with no inheritance edge go in a grid below. */
 export function hierarchyLayout(graph: Graph): void {
-  const g = new dagre.graphlib.Graph();
-  g.setGraph({ rankdir: "TB", nodesep: 10, ranksep: 28, marginx: 0, marginy: 0 });
-  g.setDefaultEdgeLabel(() => ({}));
-  const inTree = new Set<string>();
+  // Inheritance edges (child -> base) among these nodes, and the trees they tie together.
+  const links: [string, string][] = [];
+  const parent = new Map<string, string>();
+  const find = (id: string): string => {
+    let root = id;
+    while (parent.get(root) !== root) root = parent.get(root)!;
+    parent.set(id, root);
+    return root;
+  };
   graph.forEachEdge((_e, attrs, from, to) => {
     if (!INHERITANCE.includes(attrs.kind as string) || from === to) return;
-    for (const id of [from, to]) {
-      if (inTree.has(id)) continue;
-      inTree.add(id);
-      g.setNode(id, { width: 14 + (graph.getNodeAttribute(id, "size") as number) * 1.5, height: 10 });
-    }
-    g.setEdge(to, from); // base above child
+    links.push([from, to]);
+    for (const id of [from, to]) if (!parent.has(id)) parent.set(id, id);
+    parent.set(find(from), find(to));
+  });
+  const trees = new Map<string, string[]>();
+  for (const id of parent.keys()) (trees.get(find(id)) ?? trees.set(find(id), []).get(find(id))!).push(id);
+
+  // Each tree on its own, spaced by what its nodes look like: a node's cell is its
+  // drawn diameter plus room, so big nodes get big cells and never overlap.
+  const cell = (id: string) => 2 * (graph.getNodeAttribute(id, "size") as number) + 16;
+  const laid = [...trees.values()].map((ids) => {
+    const g = new dagre.graphlib.Graph();
+    g.setGraph({ rankdir: "TB", nodesep: 14, ranksep: 40, marginx: 0, marginy: 0 });
+    g.setDefaultEdgeLabel(() => ({}));
+    const inTree = new Set(ids);
+    for (const id of ids) g.setNode(id, { width: cell(id), height: cell(id) });
+    for (const [from, to] of links) if (inTree.has(from)) g.setEdge(to, from); // base above child
+    dagre.layout(g);
+    const { width = 0, height = 0 } = g.graph();
+    return { ids, g, width, height };
   });
 
-  let bottom = 0;
-  if (inTree.size > 0) {
-    dagre.layout(g);
-    for (const id of inTree) {
-      const p = g.node(id);
-      graph.setNodeAttribute(id, "x", p.x);
-      graph.setNodeAttribute(id, "y", -p.y);
-      bottom = Math.min(bottom, -p.y);
+  // Pack the trees into rows, so the whole is roughly landscape rather than one long strip.
+  laid.sort((a, b) => b.width * b.height - a.width * a.height);
+  const GAP = 40;
+  const area = laid.reduce((sum, c) => sum + (c.width + GAP) * (c.height + GAP), 0);
+  const rowWidth = Math.max(laid[0]?.width ?? 0, Math.sqrt(area * 1.7));
+  let x = 0;
+  let y = 0;
+  let rowHeight = 0;
+  for (const c of laid) {
+    if (x > 0 && x + c.width > rowWidth) {
+      x = 0;
+      y += rowHeight + GAP;
+      rowHeight = 0;
     }
+    for (const id of c.ids) {
+      const p = c.g.node(id);
+      graph.setNodeAttribute(id, "x", x + p.x);
+      graph.setNodeAttribute(id, "y", -(y + p.y)); // sigma's y points up; bases stay on top
+    }
+    x += c.width + GAP;
+    rowHeight = Math.max(rowHeight, c.height);
   }
+  const bottom = laid.length > 0 ? y + rowHeight : 0;
 
-  const rest = graph.nodes().filter((id) => !inTree.has(id));
-  const cols = Math.max(6, Math.ceil(Math.sqrt(rest.length * 2)));
-  const startY = inTree.size > 0 ? bottom - 50 : 0;
+  // What has no inheritance edge: a grid of its own below, as wide as the trees.
+  const rest = graph.nodes().filter((id) => !parent.has(id));
+  const step = 34;
+  const cols = Math.max(4, Math.floor((laid.length > 0 ? rowWidth : Math.sqrt(rest.length * step * step * 1.7)) / step));
   rest.forEach((id, i) => {
-    graph.setNodeAttribute(id, "x", (i % cols) * 22);
-    graph.setNodeAttribute(id, "y", startY - Math.floor(i / cols) * 22);
+    graph.setNodeAttribute(id, "x", (i % cols) * step);
+    graph.setNodeAttribute(id, "y", -(bottom + (laid.length > 0 ? GAP : 0) + Math.floor(i / cols) * step));
   });
 }
 

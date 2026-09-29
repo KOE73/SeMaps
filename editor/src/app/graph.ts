@@ -5,6 +5,7 @@ import { encodeGraphClipboard } from "../model/graphClipboard.js";
 import { GraphDock, type GRAPH_PANEL } from "./graph/dock.js";
 import { filterStore } from "./graph/filters.js";
 import { nodeSelection, workingSet } from "./graph/workset.js";
+import { COLOR_BYS, FOCUS_MODES, GROUP_BYS, LAYOUTS, viewSettings } from "./graph/viewSettings.js";
 
 /**
  * The Graph mode: sigma + graphology, on `GET /api/graph/{project}`
@@ -28,14 +29,10 @@ import { nodeSelection, workingSet } from "./graph/workset.js";
  */
 
 type GraphPanelId = (typeof GRAPH_PANEL)[keyof typeof GRAPH_PANEL];
-type LayoutKind = import("./graph/layouts.js").LayoutKind;
-type ColorBy = import("./graph/colors.js").ColorBy;
 
 let projects: { id: string; title?: string }[] = [];
 let currentProject = "";
 let showMissing = false;
-let currentLayout: LayoutKind = "force";
-let currentColorBy: ColorBy = "kind";
 let engine: import("./graph/engine.js").GraphEngine | undefined;
 let dock: GraphDock | undefined;
 let events: EventSource | undefined;
@@ -47,6 +44,11 @@ let notifyRibbon: () => void = () => {};
 /** The ribbon's state (checked toggles, select values) is read again after `notify`. */
 export function bindGraphRibbon(notify: () => void): void {
   notifyRibbon = notify;
+  // One store of colour/layout/grouping/focus: the engine follows it, the ribbon re-reads it.
+  viewSettings.onChange(() => {
+    engine?.applyView(viewSettings.state);
+    notifyRibbon();
+  });
   // Filters change from the panel, the ribbon and live updates alike.
   filterStore.onChange(() => notifyRibbon());
 }
@@ -58,13 +60,26 @@ let copyKeyBound = false;
 function bindCopyKey(): void {
   if (copyKeyBound) return;
   copyKeyBound = true;
+  // Graph-mode keys: only while the graph is the shown mode, never in a text field (so the
+  // diagram editor's own keys are not touched), and not when the list already took the key.
   window.addEventListener("keydown", (e) => {
-    if (!graphActive || !(e.ctrlKey || e.metaKey) || e.code !== "KeyC" || e.shiftKey || e.altKey) return;
+    if (!graphActive || e.defaultPrevented || e.altKey) return;
     const target = e.target;
-    if (target instanceof HTMLElement && (target.tagName === "INPUT" || target.tagName === "TEXTAREA" || target.isContentEditable)) return;
-    if (window.getSelection()?.toString()) return; // text is selected somewhere: an ordinary copy
-    e.preventDefault();
-    copyGraphNodes("selection");
+    if (target instanceof HTMLElement && (target.tagName === "INPUT" || target.tagName === "TEXTAREA" || target.tagName === "SELECT" || target.isContentEditable)) return;
+    const mod = e.ctrlKey || e.metaKey;
+    if (e.key === "Escape" && !mod) {
+      nodeSelection.clear();
+    } else if (mod && !e.shiftKey && e.code === "KeyC") {
+      if (window.getSelection()?.toString()) return; // text is selected somewhere: an ordinary copy
+      e.preventDefault();
+      copyGraphNodes("selection");
+    } else if (mod && !e.shiftKey && e.code === "KeyA" && engine) {
+      e.preventDefault();
+      nodeSelection.selectAll(engine.visibleNodeIds());
+    } else if (mod && !e.shiftKey && e.code === "KeyI" && engine) {
+      e.preventDefault();
+      nodeSelection.invert(engine.visibleNodeIds());
+    }
   });
 }
 
@@ -147,8 +162,10 @@ export function graphProjectOptions(): { value: string; label: string }[] {
 }
 export const graphProject = (): string => currentProject;
 export const graphShowsMissing = (): boolean => showMissing;
-export const graphColorBy = (): string => currentColorBy;
-export const graphLayout = (): string => currentLayout;
+export const graphColorBy = (): string => viewSettings.state.colorBy;
+export const graphLayout = (): string => viewSettings.state.layout;
+export const graphFocus = (): string => viewSettings.state.focus;
+export const graphGroupBy = (): string => viewSettings.state.groupBy;
 export const isGraphPanelOpen = (id: GraphPanelId): boolean => dock?.panels.isOpen(id) ?? false;
 
 // ---------------------------------------------------- what the ribbon does
@@ -167,14 +184,23 @@ export function toggleGraphMissing(): void {
   void render();
 }
 
+// Colour, layout, grouping and focus live in `viewSettings`; the ribbon and the «Вид» panel
+// only set them there, and the engine follows (bindGraphRibbon subscribes it).
 export function setGraphColorBy(v: string): void {
-  currentColorBy = v as ColorBy;
-  engine?.setColorBy(currentColorBy);
+  if (COLOR_BYS.includes(v as never)) viewSettings.set({ colorBy: v as never });
 }
 
 export function setGraphLayout(v: string): void {
-  currentLayout = v as LayoutKind;
-  engine?.setLayout(currentLayout);
+  if (LAYOUTS.includes(v as never)) viewSettings.set({ layout: v as never });
+}
+
+export function setGraphFocus(v: string): void {
+  if (FOCUS_MODES.includes(v as never)) viewSettings.set({ focus: v as never });
+}
+
+export function setGraphGroupBy(v: string): void {
+  // Grouping only means something in the «группами» layout: choosing one switches to it.
+  if (GROUP_BYS.includes(v as never)) viewSettings.set({ groupBy: v as never, layout: "grouped" });
 }
 
 export function restartGraphLayout(): void {
@@ -197,10 +223,6 @@ async function render(): Promise<void> {
   if (!d) return;
   events?.close();
   events = undefined;
-  if (engine) {
-    currentLayout = engine.getLayout();
-    currentColorBy = engine.getColorBy();
-  }
   engine?.destroy();
   engine = undefined;
   d.canvasSlot.replaceChildren(el("p", { class: "tool-muted graph-message", text: t.loading }));
@@ -216,11 +238,18 @@ async function render(): Promise<void> {
   }
   if (token !== renderToken) return; // a newer render took over
 
-  const eng = new GraphEngine(data, currentLayout, d.ui, currentColorBy);
+  const eng = new GraphEngine(data, viewSettings.state.layout, d.ui, viewSettings.state.colorBy);
   const mounted = eng.mount();
   engine = eng;
   d.canvasSlot.replaceChildren(mounted);
   eng.start();
+  // The containers' nesting and the zones per axis, for «группировать по»; the graph is usable without them.
+  void import("./graph/types.js")
+    .then(({ fetchGroups }) => fetchGroups(currentProject))
+    .then((groups) => {
+      if (engine === eng) eng.setGroupData(groups);
+    })
+    .catch(() => undefined);
   d.ui.extractors.setGraph(data, currentProject);
   notifyRibbon();
 

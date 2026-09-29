@@ -47,6 +47,8 @@ export interface RibbonSelectSpec {
   readonly label: string;
   readonly options: readonly RibbonSelectOption[];
   readonly getValue: (context: CommandContext) => string;
+  /** Greyed out while it does not apply (a choice that still works, and may switch the mode it applies in). */
+  readonly dimmed?: (context: CommandContext) => boolean;
 }
 
 export interface RibbonSeparatorSpec {

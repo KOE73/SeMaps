@@ -416,6 +416,10 @@
   color: var(--muted, #9aa0a6);
 }
 
+.ribbon-select-wrapper.is-dimmed {
+  opacity: 0.5;
+}
+
 .ribbon-select {
   max-width: 150px;
   text-overflow: ellipsis;

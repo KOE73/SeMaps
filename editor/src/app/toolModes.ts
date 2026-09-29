@@ -9,6 +9,10 @@ import {
   bindGraphRibbon,
   copyGraphNodes,
   graphColorBy,
+  graphFocus,
+  graphGroupBy,
+  setGraphFocus,
+  setGraphGroupBy,
   graphLayout,
   graphProject,
   graphProjectOptions,
@@ -29,6 +33,7 @@ import {
 import { CALLS_EDGE_KINDS, INHERITANCE_DEPENDENCY_EDGE_KINDS, INHERITANCE_EDGE_KINDS, PRESET_SYMBOL_KINDS, filterStore } from "./graph/filters.js";
 import { GRAPH_PANEL } from "./graph/dock.js";
 import { graphIcons } from "./graph/icons.js";
+import { COLOR_OPTIONS, FOCUS_OPTIONS, GROUP_OPTIONS, LAYOUT_OPTIONS } from "./graph/viewOptions.js";
 import { kindIcon } from "../ui/kindIcons.js";
 import { t } from "../shell/strings.js";
 import { icons } from "../ui/icons.js";
@@ -57,6 +62,8 @@ function graphCommands(): CommandDefinition[] {
     { id: "tools.graph.project.set", title: t.graphProject, icon: icons.folder, execute: (_c, v) => setGraphProject(String(v)) },
     { id: "tools.graph.missing.toggle", title: t.graphShowMissing, icon: graphIcons.ghost, isChecked: () => graphShowsMissing(), execute: () => toggleGraphMissing() },
     { id: "tools.graph.color.set", title: t.graphColorBy, icon: icons.palette, execute: (_c, v) => setGraphColorBy(String(v)) },
+    { id: "tools.graph.focus.set", title: t.graphFocus, icon: graphIcons.focus, execute: (_c, v) => setGraphFocus(String(v)) },
+    { id: "tools.graph.groupby.set", title: t.graphGroupBy, icon: icons.category, execute: (_c, v) => setGraphGroupBy(String(v)) },
     { id: "tools.graph.layout.set", title: t.graphLayout, icon: icons.compass, execute: (_c, v) => setGraphLayout(String(v)) },
     { id: "tools.graph.layout.restart", title: t.graphRestartLayout, icon: graphIcons.shuffle, execute: () => restartGraphLayout() },
     { id: "tools.graph.filters.reset", title: t.graphResetFilters, icon: graphIcons.restore, execute: () => filterStore.reset() },
@@ -88,6 +95,7 @@ function graphCommands(): CommandDefinition[] {
     presence("tools.graph.presence.both", "both", t.graphPresenceBoth, kindIcon("presence", "both")),
     panel("tools.graph.panel.legend", GRAPH_PANEL.legend, t.graphLegend, graphIcons.palette),
     panel("tools.graph.panel.filters", GRAPH_PANEL.filters, t.graphFilters, graphIcons.filter),
+    panel("tools.graph.panel.view", GRAPH_PANEL.view, t.graphPanelView, graphIcons.view),
     panel("tools.graph.panel.extractors", GRAPH_PANEL.extractors, t.graphPanelExtractors, graphIcons.cpu),
     panel("tools.graph.panel.nodes", GRAPH_PANEL.nodes, t.graphPanelNodes, graphIcons.listSearch),
     panel("tools.graph.panel.properties", GRAPH_PANEL.properties, t.graphPanelTitle, graphIcons.listDetails),
@@ -190,31 +198,32 @@ export function addToolModes(workbench: Workbench): void {
         type: "select",
         command: "tools.graph.color.set",
         label: t.graphColorBy,
-        options: [
-          { value: "kind", label: t.graphColorKind },
-          { value: "container", label: t.graphColorContainer },
-          { value: "namespace", label: t.graphColorNamespace },
-          { value: "presence", label: t.graphColorPresence },
-        ],
+        // The same lists the «Вид» panel shows (viewOptions.ts), over the same store.
+        options: COLOR_OPTIONS.map(({ value, label }) => ({ value, label })),
         getValue: () => graphColorBy(),
+      },
+      {
+        type: "select",
+        command: "tools.graph.focus.set",
+        label: t.graphFocus,
+        options: FOCUS_OPTIONS.map(({ value, label }) => ({ value, label })),
+        getValue: () => graphFocus(),
       },
       {
         type: "select",
         command: "tools.graph.layout.set",
         label: t.graphLayout,
-        options: [
-          { value: "force", label: t.graphLayoutForce },
-          { value: "folder", label: t.graphLayoutFolder },
-          { value: "namespace", label: t.graphLayoutNamespace },
-          { value: "community", label: t.graphLayoutCommunity },
-          { value: "container", label: t.graphLayoutContainer },
-          { value: "hierarchy", label: t.graphLayoutHierarchy },
-          { value: "radial", label: t.graphLayoutRadial },
-          { value: "circlepack", label: t.graphLayoutCirclepack },
-          { value: "circular", label: t.graphLayoutCircular },
-          { value: "random", label: t.graphLayoutRandom },
-        ],
+        options: LAYOUT_OPTIONS.map(({ value, label }) => ({ value, label })),
         getValue: () => graphLayout(),
+      },
+      {
+        type: "select",
+        command: "tools.graph.groupby.set",
+        label: t.graphGroupBy,
+        options: GROUP_OPTIONS.map(({ value, label }) => ({ value, label })),
+        getValue: () => graphGroupBy(),
+        // Grouping shapes only the «группами» layout: greyed under any other, and choosing one switches to it.
+        dimmed: () => graphLayout() !== "grouped",
       },
       { type: "button", command: "tools.graph.layout.restart", size: "large", showLabel: false },
     ] },
@@ -234,6 +243,7 @@ export function addToolModes(workbench: Workbench): void {
     { id: "graph-panels", title: t.graphGroupPanels, items: [
       { type: "toggle", command: "tools.graph.panel.legend", size: "small", showLabel: false },
       { type: "toggle", command: "tools.graph.panel.filters", size: "small", showLabel: false },
+      { type: "toggle", command: "tools.graph.panel.view", size: "small", showLabel: false },
       { type: "toggle", command: "tools.graph.panel.extractors", size: "small", showLabel: false },
       { type: "toggle", command: "tools.graph.panel.nodes", size: "small", showLabel: false },
       { type: "toggle", command: "tools.graph.panel.properties", size: "small", showLabel: false },

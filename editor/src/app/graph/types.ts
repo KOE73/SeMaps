@@ -32,6 +32,8 @@ export interface GraphNode {
   nativeKind?: string;
   name?: string;
   namespace?: string;
+  /** The name of the node's assembly (project). */
+  assembly?: string;
   visibility?: string;
   file?: string;
   line?: number;
@@ -109,6 +111,18 @@ export async function fetchGraph(project: string, missing = false): Promise<Grap
     n.modifiers = modifiers;
   }
   return graph;
+}
+
+/** `GET /api/graph/{project}/groups`: containers' nesting and, per axis, the zone each entity sits in (docs/API.md §5). */
+export interface GroupsResponse {
+  containers: { id: string; parent?: string }[];
+  axes: { axis: string; zones: { id: string; container?: string; parent?: string }[]; of: Record<string, string> }[];
+}
+
+export async function fetchGroups(project: string): Promise<GroupsResponse> {
+  const res = await fetch(`/api/graph/${encodeURIComponent(project)}/groups`, { cache: "no-store" });
+  if (!res.ok) throw new Error((await res.text()).trim() || res.statusText);
+  return (await res.json()) as GroupsResponse;
 }
 
 export interface WorkspaceProject {

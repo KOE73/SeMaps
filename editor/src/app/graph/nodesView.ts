@@ -13,7 +13,7 @@ export interface NodesSource {
   colorOf(n: GraphNode): string;
   focus(id: string): void;
   /** The node menu, the same one the canvas opens. */
-  openMenu(id: string, clientX: number, clientY: number): void;
+  openMenu(id: string, clientX: number, clientY: number, scope?: readonly string[]): void;
 }
 
 const ROW_H = 24;
@@ -85,8 +85,17 @@ export class NodesView {
     this.list.addEventListener("click", (e) => this.onClick(e));
     this.list.addEventListener("dblclick", (e) => this.onDoubleClick(e));
     this.list.addEventListener("contextmenu", (e) => this.onContextMenu(e));
+    // In the list, Ctrl+A / Ctrl+I mean the rows listed now (the graph's own handler stands down).
     this.list.addEventListener("keydown", (e) => {
-      if (e.key === "Escape") nodeSelection.clear();
+      if (e.key === "Escape") {
+        nodeSelection.clear();
+      } else if ((e.ctrlKey || e.metaKey) && e.code === "KeyA") {
+        e.preventDefault();
+        nodeSelection.selectAll(this.shown.map((n) => n.id));
+      } else if ((e.ctrlKey || e.metaKey) && e.code === "KeyI") {
+        e.preventDefault();
+        nodeSelection.invert(this.shown.map((n) => n.id));
+      }
     });
     new ResizeObserver(() => this.schedulePaint()).observe(this.list);
     new ResizeObserver(() => this.renderTypes()).observe(this.typeRow);
@@ -322,6 +331,7 @@ export class NodesView {
     const hit = this.nodeAt(e);
     if (!hit) return;
     e.preventDefault();
-    this.source?.openMenu(hit.n.id, e.clientX, e.clientY);
+    // Select all / invert in this menu mean the rows listed now.
+    this.source?.openMenu(hit.n.id, e.clientX, e.clientY, this.shown.map((n) => n.id));
   }
 }

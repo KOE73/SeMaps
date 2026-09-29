@@ -13,9 +13,7 @@ import {
   applyGroupedLayout,
   circlePackLayout,
   circularLayout,
-  communityGroups,
   dirOf,
-  groupKey,
   hierarchyLayout,
   radialLayout,
   randomLayout,
@@ -23,6 +21,9 @@ import {
   seedCircle,
 } from "./layouts.js";
 import { filterStore, nodeVisible } from "./filters.js";
+import { containerDepth, folderDepth, groupNodes, namespaceDepth } from "./grouping.js";
+import { type FocusMode, type GroupBy, type ViewState, viewSettings } from "./viewSettings.js";
+import type { GroupsResponse } from "./types.js";
 import { type GraphPanel, statsLine } from "./panel.js";
 import type { NodesView } from "./nodesView.js";
 import { HIERARCHY_KINDS, type Reach, nodeSelection, reachFrom, workingSet } from "./workset.js";
@@ -104,6 +105,12 @@ export class GraphEngine {
   private dragged: string | undefined;
   private readonly panel: GraphPanel;
   private readonly ui: GraphUi;
+  private focusMode: FocusMode = "selection";
+  private groupBy: GroupBy = "namespace";
+  private groupDepth = 1;
+  private groupAxis = "";
+  private groupData: GroupsResponse | undefined;
+  private adjacency: Map<string, Set<string>> | undefined;
   private focusIds = new Set<string>();
   private focusNear = new Set<string>();
   private unsubscribeSet: (() => void) | undefined;
@@ -122,6 +129,11 @@ export class GraphEngine {
     this.data = data;
     this.layout = initialLayout;
     this.colorBy = initialColorBy;
+    const view = viewSettings.state;
+    this.focusMode = view.focus;
+    this.groupBy = view.groupBy;
+    this.groupDepth = view.groupDepth;
+    this.groupAxis = view.groupAxis;
     this.ui = ui;
     this.panel = ui.panel;
     this.legendEl = ui.legend;
@@ -129,7 +141,7 @@ export class GraphEngine {
     this.edges = data.edges;
     this.rebuildEdgeInfo();
     // Earlier choices for the same project stay; a value not offered before starts included.
-    filterStore.sync(data.nodes, [...new Set(data.edges.map((e) => e.kind))]);
+    filterStore.sync(data.nodes, data.edges);
 
     this.graph = new Graph({ type: "directed", multi: true });
     for (const n of data.nodes) {
@@ -193,6 +205,8 @@ export class GraphEngine {
       enableEdgeEvents: true,
       nodeProgramClasses,
       defaultDrawNodeLabel: drawNodeLabel,
+      // Focus nodes and edges are raised above the rest (zIndex in the reducers).
+      zIndex: true,
       defaultDrawNodeHover: drawNodeHover,
       // Looked at the ~900-node demo graph: the default threshold (6) still
       // let mid-size nodes force their way into the label grid once focused;
@@ -213,6 +227,7 @@ export class GraphEngine {
       edgeReducer: (edge, attrs) => this.edgeReducer(edge, attrs),
     });
     this.wireEvents();
+    this.wireBoxSelect();
     this.watchResize();
     // The one place a filter change reaches the picture: sigma, legend, stats.
     this.unsubscribeFilters = filterStore.onChange(() => this.onFiltersChanged());
@@ -225,12 +240,13 @@ export class GraphEngine {
       nodes: () => this.data.nodes,
       colorOf: (n) => nodeColor(n, this.colorBy),
       focus: (id) => this.focusNode(id),
-      openMenu: (id, x, y) => this.openNodeMenu(id, x, y),
+      openMenu: (id, x, y, scope) => this.openNodeMenu(id, x, y, scope),
     });
     // The selection drives Properties and the highlight, wherever it changed.
     this.unsubscribeSelection = nodeSelection.onChange(() => this.onSelectionChanged());
     this.onSelectionChanged();
     this.onFiltersChanged();
+    this.publishViewInfo();
 
     this.applyLayout();
   }
@@ -248,12 +264,56 @@ export class GraphEngine {
    * else the hovered node, and their neighbours. Emphasis only — nothing is hidden
    * by it: every edge the filters allow is drawn. */
   private recomputeFocus(): void {
-    this.focusIds = nodeSelection.size > 0 ? new Set(nodeSelection.members) : this.hovered ? new Set([this.hovered]) : new Set();
+    this.focusIds = new Set();
     this.focusNear = new Set();
-    for (const id of this.focusIds) {
+    if (this.focusMode === "off") return;
+    const ids: Iterable<string> = nodeSelection.size > 0 ? nodeSelection.members : this.hovered ? [this.hovered] : [];
+    for (const id of ids) {
       if (!this.graph.hasNode(id)) continue;
-      for (const n of this.graph.neighbors(id)) this.focusNear.add(n);
+      this.focusIds.add(id);
+      for (const n of this.drawnAdjacency().get(id) ?? []) this.focusNear.add(n);
     }
+  }
+
+  /** Neighbours over the edges drawn now only (kind filter on, both ends visible): a hidden edge lights nothing up. */
+  private drawnAdjacency(): Map<string, Set<string>> {
+    if (this.adjacency) return this.adjacency;
+    const kinds = filterStore.state.edgeKinds;
+    const map = new Map<string, Set<string>>();
+    const link = (a: string, b: string) => (map.get(a) ?? map.set(a, new Set()).get(a)!).add(b);
+    for (const e of this.edges) {
+      if (!kinds.has(e.kind)) continue;
+      const from = this.nodeById.get(e.from);
+      const to = this.nodeById.get(e.to);
+      if (!from || !to || !this.isShown(from) || !this.isShown(to)) continue;
+      link(e.from, e.to);
+      link(e.to, e.from);
+    }
+    return (this.adjacency = map);
+  }
+
+  /** Whether everything outside the focus is dimmed: not at all («без подсветки»), only with a
+   * selection («только выделение», the default: hover just emphasises), or always with a focus. */
+  private dimming(): boolean {
+    if (this.focusMode === "off") return false;
+    if (this.focusMode === "selection") return nodeSelection.size > 0 && this.focusIds.size > 0;
+    return this.focusIds.size > 0;
+  }
+
+  /** How much of a colour stays when dimmed: «мягко» keeps over half of it. */
+  private dimKeep(): number {
+    return this.focusMode === "soft" ? 0.55 : 0.16;
+  }
+
+  getFocusMode(): FocusMode {
+    return this.focusMode;
+  }
+
+  setFocusMode(mode: FocusMode): void {
+    this.focusMode = mode;
+    if (!this.booted) return;
+    this.recomputeFocus();
+    this.renderer.refresh();
   }
 
   /** The universe: what the pre-filter lets through. */
@@ -268,6 +328,8 @@ export class GraphEngine {
   }
 
   private onFiltersChanged(): void {
+    this.adjacency = undefined; // what is drawn changed: so does who is a neighbour
+    this.recomputeFocus();
     this.refreshLegend();
     this.refreshStats();
     this.renderer.refresh();
@@ -299,9 +361,38 @@ export class GraphEngine {
     if (this.booted) this.ui.nodes.refresh();
   }
 
-  setLayout(layout: LayoutKind): void {
-    this.layout = layout;
-    if (this.booted) this.applyLayout();
+  /**
+   * Follows the view settings store (ribbon selects and the «Вид» panel both
+   * write it): colour and focus apply at once; a changed layout, or the grouping
+   * of the `grouped` layout, lays the nodes out again.
+   */
+  applyView(s: Readonly<ViewState>): void {
+    if (s.colorBy !== this.colorBy) this.setColorBy(s.colorBy);
+    if (s.focus !== this.focusMode) this.setFocusMode(s.focus);
+    const relayout =
+      s.layout !== this.layout || (s.layout === "grouped" && (s.groupBy !== this.groupBy || s.groupDepth !== this.groupDepth || s.groupAxis !== this.groupAxis));
+    this.layout = s.layout;
+    this.groupBy = s.groupBy;
+    this.groupDepth = s.groupDepth;
+    this.groupAxis = s.groupAxis;
+    if (relayout && this.booted) this.applyLayout();
+  }
+
+  /** The containers' nesting and the zones per axis (`/groups`), which «группировать по» needs. */
+  setGroupData(groups: GroupsResponse | undefined): void {
+    this.groupData = groups;
+    this.publishViewInfo();
+    if (this.booted && this.layout === "grouped" && (this.groupBy === "containers" || this.groupBy === "axis")) this.applyLayout();
+  }
+
+  /** What the panel's inline controls may offer: depths the data has, the axes the project declares. */
+  private publishViewInfo(): void {
+    viewSettings.setInfo({
+      namespaceDepth: namespaceDepth(this.data.nodes),
+      folderDepth: folderDepth(this.data.nodes),
+      containerDepth: containerDepth(this.groupData),
+      axes: this.groupData?.axes.map((a) => a.axis) ?? [],
+    });
   }
 
   restartLayout(): void {
@@ -387,6 +478,7 @@ export class GraphEngine {
     }
     this.edges = next.edges.filter((e) => this.graph.hasNode(e.from) && this.graph.hasNode(e.to));
     this.rebuildEdgeInfo();
+    this.adjacency = undefined;
 
     // Degree-based size, recomputed for everyone — cheap next to a layout.
     this.graph.forEachNode((node) => {
@@ -395,6 +487,7 @@ export class GraphEngine {
     });
 
     this.data = next;
+    this.publishViewInfo();
 
     if (this.selected && removedNodeIds.includes(this.selected)) {
       this.selected = undefined;
@@ -410,7 +503,7 @@ export class GraphEngine {
     // Merge filter selections through the store (a value already offered
     // keeps the user's choice, a newly offered one starts included); its
     // change event refreshes sigma, legend and stats.
-    filterStore.sync(next.nodes, [...new Set(next.edges.map((e) => e.kind))]);
+    filterStore.sync(next.nodes, next.edges);
     if (!this.booted) {
       this.refreshLegend();
       this.refreshStats();
@@ -513,11 +606,15 @@ export class GraphEngine {
       if (inSelection) {
         // never faded
       } else if (!inFocus) {
-        res.color = fade(res.color as string);
-        if (look) (res as Record<string, unknown>).ringColor = fade((res as Record<string, unknown>).ringColor as string);
-        res.label = null;
-        res.zIndex = 0;
+        if (this.dimming()) {
+          const keep = this.dimKeep();
+          res.color = fade(res.color as string, keep);
+          if (look) (res as Record<string, unknown>).ringColor = fade((res as Record<string, unknown>).ringColor as string, keep);
+          res.label = null;
+          res.zIndex = 0;
+        }
       } else {
+        // On top of the rest, and its label forced (only along edges that are drawn).
         res.forceLabel = true;
         res.zIndex = 1;
       }
@@ -557,8 +654,9 @@ export class GraphEngine {
       if (this.focusIds.has(ext[0]) || this.focusIds.has(ext[1])) {
         res.size = (res.size ?? 2) * 1.5;
         res.zIndex = 1;
-      } else {
-        res.color = fade(res.color as string);
+      } else if (this.dimming()) {
+        res.color = fade(res.color as string, this.dimKeep());
+        res.zIndex = 0;
       }
     }
     return res;
@@ -626,14 +724,83 @@ export class GraphEngine {
       const o = event.original as MouseEvent;
       this.openNodeMenu(node, o.clientX, o.clientY);
     });
+    // A click on an empty spot (sigma does not report a pan as a click) clears the selection.
+    this.renderer.on("clickStage", () => nodeSelection.clear());
     this.renderer.on("rightClickStage", ({ event }) => {
       const o = event.original as MouseEvent;
       openContextMenu(
-        [{ label: t.graphMenuShowAll, icon: icons.eye, disabled: workingSet.size === 0, onSelect: () => workingSet.clear() }],
+        [
+          { label: t.graphMenuShowAll, icon: icons.eye, disabled: workingSet.size === 0, onSelect: () => workingSet.clear() },
+          { kind: "separator" },
+          ...this.selectionItems(),
+        ],
         o.clientX,
         o.clientY,
       );
     });
+  }
+
+  /** The nodes drawn now: what Ctrl+A selects and Ctrl+I inverts within. */
+  visibleNodeIds(): string[] {
+    return this.data.nodes.filter((n) => this.isShown(n)).map((n) => n.id);
+  }
+
+  /** «Выделить все / Инвертировать / Снять выделение», within `scope` (the drawn nodes, or the rows listed). */
+  private selectionItems(scope?: readonly string[]): MenuItem[] {
+    const ids = () => scope ?? this.visibleNodeIds();
+    return [
+      { label: t.graphSelectAll, icon: icons.checks, note: "Ctrl+A", onSelect: () => nodeSelection.selectAll(ids()) },
+      { label: t.graphInvertSelection, icon: icons.arrowsDiff, note: "Ctrl+I", onSelect: () => nodeSelection.invert(ids()) },
+      { label: t.graphNodesClearSelection, icon: icons.squareOff, note: "Esc", disabled: nodeSelection.size === 0, onSelect: () => nodeSelection.clear() },
+    ];
+  }
+
+  /**
+   * Shift+drag on an empty spot draws a rectangle; the nodes inside become the
+   * selection (Ctrl+Shift+drag adds to it). A plain drag still pans and a drag
+   * that starts on a node still moves it: sigma is not told about the press only
+   * when Shift is held and no node is under the pointer.
+   */
+  private wireBoxSelect(): void {
+    const canvas = this.canvas;
+    canvas.addEventListener(
+      "mousedown",
+      (e) => {
+        if (!e.shiftKey || e.button !== 0 || this.hovered !== undefined) return;
+        e.preventDefault();
+        e.stopPropagation();
+        const rect = canvas.getBoundingClientRect();
+        const start = { x: e.clientX - rect.left, y: e.clientY - rect.top };
+        const box = el("div", { class: "graph-box" });
+        canvas.parentElement?.appendChild(box);
+        const place = (x: number, y: number) => {
+          box.style.left = `${Math.min(start.x, x)}px`;
+          box.style.top = `${Math.min(start.y, y)}px`;
+          box.style.width = `${Math.abs(x - start.x)}px`;
+          box.style.height = `${Math.abs(y - start.y)}px`;
+        };
+        place(start.x, start.y);
+        const move = (m: MouseEvent) => place(m.clientX - rect.left, m.clientY - rect.top);
+        const up = (u: MouseEvent) => {
+          window.removeEventListener("mousemove", move);
+          window.removeEventListener("mouseup", up, true);
+          box.remove();
+          const end = { x: u.clientX - rect.left, y: u.clientY - rect.top };
+          if (Math.abs(end.x - start.x) < 4 && Math.abs(end.y - start.y) < 4) return;
+          const [x0, x1] = [Math.min(start.x, end.x), Math.max(start.x, end.x)];
+          const [y0, y1] = [Math.min(start.y, end.y), Math.max(start.y, end.y)];
+          const inside = this.visibleNodeIds().filter((id) => {
+            const p = this.renderer.graphToViewport({ x: this.graph.getNodeAttribute(id, "x") as number, y: this.graph.getNodeAttribute(id, "y") as number });
+            return p.x >= x0 && p.x <= x1 && p.y >= y0 && p.y <= y1;
+          });
+          if (u.ctrlKey || u.metaKey) nodeSelection.add(inside);
+          else nodeSelection.selectAll(inside);
+        };
+        window.addEventListener("mousemove", move);
+        window.addEventListener("mouseup", up, true);
+      },
+      true,
+    );
   }
 
   private rebuildEdgeInfo(): void {
@@ -665,7 +832,7 @@ export class GraphEngine {
     return kinds.sort((a, b) => rank(a) - rank(b) || a.localeCompare(b));
   }
 
-  private openNodeMenu(node: string, x: number, y: number): void {
+  private openNodeMenu(node: string, x: number, y: number, scope?: readonly string[]): void {
     if (!this.nodeById.has(node)) return;
     // On a highlighted node the menu acts on the whole selection (even members
     // a search hides in the list); on any other it first becomes the selection.
@@ -700,6 +867,8 @@ export class GraphEngine {
         { label: t.graphMenuChoose, icon: icons.playlistAdd, onSelect: () => workingSet.add(targets) },
         { label: t.graphMenuKeepSelected, icon: icons.focus2, onSelect: () => workingSet.setTo(nodeSelection.members) },
         { label: t.graphMenuUnchoose, icon: icons.playlistX, onSelect: () => workingSet.remove(targets) },
+        { kind: "separator" },
+        ...this.selectionItems(scope),
         { kind: "separator" },
         { label: t.graphCopySelection, icon: icons.copy, note: "Ctrl+C", onSelect: () => this.ui.copy("selection") },
         { label: t.graphCopyChosen, icon: icons.copyCheck, disabled: workingSet.size === 0, onSelect: () => this.ui.copy("chosen") },
@@ -916,13 +1085,18 @@ export class GraphEngine {
       case "random":
         randomLayout(sub);
         break;
-      default: {
-        const kind = this.layout as "folder" | "namespace" | "container" | "community";
-        const groupOf = kind === "community"
-          ? communityGroups(sub)
-          : new Map(sub.nodes().map((n) => [n, groupKey(this.nodeById.get(n)!, kind)]));
-        applyGroupedLayout(sub, groupOf);
-      }
+      case "grouped":
+        applyGroupedLayout(
+          sub,
+          groupNodes(this.groupBy, sub, {
+            nodeOf: (id) => this.nodeById.get(id),
+            depth: this.groupDepth,
+            axis: this.groupAxis,
+            groups: this.groupData,
+            drawnKinds: filterStore.state.edgeKinds,
+          }),
+        );
+        break;
     }
     const targets: Record<string, { x: number; y: number }> = {};
     sub.forEachNode((node, attrs) => {
@@ -933,9 +1107,19 @@ export class GraphEngine {
   }
 }
 
-function fade(hex: string): string {
-  if (hex.startsWith("rgb")) return hex.replace("rgb(", "rgba(").replace(")", ", 0.15)");
-  const n = parseInt(hex.slice(1), 16);
-  const r = (n >> 16) & 255, g = (n >> 8) & 255, b = n & 255;
-  return `rgba(${r}, ${g}, ${b}, 0.15)`;
+/** The canvas's own background (graph.css `--canvas-bg`): dimming mixes toward it. */
+const CANVAS_BG: [number, number, number] = [0x1c, 0x1e, 0x22];
+
+/** A colour dimmed by mixing it into the canvas background — an opaque colour, since
+ * the WebGL nodes and edges drop alpha and an rgba would read as a light smear. */
+function fade(color: string, keep = 0.16): string {
+  let r: number, g: number, b: number;
+  const m = /^rgba?\(\s*(\d+)[,\s]+(\d+)[,\s]+(\d+)/.exec(color);
+  if (m) [r, g, b] = [Number(m[1]), Number(m[2]), Number(m[3])];
+  else {
+    const n = parseInt(color.slice(1), 16);
+    [r, g, b] = [(n >> 16) & 255, (n >> 8) & 255, n & 255];
+  }
+  const mix = (c: number, bg: number) => Math.round(bg + (c - bg) * keep);
+  return `rgb(${mix(r, CANVAS_BG[0])}, ${mix(g, CANVAS_BG[1])}, ${mix(b, CANVAS_BG[2])})`;
 }

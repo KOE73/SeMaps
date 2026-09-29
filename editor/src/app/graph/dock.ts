@@ -7,6 +7,8 @@ import { FiltersView, filterStore } from "./filters.js";
 import { GraphPanel } from "./panel.js";
 import { NodesView } from "./nodesView.js";
 import { ExtractorsView } from "./extractorsView.js";
+import { ViewPanel } from "./viewPanel.js";
+import { viewSettings } from "./viewSettings.js";
 
 /**
  * The graph mode's dock: the canvas in the middle and the legend, filters and
@@ -27,6 +29,7 @@ export const GRAPH_PANEL = {
   properties: "graph-properties",
   nodes: "graph-nodes",
   extractors: "graph-extractors",
+  view: "graph-view",
 } as const;
 
 // v2: the default moved to «Узлы» on the right and the other panels on the left.
@@ -46,7 +49,7 @@ export class GraphDock {
     centerId: GRAPH_PANEL.canvas,
     rightIds: [GRAPH_PANEL.nodes],
     groups: [
-      { ids: [GRAPH_PANEL.filters, GRAPH_PANEL.legend, GRAPH_PANEL.properties, GRAPH_PANEL.extractors], side: "left", width: 320 },
+      { ids: [GRAPH_PANEL.filters, GRAPH_PANEL.view, GRAPH_PANEL.legend, GRAPH_PANEL.properties, GRAPH_PANEL.extractors], side: "left", width: 320 },
       { ids: [GRAPH_PANEL.nodes], side: "right", width: 340 },
     ],
   });
@@ -80,6 +83,7 @@ export class GraphDock {
       [GRAPH_PANEL.properties]: el("div", { class: "graph-dock-pane" }, [panel.root]),
       [GRAPH_PANEL.nodes]: el("div", { class: "graph-dock-pane graph-dock-pane-fill" }, [nodes.root]),
       [GRAPH_PANEL.extractors]: el("div", { class: "graph-dock-pane" }, [extractors.root]),
+      [GRAPH_PANEL.view]: el("div", { class: "graph-dock-pane" }, [new ViewPanel(viewSettings).root]),
     };
 
     this.dockview = createDockview(container, {
@@ -94,6 +98,7 @@ export class GraphDock {
       [GRAPH_PANEL.properties, t.graphPanelTitle],
       [GRAPH_PANEL.nodes, t.graphPanelNodes],
       [GRAPH_PANEL.extractors, t.graphPanelExtractors],
+      [GRAPH_PANEL.view, t.graphPanelView],
     ];
     for (const [id, title] of titles) {
       this.panels.register({
@@ -160,6 +165,7 @@ export class GraphDock {
       minimumHeight: 80,
     });
     for (const [id, title] of [
+      [GRAPH_PANEL.view, t.graphPanelView],
       [GRAPH_PANEL.legend, t.graphLegend],
       [GRAPH_PANEL.properties, t.graphPanelTitle],
       [GRAPH_PANEL.extractors, t.graphPanelExtractors],

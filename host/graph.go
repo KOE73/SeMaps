@@ -158,6 +158,7 @@ func (g *graphService) remember(project string) {
 func (g *graphService) register(mux *http.ServeMux) {
 	mux.HandleFunc("GET /api/graph/{project}", g.guard(g.serve))
 	mux.HandleFunc("GET /api/graph/{project}/find", g.guard(g.serveFind))
+	mux.HandleFunc("GET /api/graph/{project}/groups", g.guard(g.serveGroups))
 	mux.HandleFunc("GET /api/graph-formats", g.serveFormats)
 }
 
@@ -459,6 +460,22 @@ func (g *graphService) serve(w http.ResponseWriter, r *http.Request) {
 // serveFind: GET /api/graph/{project}/find?q=&limit= — part 2's plain
 // substring search over names and ids, so a caller unsure of the exact
 // `around` spelling gets candidates instead of guessing.
+// serveGroups answers the graph mode's «группировать по»: containers' nesting and,
+// per axis, the zone of the project's views each entity sits in. Read-only.
+func (g *graphService) serveGroups(w http.ResponseWriter, r *http.Request) {
+	m, err := g.models.get(r.PathValue("project"))
+	if err != nil {
+		modelError(w, err)
+		return
+	}
+	data, err := m.Groups()
+	if err != nil {
+		modelError(w, err)
+		return
+	}
+	writeJSON(w, data)
+}
+
 func (g *graphService) serveFind(w http.ResponseWriter, r *http.Request) {
 	project := r.PathValue("project")
 	graph, _, err := g.build(project)

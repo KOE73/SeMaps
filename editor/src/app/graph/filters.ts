@@ -34,7 +34,7 @@ export type FilterGroup = "edgeKinds" | "symbolKinds" | "visibility" | "presence
 export const PRESENCE_VALUES = ["code", "model", "both"] as const;
 
 export const DEFAULT_EDGE_KINDS: readonly string[] = ["implements"];
-export const DEFAULT_SYMBOL_KINDS: readonly string[] = ["class", "enum"];
+export const DEFAULT_SYMBOL_KINDS: readonly string[] = ["class", "interface", "enum"];
 export const INHERITANCE_EDGE_KINDS: readonly string[] = ["implements", "extends"];
 export const INHERITANCE_DEPENDENCY_EDGE_KINDS: readonly string[] = ["implements", "extends", "holds"];
 export const CALLS_EDGE_KINDS: readonly string[] = ["calls", "constructs"];
@@ -46,6 +46,8 @@ export interface FilterAvailable {
   symbolKinds: string[];
   visibility: string[];
   containers: string[];
+  /** How many edges / nodes of each value the data has now (a value not there has none). */
+  counts: Record<FilterGroup, Record<string, number>>;
 }
 
 function distinct<T>(values: Iterable<T | undefined>): T[] {
@@ -73,7 +75,13 @@ function emptyState(): FilterState {
 }
 
 function emptyAvailable(): FilterAvailable {
-  return { edgeKinds: [], symbolKinds: [], visibility: [], containers: [] };
+  return { edgeKinds: [], symbolKinds: [], visibility: [], containers: [], counts: { edgeKinds: {}, symbolKinds: {}, visibility: {}, presence: {} } };
+}
+
+function tally(values: Iterable<string | undefined>): Record<string, number> {
+  const out: Record<string, number> = {};
+  for (const v of values) if (v !== undefined) out[v] = (out[v] ?? 0) + 1;
+  return out;
 }
 
 export class FilterStore {
@@ -95,12 +103,19 @@ export class FilterStore {
 
   /** Takes over what the data now offers, keeping earlier choices (a graph
    * re-created for the same project, a live diff). */
-  sync(nodes: readonly GraphNode[], edgeKinds: readonly string[]): void {
+  sync(nodes: readonly GraphNode[], edges: readonly { kind: string }[]): void {
+    const counts = {
+      edgeKinds: tally(edges.map((e) => e.kind)),
+      symbolKinds: tally(nodes.map(symbolKindOf)),
+      visibility: tally(nodes.map((n) => n.visibility)),
+      presence: tally(nodes.map((n) => n.presence)),
+    };
     const next: FilterAvailable = {
-      edgeKinds: distinct(edgeKinds),
+      edgeKinds: Object.keys(counts.edgeKinds),
       symbolKinds: distinct(nodes.map(symbolKindOf)),
       visibility: distinct(nodes.map((n) => n.visibility)),
       containers: distinct(nodes.flatMap((n) => n.containers ?? [])),
+      counts,
     };
     const merge = (selected: Set<string>, was: readonly string[], now: readonly string[], defaults?: readonly string[]) => {
       const before = new Set(was);
@@ -251,11 +266,22 @@ export class FiltersView {
             const on = s[group].has(v);
             const mark = el("span", { class: "graph-check-btn-mark" });
             mark.innerHTML = icons.check;
-            const btn = el("button", { class: `graph-check-btn${on ? " is-on" : ""}`, attrs: { "aria-pressed": String(on) } }, [
-              kindIconEl(KIND_GROUP[group], v),
-              el("span", { class: "graph-check-btn-label", text: labelOf(v) }),
-              on ? mark : null,
-            ]);
+            // How many the data has now; none: dimmed (still clickable) and said so.
+            const count = a.counts[group][v] ?? 0;
+            const btn = el(
+              "button",
+              {
+                class: `graph-check-btn${on ? " is-on" : ""}${count === 0 ? " is-empty" : ""}`,
+                title: count === 0 ? t.graphNotInData : undefined,
+                attrs: { "aria-pressed": String(on) },
+              },
+              [
+                kindIconEl(KIND_GROUP[group], v),
+                el("span", { class: "graph-check-btn-label", text: labelOf(v) }),
+                el("span", { class: "graph-check-btn-count", text: String(count) }),
+                on ? mark : null,
+              ],
+            );
             btn.addEventListener("click", () => this.store.set(group, v, !on));
             return btn;
           }),

@@ -80,6 +80,57 @@
   background: var(--canvas-bg, #1c1e22);
 }
 
+/* The «Вид» panel: lists of entries (the .graph-check-btn look of the filters), depth/axis inline. */
+/* Segmented buttons: «1 2 3» in the entry's own row, the current one filled. */
+.graph-seg {
+  display: inline-flex;
+  gap: 2px;
+  margin-left: auto;
+}
+
+.graph-seg-btn {
+  min-width: 18px;
+  padding: 0 5px;
+  line-height: 18px;
+  border: 1px solid var(--line);
+  border-radius: 5px;
+  background: transparent;
+  color: var(--muted);
+  font: inherit;
+  cursor: pointer;
+}
+
+.graph-seg-btn:hover {
+  background: var(--hover);
+}
+
+.graph-seg-btn.is-on {
+  background: var(--accent);
+  border-color: var(--accent);
+  color: var(--panel);
+  font-weight: 700;
+}
+
+/* A list that applies only in another layout: greyed, but a click still switches over. */
+.graph-filter-group.is-dim .graph-filter-list,
+.graph-filter-group.is-dim h3 {
+  opacity: 0.5;
+}
+
+.graph-view-hint {
+  font-size: var(--tp-small);
+  margin: 0 0 4px;
+}
+
+/* The rectangle of a Shift+drag box selection. */
+.graph-box {
+  position: absolute;
+  z-index: 3;
+  border: 1px dashed var(--accent);
+  background: var(--accent-soft);
+  pointer-events: none;
+}
+
 .graph-overlay {
   position: absolute;
   top: 8px;
@@ -689,6 +740,17 @@
 
 .graph-check-btn.is-on .ui-icon {
   color: var(--accent);
+}
+
+.graph-check-btn-count {
+  color: var(--muted);
+  font-size: var(--tp-small);
+  font-variant-numeric: tabular-nums;
+}
+
+/* A value the data does not have: dimmed, still clickable. */
+.graph-check-btn.is-empty {
+  opacity: 0.5;
 }
 
 .graph-check-btn-label {

@@ -314,7 +314,7 @@ export class RibbonRenderer {
       ),
     );
 
-    return el("div", { class: "ribbon-select-wrapper" }, [
+    return el("div", { class: `ribbon-select-wrapper${spec.dimmed?.(ctx) ? " is-dimmed" : ""}` }, [
       el("span", { class: "ribbon-select-label", text: spec.label }),
       selectEl,
     ]);

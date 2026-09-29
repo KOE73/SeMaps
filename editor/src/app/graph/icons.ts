@@ -19,6 +19,8 @@ export const graphIcons = {
   layoutBoard: icons.layoutBoard,
   listSearch: icons.listSearch,
   cpu: icons.cpu,
+  focus: icons.focus2,
+  view: icons.layoutBoard,
   route: icons.route,
   folder: icons.folder,
   compass: icons.compass,
