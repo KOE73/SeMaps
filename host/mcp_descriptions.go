@@ -95,6 +95,36 @@ const narrowTrapsHelp = "Traps found in practice: " +
 // existing for small models, whose standard level cost 3x the general tool
 // because the same explanation was repeated in each of its ten tools).
 func serverInstructions(toolsSet, level string) string {
+	return mentalModel(toolsSet == "narrow", level) + " " + serverInstructionsBody(toolsSet, level)
+}
+
+// mentalModel: what the system IS, said before anything about how to read
+// an answer — an agent that meets the tools cold must not have to guess
+// that this is three layers with one cycle between them. brief: two
+// sentences; standard and full: the paragraph. The `narrow` wording names
+// its own tools (there is no get_graph or graph_formats in that set).
+func mentalModel(narrow bool, level string) string {
+	if level == "brief" {
+		return "SeMaps has three layers: the registry (entities and relations, in git, changed only through these tools and `sync`), the live graph (facts read from the code, never stored), and views (a human's picture of part of the model). " +
+			"The graph follows the code by itself; the registry follows it only through `sync`."
+	}
+	common := "SeMaps has three layers. " +
+		"The registry (the model) holds entities `e_*` and the relations between them; it lives in git and changes only through these tools and `sync`. " +
+		"The live graph holds the facts an extractor reads from the code — types, methods, calls; it is never stored in git or in the registry. " +
+		"Views are a human's projection of part of the model: boxes with geometry, grouped in zones that follow an `axis`. " +
+		"When the code changes and the extractor runs, the live graph updates by itself; the registry changes only through `sync` — look with `sync_preview` first, confirm each rename with `confirm_rename`, and `discard` unsaved changes only when a human asked. " +
+		"An entity or relation is `present` (found in the code at the last sync) or `missing` (kept in the registry, ids are never deleted, but no longer found in the code); an entity may also be `planned`. "
+	if narrow {
+		return common + "Which tool answers which question: the structure of the code, who calls whom, all descendants → the `who_*`/`what_*` tools (`who_extends` with a `depth` up to 5 gives all descendants); " +
+			"the drawn architecture → `get_view` (a zone reference reads only its subtree); one entity's relations with their evidence → `get_relations`."
+	}
+	return common + "Which tool answers which question: the structure of the code, who calls whom, all descendants → `get_graph` with `around`, `follow` and `depth` " +
+		"(all descendants of a type = `follow` `extended-by` and `implemented-by` with `depth` `all`; `depth` is otherwise 1-5); " +
+		"the drawn architecture → `get_view` (a zone reference reads only its subtree); one entity's relations with their evidence → `get_relations`; " +
+		"the relation vocabulary, `holds.*` and status terms, and answer formats → `graph_formats`."
+}
+
+func serverInstructionsBody(toolsSet, level string) string {
 	brief := instructionsBrief["narrow"]
 	standard := instructionsStandard["narrow"]
 	if toolsSet != "narrow" {

@@ -10,9 +10,11 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"math"
 	"net/url"
 	"os"
 	"path/filepath"
+	"strconv"
 	"strings"
 
 	"github.com/modelcontextprotocol/go-sdk/mcp"
@@ -142,6 +144,8 @@ type placeIn struct {
 // getGraphIn: same parameters as GET /api/graph/{project} (host/graph.go),
 // plus `limit` so an agent never gets the whole graph by accident
 // (docs/plans/PLAN_20260928_host_graph-provider.md step 6).
+// getGraphIn: `Depth` is `any` because it is a number 1-5 OR the string "all",
+// which has no plain Go type; parseDepthValue is the whole check.
 type getGraphIn struct {
 	Project string `json:"project,omitempty"`
 	Level   string `json:"level,omitempty" jsonschema:"types (drop function/value/method nodes) or all; default types without around, all with around"`
@@ -151,7 +155,7 @@ type getGraphIn struct {
 	Kinds     string   `json:"kinds,omitempty" jsonschema:"whole-graph only (no around): comma list of edge kinds to keep; default: all"`
 	Around    string   `json:"around,omitempty" jsonschema:"a node id or a name (part 2: resolved by id, then name, case-insensitively as a last resort) — only its neighbourhood"`
 	Follow    []string `json:"follow,omitempty" jsonschema:"neighbourhood only: directed relation names to walk (call graph_formats for the vocabulary); default: every relation but containment"`
-	Depth     int      `json:"depth,omitempty" jsonschema:"with around: 1-5, default 1"`
+	Depth     any      `json:"depth,omitempty" jsonschema:"with around: a number 1-5 (default 1), or the string \"all\" to walk until no new node is reached — only when every relation in follow is an inheritance relation (extends, extended-by, implements, implemented-by)"`
 	Fanout    int      `json:"fanout,omitempty" jsonschema:"with around: at most this many neighbours per node per relation; 0 (default) = unlimited"`
 	Container string   `json:"container,omitempty" jsonschema:"a containers.json id: only nodes in it, or in a descendant of it"`
 	// Fields is a list, not a comma string, so null/absent (the default,
@@ -261,6 +265,8 @@ func (s *mcpServer) server() *mcp.Server {
 			"Nothing can be deleted; view geometry only with requestedByHuman when a human asked. " +
 			serverInstructions(settings.Tools, settings.Description),
 	})
+	// A call with arguments that do not fit says which parameters the tool takes (mcp_errors.go).
+	srv.AddReceivingMiddleware(explainArgumentErrors)
 	// Reading tools say so (readOnlyHint): a client may run them without asking,
 	// and the editor's sandbox asks before any other.
 	mcp.AddTool(srv, read("list_projects", "Projects of the workspace and their views."), s.listProjects)
@@ -358,6 +364,32 @@ func (s *mcpServer) rebuildGraphTools(srv *mcp.Server) func(mcpSettings) {
 // too"): it is get_graph itself, called with `around` set to the node name
 // and `follow` fixed to the tool's relations — the identical graph walk,
 // same defaults, same answer shape.
+// parseDepthValue reads get_graph's `depth`: absent or 0 is 1, a whole number
+// 1-5 (a JSON number, or the same in a string), or "all".
+func parseDepthValue(v any) (int, error) {
+	switch d := v.(type) {
+	case nil:
+		return 1, nil
+	case string:
+		return parseDepth(strings.TrimSpace(d))
+	case float64:
+		if d != math.Trunc(d) {
+			return 0, errors.New(`depth: not a whole number (1-5, or "all" along inheritance relations)`)
+		}
+		if d == 0 {
+			return 1, nil
+		}
+		return parseDepth(strconv.Itoa(int(d)))
+	case int:
+		if d == 0 {
+			return 1, nil
+		}
+		return parseDepth(strconv.Itoa(d))
+	default:
+		return 0, errors.New(`depth: a number 1-5, or "all" along inheritance relations`)
+	}
+}
+
 func (s *mcpServer) narrowWalk(ctx context.Context, req *mcp.CallToolRequest, in narrowIn, follow []string) (*mcp.CallToolResult, any, error) {
 	return s.getGraph(ctx, req, getGraphIn{Project: in.Project, Around: in.Name, Depth: in.Depth, Follow: follow})
 }
@@ -694,12 +726,12 @@ func (s *mcpServer) getGraph(_ context.Context, _ *mcp.CallToolRequest, in getGr
 		if err != nil {
 			return nil, nil, err
 		}
-		depth := in.Depth
-		if depth == 0 {
-			depth = 1
+		depth, err := parseDepthValue(in.Depth)
+		if err == nil {
+			err = checkWalkAll(depth, follow, len(in.Follow) > 0)
 		}
-		if depth < 1 || depth > 5 {
-			return nil, nil, errors.New("depth: must be between 1 and 5")
+		if err != nil {
+			return nil, nil, err
 		}
 		preWalk := graph
 		if graph, fanoutNotes, err = core.Walk(graph, around, depth, follow, in.Fanout); err != nil {

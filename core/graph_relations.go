@@ -118,6 +118,26 @@ func ParseFollow(names []string) ([]Relation, error) {
 	return out, nil
 }
 
+// InheritanceRelationNames: the directed names that walk inheritance — the
+// only relations `depth: "all"` is allowed with.
+func InheritanceRelationNames() []string {
+	return []string{"extends", "extended-by", "implements", "implemented-by"}
+}
+
+// AllInheritance reports whether every relation of `follow` is an inheritance
+// relation (and there is at least one).
+func AllInheritance(follow []Relation) bool {
+	if len(follow) == 0 {
+		return false
+	}
+	for _, r := range follow {
+		if r.Kind != "extends" && r.Kind != "implements" {
+			return false
+		}
+	}
+	return true
+}
+
 // typeMatches: an edge counts for a relation whose TypeMatch is "" (any
 // Type of that Kind) or equal to the edge's Type, or a dotted prefix of it
 // (holds.many matches holds.many and holds.many.ro).

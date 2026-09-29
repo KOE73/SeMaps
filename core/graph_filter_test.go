@@ -122,6 +122,40 @@ func TestWalkDepth(t *testing.T) {
 	}
 }
 
+// A 7-level inheritance chain (n0 <- n1 <- ... <- n7, an edge from child to base):
+// WalkAll reaches every level, a cycle does not loop, and only inheritance
+// relations count as AllInheritance.
+func TestWalkAllAlongInheritance(t *testing.T) {
+	g := &Graph{}
+	for i := 0; i <= 7; i++ {
+		g.Nodes = append(g.Nodes, GraphNode{ID: fmt.Sprintf("n%d", i)})
+		if i > 0 {
+			g.Edges = append(g.Edges, GraphEdge{From: fmt.Sprintf("n%d", i), To: fmt.Sprintf("n%d", i-1), Kind: "extends", Type: "extends"})
+		}
+	}
+	follow := mustFollow(t, "extended-by", "implemented-by")
+	if !AllInheritance(follow) {
+		t.Fatal("extended-by and implemented-by are inheritance relations")
+	}
+	if AllInheritance(mustFollow(t, "extended-by", "calls")) || AllInheritance(nil) {
+		t.Fatal("a call relation, or no relation at all, is not all-inheritance")
+	}
+	out, _, err := Walk(g, "n0", WalkAll, follow, 0)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(out.Nodes) != 8 {
+		t.Fatalf("all levels of a 7-level chain: want 8 nodes, got %d", len(out.Nodes))
+	}
+	if five, _, _ := Walk(g, "n0", 5, follow, 0); len(five.Nodes) != 6 {
+		t.Fatalf("depth 5 stops at level 5: want 6 nodes, got %d", len(five.Nodes))
+	}
+	g.Edges = append(g.Edges, GraphEdge{From: "n0", To: "n7", Kind: "extends", Type: "extends"}) // a cycle
+	if cyc, _, _ := Walk(g, "n0", WalkAll, follow, 0); len(cyc.Nodes) != 8 {
+		t.Fatalf("a cycle must end the walk, got %d nodes", len(cyc.Nodes))
+	}
+}
+
 func TestWalkUnknownNode(t *testing.T) {
 	if _, _, err := Walk(filterFixtureGraph(), "nope", 1, mustFollow(t, "uses"), 0); err == nil {
 		t.Fatal("expected an error for an unknown node id")

@@ -72,6 +72,11 @@ type FanoutNote struct {
 	Left     int
 }
 
+// WalkAll as Walk's `depth`: walk until no new node is reached. Only for
+// relations that are all inheritance (AllInheritance): a walk with no depth
+// along calls or holds would be the whole graph.
+const WalkAll = -1
+
 // Walk is the neighbourhood of `around`, following exactly the directed
 // relations named in `follow` (part 1 of the agent-answers rework: no more
 // undirected `kinds`/named `set` for this case — see core/graph_relations.go).
@@ -129,7 +134,9 @@ func Walk(g *Graph, around string, depth int, follow []Relation, fanout int) (*G
 	step := map[string]int{around: 0}
 	frontier := []string{around}
 	var notes []FanoutNote
-	for d := 0; d < depth; d++ {
+	// depth == WalkAll: until no new node is reached (a node is never visited
+	// twice, so a cycle ends the walk too).
+	for d := 0; (depth == WalkAll || d < depth) && len(frontier) > 0; d++ {
 		var next []string
 		for _, id := range frontier {
 			cands := neighboursOf(id)

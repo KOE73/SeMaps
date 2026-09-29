@@ -168,6 +168,28 @@ func (g *graphService) serveFormats(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, graphFormatsPayload())
 }
 
+// graphTerms: the words of the registry's relation types and statuses that
+// `relations` (the directed names `follow` takes) does not explain, one line
+// each — what an agent meets in `get_relations`, `get_relation_types` and a
+// node's `presence`. The server's Instructions point here instead of
+// repeating them (docs/EXTRACTOR.md §5 and CONTRACT.md §4/§5 are the
+// sources).
+var graphTerms = []map[string]string{
+	{"name": "holds.one", "description": "a public field/property/parameter holds exactly one value of the target type"},
+	{"name": "holds.optional", "description": "holds zero or one value of the target type (nullable)"},
+	{"name": "holds.many", "description": "holds a collection of the target type (list, array, set)"},
+	{"name": "holds.many.ro", "description": "a collection of the target type that cannot be changed through that member (read-only)"},
+	{"name": "holds.keyed", "description": "holds a dictionary whose key or value is the target type; `.ro`: read-only"},
+	{"name": "holds.*.internal", "description": "the same, through a member that is not public"},
+	{"name": "injects", "description": "a constructor parameter takes the target type (dependency injection)"},
+	{"name": "uses", "description": "a signature (parameter, return value) or type alias mentions the target type, other than by holding or injecting it"},
+	{"name": "references", "description": "an old generic relation type; sync does not produce it and marks such a relation `missing` — the code-derived types are holds.*, uses, injects"},
+	{"name": "present", "description": "status: the entity or relation was found in the code at the last sync"},
+	{"name": "missing", "description": "status: still in the registry (nothing is deleted, the id stays valid) but no longer found in the code; get_graph leaves it out unless `missing` is asked for"},
+	{"name": "planned", "description": "status of an entity: declared before its code exists"},
+	{"name": "code / model / both", "description": "a graph node's presence: only in the code facts / only in the registry / in both"},
+}
+
 // graphFormatsPayload is shared by the HTTP list and the MCP graph_formats
 // tool, so the two never drift apart: formats (with a text format's own
 // template), the relation vocabulary `follow` accepts, the macro dictionary
@@ -191,6 +213,7 @@ func graphFormatsPayload() map[string]any {
 	return map[string]any{
 		"formats":       formats,
 		"relations":     relations,
+		"terms":         graphTerms,
 		"defaultFollow": core.DefaultFollow,
 		"template":      templateRulesPayload(),
 		"defaults": map[string]any{
@@ -382,6 +405,9 @@ func (g *graphService) serve(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 		depth, err := parseDepth(r.URL.Query().Get("depth"))
+		if err == nil {
+			err = checkWalkAll(depth, follow, len(splitCSV(r.URL.Query().Get("follow"))) > 0)
+		}
 		if err != nil {
 			http.Error(w, err.Error(), http.StatusBadRequest)
 			return
@@ -587,19 +613,42 @@ func fieldSetParam(present bool, names []string) (map[string]bool, error) {
 	return core.ParseFields(names)
 }
 
-// parseDepth: default 1, must be in 1..5 (docs/plans/PLAN_20260928_host_graph-provider.md step 4).
+// parseDepth: default 1, must be in 1..5 (docs/plans/PLAN_20260928_host_graph-provider.md step 4),
+// or "all" (core.WalkAll) — checked against `follow` by checkWalkAll.
 func parseDepth(s string) (int, error) {
 	if s == "" {
 		return 1, nil
 	}
+	if strings.EqualFold(s, "all") {
+		return core.WalkAll, nil
+	}
 	d, err := strconv.Atoi(s)
 	if err != nil {
-		return 0, errors.New("depth: not a number")
+		return 0, errors.New(`depth: not a number (1-5, or "all" along inheritance relations)`)
 	}
 	if d <= 0 || d > 5 {
-		return 0, errors.New("depth: must be between 1 and 5")
+		return 0, errors.New(`depth: must be between 1 and 5, or "all" along inheritance relations`)
 	}
 	return d, nil
+}
+
+// checkWalkAll: `depth: "all"` walks until nothing new is reached, which is
+// only a bounded question along inheritance; with any other relation in
+// `follow` (or with `follow` absent, whose default is everything but
+// containment) it is refused, saying which relations it takes.
+func checkWalkAll(depth int, follow []core.Relation, followGiven bool) error {
+	if depth != core.WalkAll || core.AllInheritance(follow) {
+		return nil
+	}
+	got := "follow is absent (the default is every relation but containment)"
+	if followGiven {
+		names := make([]string, len(follow))
+		for i, r := range follow {
+			names[i] = r.Name
+		}
+		got = "follow has " + strings.Join(names, ", ")
+	}
+	return fmt.Errorf(`depth "all" needs every relation in follow to be an inheritance relation (%s); %s — give a number 1-5, or narrow follow`, strings.Join(core.InheritanceRelationNames(), ", "), got)
 }
 
 // graphStats: hiddenMissing is how many nodes/edges FilterMissing left out
