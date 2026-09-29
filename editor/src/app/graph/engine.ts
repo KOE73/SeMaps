@@ -5,7 +5,7 @@ import { animateNodes } from "sigma/utils";
 import { el } from "../../util/dom.js";
 import { fmt, t } from "../../shell/strings.js";
 import type { GraphEdge, GraphNode, GraphResponse } from "./types.js";
-import { type ColorBy, PRESENCE_CODE_COLOR, MODEL_MARKER, baseColor, edgeRenderColor, edgeSize, legendFor, lighten, nodeColor, resetPalette } from "./colors.js";
+import { type ColorBy, PRESENCE_CODE_COLOR, MODEL_MARKER, baseColor, colorAttribute, setGroupColorSource, edgeRenderColor, edgeSize, legendFor, lighten, nodeColor, resetPalette } from "./colors.js";
 import { createNodeBorderProgram } from "@sigma/node-border";
 import type { NodeLabelDrawingFunction } from "sigma/rendering";
 import {
@@ -21,8 +21,8 @@ import {
   seedCircle,
 } from "./layouts.js";
 import { filterStore, nodeVisible } from "./filters.js";
-import { containerDepth, folderDepth, groupNodes, namespaceDepth } from "./grouping.js";
-import { type FocusMode, type GroupBy, type ViewState, viewSettings } from "./viewSettings.js";
+import { OUTSIDE_ZONES, containerDepth, folderDepth, groupNodes, namespaceDepth } from "./grouping.js";
+import { type FocusMode, type GroupBy, type LevelGroup, type ViewState, viewSettings } from "./viewSettings.js";
 import type { GroupsResponse } from "./types.js";
 import { type GraphPanel, statsLine } from "./panel.js";
 import type { NodesView } from "./nodesView.js";
@@ -42,6 +42,9 @@ export interface GraphUi {
   /** Copy the highlighted nodes, or the chosen ones, to the clipboard. */
   copy(which: "selection" | "chosen"): void;
 }
+
+/** How many groups the legend lists when colouring by group; the rest is «ещё N». */
+const LEGEND_GROUP_CAP = 12;
 
 const edgeKey = (from: string, to: string, kind: string): string => `${from}\u0000${to}\u0000${kind}`;
 
@@ -107,7 +110,7 @@ export class GraphEngine {
   private readonly ui: GraphUi;
   private focusMode: FocusMode = "selection";
   private groupBy: GroupBy = "namespace";
-  private groupDepth = 1;
+  private groupDepths: Record<LevelGroup, number> = { namespace: 1, folder: 1, containers: 1 };
   private groupAxis = "";
   private groupData: GroupsResponse | undefined;
   private adjacency: Map<string, Set<string>> | undefined;
@@ -132,7 +135,7 @@ export class GraphEngine {
     const view = viewSettings.state;
     this.focusMode = view.focus;
     this.groupBy = view.groupBy;
-    this.groupDepth = view.groupDepth;
+    this.groupDepths = { ...view.groupDepths };
     this.groupAxis = view.groupAxis;
     this.ui = ui;
     this.panel = ui.panel;
@@ -245,6 +248,7 @@ export class GraphEngine {
     // The selection drives Properties and the highlight, wherever it changed.
     this.unsubscribeSelection = nodeSelection.onChange(() => this.onSelectionChanged());
     this.onSelectionChanged();
+    this.recolorGroups();
     this.onFiltersChanged();
     this.publishViewInfo();
 
@@ -329,6 +333,7 @@ export class GraphEngine {
 
   private onFiltersChanged(): void {
     this.adjacency = undefined; // what is drawn changed: so does who is a neighbour
+    if (this.colorBy === "group" && this.groupBy === "components") this.recolorGroups(); // components follow the drawn edges
     this.recomputeFocus();
     this.refreshLegend();
     this.refreshStats();
@@ -355,6 +360,7 @@ export class GraphEngine {
 
   setColorBy(colorBy: ColorBy): void {
     this.colorBy = colorBy;
+    this.recolorGroups();
     resetPalette();
     this.refreshLegend();
     this.renderer?.refresh();
@@ -367,22 +373,50 @@ export class GraphEngine {
    * of the `grouped` layout, lays the nodes out again.
    */
   applyView(s: Readonly<ViewState>): void {
-    if (s.colorBy !== this.colorBy) this.setColorBy(s.colorBy);
     if (s.focus !== this.focusMode) this.setFocusMode(s.focus);
-    const relayout =
-      s.layout !== this.layout || (s.layout === "grouped" && (s.groupBy !== this.groupBy || s.groupDepth !== this.groupDepth || s.groupAxis !== this.groupAxis));
+    const groupingChanged = s.groupBy !== this.groupBy || s.groupDepths[s.groupBy as LevelGroup] !== this.groupDepths[this.groupBy as LevelGroup] || s.groupAxis !== this.groupAxis;
+    const relayout = s.layout !== this.layout || (s.layout === "grouped" && groupingChanged);
     this.layout = s.layout;
     this.groupBy = s.groupBy;
-    this.groupDepth = s.groupDepth;
+    this.groupDepths = { ...s.groupDepths };
     this.groupAxis = s.groupAxis;
+    // Colour by group follows the grouping (and is recomputed when either changes).
+    if (s.colorBy !== this.colorBy) this.setColorBy(s.colorBy);
+    else if (s.colorBy === "group" && groupingChanged) this.recolor();
     if (relayout && this.booted) this.applyLayout();
+  }
+
+  /** The group of every node, by the current «Группировать по» — the keys the grouped layout uses. */
+  private recolorGroups(): void {
+    if (this.colorBy !== "group") return;
+    const map = groupNodes(this.groupBy, this.graph, {
+      nodeOf: (id) => this.nodeById.get(id),
+      depth: this.groupDepths[this.groupBy as LevelGroup] ?? 1,
+      axis: this.groupAxis,
+      groups: this.groupData,
+      drawnKinds: filterStore.state.edgeKinds,
+    });
+    setGroupColorSource((n) => {
+      const key = map.get(n.id);
+      return key === undefined || key === "" ? "—" : key === OUTSIDE_ZONES ? t.graphGroupOutside : key;
+    });
+    resetPalette();
+  }
+
+  private recolor(): void {
+    this.recolorGroups();
+    this.refreshLegend();
+    this.renderer?.refresh();
+    if (this.booted) this.ui.nodes.refresh();
   }
 
   /** The containers' nesting and the zones per axis (`/groups`), which «группировать по» needs. */
   setGroupData(groups: GroupsResponse | undefined): void {
     this.groupData = groups;
     this.publishViewInfo();
-    if (this.booted && this.layout === "grouped" && (this.groupBy === "containers" || this.groupBy === "axis")) this.applyLayout();
+    const usesGroups = this.groupBy === "containers" || this.groupBy === "axis";
+    if (this.booted && this.colorBy === "group" && usesGroups) this.recolor();
+    if (this.booted && this.layout === "grouped" && usesGroups) this.applyLayout();
   }
 
   /** What the panel's inline controls may offer: depths the data has, the axes the project declares. */
@@ -488,6 +522,7 @@ export class GraphEngine {
 
     this.data = next;
     this.publishViewInfo();
+    this.recolorGroups();
 
     if (this.selected && removedNodeIds.includes(this.selected)) {
       this.selected = undefined;
@@ -664,12 +699,21 @@ export class GraphEngine {
 
   private refreshLegend(): void {
     const shown = this.data.nodes.filter((n) => this.isShown(n));
-    const entries = legendFor(shown, this.colorBy);
+    let entries = legendFor(shown, this.colorBy);
+    let more = 0;
+    if (this.colorBy === "group") {
+      // Groups can be hundreds: the biggest ones, then «ещё N».
+      const size = new Map<string, number>();
+      for (const n of shown) size.set(colorAttribute(n, "group"), (size.get(colorAttribute(n, "group")) ?? 0) + 1);
+      entries = entries.sort((a, b) => (size.get(b.label) ?? 0) - (size.get(a.label) ?? 0));
+      more = Math.max(0, entries.length - LEGEND_GROUP_CAP);
+      entries = entries.slice(0, LEGEND_GROUP_CAP);
+    }
     this.legendEl.replaceChildren(
       el(
         "div",
         { class: "graph-legend-list" },
-        entries.map((it) =>
+        [...entries.map((it) =>
           el("div", { class: "graph-legend-item" }, [
             el("span", { class: "graph-swatch", attrs: { style: `background:${it.swatch}` } }),
             // The colour says which group; the icon says which kind — the same icon as everywhere.
@@ -677,6 +721,7 @@ export class GraphEngine {
             it.label,
           ]),
         ),
+        ...(more > 0 ? [el("div", { class: "graph-legend-item tool-muted", text: fmt(t.graphLegendMore, { n: String(more) }) })] : [])],
       ),
       el("div", { class: "graph-legend-list" }, [
         el("div", { class: "graph-legend-item" }, [el("span", { class: "graph-swatch", attrs: { style: `background:${PRESENCE_CODE_COLOR}` } }), kindIconEl("presence", "code"), t.graphPresenceCode]),
@@ -1090,7 +1135,7 @@ export class GraphEngine {
           sub,
           groupNodes(this.groupBy, sub, {
             nodeOf: (id) => this.nodeById.get(id),
-            depth: this.groupDepth,
+            depth: this.groupDepths[this.groupBy as LevelGroup] ?? 1,
             axis: this.groupAxis,
             groups: this.groupData,
             drawnKinds: filterStore.state.edgeKinds,

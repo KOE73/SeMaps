@@ -15,9 +15,8 @@ export interface ViewOption<T extends string> {
 /** The entries of «Цвет по», «Раскладка», «Группировать по» and «Подсветка»: the ribbon's selects and the «Вид» panel list the same ones. */
 export const COLOR_OPTIONS: readonly ViewOption<ColorBy>[] = [
   { value: "kind", label: t.graphColorKind, icon: kindIcon("symbol", "class") },
-  { value: "container", label: t.graphColorContainer, icon: icons.boxMultiple },
-  { value: "namespace", label: t.graphColorNamespace, icon: icons.brackets },
   { value: "presence", label: t.graphColorPresence, icon: icons.boxModel },
+  { value: "group", label: t.graphColorGroup, icon: icons.category },
 ];
 
 export const LAYOUT_OPTIONS: readonly ViewOption<LayoutKind>[] = [

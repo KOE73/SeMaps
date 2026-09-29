@@ -199,8 +199,10 @@ export function setGraphFocus(v: string): void {
 }
 
 export function setGraphGroupBy(v: string): void {
-  // Grouping only means something in the «группами» layout: choosing one switches to it.
-  if (GROUP_BYS.includes(v as never)) viewSettings.set({ groupBy: v as never, layout: "grouped" });
+  // Grouping means something in the «группами» layout and in the colour «по группе»; under neither, choosing one switches the layout over.
+  if (!GROUP_BYS.includes(v as never)) return;
+  const { layout, colorBy } = viewSettings.state;
+  viewSettings.set({ groupBy: v as never, ...(layout !== "grouped" && colorBy !== "group" ? { layout: "grouped" as const } : {}) });
 }
 
 export function restartGraphLayout(): void {

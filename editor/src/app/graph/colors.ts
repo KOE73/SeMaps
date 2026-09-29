@@ -11,7 +11,15 @@ import type { GraphEdge, GraphNode } from "./types.js";
  * label marker stands in for it (said in the report).
  */
 
-export type ColorBy = "kind" | "container" | "namespace" | "presence";
+/** `group` colours by the current «Группировать по» (the same group keys the grouped layout uses). */
+export type ColorBy = "kind" | "presence" | "group";
+
+/** node -> group label, set by the engine while colouring by group. */
+let groupOf: (n: GraphNode) => string = () => "—";
+
+export function setGroupColorSource(fn: (n: GraphNode) => string): void {
+  groupOf = fn;
+}
 
 export const PRESENCE_CODE_COLOR = "#8a8f98";
 export const MODEL_MARKER = "◇ ";
@@ -39,10 +47,8 @@ export function resetPalette(): void {
 /** The attribute value a node is coloured by, before presence is applied. */
 export function colorAttribute(n: GraphNode, by: ColorBy): string {
   switch (by) {
-    case "container":
-      return n.containers?.[0] ?? "—";
-    case "namespace":
-      return n.namespace ?? "—";
+    case "group":
+      return groupOf(n);
     case "presence":
       return n.presence as string;
     case "kind":

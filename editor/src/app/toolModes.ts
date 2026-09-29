@@ -222,8 +222,8 @@ export function addToolModes(workbench: Workbench): void {
         label: t.graphGroupBy,
         options: GROUP_OPTIONS.map(({ value, label }) => ({ value, label })),
         getValue: () => graphGroupBy(),
-        // Grouping shapes only the «группами» layout: greyed under any other, and choosing one switches to it.
-        dimmed: () => graphLayout() !== "grouped",
+        // Grouping shapes the «группами» layout and the colour «по группе»: greyed under neither, and choosing one switches the layout over.
+        dimmed: () => graphLayout() !== "grouped" && graphColorBy() !== "group",
       },
       { type: "button", command: "tools.graph.layout.restart", size: "large", showLabel: false },
     ] },

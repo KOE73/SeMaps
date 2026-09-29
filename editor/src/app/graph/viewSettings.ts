@@ -7,7 +7,11 @@ export type FocusMode = "dim" | "selection" | "soft" | "off";
 /** What the `grouped` layout groups by (`grouping.ts`). */
 export type GroupBy = "assembly" | "namespace" | "folder" | "containers" | "axis" | "community" | "inheritance" | "components";
 
-export const COLOR_BYS: readonly ColorBy[] = ["kind", "container", "namespace", "presence"];
+/** The groupings that have levels (namespace/folder segments, container nesting): each keeps its own. */
+export type LevelGroup = "namespace" | "folder" | "containers";
+export const LEVEL_GROUPS: readonly LevelGroup[] = ["namespace", "folder", "containers"];
+
+export const COLOR_BYS: readonly ColorBy[] = ["kind", "presence", "group"];
 export const LAYOUTS: readonly LayoutKind[] = ["force", "grouped", "hierarchy", "radial", "circlepack", "circular", "random"];
 export const GROUP_BYS: readonly GroupBy[] = ["assembly", "namespace", "folder", "containers", "axis", "community", "inheritance", "components"];
 export const FOCUS_MODES: readonly FocusMode[] = ["dim", "selection", "soft", "off"];
@@ -16,8 +20,8 @@ export interface ViewState {
   colorBy: ColorBy;
   layout: LayoutKind;
   groupBy: GroupBy;
-  /** Namespace/folder segments, or container nesting level, that count as one group (1 = coarsest). */
-  groupDepth: number;
+  /** Per grouping: the namespace/folder segments, or container nesting level, that make one group (1 = coarsest). */
+  groupDepths: Record<LevelGroup, number>;
   /** The axis (`axis_*`) `groupBy: "axis"` reads; "" = the first the project has. */
   groupAxis: string;
   focus: FocusMode;
@@ -33,7 +37,7 @@ export interface ViewInfo {
 
 const KEY = "semaps:graph-view";
 
-const DEFAULTS: ViewState = { colorBy: "kind", layout: "force", groupBy: "namespace", groupDepth: 1, groupAxis: "", focus: "selection" };
+const DEFAULTS: ViewState = { colorBy: "kind", layout: "force", groupBy: "namespace", groupDepths: { namespace: 1, folder: 1, containers: 1 }, groupAxis: "", focus: "selection" };
 
 function read(): ViewState {
   try {
@@ -42,7 +46,12 @@ function read(): ViewState {
       colorBy: COLOR_BYS.includes(raw.colorBy as ColorBy) ? (raw.colorBy as ColorBy) : DEFAULTS.colorBy,
       layout: LAYOUTS.includes(raw.layout as LayoutKind) ? (raw.layout as LayoutKind) : DEFAULTS.layout,
       groupBy: GROUP_BYS.includes(raw.groupBy as GroupBy) ? (raw.groupBy as GroupBy) : DEFAULTS.groupBy,
-      groupDepth: Number.isInteger(raw.groupDepth) && (raw.groupDepth as number) >= 1 ? (raw.groupDepth as number) : DEFAULTS.groupDepth,
+      groupDepths: Object.fromEntries(
+        LEVEL_GROUPS.map((g) => {
+          const v = raw.groupDepths?.[g];
+          return [g, Number.isInteger(v) && (v as number) >= 1 ? (v as number) : 1];
+        }),
+      ) as Record<LevelGroup, number>,
       groupAxis: typeof raw.groupAxis === "string" ? raw.groupAxis : DEFAULTS.groupAxis,
       focus: FOCUS_MODES.includes(raw.focus as FocusMode) ? (raw.focus as FocusMode) : DEFAULTS.focus,
     };

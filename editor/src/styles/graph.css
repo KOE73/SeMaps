@@ -104,6 +104,12 @@
   background: var(--hover);
 }
 
+/* The level an unselected grouping remembers: an outline, not a fill. */
+.graph-seg-btn.is-mem {
+  border-color: var(--accent);
+  color: var(--accent);
+}
+
 .graph-seg-btn.is-on {
   background: var(--accent);
   border-color: var(--accent);
