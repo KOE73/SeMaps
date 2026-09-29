@@ -102,7 +102,7 @@ rather than guessing the grammar.
 To point an agent at an object of a view, copy its reference in the editor («🔗» in Properties, or
 «Копировать ссылку» in the block/zone menu): `v_ops#z_undistort`. A request that names the
 reference — «сделай остальные зоны в `v_ops#z_transform` как `v_ops#z_undistort`» — is what
-`arrange_like` and the other view tools work from ([LAYOUT.md](LAYOUT.md), tools in API.md §6).
+the view tools work from ([LAYOUT.md](LAYOUT.md), tools in API.md §6).
 Save before such a task, so that what the agent changes is only what it was asked to change.
 
 The agent reports each changed object and a link to the relevant view. The editor marks unsaved

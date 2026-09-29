@@ -41,26 +41,16 @@ is one batch: it applies whole or not at all. Parameters and answers are in API.
 | a new zone | `add_zone` |
 | a zone as tight as its content, ancestors grown | `fit_zone` |
 | line elements up on the first | `align_elements` |
-| make zones like an example | `arrange_like` |
 
-Everything is snapped to the grid 10. **Do the small steps for a small change and `arrange_like`
-for "do the rest the same way".** It carries from a reference zone to each target the offset of every
-node in its zone, node sizes, `template`, `styleId`, the zone size, style and fold. Nodes are paired
-by their part in the inheritance (the base of a family that the others extend) and then by the words
-of their names that tell a variant from the family (`fp16`, `u8`, `nhwc`); what has no pair goes to a
-free row under the layout and is reported.
+Everything is snapped to the grid 10. There is no tool that lays zones out "like another one": which
+node corresponds to which is the agent's judgement, and the tools give it eyes (`get_view`) and precise
+hands (the steps above). For "do the rest the same way":
 
-The order of work for "make the other zones like this one":
-
-1. `get_view` on the parent zone — see the zones and their nodes;
-2. `arrange_like` with `dryRun: true` — the pairs, the nodes without a pair, what would move;
-3. show the person that plan, and only then run it without `dryRun`;
+1. `get_view` on the reference and on the target zones — see the zones, their nodes and rectangles;
+2. decide which node stands for which, and work out the moves and sizes yourself;
+3. say the plan to the person, then apply it in steps (`move_elements`, `resize_elements`, `set_zone`,
+   `fit_zone`), looking at `get_view` after each;
 4. answer «сделал, не сохранено — проверьте» with the link from the tool.
-
-Example, from a live project: a zone holds seven sub-zones (Undistort, Colour, Perspective, Crop,
-Resize, PadResize, Rotate90), each with the family base on the left and heirs on the right. The person
-laid out one by hand; «сделай остальные в `v_ops#z_transform` как `v_ops#z_tr_undistort`» is one
-`arrange_like` with `reference: "v_ops#z_tr_undistort"`, `parent: "v_ops#z_transform"`.
 
 ## Coordinates
 

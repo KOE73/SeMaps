@@ -145,7 +145,7 @@ const ru = {
     "«Опиши все сборки проекта одной строкой каждую, на русском и английском»",
     "«Я переименовал поле — сверь карту и подтверди переименование»",
     "«Покажи на виде Операции связи injects для VmController»",
-    "«Сделай зоны в v_ops#z_transform как v_ops#z_tr_undistort» (ссылку копирует кнопка ссылки в свойствах или меню блока)",
+    "«Сдвинь зону v_ops#z_transform вправо на 200» (ссылку копирует кнопка ссылки в свойствах или меню блока)",
   ],
   // graph
   navGraph: "Граф",
@@ -462,7 +462,7 @@ const en: Strings = {
     "“Describe every assembly of the project in one line, in Russian and English”",
     "“I renamed a field — sync the map and confirm the rename”",
     "“Show the injects relations of VmController on the Operations view”",
-    "“Lay out the zones in v_ops#z_transform like v_ops#z_tr_undistort” (the link is copied by the “link button” in Properties or the block menu)",
+    "“Move the zone v_ops#z_transform 200 to the right” (the link is copied by the “link button” in Properties or the block menu)",
   ],
   // graph
   navGraph: "Graph",
