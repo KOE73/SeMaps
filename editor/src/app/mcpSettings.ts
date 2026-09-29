@@ -20,9 +20,9 @@ type DescLevel = McpStatus["mcpDescription"];
 export function mcpSettingsSection(st: McpStatus, setup: Setup, formats: GraphFormats, onSaved: () => void): HTMLElement {
   const savedTools = st.mcpTools;
   const savedDescription = st.mcpDescription;
-  const savedFormat = setup.mcp.Format;
-  const savedListCap = setup.mcp.ListCap;
-  const savedLimit = setup.mcp.Limit;
+  const savedFormat = setup.mcp.format;
+  const savedListCap = setup.mcp.listCap;
+  const savedLimit = setup.mcp.limit;
 
   let curTools: ToolSet = savedTools;
   let curDescription: DescLevel = savedDescription;

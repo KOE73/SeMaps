@@ -41,11 +41,11 @@ type project struct {
 // mcpSettings is the `mcp:` section of a .semaps file (PLAN_20260928-7 step
 // 1): every key optional, filled in with its default by loadProject/readMCPSettings.
 type mcpSettings struct {
-	Tools       string `yaml:"tools,omitempty"`       // one | narrow
-	Description string `yaml:"description,omitempty"` // brief | standard | full
-	Format      string `yaml:"format,omitempty"`      // a registered graph format name
-	ListCap     int    `yaml:"list_cap,omitempty"`    // >= 1
-	Limit       int    `yaml:"limit,omitempty"`       // >= 1
+	Tools       string `yaml:"tools,omitempty" json:"tools"`             // one | narrow
+	Description string `yaml:"description,omitempty" json:"description"` // brief | standard | full
+	Format      string `yaml:"format,omitempty" json:"format"`           // a registered graph format name
+	ListCap     int    `yaml:"list_cap,omitempty" json:"listCap"`        // >= 1
+	Limit       int    `yaml:"limit,omitempty" json:"limit"`             // >= 1
 }
 
 // Defaults of the `mcp:` section (PLAN_20260928-7 step 1).

@@ -60,17 +60,14 @@ export interface ExtractorView {
 
 /**
  * The `mcp` section of the .semaps file (docs/API.md §3): shapes the MCP
- * tools an agent gets. The host answers this with Go's own capitalised field
- * names (not camelCase, despite docs/API.md) — read through these keys as
- * they really come back; `PUT /api/setup` still takes camelCase (tested and
- * confirmed against the running host).
+ * tools an agent gets.
  */
 export interface McpSettings {
-  Tools: "one" | "narrow";
-  Description: "brief" | "standard" | "full";
-  Format: string;
-  ListCap: number;
-  Limit: number;
+  tools: "one" | "narrow";
+  description: "brief" | "standard" | "full";
+  format: string;
+  listCap: number;
+  limit: number;
 }
 
 export interface Setup {

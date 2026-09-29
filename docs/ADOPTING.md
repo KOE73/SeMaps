@@ -36,8 +36,9 @@ better with `mcp.tools: narrow` — one tool per question shape (`who_calls`, `w
 each taking only a node name and depth, so there is nothing to get wrong; when context is tight
 (a long task, or a model with a small window), drop to `mcp.description: brief` regardless of the
 tool set — one or two sentences and an example per tool instead of the worked examples and trap
-list `standard` carries. The editor's MCP settings page shows the exact text and size (bytes and
-an estimated token count) of all six combinations before you choose.
+list `standard` carries. In the editor it is the section «Настройки для агента» of the MCP tab:
+it shows the exact text and size (bytes and an estimated token count) of all six combinations
+before you choose, and saves the choice into the `.semaps` file.
 
 **`get_graph` vs `get_relations`.** Both read structure, but from different sources
 (ADR_20260928_host_live-code-graph.md): `get_relations` answers "what the registry says" — the

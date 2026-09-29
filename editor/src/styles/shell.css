@@ -390,7 +390,11 @@
   cursor: pointer;
 }
 
+/* The tool pages stretch their inputs; a radio button keeps its own size,
+   or its text is pushed to the middle of the row. */
 .mcp-set-option input {
+  flex: none;
+  width: auto;
   margin-top: 3px;
 }
 

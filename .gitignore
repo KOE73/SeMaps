@@ -6,4 +6,5 @@ obj/
 .vs/
 .idea/
 .claude/settings.local.json
+.claude/worktrees/
 host/app/
