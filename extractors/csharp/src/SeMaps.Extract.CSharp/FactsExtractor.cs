@@ -404,6 +404,18 @@ internal sealed class FactsExtractor(string rootArgument, string rootFullPath, P
             .ThenBy(e => e.Kind, StringComparer.Ordinal)
             .ThenBy(e => e.Via?.Member ?? "", StringComparer.Ordinal)
             .ThenBy(e => string.Join("/", e.Via?.Path ?? []), StringComparer.Ordinal)
+            // Ties on the identity key below are broken by the rest of `via`, so which
+            // of two look-alike edges survives does not depend on hash order.
+            .ThenBy(e => e.Via?.MemberKind ?? "", StringComparer.Ordinal)
+            .ThenBy(e => e.Via?.Text ?? "", StringComparer.Ordinal)
+            .ThenBy(e => e.Via?.Cardinality ?? "", StringComparer.Ordinal)
+            .ThenBy(e => e.Via?.Mutability ?? "", StringComparer.Ordinal)
+            .ThenBy(e => e.Via?.Deferred == true ? 1 : 0)
+            // An edge is identified by (from, to, kind, via.member, via.path)
+            // (EXTRACTOR.md §3): two that differ only in other `via` details
+            // (a field and a constructor parameter of the same name, say) are one
+            // edge, the first of them — the output must not repeat an edge.
+            .DistinctBy(e => (e.From, e.To, e.Kind, e.Via?.Member ?? "", string.Join("/", e.Via?.Path ?? [])))
             .Select(e => new EdgeFact
             {
                 From = e.From,
