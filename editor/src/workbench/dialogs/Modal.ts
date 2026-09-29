@@ -1,4 +1,5 @@
 import { el } from "../../util/dom.js";
+import { iconEl } from "../../ui/icons.js";
 
 export interface ModalHandle {
   readonly card: HTMLElement;
@@ -12,7 +13,7 @@ export function openModal(options: {
   foot?: HTMLElement[];
   width?: string;
 }): ModalHandle {
-  const closeBtn = el("button", { class: "btn-icon", text: "✕", on: { click: () => close() } });
+  const closeBtn = el("button", { class: "btn-icon", on: { click: () => close() } }, [iconEl("close")]);
   const card = el("div", { class: "modal-card", attrs: { style: `max-width: ${options.width ?? "480px"};` } }, [
     el("div", { class: "modal-head" }, [el("h3", { text: options.title }), closeBtn]),
     el("div", { class: "modal-body" }, [options.body]),

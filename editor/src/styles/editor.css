@@ -1822,10 +1822,29 @@ textarea {
 }
 
 .ctx-icon {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
   width: 16px;
   flex-shrink: 0;
   text-align: center;
   color: var(--accent);
+}
+
+/* Tabler icons (svg strings) in the icon column and the submenu arrow. */
+.ctx-icon svg {
+  width: 14px;
+  height: 14px;
+  fill: none;
+  stroke: currentColor;
+}
+
+.ctx-arrow svg {
+  display: block;
+  width: 12px;
+  height: 12px;
+  fill: none;
+  stroke: currentColor;
 }
 
 .ctx-label {
@@ -1870,6 +1889,84 @@ textarea {
   flex-shrink: 0;
   font-size: calc(9px * var(--ui-text));
   color: var(--muted);
+}
+
+/* -------------------------------------------------------- icon picker */
+
+.icon-picker {
+  display: flex;
+  flex-direction: column;
+  gap: calc(6px * var(--ui-space));
+}
+
+.icon-picker-head {
+  display: flex;
+  align-items: center;
+  gap: calc(8px * var(--ui-space));
+}
+
+.icon-picker-current svg {
+  width: 20px;
+  height: 20px;
+  fill: none;
+  stroke: currentColor;
+}
+
+.icon-picker-name {
+  flex: 1;
+  font-family: monospace;
+  font-size: calc(11px * var(--ui-text));
+}
+
+.icon-picker-name.is-inherited {
+  color: var(--muted);
+}
+
+.icon-picker-grid {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 2px;
+  max-height: 150px;
+  overflow-y: auto;
+}
+
+.icon-picker-item {
+  width: 28px;
+  height: 28px;
+  padding: 0;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  border: 1px solid transparent;
+  border-radius: 5px;
+  background: transparent;
+  color: var(--text);
+  cursor: pointer;
+}
+
+.icon-picker-item:hover {
+  background: var(--hover);
+}
+
+.icon-picker-item.is-active {
+  background: var(--accent-soft);
+  border-color: var(--accent);
+  color: var(--accent);
+}
+
+.icon-picker-item svg {
+  width: 18px;
+  height: 18px;
+  fill: none;
+  stroke: currentColor;
+}
+
+/* The tile of a project or view in the catalogue (a registry icon, tinted by theme). */
+.catalog-icon svg {
+  width: 1.2em;
+  height: 1.2em;
+  fill: none;
+  stroke: currentColor;
 }
 
 /* ------------------------------------------------------ workspace forms */

@@ -123,7 +123,7 @@ what it describes (CONTRACT §7):
     one. An entity does not: its name is the code's, in `entities.json`, never translated.
   - `description` — one or two lines: what it is. Shown as the tooltip.
   - `doc` — the long text, **Markdown**: why it exists, invariants, what breaks, links. Not drawn
-    on the canvas: hovering the 📄 button of a box (or of a line) shows the description with the
+    on the canvas: hovering the documentation button of a box (or of a line) shows the description with the
     rendered Markdown under it; clicking it, or F2, opens the description window to edit both.
 - **A frame's caption** is `name` under the zone's own id (`z_tracking`), or, failing that, under
   the container `c_tracking`. A frame with `container: null` is captioned the same way; without

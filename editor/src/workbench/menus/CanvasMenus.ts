@@ -3,6 +3,7 @@ import { edgePreview } from "../../editor/style-preview.js";
 import type { RoutingMode } from "../../model/style-types.js";
 import { entityOf, type DiagramEdge, type DiagramElement } from "../../model/types.js";
 import { i18n } from "../i18n/I18nService.js";
+import { icons } from "../../ui/icons.js";
 import { openContextMenu, type MenuItem } from "./ContextMenu.js";
 import { relationItems } from "./EntityMenu.js";
 
@@ -27,10 +28,10 @@ const ALIGN_EDGE_COMMANDS = [
 
 const MODES: readonly RoutingMode[] = ["orthogonal", "bezier", "tree-vertical", "tree-horizontal"];
 const MODE_ICON: Record<RoutingMode, string> = {
-  orthogonal: "┐",
-  bezier: "∿",
-  "tree-vertical": "┴",
-  "tree-horizontal": "├",
+  orthogonal: icons.cornerRightDown,
+  bezier: icons.waveSine,
+  "tree-vertical": icons.hierarchy,
+  "tree-horizontal": icons.hierarchy2,
 };
 
 /** Right click on the canvas: on a box, on a line, or on empty space. */
@@ -71,7 +72,7 @@ function blockItems(editor: DiagramEditor, host: MenuHost, el: DiagramElement): 
   const entity = entityOf(el) ?? doc.entities.find((e) => e.id === el.id);
 
   const items: MenuItem[] = [];
-  items.push({ label: "Копировать ссылку", icon: "🔗", onSelect: () => editor.copyLink(ids.length > 0 ? ids : [el.id]) }, { kind: "separator" });
+  items.push({ label: "Копировать ссылку", icon: icons.link, onSelect: () => editor.copyLink(ids.length > 0 ? ids : [el.id]) }, { kind: "separator" });
   const relations = relationItems(editor, el.id);
   if (relations.length > 0) items.push(...relations, { kind: "separator" });
 
@@ -79,7 +80,7 @@ function blockItems(editor: DiagramEditor, host: MenuHost, el: DiagramElement): 
     const current = typeof el.metadata.template === "string" ? el.metadata.template : null;
     items.push({
       label: t.template,
-      icon: "▤",
+      icon: icons.template,
       submenu: () => [
         {
           label: t.templateFromStyle,
@@ -101,7 +102,7 @@ function blockItems(editor: DiagramEditor, host: MenuHost, el: DiagramElement): 
 
   items.push({
     label: t.style,
-    icon: "🎨",
+    icon: icons.palette,
     submenu: () => [
       {
         label: t.styleDefault,
@@ -121,7 +122,7 @@ function blockItems(editor: DiagramEditor, host: MenuHost, el: DiagramElement): 
   });
 
   if (editor.canvas.selectedIds.size > 1) {
-    items.push({ label: t.align, icon: "⇤", submenu: () => [
+    items.push({ label: t.align, icon: icons.arrowBarToLeft, submenu: () => [
       ...ALIGN_COMMANDS.map((id) => host.command(id)),
       { kind: "separator" },
       ...ALIGN_EDGE_COMMANDS.map((id) => host.command(id)),
@@ -129,13 +130,13 @@ function blockItems(editor: DiagramEditor, host: MenuHost, el: DiagramElement): 
   }
 
   items.push({ kind: "separator" });
-  items.push({ label: t.describe, icon: "✎", onSelect: () => editor.openDocEditor(el.id, isZone ? "zone" : "node") });
+  items.push({ label: t.describe, icon: icons.pencil, onSelect: () => editor.openDocEditor(el.id, isZone ? "zone" : "node") });
   const codeRef = typeof el.metadata.codeRef === "string" ? el.metadata.codeRef : entity?.codeRef;
-  if (codeRef) items.push({ label: t.code, icon: "💻", note: codeRef.split("/").pop(), onSelect: () => editor.openCodeViewer(codeRef, el.label) });
-  items.push({ label: t.properties, icon: "→", onSelect: () => host.openPanel("properties") });
-  items.push({ label: t.blockStyle, icon: "→", onSelect: () => host.openStyleEditor(styles.blockStyleIdFor(el)) });
-  if (entity) items.push({ label: t.neighbourhood, icon: "🕸️", onSelect: () => host.openPanel("neighbourhood") });
-  items.push({ kind: "separator" }, { label: t.remove, icon: "🗑", onSelect: () => editor.deleteSelection() });
+  if (codeRef) items.push({ label: t.code, icon: icons.code, note: codeRef.split("/").pop(), onSelect: () => editor.openCodeViewer(codeRef, el.label) });
+  items.push({ label: t.properties, icon: icons.listDetails, onSelect: () => host.openPanel("properties") });
+  items.push({ label: t.blockStyle, icon: icons.palette, onSelect: () => host.openStyleEditor(styles.blockStyleIdFor(el)) });
+  if (entity) items.push({ label: t.neighbourhood, icon: icons.hierarchy, onSelect: () => host.openPanel("neighbourhood") });
+  items.push({ kind: "separator" }, { label: t.remove, icon: icons.trash, onSelect: () => editor.deleteSelection() });
   return items;
 }
 
@@ -151,7 +152,7 @@ function edgeItems(editor: DiagramEditor, host: MenuHost, edge: DiagramEdge): Me
   const own = edges.some((e) => e.routing !== undefined);
 
   return [
-    { label: t.hideEdge, icon: "○", title: t.toggleEdgeHint, onSelect: () => editor.setEdgeShown(edge.id, false) },
+    { label: t.hideEdge, icon: icons.eyeOff, title: t.toggleEdgeHint, onSelect: () => editor.setEdgeShown(edge.id, false) },
     { kind: "separator" },
     {
       label: t.lineShape,
@@ -160,7 +161,7 @@ function edgeItems(editor: DiagramEditor, host: MenuHost, edge: DiagramEdge): Me
       submenu: () => [
         {
           label: t.resetShape,
-          icon: "↺",
+          icon: icons.refresh,
           title: t.resetShapeHint,
           disabled: !own,
           onSelect: () => editor.setEdgeRouting(ids, null),
@@ -177,7 +178,7 @@ function edgeItems(editor: DiagramEditor, host: MenuHost, edge: DiagramEdge): Me
     viewRoutingItem(editor),
     {
       label: t.style,
-      icon: "🎨",
+      icon: icons.palette,
       submenu: () => [
         {
           label: t.styleByType,
@@ -196,11 +197,11 @@ function edgeItems(editor: DiagramEditor, host: MenuHost, edge: DiagramEdge): Me
       ],
     },
     { kind: "separator" },
-    { label: t.describe, icon: "✎", onSelect: () => editor.openDocEditor(edge.id, "edge") },
-    { label: t.properties, icon: "→", onSelect: () => host.openPanel("relations") },
-    { label: t.edgeStyle, icon: "→", onSelect: () => host.openStyleEditor(styles.edgeStyleIdFor(edge)) },
+    { label: t.describe, icon: icons.pencil, onSelect: () => editor.openDocEditor(edge.id, "edge") },
+    { label: t.properties, icon: icons.listDetails, onSelect: () => host.openPanel("relations") },
+    { label: t.edgeStyle, icon: icons.palette, onSelect: () => host.openStyleEditor(styles.edgeStyleIdFor(edge)) },
     { kind: "separator" },
-    { label: t.remove, icon: "🗑", onSelect: () => editor.deleteSelection() },
+    { label: t.remove, icon: icons.trash, onSelect: () => editor.deleteSelection() },
   ];
 }
 
@@ -208,10 +209,10 @@ function edgeItems(editor: DiagramEditor, host: MenuHost, edge: DiagramEdge): Me
 function ghostEdgeItems(editor: DiagramEditor, host: MenuHost, id: string): MenuItem[] {
   const t = i18n.d.canvasMenu;
   return [
-    { label: t.showEdge, icon: "●", title: t.toggleEdgeHint, onSelect: () => editor.setEdgeShown(id, true) },
+    { label: t.showEdge, icon: icons.eye, title: t.toggleEdgeHint, onSelect: () => editor.setEdgeShown(id, true) },
     { kind: "separator" },
-    { label: t.describe, icon: "✎", onSelect: () => editor.openDocEditor(id, "edge") },
-    { label: t.properties, icon: "→", onSelect: () => host.openPanel("relations") },
+    { label: t.describe, icon: icons.pencil, onSelect: () => editor.openDocEditor(id, "edge") },
+    { label: t.properties, icon: icons.listDetails, onSelect: () => host.openPanel("relations") },
   ];
 }
 

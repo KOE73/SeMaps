@@ -18,6 +18,8 @@ import type {
   WireText,
 } from "../model/style-types.js";
 import { el, replaceChildren } from "../util/dom.js";
+import { iconEl } from "../ui/icons.js";
+import { iconPicker } from "../ui/iconPicker.js";
 import {
   colorField,
   field,
@@ -83,7 +85,7 @@ export class StyleEditor {
       replaceChildren(
         this.mount,
         el("div", { class: "inspector-empty" }, [
-          el("p", { class: "inspector-empty-icon", text: "🎨" }),
+          el("p", { class: "inspector-empty-icon" }, [iconEl("palette", "ui-icon-lg")]),
           el("p", {
             text: i18n.d.panels.styles.emptyEditor,
           }),
@@ -396,11 +398,20 @@ export class StyleEditor {
     const inherited = this.inheritedBlock(style);
     return this.section(i18n.d.panels.styles.iconSection, false, [
       el("div", { class: "grid-2" }, [
-        optionalTextField(i18n.d.panels.styles.glyphField, style.icon?.glyph, inherited.icon.glyph, (v) => {
-          this.patch((d) => {
-            d.icon = { ...d.icon, glyph: v };
-          });
-        }),
+        // The icon is a registry key chosen from the set, never typed as an emoji.
+        field(
+          i18n.d.panels.styles.glyphField,
+          iconPicker({
+            value: style.icon?.glyph,
+            inherited: inherited.icon.glyph,
+            allowClear: true,
+            onChange: (v) => {
+              this.patch((d) => {
+                d.icon = { ...d.icon, glyph: v };
+              });
+            },
+          }),
+        ),
         optionalBoolField(i18n.d.panels.styles.showField, style.icon?.show, inherited.icon.show, (v) => {
           this.patch((d) => {
             d.icon = { ...d.icon, show: v };
@@ -619,7 +630,6 @@ export class StyleEditor {
         ),
         el("button", {
           class: "btn btn-small full",
-          text: "＋ Добавить стоп",
           on: {
             click: () => {
               this.patch(
@@ -639,7 +649,7 @@ export class StyleEditor {
               );
             },
           },
-        }),
+        }, [iconEl("plus"), "Добавить стоп"]),
       );
     }
 
@@ -718,7 +728,6 @@ export class StyleEditor {
       }),
       el("button", {
         class: "btn-icon danger",
-        text: "✕",
         title: "Удалить стоп",
         // Two stops is the floor: with fewer the library ignores the gradient
         // entirely and falls back, so removing one more would blank the fill
@@ -736,7 +745,7 @@ export class StyleEditor {
             );
           },
         },
-      }),
+      }, [iconEl("close")]),
     ]);
   }
 

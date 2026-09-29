@@ -1,6 +1,7 @@
 import type { TemplateError } from "../content/template-types.js";
 import type { AssetEntry } from "../assets/AssetRegistry.js";
 import { el, replaceChildren } from "../util/dom.js";
+import { iconEl } from "../ui/icons.js";
 import type { TemplatePanelHost } from "./TemplateList.js";
 import { i18n } from "../workbench/i18n/I18nService.js";
 
@@ -52,7 +53,7 @@ export class TemplateEditor {
       replaceChildren(
         this.mount,
         el("div", { class: "inspector-empty" }, [
-          el("p", { class: "inspector-empty-icon", text: "📐" }),
+          el("p", { class: "inspector-empty-icon" }, [iconEl("layoutBoard", "ui-icon-lg")]),
           el("p", { text: i18n.d.panels.templates.emptyEditor }),
         ]),
       );
@@ -90,14 +91,13 @@ export class TemplateEditor {
 
     const saveBtn = el("button", {
       class: "btn btn-primary btn-small",
-      text: i18n.d.panels.templates.saveBtn,
       title: i18n.d.panels.templates.saveHint,
       on: {
         click: () => {
           void this.save();
         },
       },
-    });
+    }, [iconEl("save"), i18n.d.panels.templates.saveBtn]);
 
     replaceChildren(
       this.mount,

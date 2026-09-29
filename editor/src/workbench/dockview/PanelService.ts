@@ -14,11 +14,27 @@ export interface PanelDescriptor {
   createRenderer(): IContentRenderer;
 }
 
+/** Which panel is the centre and which ones share the right-hand group. */
+export interface PanelLayoutIds {
+  readonly centerId: string;
+  readonly rightIds: readonly string[];
+  /** Docks with their own side (the graph mode has one left and one right): a
+   * panel of a group opens tabbed into that group, or on its side of the centre. */
+  readonly groups?: readonly { readonly ids: readonly string[]; readonly side: "left" | "right"; readonly width?: number }[];
+}
+
+const EDITOR_IDS: PanelLayoutIds = {
+  centerId: "diagram",
+  rightIds: ["properties", "relations", "filters", "styles", "base", "neighbourhood"],
+};
+
 export class PanelService implements IPanelService {
   private readonly descriptors = new Map<string, PanelDescriptor>();
   private readonly listeners = new Set<() => void>();
 
   private dockview!: DockviewApi;
+
+  constructor(private readonly ids: PanelLayoutIds = EDITOR_IDS) {}
 
   init(options: { dockview: DockviewApi; container?: HTMLElement }): void {
     this.dockview = options.dockview;
@@ -66,7 +82,7 @@ export class PanelService implements IPanelService {
       return;
     }
 
-    const diagram = this.dockview.getPanel("diagram");
+    const diagram = this.dockview.getPanel(this.ids.centerId);
 
     if (id === "catalog") {
       this.dockview.addPanel({
@@ -81,7 +97,26 @@ export class PanelService implements IPanelService {
       return;
     }
 
-    const rightPanels = ["properties", "relations", "filters", "styles", "base", "neighbourhood"];
+    const group = this.ids.groups?.find((g) => g.ids.includes(id));
+    if (group) {
+      const mate = group.ids.map((pid) => this.dockview.getPanel(pid)).find((p) => p !== undefined);
+      this.dockview.addPanel({
+        id: desc.id,
+        component: desc.id,
+        title: desc.title,
+        position: mate
+          ? { direction: "within", referencePanel: mate }
+          : diagram
+            ? { direction: group.side, referencePanel: diagram }
+            : undefined,
+        ...(mate ? {} : { initialWidth: group.width ?? 320 }),
+        minimumWidth: desc.minWidth ?? 100,
+        minimumHeight: desc.minHeight ?? 80,
+      });
+      return;
+    }
+
+    const rightPanels = this.ids.rightIds;
     let existingRight: IDockviewPanel | undefined;
     for (const pid of rightPanels) {
       const p = this.dockview.getPanel(pid);
@@ -163,7 +198,7 @@ export class PanelService implements IPanelService {
   }
 
   toggleRightSidebar(): void {
-    const rightPanels = ["properties", "relations", "filters", "styles", "base", "neighbourhood"];
+    const rightPanels = this.ids.rightIds;
     const anyOpen = rightPanels.some((pid) => this.isOpen(pid));
     if (anyOpen) {
       for (const pid of rightPanels) {

@@ -15,7 +15,7 @@
       "radius": 8,
       "shadow": true,
       "icon": {
-        "glyph": "📄"
+        "glyph": "file-text"
       }
     },
     {
@@ -54,7 +54,7 @@
       "radius": 8,
       "shadow": true,
       "icon": {
-        "glyph": "📦"
+        "glyph": "class"
       }
     },
     {
@@ -71,7 +71,7 @@
       "radius": 14,
       "shadow": false,
       "icon": {
-        "glyph": "🧾"
+        "glyph": "record"
       }
     },
     {
@@ -86,7 +86,7 @@
       },
       "radius": 4,
       "icon": {
-        "glyph": "🧱"
+        "glyph": "struct"
       }
     },
     {
@@ -118,7 +118,7 @@
       "radius": 8,
       "shadow": true,
       "icon": {
-        "glyph": "🔌"
+        "glyph": "interface"
       },
       "title": {
         "italic": true
@@ -137,8 +137,54 @@
       "radius": 8,
       "shadow": true,
       "icon": {
-        "glyph": "🔢"
+        "glyph": "enum"
       }
+    },
+    {
+      "id": "abstract-class",
+      "name": "Абстрактный класс",
+      "appliesTo": "block",
+      "description": "Класс с модификатором abstract (nativeKind abstract-class): курсивное имя — как в UML.",
+      "basedOn": "class",
+      "fill": "#f8fafc",
+      "title": {
+        "italic": true
+      }
+    },
+    {
+      "id": "static-class",
+      "name": "Статический класс",
+      "appliesTo": "block",
+      "description": "Класс с модификатором static (nativeKind static-class): группа функций; рамка толще, углы острее.",
+      "basedOn": "class",
+      "border": {
+        "width": 2.6
+      },
+      "radius": 3
+    },
+    {
+      "id": "sealed-class",
+      "name": "Запечатанный класс",
+      "appliesTo": "block",
+      "description": "Класс с модификатором sealed (nativeKind sealed-class): выглядит как класс.",
+      "basedOn": "class"
+    },
+    {
+      "id": "abstract-record",
+      "name": "Абстрактный record",
+      "appliesTo": "block",
+      "description": "Record с модификатором abstract (nativeKind abstract-record): курсивное имя.",
+      "basedOn": "record",
+      "title": {
+        "italic": true
+      }
+    },
+    {
+      "id": "sealed-record",
+      "name": "Запечатанный record",
+      "appliesTo": "block",
+      "description": "Record с модификатором sealed (nativeKind sealed-record): выглядит как record.",
+      "basedOn": "record"
     },
     {
       "id": "component",
@@ -154,7 +200,7 @@
       "description": "Старый тип для интерфейсов.",
       "basedOn": "interface",
       "icon": {
-        "glyph": "⚙️"
+        "glyph": "plug"
       }
     },
     {
@@ -164,7 +210,7 @@
       "description": "Старый тип для enum и ручных концептов.",
       "basedOn": "enum",
       "icon": {
-        "glyph": "💡"
+        "glyph": "bulb"
       }
     },
     {
@@ -277,7 +323,7 @@
       "radius": 6,
       "shadow": false,
       "icon": {
-        "glyph": "📝"
+        "glyph": "notes"
       },
       "title": {
         "weight": 500
@@ -293,7 +339,7 @@
         "width": 2
       },
       "icon": {
-        "glyph": "🛡️"
+        "glyph": "shield"
       }
     },
     {
@@ -306,7 +352,7 @@
         "width": 1.5
       },
       "icon": {
-        "glyph": "🔧"
+        "glyph": "tool"
       }
     },
     {
@@ -319,7 +365,7 @@
         "width": 1.5
       },
       "icon": {
-        "glyph": "💾"
+        "glyph": "database"
       }
     },
     {
@@ -332,7 +378,7 @@
         "width": 1.5
       },
       "icon": {
-        "glyph": "🌐"
+        "glyph": "world"
       }
     },
     {

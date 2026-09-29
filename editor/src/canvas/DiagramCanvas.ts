@@ -41,6 +41,7 @@ import { EDGE_ATTR } from "../interaction/roles.js";
 import { InteractionController } from "../interaction/InteractionController.js";
 import { SourceCodeService } from "../editor/code/SourceCodeService.js";
 import { DIAGRAM_CONFIG } from "../constants/diagram-constants.js";
+import { iconSvg } from "../ui/icons.js";
 
 export type SelectionKind = "zone" | "node" | "edge";
 
@@ -375,7 +376,7 @@ export class DiagramCanvas {
     this.edgeControlsEl.innerHTML = `
       <span class="semaps-edge-ctrl-type">${escapeCanvasHtml(type)}</span>
       <button type="button" class="semaps-edge-ctrl-btn semaps-edge-doc-btn${hasDoc ? " has-doc" : ""}" data-edge-id="${escapeCanvasHtml(edgeId)}" title="Документация (клик — редактор, наведение — просмотр)">
-        ${hasDoc ? "📝" : "📄"}
+        <span class="ui-icon">${iconSvg(hasDoc ? "notes" : "doc")}</span>
       </button>
     `;
 

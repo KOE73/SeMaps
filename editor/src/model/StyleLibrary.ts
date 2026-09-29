@@ -142,7 +142,7 @@ export const FALLBACK_BLOCK: ResolvedBlockStyle = {
     family: MONO, size: 10.5, weight: 400, italic: false,
     color: "#64748b", align: "start", opacity: 1, show: true,
   },
-  icon: { glyph: "📄", show: true },
+  icon: { glyph: "file-text", show: true },
   shape: "rect",
   template: null,
 };

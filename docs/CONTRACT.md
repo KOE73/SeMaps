@@ -63,7 +63,7 @@ workspace (нет даже `projects/`) законен. Файл `catalog.json` 
   "defaultView": "v_semantic_atlas",
   "defaultAxis": "axis_subsystem",
   "languages": ["ru"],
-  "icon": "🧠",
+  "icon": "brain",
   "sources": { "include": ["src/core"] },
   "styles": "../../styles.json"
 }
@@ -77,7 +77,7 @@ workspace (нет даже `projects/`) законен. Файл `catalog.json` 
 | `contractVersion` | да | `3` |
 | `defaultAxis` | нет | ось для видов, не объявивших свою (§8) |
 | `languages` | нет | какие `text.<lang>.json` грузить; первый — основной для показа |
-| `icon`, `theme`, `order` | нет | строка проекта в каталоге: значок, цветовая тема значка, место (по `order`, затем по `id`) |
+| `icon`, `theme`, `order` | нет | строка проекта в каталоге: значок, цветовая тема значка, место (по `order`, затем по `id`). `icon` — **ключ реестра иконок** редактора: имя иконки Tabler из его набора (`folder`, `brain`, `flask`…; набор — `editor/src/ui/iconSet.ts`, его же предлагает выбор иконки) или вид символа/связи (`class`, `extends`…). Неизвестное значение, в том числе эмодзи, рисуется одной запасной иконкой ([`ADR_20260929_editor_icons-are-registry-keys`](adr/ADR_20260929_editor_icons-are-registry-keys.md)). Так же устроен `icon.glyph` стиля блока в `styles.json` |
 | `sources.include` | нет | пути от корня репозитория для будущей сверки с кодом |
 
 `id` проекта можно сменить: папка переименовывается, `project` в каждом виде переписывается
@@ -332,7 +332,7 @@ workspace (нет даже `projects/`) законен. Файл `catalog.json` 
 - `description` — что это, одна-две строки. Тултип, читается всегда.
 - `doc` — длинный текст в **Markdown**: причины, инварианты, что сломается при
   нарушении, ссылка на ADR. Читается по требованию, не на холсте: наведение на
-  кнопку 📄 блока или связи показывает его отрисованным, клик (или F2) открывает
+  кнопку «документация» блока или связи показывает его отрисованным, клик (или F2) открывает
   окно описания.
 - `fromLabel`, `toLabel` — кардинальность или роль на **концах** связи
   (ADR_20260903 §2.6): «1» у одного конца, «0..*» у другого; «owner»,
@@ -391,7 +391,7 @@ units**, результат — 8 шестнадцатеричных цифр в
   "id": "v_semantic_atlas",
   "project": "core",
   "axis": "axis_subsystem",
-  "icon": "🗺️",
+  "icon": "map",
   "relations": { "default": "visible", "except": ["r_gateway_repguard"] },
   "zones": [
     { "id": "z_llm_middleware", "container": "c_llm_middleware", "parent": "z_llm",

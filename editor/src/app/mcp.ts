@@ -1,4 +1,5 @@
 import { el } from "../util/dom.js";
+import { iconEl } from "../ui/icons.js";
 import { toolApi, type GraphFormats, type McpStatus, type Setup } from "../shell/api.js";
 import { fmt, t } from "../shell/strings.js";
 import { mcpSandbox } from "./mcpSandbox.js";
@@ -36,7 +37,7 @@ export async function installMcp(inner: HTMLElement): Promise<void> {
 
 function render(inner: HTMLElement, st: McpStatus, setup: Setup, formats: GraphFormats): void {
   const hero = el("section", { class: "mcp-hero" }, [
-    el("div", { class: "mcp-hero-mark", text: "🤖" }),
+    el("div", { class: "mcp-hero-mark" }, [iconEl("robot", "ui-icon-lg")]),
     el("div", {}, [el("h1", { text: t.mcpTitle }), el("p", { class: "tool-hint", text: t.mcpLead })]),
   ]);
 
@@ -51,7 +52,7 @@ function render(inner: HTMLElement, st: McpStatus, setup: Setup, formats: GraphF
   } else if (st.configured) {
     stateRows.push(
       el("p", {}, [
-        el("span", { class: "tool-badge is-ok", text: "✓" }),
+        el("span", { class: "tool-badge is-ok" }, [iconEl("check")]),
         el("span", { text: " " + fmt(t.mcpConfigured, { file: st.file, entry: st.entry }) }),
       ]),
     );

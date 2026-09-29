@@ -1,5 +1,6 @@
 import { PaintRegistry } from "../canvas/render/PaintRegistry.js";
-import { svg, text } from "../canvas/svg.js";
+import { svg } from "../canvas/svg.js";
+import { iconGlyphByKey } from "../canvas/render/iconGlyph.js";
 import type { Paint, ResolvedBlockStyle, ResolvedEdgeStyle } from "../model/StyleLibrary.js";
 
 /**
@@ -47,10 +48,8 @@ export function blockPreview(style: ResolvedBlockStyle): SVGSVGElement {
     }),
   );
 
-  if (style.icon.show && style.icon.glyph !== "") {
-    root.appendChild(
-      text({ x: 8, y: BLOCK_H / 2 + 4, "font-size": 11 }, style.icon.glyph),
-    );
+  if (style.icon.show) {
+    root.appendChild(iconGlyphByKey(style.icon.glyph, 6, BLOCK_H / 2 - 6, 12, "style-preview-glyph", style.title.color));
   }
 
   // Two bars standing in for title and subtitle: the colours are what separates

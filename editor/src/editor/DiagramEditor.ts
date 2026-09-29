@@ -44,6 +44,7 @@ import {
   type WorkspaceStore,
 } from "./io/index.js";
 import { el } from "../util/dom.js";
+import { iconEl } from "../ui/icons.js";
 import { Emitter } from "../util/emitter.js";
 import { DocEditorDialog, type DocTargetKind } from "./doc/DocEditorDialog.js";
 import { CodeViewerDialog } from "./code/CodeViewerDialog.js";
@@ -1031,7 +1032,7 @@ export class DiagramEditor implements InspectorHost, StylePanelHost, DiagramEdit
           },
         },
         [
-          el("span", { class: "catalog-icon theme-blue", text: "📄" }),
+          el("span", { class: "catalog-icon theme-blue" }, [iconEl("doc")]),
           el("span", { class: "catalog-text sidebar-label" }, [
             el("span", { class: "catalog-title", text: name }),
             el("span", { class: "catalog-subtitle", text: "Пользовательский файл" }),
@@ -1592,9 +1593,9 @@ export class DiagramEditor implements InspectorHost, StylePanelHost, DiagramEdit
   private flashSaved(): void {
     const button = this.root.querySelector<HTMLElement>('[data-action="save"]');
     if (button === null) return;
-    button.textContent = "✅ Сохранено";
+    button.replaceChildren(iconEl("circleCheck"), "Сохранено");
     window.setTimeout(() => {
-      button.textContent = "💾 Сохранить";
+      button.replaceChildren(iconEl("save"), "Сохранить");
       this.syncSaveButton();
     }, 2000);
   }
@@ -1617,7 +1618,7 @@ export class DiagramEditor implements InspectorHost, StylePanelHost, DiagramEdit
       }) as HTMLTextAreaElement;
       this.slots.set("json-text", editor);
 
-      const closeBtn = el("button", { class: "btn-icon", text: "✕", on: { click: () => { modal!.hidden = true; } } });
+      const closeBtn = el("button", { class: "btn-icon", on: { click: () => { modal!.hidden = true; } } }, [iconEl("close")]);
       const copyBtn = el("button", { class: "btn", text: "Копировать", on: { click: () => { void this.copyJson(); } } });
       const applyBtn = el("button", { class: "btn btn-primary", text: "Применить к холсту", on: { click: () => { this.applyJson(); } } });
 
@@ -1711,7 +1712,6 @@ export class DiagramEditor implements InspectorHost, StylePanelHost, DiagramEdit
     const saveBtn = el("button", {
       class: "btn btn-success full",
       attrs: { style: "padding: calc(8px * var(--ui-space)) calc(12px * var(--ui-space)); font-size: calc(12px * var(--ui-text)); font-weight: 600;" },
-      text: "💾 Сохранить и открыть",
       on: {
         click: async (ev: MouseEvent) => {
           ev.stopPropagation();
@@ -1720,24 +1720,22 @@ export class DiagramEditor implements InspectorHost, StylePanelHost, DiagramEdit
           await onProceed(true);
         },
       },
-    });
+    }, [iconEl("save"), "Сохранить и открыть"]);
 
     const cancelBtn = el("button", {
       class: "btn full",
       attrs: { style: "padding: calc(8px * var(--ui-space)) calc(12px * var(--ui-space)); font-size: calc(12px * var(--ui-text)); font-weight: 600; background: var(--panel-alt); border: 1px solid var(--line);" },
-      text: "↩ Отменить",
       on: {
         click: (ev: MouseEvent) => {
           ev.stopPropagation();
           cleanup();
         },
       },
-    });
+    }, [iconEl("restore"), "Отменить"]);
 
     const discardBtn = el("button", {
       class: "btn btn-danger full",
       attrs: { style: "padding: calc(7px * var(--ui-space)) calc(12px * var(--ui-space)); font-size: calc(12px * var(--ui-text)); font-weight: 500;" },
-      text: "🗑 Загрузить без сохранения",
       on: {
         click: async (ev: MouseEvent) => {
           ev.stopPropagation();
@@ -1745,11 +1743,11 @@ export class DiagramEditor implements InspectorHost, StylePanelHost, DiagramEdit
           await onProceed(false);
         },
       },
-    });
+    }, [iconEl("trash"), "Загрузить без сохранения"]);
 
     const card = el("div", { class: "confirm-popover-card" }, [
       el("div", { class: "confirm-popover-title" }, [
-        el("span", { text: "⚠️" }),
+        el("span", {}, [iconEl("alert")]),
         el("span", { text: "Несохранённые изменения" }),
       ]),
       el("p", { class: "confirm-popover-msg", text: "В текущей схеме есть несохранённые правки. Что сделать перед переключением?" }),

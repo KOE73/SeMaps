@@ -27,7 +27,7 @@ const BLOCK_DEFAULTS: WireStyle[] = [
     border: { color: "#cbd5e1", width: 1.5 },
     radius: 8,
     shadow: true,
-    icon: { glyph: "📄" },
+    icon: { glyph: "file-text" },
   },
   {
     id: "default.zone",
@@ -67,7 +67,7 @@ const CODE_KIND_STYLES: WireStyle[] = [
     border: { color: "#cbd5e1", width: 1.5 },
     radius: 8,
     shadow: true,
-    icon: { glyph: "📦" },
+    icon: { glyph: "class" },
   },
   {
     id: "record",
@@ -81,7 +81,7 @@ const CODE_KIND_STYLES: WireStyle[] = [
     // difference survives a screenshot at 40% zoom where the icon is a smudge.
     radius: 14,
     shadow: false,
-    icon: { glyph: "🧾" },
+    icon: { glyph: "record" },
   },
   {
     id: "struct",
@@ -92,7 +92,7 @@ const CODE_KIND_STYLES: WireStyle[] = [
     fill: "#f5f3ff",
     border: { color: "#c4b5fd" },
     radius: 4,
-    icon: { glyph: "🧱" },
+    icon: { glyph: "struct" },
   },
   {
     id: "interface",
@@ -103,7 +103,7 @@ const CODE_KIND_STYLES: WireStyle[] = [
     border: { color: "#60a5fa", width: 1.6, dash: "5,3" },
     radius: 8,
     shadow: true,
-    icon: { glyph: "🔌" },
+    icon: { glyph: "interface" },
     title: { italic: true },
   },
   {
@@ -115,8 +115,46 @@ const CODE_KIND_STYLES: WireStyle[] = [
     border: { color: "#fde047", width: 1.6 },
     radius: 8,
     shadow: true,
-    icon: { glyph: "🔢" },
+    icon: { glyph: "enum" },
   },
+];
+
+/**
+ * A modifier is not a kind of its own: the extractor writes it into `nativeKind`
+ * (`abstract-class`, `static-class`…, docs/extractors/csharp.md) and the registry
+ * keeps that as the entity's kind, so these styles — by the same id — dress it
+ * as the base kind plus a look for the modifier (italic name for abstract, the
+ * UML convention `interface` already follows). Kept in step with `host/defaults/styles.json`.
+ */
+const MODIFIER_KIND_STYLES: WireStyle[] = [
+  {
+    id: "abstract-class",
+    name: "Абстрактный класс",
+    appliesTo: "block",
+    description: "Класс с модификатором abstract: курсивное имя — как в UML.",
+    basedOn: "class",
+    fill: "#f8fafc",
+    title: { italic: true },
+  },
+  {
+    id: "static-class",
+    name: "Статический класс",
+    appliesTo: "block",
+    description: "Класс с модификатором static: группа функций; рамка толще, углы острее.",
+    basedOn: "class",
+    border: { width: 2.6 },
+    radius: 3,
+  },
+  { id: "sealed-class", name: "Запечатанный класс", appliesTo: "block", description: "Выглядит как класс.", basedOn: "class" },
+  {
+    id: "abstract-record",
+    name: "Абстрактный record",
+    appliesTo: "block",
+    description: "Record с модификатором abstract: курсивное имя.",
+    basedOn: "record",
+    title: { italic: true },
+  },
+  { id: "sealed-record", name: "Запечатанный record", appliesTo: "block", description: "Выглядит как record.", basedOn: "record" },
 ];
 
 /**
@@ -140,7 +178,7 @@ const LEGACY_TYPE_STYLES: WireStyle[] = [
     appliesTo: "block",
     description: "Старый тип для интерфейсов.",
     basedOn: "interface",
-    icon: { glyph: "⚙️" },
+    icon: { glyph: "plug" },
   },
   {
     id: "concept",
@@ -148,7 +186,7 @@ const LEGACY_TYPE_STYLES: WireStyle[] = [
     appliesTo: "block",
     description: "Старый тип для enum и ручных концептов.",
     basedOn: "enum",
-    icon: { glyph: "💡" },
+    icon: { glyph: "bulb" },
   },
 ];
 
@@ -162,7 +200,7 @@ const AUTHORED_STYLES: WireStyle[] = [
     border: { color: "#fde047", width: 1.5 },
     radius: 6,
     shadow: false,
-    icon: { glyph: "📝" },
+    icon: { glyph: "notes" },
     title: { weight: 500 },
   },
   {
@@ -171,7 +209,7 @@ const AUTHORED_STYLES: WireStyle[] = [
     appliesTo: "block",
     fill: "#fff1f2",
     border: { color: "#fca5a5", width: 2 },
-    icon: { glyph: "🛡️" },
+    icon: { glyph: "shield" },
   },
   {
     id: "tool",
@@ -179,7 +217,7 @@ const AUTHORED_STYLES: WireStyle[] = [
     appliesTo: "block",
     fill: "#ffffff",
     border: { color: "#bfdbfe", width: 1.5 },
-    icon: { glyph: "🔧" },
+    icon: { glyph: "tool" },
   },
   {
     id: "database",
@@ -187,7 +225,7 @@ const AUTHORED_STYLES: WireStyle[] = [
     appliesTo: "block",
     fill: "#ffffff",
     border: { color: "#d8b4fe", width: 1.5 },
-    icon: { glyph: "💾" },
+    icon: { glyph: "database" },
   },
   {
     id: "external-system",
@@ -195,7 +233,7 @@ const AUTHORED_STYLES: WireStyle[] = [
     appliesTo: "block",
     fill: "#fffbeb",
     border: { color: "#fde68a", width: 1.5 },
-    icon: { glyph: "🌐" },
+    icon: { glyph: "world" },
   },
 ];
 
@@ -364,6 +402,7 @@ const EDGE_STYLES: WireStyle[] = [
 export const BUILTIN_STYLES: readonly WireStyle[] = [
   ...BLOCK_DEFAULTS,
   ...CODE_KIND_STYLES,
+  ...MODIFIER_KIND_STYLES,
   ...LEGACY_TYPE_STYLES,
   ...AUTHORED_STYLES,
   ...ZONE_STYLES,

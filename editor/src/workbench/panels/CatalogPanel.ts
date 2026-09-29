@@ -3,6 +3,8 @@ import type { DiagramEditor } from "../../editor/DiagramEditor.js";
 import type { ProjectEntry } from "../../editor/io/types.js";
 import { el, replaceChildren } from "../../util/dom.js";
 import { i18n } from "../i18n/I18nService.js";
+import { iconEl } from "../../ui/icons.js";
+import { iconByKey } from "../../ui/kindIcons.js";
 import {
   openEditProjectDialog,
   openEditViewDialog,
@@ -32,10 +34,9 @@ export class CatalogPanel implements IContentRenderer {
     this.projectLabel = el("div", { class: "section-label sidebar-label", text: i18n.d.panels.catalog.projectCatalog });
     this.addProjectBtn = el("button", {
       class: "btn btn-small",
-      text: i18n.d.panels.catalog.addProject,
       title: i18n.d.commands.newProject.desc,
       on: { click: () => openNewProjectDialog(editor) },
-    });
+    }, [iconEl("plus"), i18n.d.panels.catalog.addProject]);
     const scroll = el("div", { class: "sidebar-scroll", attrs: { style: "flex: 1; overflow-y: auto; padding: calc(8px * var(--ui-space));" } }, [
       el("div", { class: "catalog-toolbar" }, [this.projectLabel, this.addProjectBtn]),
       this.catalogSlot,
@@ -67,7 +68,7 @@ export class CatalogPanel implements IContentRenderer {
   private updateLabels(): void {
     this.customLabel.textContent = i18n.d.panels.catalog.customSection;
     this.projectLabel.textContent = i18n.d.panels.catalog.projectCatalog;
-    this.addProjectBtn.textContent = i18n.d.panels.catalog.addProject;
+    replaceChildren(this.addProjectBtn, iconEl("plus"), i18n.d.panels.catalog.addProject);
     replaceChildren(this.hintDiv,
       el("div", { text: i18n.d.panels.catalog.hintDragZone }),
       el("div", { text: i18n.d.panels.catalog.hintDragBlock }),
@@ -100,14 +101,18 @@ export class CatalogPanel implements IContentRenderer {
     const t = i18n.d.panels.catalog;
     const dirty=this.editor.dirtyForProject(project.id);
     const authors=(refs: readonly {author:string}[])=>[...new Set(refs.map((r)=>r.author==="human"?"вы":"агент"))].join(", ");
-    const tile = (icon: string, theme: string | undefined): HTMLElement =>
-      el("span", { class: `catalog-icon${theme ? ` theme-${theme}` : ""}`, text: icon });
+    // The stored icon is a registry key; an unknown one draws the fallback icon.
+    const tile = (icon: string, theme: string | undefined): HTMLElement => {
+      const span = el("span", { class: `catalog-icon${theme ? ` theme-${theme}` : ""}` });
+      span.innerHTML = iconByKey(icon);
+      return span;
+    };
     const editBtn = (title: string, onClick: () => void): HTMLElement =>
-      el("button", { class: "btn-icon catalog-edit", text: "✎", title, on: { click: onClick } });
+      el("button", { class: "btn-icon catalog-edit", title, on: { click: onClick } }, [iconEl("pencil")]);
 
     const head = el("div", { class: "catalog-project-head" }, [
       el("div", { class: `catalog-item${project.error ? " is-broken" : ""}`, title: project.error ?? project.id }, [
-        tile(project.icon ?? "📁", project.theme),
+        tile(project.icon ?? "folder", project.theme),
         el("span", { class: "catalog-text sidebar-label" }, [
           el("span", { class: "catalog-title", text: project.title }),
           el("span", { class: "catalog-subtitle", text: project.error ?? project.subtitle ?? "" }),
@@ -116,11 +121,10 @@ export class CatalogPanel implements IContentRenderer {
       project.error ? null : editBtn(t.editProject, () => openEditProjectDialog(this.editor, project)),
       el("button", {
         class: "btn-icon",
-        text: "＋",
         title: t.addView,
         disabled: Boolean(project.error),
         on: { click: () => openNewViewDialog(this.editor, project.id) },
-      }),
+      }, [iconEl("plus")]),
     ]);
 
     const views = project.views.map((view) =>
@@ -134,12 +138,12 @@ export class CatalogPanel implements IContentRenderer {
             on: { click: (e: MouseEvent) => this.editor.openView(view, e) },
           },
           [
-            tile(view.icon ?? "🗺️", view.theme ?? project.theme),
+            tile(view.icon ?? "map", view.theme ?? project.theme),
             el("span", { class: "catalog-text sidebar-label" }, [
               el("span", { class: "catalog-title", text: this.editor.viewName(view) }),
               el("span", { class: "catalog-subtitle", text: view.error ?? view.id }),
             ]),
-            (dirty?.views[view.id]?.length ?? 0)>0 ? el("span",{class:"catalog-dirty",text:"●",title:`Несохранено: ${authors(dirty!.views[view.id]!)}`}) : null,
+            (dirty?.views[view.id]?.length ?? 0)>0 ? el("span",{class:"catalog-dirty",title:`Несохранено: ${authors(dirty!.views[view.id]!)}`},[iconEl("circleDot")]) : null,
           ],
         ),
         view.error ? null : editBtn(t.editView, () => openEditViewDialog(this.editor, view)),

@@ -2,6 +2,7 @@ import type { DiagramCanvas } from "../canvas/DiagramCanvas.js";
 import type { StyleLibrary } from "../model/StyleLibrary.js";
 import type { StyleTarget } from "../model/style-types.js";
 import { el, replaceChildren } from "../util/dom.js";
+import { iconEl } from "../ui/icons.js";
 import { blockPreview, edgePreview } from "./style-preview.js";
 import { i18n } from "../workbench/i18n/I18nService.js";
 
@@ -96,10 +97,9 @@ export class StyleList {
         ]),
         el("button", {
           class: "btn btn-small btn-primary",
-          text: i18n.d.panels.styles.addStyle,
           title: i18n.d.panels.styles.addStyleTitle,
           on: { click: () => this.create() },
-        }),
+        }, [iconEl("plus"), i18n.d.panels.styles.addStyle]),
       ]),
       filterInput,
       rows,
@@ -169,7 +169,6 @@ export class StyleList {
             }),
             el("button", {
               class: "btn-icon danger",
-              text: "✕",
               title: i18n.d.panels.styles.deleteTooltip,
               on: {
                 click: (e) => {
@@ -177,7 +176,7 @@ export class StyleList {
                   this.removeStyle(entry.id, count);
                 },
               },
-            }),
+            }, [iconEl("close")]),
           ],
         );
         return row;

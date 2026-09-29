@@ -6,6 +6,8 @@ import { resolveElementRelations, type ResolvedRelation } from "../model/relatio
 import { cardinalityToLabel } from "../model/viaLabel.js";
 import type { DiagramEditor } from "./DiagramEditor.js";
 import { i18n } from "../workbench/i18n/I18nService.js";
+import { iconEl } from "../ui/icons.js";
+import { kindIconEl } from "../ui/kindIcons.js";
 
 export class EdgesPanel {
   private filter = "";
@@ -25,7 +27,7 @@ export class EdgesPanel {
       replaceChildren(
         this.body,
         el("div", { class: "inspector-empty" }, [
-          el("p", { class: "inspector-empty-icon", text: "🔗" }),
+          el("p", { class: "inspector-empty-icon" }, [iconEl("link", "ui-icon-lg")]),
           el("p", { text: i18n.d.panels.relations.empty }),
         ]),
       );
@@ -237,7 +239,7 @@ export class EdgesPanel {
       el("span", { text: i18n.d.panels.relations.title }),
       el("span", { text: i18n.d.panels.properties.typeTitle }),
       el("span", { text: i18n.d.panels.properties.styleTitle }),
-      el("span", { text: "✓", attrs: { style: "text-align: center;" } }),
+      el("span", { attrs: { style: "text-align: center;" } }, [iconEl("check")]),
       el("span", { text: "" }),
       el("span", { text: "" }),
     ]);
@@ -326,7 +328,7 @@ export class EdgesPanel {
         },
       },
     }, [
-      el("span", { class: "mono", text: isOutgoing ? "➔" : "⬅", attrs: { style: "opacity: 0.7; font-size: calc(10px * var(--ui-text));" } }),
+      el("span", { class: "mono", attrs: { style: "opacity: 0.7; font-size: calc(10px * var(--ui-text));" } }, [iconEl(isOutgoing ? "arrowRight" : "arrowLeft")]),
       el("span", { class: "input-strong", text: otherName }),
       item.label ? el("span", { class: "muted mono", text: `«${item.label}»`, attrs: { style: "font-size: calc(10px * var(--ui-text));" } }) : null,
       item.raw?.via?.text ? el("span", { class: "muted mono", text: item.raw.via.text, attrs: { style: "font-size: calc(9px * var(--ui-text)); opacity: 0.7;" }, title: `Member type: ${item.raw.via.text}` }) : null,
@@ -335,10 +337,9 @@ export class EdgesPanel {
     const typeCol = el("div", { class: "edge-col-type" }, [
       el("span", {
         class: "badge chip",
-        text: item.type,
         title: `Тип связи: ${item.type}`,
         attrs: { style: "font-size: calc(9.5px * var(--ui-text)); padding: 1px calc(4px * var(--ui-space));" },
-      }),
+      }, [kindIconEl("edge", item.type.split(".")[0]), item.type]),
     ]);
 
     const styleCol = el("div", { class: "edge-col-style" }, [
@@ -352,7 +353,6 @@ export class EdgesPanel {
 
     const editBtn = el("button", {
       class: "btn-icon",
-      text: "✏️",
       title: "Редактировать связь",
       on: {
         click: () => {
@@ -361,11 +361,10 @@ export class EdgesPanel {
           this.render();
         },
       },
-    });
+    }, [iconEl("pencil")]);
 
     const deleteBtn = el("button", {
       class: `btn-icon${isConfirmingDelete ? " is-confirm" : " danger"}`,
-      text: isConfirmingDelete ? "Да?" : "✕",
       title: isConfirmingDelete ? "Нажмите для подтверждения удаления" : "Удалить связь",
       on: {
         click: () => {
@@ -387,7 +386,7 @@ export class EdgesPanel {
           this.render();
         },
       },
-    });
+    }, [isConfirmingDelete ? "Да?" : iconEl("close")]);
 
     const row = el(
       "div",

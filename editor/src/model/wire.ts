@@ -64,7 +64,7 @@ function parseView(w: WireView): DiagramView {
   const view: DiagramView = {
     id: w.id,
     name: w.name ?? w.id,
-    icon: w.icon ?? "🔹",
+    icon: w.icon ?? "",
     description: w.description ?? "",
     highlightZones: w.highlightZones ?? [],
     highlightNodes: w.highlightNodes ?? [],

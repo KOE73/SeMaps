@@ -11,6 +11,7 @@ import { resolveElementRelations } from "../../model/relations-resolver.js";
 import { renderContent } from "../../content/ContentRenderer.js";
 import { SourceCodeService } from "../../editor/code/SourceCodeService.js";
 import { DIAGRAM_CONFIG } from "../../constants/diagram-constants.js";
+import { iconGlyph } from "./iconGlyph.js";
 
 /**
  * The default leaf renderer: a rounded rectangle with a caption, a subtitle and
@@ -66,17 +67,7 @@ export class BoxRenderer implements ElementRenderer {
         rx: 4,
         class: "semaps-node-doc-rect",
       }),
-      text(
-        {
-          x: docX + 9,
-          y: docY + 10,
-          "text-anchor": "middle",
-          "font-size": "9px",
-          class: "semaps-node-doc-icon",
-          "pointer-events": "none",
-        },
-        hasDoc ? "📝" : "📄",
-      ),
+      iconGlyph(hasDoc ? "notes" : "doc", docX + 3.5, docY + 1.5, 11, "semaps-node-doc-icon"),
     ]);
     g.appendChild(docGroup);
 
@@ -99,17 +90,7 @@ export class BoxRenderer implements ElementRenderer {
           rx: 4,
           class: "semaps-node-code-rect",
         }),
-        text(
-          {
-            x: codeX + 9,
-            y: docY + 10,
-            "text-anchor": "middle",
-            "font-size": "9px",
-            class: "semaps-node-code-icon",
-            "pointer-events": "none",
-          },
-          "💻",
-        ),
+        iconGlyph("code", codeX + 3.5, docY + 1.5, 11, "semaps-node-code-icon"),
       ]);
       g.appendChild(codeGroup);
     }

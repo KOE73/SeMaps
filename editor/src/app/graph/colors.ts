@@ -47,11 +47,17 @@ export function colorAttribute(n: GraphNode, by: ColorBy): string {
       return n.presence as string;
     case "kind":
     default:
-      return n.kind ?? "—";
+      // The base kind (`class` for `abstract-class`): a modifier is a look, not a colour.
+      return n.symbolKind ?? n.nativeKind ?? n.kind ?? "—";
   }
 }
 
-function lighten(hex: string, amount: number): string {
+/** The attribute's own colour (hex), before presence or modifiers style it. */
+export function baseColor(n: GraphNode, by: ColorBy): string {
+  return colorFor(colorAttribute(n, by));
+}
+
+export function lighten(hex: string, amount: number): string {
   const n = parseInt(hex.slice(1), 16);
   const r = (n >> 16) & 255, g = (n >> 8) & 255, b = n & 255;
   const mix = (c: number) => Math.round(c + (255 - c) * amount);
@@ -89,6 +95,9 @@ const EDGE_PALETTE: Record<string, string> = {
   depends: "#4f8cff",
   holds: "#33c37a",
   uses: "#f2b705",
+  calls: "#ff5da2",
+  constructs: "#20c4c4",
+  overrides: "#c2185b",
 };
 
 export function edgeColor(e: GraphEdge): string {
@@ -103,7 +112,9 @@ export function edgeColor(e: GraphEdge): string {
  * not zoom-scaled) was a near-invisible hairline against the node clutter at
  * overview zoom on the demo graph; 2 was the smallest that stayed clearly
  * visible without the graph looking like it was drawn in marker. */
-export function edgeSize(e: GraphEdge): number {
+export function edgeSize(e: Pick<GraphEdge, "via" | "count">): number {
+  // A lifted calls/constructs edge grows with how many method calls it folds.
+  if (e.count && e.count > 1) return 2 + Math.min(6, Math.log2(e.count) * 1.6);
   const card = e.via?.cardinality;
   return card === "many" || card === "keyed" ? 3.6 : 2;
 }

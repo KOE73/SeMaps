@@ -34,6 +34,8 @@ export interface RunInfo {
   extractor: string;
   project: string;
   language: string;
+  /** The command line of the run, e.g. `["--root", ".", "--edges", "holds,calls"]`. */
+  command?: string[];
   trigger?: "watch";
   started: string;
   finished?: string;

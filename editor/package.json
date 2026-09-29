@@ -29,6 +29,7 @@
     "check:nudge": "node scripts/check-nudge.mjs"
   },
   "devDependencies": {
+    "@tabler/icons": "^3.48.0",
     "@types/node": "^26.3.0",
     "@types/prismjs": "^1.26.6",
     "graphology-types": "^0.24.8",
@@ -37,9 +38,12 @@
     "vite-plugin-dts": "^4.5.4"
   },
   "dependencies": {
+    "@dagrejs/dagre": "^3.1.1",
+    "@sigma/node-border": "^3.0.0",
     "dockview-core": "^8.2.0",
     "graphology": "0.26.0",
     "graphology-communities-louvain": "2.0.2",
+    "graphology-layout": "^0.6.1",
     "graphology-layout-forceatlas2": "0.10.1",
     "graphology-layout-noverlap": "0.4.2",
     "marked": "^18.0.11",

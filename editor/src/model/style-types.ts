@@ -100,7 +100,7 @@ export interface WireEndpoint {
 }
 
 export interface WireIcon {
-  /** Emoji or any short glyph. */
+  /** A registry icon: a Tabler name of the set (ui/iconSet.ts) or a kind key (ui/kindIcons.ts). Anything else draws the fallback icon. */
   glyph?: string;
   show?: boolean;
 }

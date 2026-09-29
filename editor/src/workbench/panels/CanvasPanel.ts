@@ -1,6 +1,7 @@
 import type { IContentRenderer, GroupPanelPartInitParameters } from "dockview-core";
 import type { DiagramEditorFacade } from "../commands/types.js";
 import { el } from "../../util/dom.js";
+import { iconEl } from "../../ui/icons.js";
 
 export class CanvasPanel implements IContentRenderer {
   readonly element: HTMLElement;
@@ -11,7 +12,7 @@ export class CanvasPanel implements IContentRenderer {
     this.zoomReadout = el("span", { class: "zoom-readout", text: "100%" });
     this.dropHint = el("div", { class: "drop-hint", attrs: { hidden: "true" } }, [
       el("div", { class: "drop-hint-card" }, [
-        el("p", { attrs: { style: "font-size: calc(28px * var(--ui-text)); margin: 0 0 calc(4px * var(--ui-space))" }, text: "📥" }),
+        el("p", { attrs: { style: "margin: 0 0 calc(4px * var(--ui-space))" } }, [iconEl("inbox", "ui-icon-lg")]),
         el("p", { attrs: { style: "margin: 0; font-weight: 600" }, text: "Перетащите сюда JSON-файл схемы" }),
       ]),
     ]);

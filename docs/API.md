@@ -84,11 +84,11 @@ The editor overlays this disk index with the working manifest and text entries f
 
 ```json
 { "projects": [
-  { "id": "shop", "title": "Магазин", "subtitle": "…", "icon": "📁", "theme": "blue", "order": 1,
+  { "id": "shop", "title": "Магазин", "subtitle": "…", "icon": "folder", "theme": "blue", "order": 1,
     "languages": ["ru"],
     "views": [
       { "id": "v_main", "file": "projects/shop/views/v_main.view.json", "axis": "axis_subsystem",
-        "icon": "🗺️", "theme": "blue", "order": 1, "names": { "ru": "Общая картина" } } ] } ] }
+        "icon": "map", "theme": "blue", "order": 1, "names": { "ru": "Общая картина" } } ] } ] }
 ```
 
 - `title` falls back to the folder name; `names` holds `name` under the view's id from each
@@ -336,7 +336,7 @@ The command line of an extractor cannot be set through the API — only in the f
 | `/api/setup/extractors/{id}` | `PUT` | `{language?, project?, root?, include?, exclude?, edges?, watch?}` → setup; adds the entry when missing. Any other field (`command`) → `400`. Toggling `watch` starts or stops that extractor's watcher at once, no host restart |
 | `/api/setup/extractors/{id}` | `DELETE` | → setup |
 | `/api/runs?extractor=<id>` | `GET` | → `[Run]`, newest first; five person/agent runs and two watch runs (`trigger: "watch"`) kept per extractor, counted apart |
-| `/api/runs` | `POST` | `{extractor}` → `202` `Run` (`state: running`) |
+| `/api/runs` | `POST` | `{extractor}` → `202` `Run` (`state: running`). Only runs the extractor and keeps its facts under the runs directory; it never writes the registry — only `POST /api/runs/{id}/sync` does. The live graph reads these facts, so this is also what the graph mode's «Обновить граф» calls (the same start the watch mode makes, apart from `trigger`) |
 | `/api/runs/{id}` | `GET` | → `Run` |
 | `/api/runs/{id}/log?offset=<n>` | `GET` | → `{text, offset, state}`: the log from byte `n`; ask again with the new `offset` while `state` is `running` |
 | `/api/runs/{id}/sync` | `POST` | `{dryRun, noRenames}` → `{report, exitCode, empty}`; the report is `core.SyncReport`. Applies the facts of that run to the working model (unsaved), never extracts again |

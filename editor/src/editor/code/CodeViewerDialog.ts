@@ -1,4 +1,8 @@
 import { SourceCodeService } from "./SourceCodeService.js";
+import { iconSvg, type IconName } from "../../ui/icons.js";
+
+/** An icon inside an `innerHTML` template. */
+const ic = (name: IconName): string => `<span class="ui-icon">${iconSvg(name)}</span>`;
 
 /**
  * Read-only modal dialog for viewing source code files with syntax highlighting,
@@ -28,18 +32,18 @@ export class CodeViewerDialog {
       <div class="semaps-code-card">
         <div class="semaps-code-head">
           <div class="semaps-code-title-group">
-            <span class="semaps-code-title-icon">💻</span>
+            <span class="semaps-code-title-icon">${ic("code")}</span>
             <span class="semaps-code-title-text">Исходный код</span>
             <span class="semaps-code-path-badge" title="Путь к файлу"></span>
           </div>
           <div class="semaps-code-head-actions">
             <button type="button" class="semaps-code-head-btn semaps-code-copy-path-btn" title="Скопировать относительный путь">
-              📋 Путь
+              ${ic("clipboard")} Путь
             </button>
             <button type="button" class="semaps-code-head-btn semaps-code-copy-btn" title="Скопировать весь код">
-              📄 Копировать
+              ${ic("copy")} Копировать
             </button>
-            <button type="button" class="semaps-code-close-btn" title="Закрыть (Esc)">✕</button>
+            <button type="button" class="semaps-code-close-btn" title="Закрыть (Esc)">${ic("close")}</button>
           </div>
         </div>
         <div class="semaps-code-body"></div>
@@ -91,7 +95,7 @@ export class CodeViewerDialog {
       if (!this.currentCode) return;
       navigator.clipboard.writeText(this.currentCode).then(() => {
         const orig = this.copyBtn.innerHTML;
-        this.copyBtn.innerHTML = "✓ Скопировано!";
+        this.copyBtn.innerHTML = `${ic("check")} Скопировано!`;
         setTimeout(() => {
           this.copyBtn.innerHTML = orig;
         }, 1500);
@@ -102,7 +106,7 @@ export class CodeViewerDialog {
       if (!this.currentPath) return;
       navigator.clipboard.writeText(this.currentPath).then(() => {
         const orig = this.copyPathBtn.innerHTML;
-        this.copyPathBtn.innerHTML = "✓ Путь скопирован!";
+        this.copyPathBtn.innerHTML = `${ic("check")} Путь скопирован!`;
         setTimeout(() => {
           this.copyPathBtn.innerHTML = orig;
         }, 1500);
@@ -178,7 +182,7 @@ export class CodeViewerDialog {
 
     this.bodyEl.innerHTML = `
       <div class="semaps-code-loading">
-        <span style="font-size: 24px; animation: spin 1s linear infinite;">⏳</span>
+        <span style="font-size: 24px; animation: spin 1s linear infinite;">${ic("hourglass")}</span>
         <span>Загрузка файла ${codeRef}...</span>
       </div>
     `;
@@ -207,7 +211,7 @@ export class CodeViewerDialog {
     } catch (err: any) {
       this.bodyEl.innerHTML = `
         <div class="semaps-code-error">
-          <div class="semaps-code-error-icon">⚠️</div>
+          <div class="semaps-code-error-icon">${ic("alert")}</div>
           <div class="semaps-code-error-title">Не удалось загрузить исходный код</div>
           <div class="semaps-code-error-msg">${err?.message || "Файл недоступен на сервере"}</div>
           <div style="font-size: 11px; color: #71717a; margin-top: 8px;">

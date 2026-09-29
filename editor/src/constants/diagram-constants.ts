@@ -36,10 +36,10 @@ export const DIAGRAM_CONFIG = {
     /** Height of top bar control items (doc/code buttons, badges) in px */
     topBarHeight: 14,
 
-    /** Width of the [📄] doc button in px */
+    /** Width of the doc (file icon) button in px */
     docButtonWidth: 18,
 
-    /** Width of the [💻] code button in px */
+    /** Width of the code (</> icon) button in px */
     codeButtonWidth: 18,
 
     /** Horizontal padding inside the node in px */

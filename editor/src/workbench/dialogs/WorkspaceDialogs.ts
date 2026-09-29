@@ -4,13 +4,10 @@ import type { ProjectEntry, ViewEntry } from "../../editor/io/types.js";
 import type { DiagramEditorFacade } from "../commands/types.js";
 import { i18n } from "../i18n/I18nService.js";
 import { openModal } from "./Modal.js";
+import { iconPicker } from "../../ui/iconPicker.js";
+import { iconByKey } from "../../ui/kindIcons.js";
 
 const AXES = ["axis_layer", "axis_subsystem", "axis_process", "axis_security_zone", "axis_deployment"];
-
-const ICONS = [
-  "📁", "🗺️", "🧩", "🧠", "⚙️", "🔌", "🗄️", "🌐", "☁️", "🔒", "🛡️", "🧪",
-  "📦", "🚀", "👤", "💬", "📊", "🧱", "🔗", "🏭", "🛒", "💳", "📨", "🤖",
-];
 
 /** Tints for the icon tile in the catalogue; `.catalog-icon.theme-<id>` in editor.css. */
 export const THEMES = ["blue", "green", "teal", "orange", "red", "pink", "purple", "slate"];
@@ -106,17 +103,16 @@ function formDialog(title: string, submitLabel: string, rows: Row[], submit: () 
 function lookPicker(icon: string, theme: string | undefined): { element: HTMLElement; icon(): string; theme(): string | undefined } {
   const t = i18n.d.workspaceDialogs;
   let currentTheme = theme;
-  const custom = textInput(icon, "🙂");
-  custom.maxLength = 8;
-  custom.style.width = "64px";
+  let currentIcon = icon;
   const preview = el("span", { class: "catalog-icon" });
 
-  const iconButtons = ICONS.map((glyph) =>
-    el("button", { type: "button", class: "look-icon", text: glyph, title: glyph, on: { click: () => {
-      custom.value = glyph;
-      custom.dispatchEvent(new Event("input", { bubbles: true }));
-    } } }),
-  );
+  const picker = iconPicker({
+    value: icon,
+    onChange: (value) => {
+      currentIcon = value ?? "";
+      element.dispatchEvent(new Event("change", { bubbles: true }));
+    },
+  });
   const swatches = [undefined, ...THEMES].map((id) =>
     el("button", {
       type: "button",
@@ -132,23 +128,19 @@ function lookPicker(icon: string, theme: string | undefined): { element: HTMLEle
   );
 
   const sync = (): void => {
-    const glyph = custom.value.trim();
-    preview.textContent = glyph || "·";
+    preview.innerHTML = iconByKey(currentIcon);
     preview.className = `catalog-icon look-preview${currentTheme ? ` theme-${currentTheme}` : ""}`;
-    iconButtons.forEach((b) => b.classList.toggle("is-active", b.textContent === glyph));
     swatches.forEach((s) => s.classList.toggle("is-active", (s.dataset.theme || undefined) === currentTheme));
   };
 
   const element = el("div", { class: "look-picker" }, [
     el("div", { class: "look-row" }, [preview, el("span", { class: "form-hint", text: t.iconPreview })]),
-    el("div", { class: "look-icons" }, iconButtons),
-    el("div", { class: "look-row" }, [el("span", { class: "form-hint", text: t.iconCustom }), custom]),
+    picker,
     el("div", { class: "look-row" }, [el("span", { class: "form-hint", text: t.colorLabel }), ...swatches]),
   ]);
-  element.addEventListener("input", sync);
   element.addEventListener("change", sync);
   sync();
-  return { element, icon: () => custom.value.trim(), theme: () => currentTheme };
+  return { element, icon: () => currentIcon, theme: () => currentTheme };
 }
 
 function projectRows(editor: DiagramEditorFacade, existing: ProjectEntry | undefined) {
@@ -157,7 +149,7 @@ function projectRows(editor: DiagramEditorFacade, existing: ProjectEntry | undef
   const id = textInput(existing?.id ?? "", "shop");
   const title = textInput(existing?.title ?? "");
   const subtitle = textInput(existing?.subtitle ?? "");
-  const look = lookPicker(existing?.icon ?? "📁", existing?.theme);
+  const look = lookPicker(existing?.icon ?? "folder", existing?.theme);
 
   const rows: Row[] = [
     { label: `${t.titleLabel} *`, control: title, check: () => {
@@ -216,7 +208,7 @@ function viewDialog(editor: DiagramEditorFacade, projectId: string | undefined, 
 
   const project = el("select", { attrs: { style: "width: 100%;" } },
     projects.map((p) => {
-      const option = el("option", { value: p.id, text: `${p.icon ?? "📁"} ${p.title}` });
+      const option = el("option", { value: p.id, text: p.title });
       if (p.id === selected) option.selected = true;
       return option;
     }),
@@ -227,7 +219,7 @@ function viewDialog(editor: DiagramEditorFacade, projectId: string | undefined, 
   const axis = textInput(existing?.axis ?? "", "axis_subsystem");
   axis.setAttribute("list", "semaps-axes");
   const axisList = el("datalist", { id: "semaps-axes" }, AXES.map((a) => el("option", { value: a })));
-  const look = lookPicker(existing?.icon ?? "🗺️", existing?.theme);
+  const look = lookPicker(existing?.icon ?? "map", existing?.theme);
 
   const siblings = (): ViewEntry[] => projectOf(project.value).views.filter((v) => v.file !== existing?.file);
   const normId = (): string => {

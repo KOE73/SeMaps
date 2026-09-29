@@ -1,4 +1,5 @@
 import { el } from "../../util/dom.js";
+import { icons } from "../../ui/icons.js";
 
 export type MenuItem =
   | {
@@ -21,6 +22,20 @@ export type MenuItem =
   | { kind: "header"; label: string };
 
 let current: { close: () => void } | null = null;
+
+/** An svg string is markup we wrote (icons.ts); anything else is plain text. */
+function menuIcon(icon: string): HTMLElement {
+  const span = el("span", { class: "ctx-icon" });
+  if (icon.startsWith("<svg")) span.innerHTML = icon;
+  else span.textContent = icon;
+  return span;
+}
+
+function menuArrow(): HTMLElement {
+  const span = el("span", { class: "ctx-arrow" });
+  span.innerHTML = icons.chevronRight;
+  return span;
+}
 
 /**
  * A plain context menu at a screen point, with submenus opening to the side.
@@ -74,7 +89,7 @@ export function openContextMenu(items: MenuItem[], clientX: number, clientY: num
         title: item.title,
         attrs: { role: "menuitem" },
       }, [
-        el("span", { class: "ctx-icon", text: item.checked ? "✓" : item.icon ?? "" }),
+        menuIcon(item.checked ? icons.check : item.icon ?? ""),
         item.preview
           ? el("span", { class: "ctx-main" }, [
               el("span", { class: "ctx-label", text: item.label }),
@@ -82,7 +97,7 @@ export function openContextMenu(items: MenuItem[], clientX: number, clientY: num
             ])
           : el("span", { class: "ctx-label", text: item.label }),
         item.note ? el("span", { class: "ctx-note", text: item.note }) : null,
-        item.submenu ? el("span", { class: "ctx-arrow", text: "▸" }) : null,
+        item.submenu ? menuArrow() : null,
       ]);
 
       row.addEventListener("mouseenter", () => {

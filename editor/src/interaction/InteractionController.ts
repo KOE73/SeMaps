@@ -9,6 +9,7 @@ import { renderMarkdown } from "../editor/doc/MarkdownRenderer.js";
 import { SourceCodeService } from "../editor/code/SourceCodeService.js";
 import { DIAGRAM_CONFIG } from "../constants/diagram-constants.js";
 import { i18n } from "../workbench/i18n/I18nService.js";
+import { iconSvg } from "../ui/icons.js";
 
 const MIN_SIZE = {
   zone: DIAGRAM_CONFIG.container.minSize,
@@ -429,7 +430,7 @@ export class InteractionController {
           const toEl = doc.element(edge.to);
           const fromName = doc.getText(edge.from, lang)?.name || fromEl?.label || edge.from;
           const toName = doc.getText(edge.to, lang)?.name || toEl?.label || edge.to;
-          name = `${fromName} ➔ ${toName}`;
+          name = `${fromName} → ${toName}`;
           kind = edge.type || "RELATION";
         }
       } else if (hit.elementId) {
@@ -516,7 +517,7 @@ export class InteractionController {
         const desc = text?.description || edge.label || "";
 
         let content = `<div class="semaps-tooltip-header">
-          <span>${escapeHtml(fromName)} ➔ ${escapeHtml(toName)}</span>
+          <span>${escapeHtml(fromName)} →${escapeHtml(toName)}</span>
           <span class="semaps-tooltip-kind">${escapeHtml(edge.type)}</span>
         </div>`;
         if (desc) {
@@ -554,7 +555,7 @@ export class InteractionController {
     const docMd = docText ? renderMarkdown(docText) : "";
 
     let content = `<div class="semaps-rich-doc-tooltip-head">
-      <span class="semaps-rich-doc-tooltip-title">${escapeHtml(fromName)} ➔ ${escapeHtml(toName)}</span>
+      <span class="semaps-rich-doc-tooltip-title">${escapeHtml(fromName)} →${escapeHtml(toName)}</span>
       <span class="semaps-doc-kind-badge">${escapeHtml(edge.type || "RELATION")}</span>
     </div>`;
     if (desc) {
@@ -583,11 +584,11 @@ export class InteractionController {
     const langLabel = SourceCodeService.getLanguageLabel(codeRef);
     const initialHtml = `
       <div class="semaps-rich-code-tooltip-head">
-        <span style="font-weight: 700;">💻 ${escapeHtml(label)}</span>
+        <span style="font-weight: 700;"><span class="ui-icon">${iconSvg("code")}</span> ${escapeHtml(label)}</span>
         <span class="semaps-rich-code-tooltip-path" title="${escapeHtml(codeRef)}">${escapeHtml(codeRef)}</span>
       </div>
       <div class="semaps-rich-code-tooltip-body">
-        <div style="color: #888; padding: 8px;">⏳ Загрузка фрагмента кода...</div>
+        <div style="color: #888; padding: 8px;"><span class="ui-icon">${iconSvg("hourglass")}</span> Загрузка фрагмента кода...</div>
       </div>
       <div class="semaps-rich-code-tooltip-foot">
         <span>Клик — открыть полный просмотрщик</span>
@@ -601,7 +602,7 @@ export class InteractionController {
       const preview = await SourceCodeService.getPreview(codeRef, 12);
       const content = `
         <div class="semaps-rich-code-tooltip-head">
-          <span style="font-weight: 700;">💻 ${escapeHtml(label)}</span>
+          <span style="font-weight: 700;"><span class="ui-icon">${iconSvg("code")}</span> ${escapeHtml(label)}</span>
           <span class="semaps-rich-code-tooltip-path" title="${escapeHtml(codeRef)}">${escapeHtml(codeRef)}</span>
         </div>
         <div class="semaps-rich-code-tooltip-body">
@@ -616,11 +617,11 @@ export class InteractionController {
     } catch (err: any) {
       const content = `
         <div class="semaps-rich-code-tooltip-head">
-          <span style="font-weight: 700;">💻 ${escapeHtml(label)}</span>
+          <span style="font-weight: 700;"><span class="ui-icon">${iconSvg("code")}</span> ${escapeHtml(label)}</span>
           <span class="semaps-rich-code-tooltip-path" title="${escapeHtml(codeRef)}">${escapeHtml(codeRef)}</span>
         </div>
         <div class="semaps-rich-code-tooltip-body">
-          <div style="color: #f87171; padding: 8px;">⚠️ ${escapeHtml(err?.message || "Файл недоступен")}</div>
+          <div style="color: #f87171; padding: 8px;"><span class="ui-icon">${iconSvg("alert")}</span> ${escapeHtml(err?.message || "Файл недоступен")}</div>
         </div>
         <div class="semaps-rich-code-tooltip-foot">
           <span>Клик — открыть просмотрщик</span>

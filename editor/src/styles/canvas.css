@@ -297,12 +297,14 @@
 }
 
 .semaps-node-doc-icon {
+  fill: none;
+  stroke: #334155;
   pointer-events: none;
-  transition: fill 0.15s ease;
+  transition: stroke 0.15s ease;
 }
 
 .semaps-node-doc:hover .semaps-node-doc-icon {
-  fill: #ffffff !important;
+  stroke: #ffffff !important;
 }
 
 .semaps-zone-doc-rect {
@@ -323,12 +325,13 @@
 }
 
 .semaps-zone-doc-icon {
-  fill: #334155;
+  fill: none;
+  stroke: #334155;
   pointer-events: none;
-  transition: fill 0.15s ease;
+  transition: stroke 0.15s ease;
 }
 
 .semaps-zone-doc:hover .semaps-zone-doc-icon {
-  fill: #fff !important;
+  stroke: #fff !important;
 }
 

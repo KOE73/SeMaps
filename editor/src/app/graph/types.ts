@@ -5,6 +5,8 @@
  * rest of the mode.
  */
 
+import { parseNativeKind } from "../../ui/kindIcons.js";
+
 export interface Span {
   line: number;
   endLine?: number;
@@ -42,6 +44,11 @@ export interface GraphNode {
   status?: string;
   containers?: string[];
   presence: Presence;
+  /** The base kind of `nativeKind` (`class` for `abstract-class`) and its modifiers (`abstract`), parsed once by `fetchGraph`. */
+  symbolKind?: string;
+  modifiers?: string[];
+  /** Blind spots (reflection, `dynamic`); on a type, gathered from its methods. */
+  dynamic?: { kind: string; line: number; method?: string; file?: string }[];
 }
 
 export interface GraphEdge {
@@ -54,6 +61,10 @@ export interface GraphEdge {
   file?: string;
   relation?: string;
   presence: Presence;
+  /** Only on an edge lift=types made: how many method edges it merges, and their methods. */
+  count?: number;
+  fromMethods?: string[];
+  toMethods?: string[];
 }
 
 export interface GraphFactsInfo {
@@ -88,9 +99,16 @@ export interface GraphDiff {
 }
 
 export async function fetchGraph(project: string, missing = false): Promise<GraphResponse> {
-  const res = await fetch(`/api/graph/${encodeURIComponent(project)}?fields=via,position${missing ? "&missing=1" : ""}`, { cache: "no-store" });
+  const res = await fetch(`/api/graph/${encodeURIComponent(project)}?fields=via,position,dynamic${missing ? "&missing=1" : ""}`, { cache: "no-store" });
   if (!res.ok) throw new Error((await res.text()).trim() || res.statusText);
-  return (await res.json()) as GraphResponse;
+  const graph = (await res.json()) as GraphResponse;
+  // A modifier is a look, not a kind: split `abstract-class` into `class` + [abstract] once, here.
+  for (const n of graph.nodes) {
+    const { base, modifiers } = parseNativeKind(n.nativeKind);
+    n.symbolKind = base ?? n.kind;
+    n.modifiers = modifiers;
+  }
+  return graph;
 }
 
 export interface WorkspaceProject {

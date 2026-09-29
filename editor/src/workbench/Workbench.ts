@@ -1,4 +1,5 @@
 import { el } from "../util/dom.js";
+import { iconEl } from "../ui/icons.js";
 import { openCanvasMenu, type MenuHost } from "./menus/CanvasMenus.js";
 import { DiagramEditor, type DiagramEditorOptions } from "../editor/DiagramEditor.js";
 import { CommandRegistry } from "./commands/CommandRegistry.js";
@@ -189,10 +190,9 @@ export class Workbench {
     }
     const gear = el("button", {
       class: "ribbon-gear-btn",
-      text: "⚙",
       attrs: { title: i18n.d.ribbon.modes.display, "aria-label": i18n.d.ribbon.modes.display },
       on: { click: (e: MouseEvent) => this.display.toggle(e.currentTarget as HTMLElement) },
-    });
+    }, [iconEl("settings")]);
     out.push(gear);
     return out;
   }

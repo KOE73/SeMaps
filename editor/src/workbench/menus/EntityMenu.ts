@@ -5,6 +5,8 @@ import { entityOf } from "../../model/types.js";
 import type { EntityEntry } from "../../model/wire-types.js";
 import { i18n } from "../i18n/I18nService.js";
 import type { MenuItem } from "./ContextMenu.js";
+import { icons } from "../../ui/icons.js";
+import { kindIcon } from "../../ui/kindIcons.js";
 
 /**
  * The relation part of a box's right-click menu, for a box that stands for a
@@ -32,12 +34,12 @@ export function relationItems(editor: DiagramEditor, elementId: string): MenuIte
 
   // What each kind of kin is, how to find it, and where it lands.
   const kin: { label: string; icon: string; type: string; dir: Dir; deep: boolean; side: Side }[] = [
-    { label: t.ancestors, icon: "⬆", type: "extends", dir: "out", deep: true, side: "above" },
-    { label: t.descendants, icon: "⬇", type: "extends", dir: "in", deep: true, side: "below" },
-    { label: t.interfaces, icon: "◇", type: "implements", dir: "out", deep: true, side: "above" },
-    { label: t.implementations, icon: "◆", type: "implements", dir: "in", deep: true, side: "below" },
-    { label: t.containers, icon: "▣", type: "contains", dir: "in", deep: false, side: "above" },
-    { label: t.contents, icon: "▤", type: "contains", dir: "out", deep: false, side: "below" },
+    { label: t.ancestors, icon: kindIcon("edge", "extends"), type: "extends", dir: "out", deep: true, side: "above" },
+    { label: t.descendants, icon: kindIcon("edge", "extends"), type: "extends", dir: "in", deep: true, side: "below" },
+    { label: t.interfaces, icon: kindIcon("edge", "implements"), type: "implements", dir: "out", deep: true, side: "above" },
+    { label: t.implementations, icon: kindIcon("edge", "implements"), type: "implements", dir: "in", deep: true, side: "below" },
+    { label: t.containers, icon: kindIcon("edge", "contains"), type: "contains", dir: "in", deep: false, side: "above" },
+    { label: t.contents, icon: kindIcon("edge", "contains"), type: "contains", dir: "out", deep: false, side: "below" },
   ];
 
   const items: MenuItem[] = [];
@@ -89,7 +91,7 @@ export function relationItems(editor: DiagramEditor, elementId: string): MenuIte
       const missing = arm.entities.filter((e) => !placed(e));
       items.push({
         label: names[arm.type]?.[arm.dir] ?? (arm.dir === "out" ? `${arm.type} →` : `← ${arm.type}`),
-        icon: arm.dir === "out" ? "→" : "←",
+        icon: arm.dir === "out" ? icons.arrowRight : icons.arrowLeft,
         note: String(arm.entities.length),
         submenu: () => [
           {

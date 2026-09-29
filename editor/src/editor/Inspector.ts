@@ -8,6 +8,7 @@ import { field, select, type Option } from "./fields.js";
 import { blockPreview, edgePreview } from "./style-preview.js";
 import { SourceCodeService } from "./code/SourceCodeService.js";
 import { i18n } from "../workbench/i18n/I18nService.js";
+import { iconEl } from "../ui/icons.js";
 
 export interface InspectorHost {
   readonly canvas: DiagramCanvas;
@@ -122,7 +123,7 @@ export class Inspector {
     replaceChildren(
       this.body,
       el("div", { class: "inspector-empty" }, [
-        el("p", { class: "inspector-empty-icon", text: "👆" }),
+        el("p", { class: "inspector-empty-icon",  }, [iconEl("pointer", "ui-icon-lg")]),
         el("p", {
           text: i18n.d.panels.properties.empty,
         }),
@@ -201,24 +202,22 @@ export class Inspector {
       }, [
         el("button", {
           class: `btn btn-small ${isVisibleOnCanvas ? "btn-primary" : ""}`,
-          text: i18n.d.panels.properties.edgeEnabled,
           attrs: { style: isVisibleOnCanvas ? "font-weight: 700;" : "opacity: 0.7;" },
           on: {
             click: () => {
               if (!isVisibleOnCanvas && doc) (this.host as any).setEdgeShown(edge.id, true);
             },
           },
-        }),
+        }, [iconEl("eye"), i18n.d.panels.properties.edgeEnabled]),
         el("button", {
           class: `btn btn-small ${!isVisibleOnCanvas ? "btn-secondary" : ""}`,
-          text: i18n.d.panels.properties.edgeGhost,
           attrs: { style: !isVisibleOnCanvas ? "font-weight: 700; border-color: var(--accent); color: var(--accent);" : "opacity: 0.7;" },
           on: {
             click: () => {
               if (isVisibleOnCanvas && doc) (this.host as any).setEdgeShown(edge.id, false);
             },
           },
-        }),
+        }, [iconEl("eyeOff"), i18n.d.panels.properties.edgeGhost]),
       ]),
     ]);
 
@@ -227,7 +226,7 @@ export class Inspector {
       statusToggle,
       el("div", { class: "field-row" }, [
         el("span", { class: "mono muted", text: `ID: ${edge.id}` }),
-        el("span", { class: "mono coords", text: `${fromEl?.label || edge.from} ➔ ${toEl?.label || edge.to}` }),
+        el("span", { class: "mono coords", text: `${fromEl?.label || edge.from} →${toEl?.label || edge.to}` }),
       ]),
       el("label", { class: "field" }, [
         el("div", { attrs: { style: "display: flex; align-items: center; justify-content: space-between; margin-bottom: calc(2px * var(--ui-space));" } }, [
@@ -312,11 +311,10 @@ export class Inspector {
         el("button", {
           class: "btn full",
           attrs: { style: "display: flex; align-items: center; justify-content: center; gap: calc(6px * var(--ui-space));" },
-          text: `📄 ${i18n.d.dialogs.docEditor.openEditorBtn}`,
           on: {
             click: () => this.host.openDocEditor(edge.id, "edge"),
           },
-        }),
+        }, [iconEl("doc"), i18n.d.dialogs.docEditor.openEditorBtn]),
       ]),
       el("label", { class: "field" }, [
         el("span", { class: "field-label", text: i18n.d.panels.properties.edgeTypeTitle }),
@@ -365,7 +363,7 @@ export class Inspector {
 
   /** Copies the link to this object: paste it to an agent. */
   private copyLinkButton(id: string): HTMLElement {
-    const btn = el("button", { class: "btn", text: "🔗", attrs: { title: "Скопировать ссылку на объект (для агента)" } });
+    const btn = el("button", { class: "btn", attrs: { title: "Скопировать ссылку на объект (для агента)" } }, [iconEl("link")]);
     btn.addEventListener("click", () => this.host.copyLink?.([id]));
     return btn;
   }
@@ -411,11 +409,9 @@ export class Inspector {
 
   private typeOptions(current: string): Option[] {
     const lib = this.host.styles;
-    const options: Option[] = lib.list("block").map((entry) => {
-      const glyph = lib.resolveBlock(entry.id).icon.glyph;
-      return [entry.id, `${glyph} ${entry.name}`] as Option;
-    });
-    if (!options.some(([value]) => value === current)) options.push([current, `❓ ${current}`]);
+    // A <select> cannot hold an svg, so the option is the name alone.
+    const options: Option[] = lib.list("block").map((entry) => [entry.id, entry.name] as Option);
+    if (!options.some(([value]) => value === current)) options.push([current, `? ${current}`]);
     return options;
   }
 
@@ -423,7 +419,7 @@ export class Inspector {
     const options: Option[] = this.host.styles
       .list("edge")
       .map((entry) => [entry.id, entry.name] as Option);
-    if (!options.some(([value]) => value === current)) options.push([current, `❓ ${current}`]);
+    if (!options.some(([value]) => value === current)) options.push([current, `? ${current}`]);
     return options;
   }
 
@@ -446,7 +442,10 @@ export class Inspector {
     const count = element.children.filter((c) => !isContainer(c)).length;
 
     return el("div", { class: "panel panel-info" }, [
-      el("span", { text: i18n.format(i18n.d.panels.properties.nestedCount, { count }) }),
+      el("span", { attrs: { style: "display: inline-flex; align-items: center; gap: 4px;" } }, [
+        iconEl("box"),
+        i18n.format(i18n.d.panels.properties.nestedCount, { count }),
+      ]),
       el("button", {
         class: "btn btn-small",
         text: collapsed ? i18n.d.panels.properties.expand : i18n.d.panels.properties.collapse,
@@ -683,11 +682,10 @@ export class Inspector {
         el("button", {
           class: `btn full ${hasDoc ? "btn-secondary" : ""}`,
           attrs: { style: "display: flex; align-items: center; justify-content: center; gap: calc(6px * var(--ui-space));" },
-          text: `📄 ${i18n.d.dialogs.docEditor.openEditorBtn}${hasDoc ? " (✓)" : ""}`,
           on: {
             click: () => this.host.openDocEditor(element.id, isContainer(element) ? "zone" : "node"),
           },
-        }),
+        }, [iconEl("doc"), i18n.d.dialogs.docEditor.openEditorBtn, hasDoc ? iconEl("check") : null]),
       ]),
     ]);
   }
@@ -719,12 +717,11 @@ export class Inspector {
           ? el("button", {
               class: "btn btn-secondary",
               title: "Просмотреть исходный код (без сохранения)",
-              text: "💻",
               attrs: { style: "padding: calc(4px * var(--ui-space)) calc(8px * var(--ui-space)); flex-shrink: 0;" },
               on: {
                 click: () => this.host.openCodeViewer?.(value, element.label),
               },
-            })
+            }, [iconEl("code")])
           : null,
       ].filter(Boolean) as HTMLElement[]),
     ]);

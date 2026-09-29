@@ -1,9 +1,12 @@
 import { el, replaceChildren } from "../util/dom.js";
+import { iconEl } from "../ui/icons.js";
+import { iconElByKey } from "../ui/kindIcons.js";
 
 export interface SearchableOption {
   value: string;
   label: string;
   subtitle?: string;
+  /** A registry icon key (ui/kindIcons.ts). */
   icon?: string;
   badge?: string;
 }
@@ -141,7 +144,7 @@ export class SearchableSelect {
     replaceChildren(
       this.triggerBtn,
       el("span", { class: "searchable-select-label", text: label }),
-      el("span", { class: "searchable-select-arrow", text: "▾" }),
+      el("span", { class: "searchable-select-arrow" }, [iconEl("chevronDown")]),
     );
   }
 
@@ -189,7 +192,7 @@ export class SearchableSelect {
             },
           },
           [
-            opt.icon ? el("span", { class: "searchable-select-opt-icon", text: opt.icon }) : null,
+            opt.icon ? el("span", { class: "searchable-select-opt-icon" }, [iconElByKey(opt.icon)]) : null,
             el("span", { class: "searchable-select-opt-label", text: opt.label }),
             opt.badge ? el("span", { class: "badge chip", text: opt.badge }) : null,
             opt.subtitle ? el("span", { class: "searchable-select-opt-sub mono muted", text: opt.subtitle }) : null,

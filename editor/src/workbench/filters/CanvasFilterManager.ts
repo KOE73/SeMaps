@@ -1,5 +1,10 @@
 import { el } from "../../util/dom.js";
 import { i18n } from "../i18n/I18nService.js";
+import { iconEl, type IconName } from "../../ui/icons.js";
+
+function sectionLabel(icon: IconName, text: string): HTMLElement {
+  return el("span", { class: "canvas-filters-section-label" }, [iconEl(icon), ` ${text}`]);
+}
 
 export type TintMode = "none" | "warm" | "slate" | "cool";
 
@@ -223,7 +228,7 @@ export class CanvasFilterManager {
     // Header
     const header = el("div", { class: "canvas-filters-header" }, [
       el("div", { class: "canvas-filters-title" }, [
-        el("span", { text: "✨" }),
+        iconEl("sparkles"),
         el("span", { text: isEn ? "Canvas Visual Effects" : "Эффекты и фильтры холста" }),
       ]),
       el("div", { class: "canvas-filters-theme-badge", text: this.currentTheme.toUpperCase() }),
@@ -261,7 +266,7 @@ export class CanvasFilterManager {
 
     const sec1 = el("div", { class: "canvas-filters-section" }, [
       el("div", { class: "canvas-filters-section-header" }, [
-        el("span", { class: "canvas-filters-section-label", text: isEn ? "☀️ Brightness & Contrast" : "☀️ Яркость и контраст" }),
+        sectionLabel("sun", isEn ? "Brightness & Contrast" : "Яркость и контраст"),
       ]),
       el("div", { class: "canvas-filters-control-row" }, [
         brightnessSwitch,
@@ -291,7 +296,7 @@ export class CanvasFilterManager {
 
     const sec2 = el("div", { class: "canvas-filters-section" }, [
       el("div", { class: "canvas-filters-section-header" }, [
-        el("span", { class: "canvas-filters-section-label", text: isEn ? "🕶️ Matte & White Dimmer" : "🕶️ Приглушение белизны" }),
+        sectionLabel("sunglasses", isEn ? "Matte & White Dimmer" : "Приглушение белизны"),
         matteSwitch,
       ]),
       el("div", { class: "canvas-filters-control-row" }, [
@@ -333,7 +338,7 @@ export class CanvasFilterManager {
 
     const sec3 = el("div", { class: "canvas-filters-section" }, [
       el("div", { class: "canvas-filters-section-header" }, [
-        el("span", { class: "canvas-filters-section-label", text: isEn ? "✏️ Edge & Stroke Boost" : "✏️ Усиление толщины линий" }),
+        sectionLabel("pencil", isEn ? "Edge & Stroke Boost" : "Усиление толщины линий"),
         strokeSwitch,
       ]),
       el("div", { class: "canvas-filters-control-row" }, [
@@ -376,7 +381,7 @@ export class CanvasFilterManager {
 
     const sec4 = el("div", { class: "canvas-filters-section" }, [
       el("div", { class: "canvas-filters-section-header" }, [
-        el("span", { class: "canvas-filters-section-label", text: isEn ? "🎨 Color Tint & Tone" : "🎨 Цветовой тон и оттенок" }),
+        sectionLabel("palette", isEn ? "Color Tint & Tone" : "Цветовой тон и оттенок"),
         tintSwitch,
       ]),
       el("div", { class: "canvas-filters-control-row" }, [
@@ -400,7 +405,7 @@ export class CanvasFilterManager {
             click: () => this.resetCurrentTheme(),
           },
         },
-        [el("span", { text: "↺" }), el("span", { text: isEn ? "Reset defaults" : "Сбросить настройки" })],
+        [iconEl("refresh"), el("span", { text: isEn ? "Reset defaults" : "Сбросить настройки" })],
       ),
       el("span", {
         attrs: { style: "font-size: 10px; color: var(--muted); font-style: italic;" },
