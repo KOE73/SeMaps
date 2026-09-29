@@ -358,3 +358,69 @@
 .tool-form select {
   width: 100%;
 }
+
+/* ------------------------------------------------------ MCP agent settings */
+
+.mcp-set-grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: var(--tp-card-px);
+  align-items: start;
+}
+
+.mcp-set-grid h3 {
+  font-size: var(--tp-h2);
+  margin: var(--tp-card-gap) 0 var(--tp-row-gap);
+}
+
+.mcp-set-grid h3:first-child {
+  margin-top: 0;
+}
+
+.mcp-set-options {
+  display: flex;
+  flex-direction: column;
+  gap: var(--tp-row-gap);
+}
+
+.mcp-set-option {
+  display: flex;
+  align-items: flex-start;
+  gap: var(--tp-row-gap);
+  cursor: pointer;
+}
+
+.mcp-set-option input {
+  margin-top: 3px;
+}
+
+.mcp-set-hint {
+  font-size: var(--tp-small);
+}
+
+.mcp-set-cost {
+  display: block;
+  font-size: var(--tp-small);
+  font-family: ui-monospace, "Cascadia Mono", Consolas, monospace;
+}
+
+.mcp-set-field-hint {
+  margin: 0 0 var(--tp-row-gap);
+  font-size: var(--tp-small);
+}
+
+.mcp-set-note {
+  font-size: var(--tp-small);
+}
+
+.mcp-set-preview {
+  max-height: none;
+  white-space: pre-wrap;
+  word-break: break-word;
+}
+
+@media (max-width: 860px) {
+  .mcp-set-grid {
+    grid-template-columns: 1fr;
+  }
+}

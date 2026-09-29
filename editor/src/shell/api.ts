@@ -58,6 +58,21 @@ export interface ExtractorView {
   lastRun?: RunInfo;
 }
 
+/**
+ * The `mcp` section of the .semaps file (docs/API.md §3): shapes the MCP
+ * tools an agent gets. The host answers this with Go's own capitalised field
+ * names (not camelCase, despite docs/API.md) — read through these keys as
+ * they really come back; `PUT /api/setup` still takes camelCase (tested and
+ * confirmed against the running host).
+ */
+export interface McpSettings {
+  Tools: "one" | "narrow";
+  Description: "brief" | "standard" | "full";
+  Format: string;
+  ListCap: number;
+  Limit: number;
+}
+
 export interface Setup {
   projectFile: string;
   name: string;
@@ -66,6 +81,7 @@ export interface Setup {
   port: number;
   extractors: ExtractorView[];
   languages: string[];
+  mcp: McpSettings;
 }
 
 export interface Tools {
@@ -106,11 +122,30 @@ export interface ExtractorPatch {
   watch?: boolean;
 }
 
+export interface McpSettingsPatch {
+  tools?: "one" | "narrow";
+  description?: "brief" | "standard" | "full";
+  format?: string;
+  listCap?: number;
+  limit?: number;
+}
+
 export interface SettingsPatch {
   name?: string;
   workspace?: string;
   sourceRoot?: string;
   port?: number;
+  mcp?: McpSettingsPatch;
+}
+
+/** One of the six `tools`×`description` combinations `/api/mcp` reports (PLAN_20260928-7 step 5). */
+export interface McpCombo {
+  tools: "one" | "narrow";
+  description: "brief" | "standard" | "full";
+  graphTools: McpTool[];
+  instructions: string;
+  bytes: number;
+  estimateTokens: number;
 }
 
 /** GET /api/mcp: does the project's .mcp.json start `semaps mcp`, and what it offers. */
@@ -122,6 +157,9 @@ export interface McpStatus {
   onPath: boolean;
   snippet: string;
   tools: McpTool[];
+  mcpTools: "one" | "narrow";
+  mcpDescription: "brief" | "standard" | "full";
+  combos: McpCombo[];
   error?: string;
 }
 
@@ -147,6 +185,15 @@ export interface McpCallResult {
   ms: number;
   isError: boolean;
   error?: string;
+}
+
+/** GET /api/graph-formats: the formats, relation vocabulary and template grammar. */
+export interface GraphFormats {
+  formats: { name: string; description: string; mediaType: string; template?: string }[];
+  relations: { name: string; inverse: string; kind: string; typeMatch: string; description: string }[];
+  defaultFollow: string[];
+  template: { rules: string[]; examples: { text: string; result: string }[] };
+  defaults: { format: string; level: { neighbourhood: string; wholeGraph: string } };
 }
 
 /** The host answered with an error; `message` is its text. */
@@ -192,6 +239,7 @@ export const toolApi = {
   installMcp: () => call<McpStatus>("POST", `${API}/mcp/install`),
   callMcp: (name: string, args: Record<string, unknown>) =>
     call<McpCallResult>("POST", `${API}/mcp/call`, { name, arguments: args }),
+  graphFormats: () => call<GraphFormats>("GET", `${API}/graph-formats`),
   sync: (id: string, dryRun: boolean, noRenames = false) =>
     call<SyncResult>("POST", `${API}/runs/${encodeURIComponent(id)}/sync`, { dryRun, noRenames }),
 };

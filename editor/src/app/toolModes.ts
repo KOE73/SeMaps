@@ -4,7 +4,7 @@ import type { WorkbenchMode } from "../workbench/modes.js";
 import type { CommandDefinition } from "../workbench/commands/types.js";
 import { focusNewExtractor, loadExtractors } from "./extract.js";
 import { loadProject, saveProject } from "./setup.js";
-import { installMcp, loadMcp } from "./mcp.js";
+import { installMcp, loadMcp, saveMcp } from "./mcp.js";
 import { loadGraph, leaveGraph, refreshGraph } from "./graph.js";
 import { t } from "../shell/strings.js";
 
@@ -61,6 +61,12 @@ export function addToolModes(workbench: Workbench): void {
       execute: () => void installMcp(mcp.inner),
     },
     {
+      id: "tools.mcp.save",
+      title: t.save,
+      icon: "💾",
+      execute: () => saveMcp(mcp.inner),
+    },
+    {
       id: "tools.mcp.refresh",
       title: t.refresh,
       description: t.refreshHint,
@@ -89,6 +95,7 @@ export function addToolModes(workbench: Workbench): void {
   ], leaveGraph));
   workbench.addMode(mode("mcp", t.navMcp, mcp, () => loadMcp(mcp.inner), [
     { id: "mcp", title: t.navMcp, items: [
+      { type: "button", command: "tools.mcp.save", size: "large" },
       { type: "button", command: "tools.mcp.install", size: "large" },
       { type: "button", command: "tools.mcp.refresh", size: "large" },
     ] },
