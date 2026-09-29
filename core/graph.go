@@ -339,7 +339,7 @@ func attachAssemblies(nodes []GraphNode, edges []GraphEdge) {
 }
 
 // FullName is a node's fully-qualified name: its symbol id when the join
-// gave it one (already qualified, e.g. `App.Guards.RepetitionGuard`), else
+// gave it one (already qualified, e.g. `Billing.InvoiceService`), else
 // namespace+"."+name, else just its name. Used by name resolution (part 2)
 // and by the {fullName} template macro (part 3).
 func FullName(n *GraphNode) string {

@@ -187,33 +187,6 @@
       "basedOn": "record"
     },
     {
-      "id": "component",
-      "name": "Component (устар.)",
-      "appliesTo": "block",
-      "description": "Старый обобщённый тип: класс и record до перегенерации моделей.",
-      "basedOn": "class"
-    },
-    {
-      "id": "service",
-      "name": "Service (устар.)",
-      "appliesTo": "block",
-      "description": "Старый тип для интерфейсов.",
-      "basedOn": "interface",
-      "icon": {
-        "glyph": "plug"
-      }
-    },
-    {
-      "id": "concept",
-      "name": "Concept (устар.)",
-      "appliesTo": "block",
-      "description": "Старый тип для enum и ручных концептов.",
-      "basedOn": "enum",
-      "icon": {
-        "glyph": "bulb"
-      }
-    },
-    {
       "id": "usecase",
       "name": "Сценарий (use case)",
       "appliesTo": "block",

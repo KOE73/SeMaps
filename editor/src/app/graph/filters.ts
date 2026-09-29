@@ -2,6 +2,7 @@ import { el } from "../../util/dom.js";
 import { t } from "../../shell/strings.js";
 import { icons } from "../../ui/icons.js";
 import { type KindGroup, kindIconEl } from "../../ui/kindIcons.js";
+import { graphFilterConfig } from "./filterConfig.js";
 import type { GraphNode } from "./types.js";
 
 /** Which icon group each filter group draws from (ui/kindIcons.ts). */
@@ -33,12 +34,23 @@ export type FilterGroup = "edgeKinds" | "symbolKinds" | "visibility" | "presence
 
 export const PRESENCE_VALUES = ["code", "model", "both"] as const;
 
-export const DEFAULT_EDGE_KINDS: readonly string[] = ["implements"];
-export const DEFAULT_SYMBOL_KINDS: readonly string[] = ["class", "interface", "enum"];
-export const INHERITANCE_EDGE_KINDS: readonly string[] = ["implements", "extends"];
-export const INHERITANCE_DEPENDENCY_EDGE_KINDS: readonly string[] = ["implements", "extends", "holds"];
-export const CALLS_EDGE_KINDS: readonly string[] = ["calls", "constructs"];
-export const PRESET_SYMBOL_KINDS: readonly string[] = ["class", "interface"];
+/** The kinds preselected by graph-filters.json; none listed: everything the data offers. */
+const defaultEdgeKinds = (): readonly string[] => graphFilterConfig().defaultEdgeKinds;
+const defaultSymbolKinds = (): readonly string[] => graphFilterConfig().defaultSymbolKinds;
+
+/** The label of a preset from graph-filters.json (its id when the UI has no name for it). */
+export function presetLabel(id: string): string {
+  switch (id) {
+    case "inheritance":
+      return t.graphOnlyInheritance;
+    case "inheritance-dependencies":
+      return t.graphInheritanceDependencies;
+    case "calls":
+      return t.graphPresetCalls;
+    default:
+      return id;
+  }
+}
 
 /** What the data offers to filter by; the panel lists exactly these. */
 export interface FilterAvailable {
@@ -119,10 +131,10 @@ export class FilterStore {
     };
     const merge = (selected: Set<string>, was: readonly string[], now: readonly string[], defaults?: readonly string[]) => {
       const before = new Set(was);
-      return new Set(now.filter((v) => (before.has(v) ? selected.has(v) : !defaults || defaults.includes(v))));
+      return new Set(now.filter((v) => (before.has(v) ? selected.has(v) : !defaults || defaults.length === 0 || defaults.includes(v))));
     };
-    this.current.edgeKinds = merge(this.current.edgeKinds, this.known.edgeKinds, next.edgeKinds, DEFAULT_EDGE_KINDS);
-    this.current.symbolKinds = merge(this.current.symbolKinds, this.known.symbolKinds, next.symbolKinds, DEFAULT_SYMBOL_KINDS);
+    this.current.edgeKinds = merge(this.current.edgeKinds, this.known.edgeKinds, next.edgeKinds, defaultEdgeKinds());
+    this.current.symbolKinds = merge(this.current.symbolKinds, this.known.symbolKinds, next.symbolKinds, defaultSymbolKinds());
     this.current.visibility = merge(this.current.visibility, this.known.visibility, next.visibility);
     if (this.current.container && !next.containers.includes(this.current.container)) this.current.container = "";
     this.known = next;
@@ -156,12 +168,12 @@ export class FilterStore {
     this.emit();
   }
 
-  /** The defaults: `implements`, `class`/`enum`, all presence and visibility, any container. */
+  /** The defaults of graph-filters.json, all presence and visibility, any container. */
   reset(): void {
-    const only = (values: readonly string[], keep: readonly string[]) => new Set(values.filter((v) => keep.includes(v)));
+    const only = (values: readonly string[], keep: readonly string[]) => new Set(keep.length === 0 ? values : values.filter((v) => keep.includes(v)));
     this.current = {
-      edgeKinds: only(this.offered.edgeKinds, DEFAULT_EDGE_KINDS),
-      symbolKinds: only(this.offered.symbolKinds, DEFAULT_SYMBOL_KINDS),
+      edgeKinds: only(this.offered.edgeKinds, defaultEdgeKinds()),
+      symbolKinds: only(this.offered.symbolKinds, defaultSymbolKinds()),
       visibility: new Set(this.offered.visibility),
       presence: new Set(PRESENCE_VALUES),
       container: "",
@@ -303,9 +315,9 @@ export class FiltersView {
       preset(t.graphResetFilters, () => this.store.reset()),
       preset(t.graphEnableAll, () => this.store.enableAll()),
       preset(t.graphDisableAll, () => this.store.disableAll()),
-      preset(t.graphOnlyInheritance, () => this.store.onlyKinds(INHERITANCE_EDGE_KINDS, PRESET_SYMBOL_KINDS), this.store.hasEdgeKind(INHERITANCE_EDGE_KINDS)),
-      preset(t.graphInheritanceDependencies, () => this.store.onlyKinds(INHERITANCE_DEPENDENCY_EDGE_KINDS, PRESET_SYMBOL_KINDS), this.store.hasEdgeKind(INHERITANCE_DEPENDENCY_EDGE_KINDS)),
-      preset(t.graphPresetCalls, () => this.store.onlyKinds(CALLS_EDGE_KINDS, PRESET_SYMBOL_KINDS), this.store.hasEdgeKind(CALLS_EDGE_KINDS)),
+      ...graphFilterConfig().presets.map((p) =>
+        preset(presetLabel(p.id), () => this.store.onlyKinds(p.edgeKinds, p.symbolKinds), this.store.hasEdgeKind(p.edgeKinds)),
+      ),
     ]);
 
     this.body.replaceChildren(

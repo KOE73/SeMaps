@@ -1,0 +1,13 @@
+{
+  "description": "Graph-mode filter defaults and presets; a workspace overrides it with its own graph-filters.json. A kind named here but absent from the graph is skipped.",
+  "defaultEdgeKinds": ["implements"],
+  "defaultSymbolKinds": ["class", "interface", "enum"],
+  "hierarchyKinds": ["implements", "extends"],
+  "callKinds": ["calls", "constructs"],
+  "extractorEdgeKinds": ["holds", "uses", "injects", "calls"],
+  "presets": [
+    { "id": "inheritance", "edgeKinds": ["implements", "extends"], "symbolKinds": ["class", "interface"] },
+    { "id": "inheritance-dependencies", "edgeKinds": ["implements", "extends", "holds"], "symbolKinds": ["class", "interface"] },
+    { "id": "calls", "edgeKinds": ["calls", "constructs"], "symbolKinds": ["class", "interface"] }
+  ]
+}

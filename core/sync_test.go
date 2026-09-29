@@ -443,14 +443,14 @@ func TestSyncTypeScriptFileModuleAndClassOfOneName(t *testing.T) {
 }
 
 // A hand-written registry names generics with their parameter list and says
-// `class` for what the extractor calls `abstract-class` / `static-class`.
-// Both rules must see through that; kind stays the human's.
+// `IRunner<in TIn, out TOut>` for what the extractor calls `IRunner`. Both
+// rules must see through that; kinds are compared as they are.
 func TestSyncAdoptsGenericsAndModifierKinds(t *testing.T) {
 	ws, dir := workspace(t, `{"id":"p","contractVersion":3}`, `{"entities":[
     {"id":"e_runner","name":"IRunner<in TIn, out TOut>","kind":"interface","namespace":"N","codeRef":"src/IRunner.cs","origin":"code"},
-    {"id":"e_conv","name":"ConverterBase<TIn>","kind":"class","namespace":"N","codeRef":"src/Old/ConverterBase.cs","origin":"code"},
+    {"id":"e_conv","name":"ConverterBase<TIn>","kind":"abstract-class","namespace":"N","codeRef":"src/Old/ConverterBase.cs","origin":"code"},
     {"id":"e_nested","name":"Outer<T>","kind":"class","namespace":"N","codeRef":"src/Outer.cs","origin":"code"},
-    {"id":"e_util","name":"Util","kind":"class","namespace":"N","origin":"code"},
+    {"id":"e_util","name":"Util","kind":"static-class","namespace":"N","origin":"code"},
     {"id":"e_pt","name":"Point","kind":"record-struct","namespace":"N","codeRef":"src/Point.cs","origin":"code"}]}`, "", "")
 	rep := sync(t, ws, facts(t, `{"language":"csharp","root":".","symbols":[
     {"id":"N.ConverterBase`+"`"+`1","kind":"type","nativeKind":"abstract-class","name":"ConverterBase","namespace":"N","file":"src/ConverterBase.cs"},
@@ -466,9 +466,9 @@ func TestSyncAdoptsGenericsAndModifierKinds(t *testing.T) {
 	v := load(t, dir)
 	for id, want := range map[string]string{
 		"e_runner": "N.IRunner`2",       // rule 1, generic name
-		"e_conv":   "N.ConverterBase`1", // rule 2: file moved, generic name, abstract-class ~ class
+		"e_conv":   "N.ConverterBase`1", // rule 2: file moved, generic name, same kind
 		"e_nested": "N.Outer`1",         // rule 1, sealed-class
-		"e_util":   "N.Util",            // rule 2, no codeRef, static-class ~ class
+		"e_util":   "N.Util",            // rule 2, no codeRef, same kind
 		"e_pt":     "N.Point",
 	} {
 		e := find(v.Entities, id)
@@ -476,12 +476,35 @@ func TestSyncAdoptsGenericsAndModifierKinds(t *testing.T) {
 			t.Errorf("%s: symbol %v, want %s", id, e["symbol"], want)
 		}
 	}
-	if e := find(v.Entities, "e_conv"); e["kind"] != "class" || e["name"] != "ConverterBase<TIn>" {
+	if e := find(v.Entities, "e_conv"); e["kind"] != "abstract-class" || e["name"] != "ConverterBase<TIn>" {
 		t.Errorf("kind or name overwritten: %v", e)
 	}
 }
 
-func TestBaseNameAndKindFamily(t *testing.T) {
+// `record-struct` is its own kind: a `struct` symbol of the same namespace and
+// name does not adopt it, a `record-struct` symbol does.
+func TestSyncKindsAreNotCollapsed(t *testing.T) {
+	for _, c := range []struct {
+		ek, nk  string
+		adopted bool
+	}{
+		{"record-struct", "struct", false}, {"struct", "record-struct", false},
+		{"record-struct", "record-struct", true}, {"class", "abstract-class", true},
+	} {
+		nk, adopted := c.nk, c.adopted
+		ws, dir := workspace(t, `{"id":"p","contractVersion":3}`, `{"entities":[
+    {"id":"e_pt","name":"Point","kind":"`+c.ek+`","namespace":"N","origin":"code"}]}`, "", "")
+		sync(t, ws, facts(t, `{"language":"csharp","root":".","symbols":[
+    {"id":"N.Point","kind":"type","nativeKind":"`+nk+`","name":"Point","namespace":"N","file":"src/Point.cs"}],"edges":[]}`), SyncOptions{})
+		v := load(t, dir)
+		got := find(v.Entities, "e_pt")["symbol"] == "N.Point"
+		if got != adopted {
+			t.Errorf("nativeKind %s: adopted=%v, want %v", nk, got, adopted)
+		}
+	}
+}
+
+func TestBaseNameAndNormKind(t *testing.T) {
 	for in, want := range map[string]string{
 		"IRunner<in TIn, out TOut>":      "IRunner",
 		"Map<Dictionary<K, V>, List<T>>": "Map",
@@ -495,10 +518,10 @@ func TestBaseNameAndKindFamily(t *testing.T) {
 		}
 	}
 	for in, want := range map[string]string{
-		"abstract-class": "class", "static-class": "class", "Class": "class", "record-struct": "struct", "": "",
+		"abstract-class": "class", "static-class": "class", " Class ": "class", "record-struct": "record-struct", "": "",
 	} {
-		if got := kindFamily(in); got != want {
-			t.Errorf("kindFamily(%q) = %q, want %q", in, got, want)
+		if got := normKind(in); got != want {
+			t.Errorf("normKind(%q) = %q, want %q", in, got, want)
 		}
 	}
 }

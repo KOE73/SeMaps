@@ -57,8 +57,7 @@ func TestMCPHTTPSettingsChangeReachesNewSessionsInstructionsToo(t *testing.T) {
 	defer first.Close()
 	firstInstructions := first.InitializeResult().Instructions
 	wantOne := serverInstructions("one", "standard")
-	if firstInstructions != "SeMaps registry of this repository. Read with list_*/get_*/find_*; write only through these tools. "+
-		"Nothing can be deleted; view geometry only with requestedByHuman when a human asked. "+wantOne {
+	if firstInstructions != serverPreamble+wantOne {
 		t.Fatalf("first session instructions not the `one`/`standard` text:\n%s", firstInstructions)
 	}
 	before := toolNames(first)

@@ -3,6 +3,7 @@ import { fmt, t } from "../../shell/strings.js";
 import { icons } from "../../ui/icons.js";
 import { kindIconEl } from "../../ui/kindIcons.js";
 import { toolApi, type ExtractorView, type RunInfo } from "../../shell/api.js";
+import { graphFilterConfig } from "./filterConfig.js";
 import type { GraphResponse } from "./types.js";
 
 /**
@@ -20,8 +21,8 @@ import type { GraphResponse } from "./types.js";
  * the graph.
  */
 
-/** What the extractors can be told to print; `calls` brings `constructs` along. */
-const EDGE_CHIPS = ["holds", "uses", "injects", "calls"];
+/** What the extractors can be told to print (graph-filters.json `extractorEdgeKinds`). */
+const edgeChips = (): readonly string[] => graphFilterConfig().extractorEdgeKinds;
 const LOG_TAIL_LINES = 6;
 
 const time = (iso: string | undefined): string =>
@@ -208,11 +209,11 @@ export class ExtractorsView {
     const chips = el(
       "div",
       { class: "graph-ex-chips" },
-      EDGE_CHIPS.map((kind) => {
+      edgeChips().map((kind) => {
         const on = e.edges.includes(kind);
         const chip = el("button", {
           class: `graph-ex-chip${on ? " is-on" : ""}`,
-          title: kind === "calls" ? t.graphExCallsHint : undefined,
+          title: graphFilterConfig().callKinds[0] === kind ? t.graphExCallsHint : undefined,
           attrs: { "aria-pressed": String(on) },
         });
         chip.append(kindIconEl("edge", kind), kind);

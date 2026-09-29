@@ -260,9 +260,9 @@ func templateRulesPayload() map[string]any {
 			"A node macro may also be used inside a relations block, to show the neighbour's own data next to the relation.",
 		},
 		"examples": []map[string]string{
-			{"template": core.FactsTemplate, "example": "1 App.Guards.RepetitionGuard  src/Guards/RepetitionGuard.cs:10-40  [held-by Context:7 property protected readonly (injected)]"},
+			{"template": core.FactsTemplate, "example": "1 Billing.InvoiceService  src/Billing/InvoiceService.cs:10-40  [held-by Context:7 property protected readonly (injected)]"},
 			{"template": "{relations: {relation} via {member} | ; }", "example": "holds via Log; extends via "},
-			{"template": core.FactsTemplate, "example": "1 App.OnnxModel  src/OnnxModel.cs:14-164  [calls ×3 from CreateRunner to PrimaryInputName,PrimaryOutputName,Session @38,41,44 in YoloObbFactory.cs]"},
+			{"template": core.FactsTemplate, "example": "1 Shop.Order  src/Order.cs:14-164  [calls ×3 from Create to Id,Total,Lines @38,41,44 in OrderFactory.cs]"},
 		},
 	}
 }

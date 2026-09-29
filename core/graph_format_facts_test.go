@@ -116,17 +116,17 @@ func TestFilterLevelTypesDropsMethodsOfCallsGraph(t *testing.T) {
 }
 
 // TestFactsFormatHoldsInjectsMemberSpellings: the merge (defect 3) compares
-// member names case-insensitively and ignoring one leading underscore — a
-// field `_context`, a property `Context` and a constructor parameter
-// `context` are all "the same member" for pairing purposes.
+// member names exactly — differently spelled members (`Context` vs `context`,
+// `_context` vs `context`) are not guessed to be one thing.
 func TestFactsFormatHoldsInjectsMemberSpellings(t *testing.T) {
 	cases := []struct {
 		name       string
 		holds, inj string
+		merged     bool
 	}{
-		{"identical", "context", "context"},
-		{"case only", "Context", "context"},
-		{"leading underscore", "_context", "context"},
+		{"identical", "context", "context", true},
+		{"case only", "Context", "context", false},
+		{"leading underscore", "_context", "context", false},
 	}
 	for _, c := range cases {
 		t.Run(c.name, func(t *testing.T) {
@@ -147,6 +147,12 @@ func TestFactsFormatHoldsInjectsMemberSpellings(t *testing.T) {
 				t.Fatalf("Format: %v", err)
 			}
 			out := string(body)
+			if !c.merged {
+				if strings.Contains(out, "(injected)") || !strings.Contains(out, "injects") {
+					t.Fatalf("%s: differently spelled members must not merge, got:\n%s", c.name, out)
+				}
+				return
+			}
 			if strings.Count(out, "(injected)") != 1 {
 				t.Fatalf("%s: expected exactly one merged '(injected)' relation, got:\n%s", c.name, out)
 			}
@@ -239,9 +245,9 @@ func TestFactsFormatGoldenDepth2(t *testing.T) {
 		},
 		Edges: []GraphEdge{
 			// ctx (focus) holds Runner via "Context" and also injects it (same
-			// member, case-different) -> merged, (injected).
+			// member) -> merged, (injected).
 			{From: "ctx", To: "runner", Kind: "holds", Type: "holds.one", Via: &Via{Member: "Context", MemberKind: "property", Modifiers: []string{"protected", "readonly"}}, Line: 7},
-			{From: "ctx", To: "runner", Kind: "uses", Type: "injects", Via: &Via{Member: "context", MemberKind: "constructor"}, Line: 7},
+			{From: "ctx", To: "runner", Kind: "uses", Type: "injects", Via: &Via{Member: "Context", MemberKind: "constructor"}, Line: 7},
 			// ctx injects ImageRunner (a plain inject, no holds counterpart).
 			{From: "ctx", To: "imgrunner", Kind: "uses", Type: "injects", Via: &Via{Member: "runner", MemberKind: "constructor"}, Line: 13},
 			// ctx implements IRunner, which is implemented by RunnerImpl too

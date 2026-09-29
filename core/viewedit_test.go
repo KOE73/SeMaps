@@ -10,6 +10,7 @@ func geomModel(t *testing.T) *Model {
 	if err != nil {
 		t.Fatal(err)
 	}
+	m.SetCanvas(testCanvas(t))
 	ops := []Op{
 		modelOp("zone", "z_core", "v_main", "", `{"id":"z_core","container":null,"x":0,"y":0,"width":500,"height":500}`),
 		modelOp("zone", "z_in", "v_main", "", `{"id":"z_in","container":null,"parent":"z_core","x":100,"y":100,"width":200,"height":150}`),
@@ -83,7 +84,7 @@ func TestMoveElementsZoneGoesWithContent(t *testing.T) {
 	if _, err := m.MoveElements("v_main", []string{"e_a"}, f(400), f(0), nil, nil, true, "agent"); err != nil {
 		t.Fatal(err)
 	}
-	if z := rectOf(t, m, "z_in"); z.Right() < rectOf(t, m, "e_a").Right()+ZonePadding {
+	if z := rectOf(t, m, "z_in"); z.Right() < rectOf(t, m, "e_a").Right()+testCanvas(t).Zone.Padding {
 		t.Fatalf("zone did not grow: %+v", z)
 	}
 }
@@ -93,7 +94,8 @@ func TestResizeElementsMinimumsAndContent(t *testing.T) {
 	if _, err := m.ResizeElements("v_main", []string{"e_a"}, f(20), f(10), true, "agent"); err != nil {
 		t.Fatal(err)
 	}
-	if got := rectOf(t, m, "e_a"); got.Width != MinNodeWidth || got.Height != MinNodeHeight {
+	cv := testCanvas(t)
+	if got := rectOf(t, m, "e_a"); got.Width != cv.Node.MinWidth || got.Height != cv.Node.MinHeight {
 		t.Fatalf("node = %+v", got)
 	}
 	// the zone holds e_a (right edge 220): it cannot shrink under it
@@ -101,10 +103,10 @@ func TestResizeElementsMinimumsAndContent(t *testing.T) {
 		t.Fatal(err)
 	}
 	z := rectOf(t, m, "z_in")
-	if z.Width < 140 || z.Right() < 220+ZonePadding || z.Bottom() < 180+ZonePadding {
+	if z.Width < 140 || z.Right() < 220+cv.Zone.Padding || z.Bottom() < 180+cv.Zone.Padding {
 		t.Fatalf("zone shrank under its content: %+v", z)
 	}
-	if z.Width < MinZoneWidth || z.Height < MinZoneHeight {
+	if z.Width < cv.Zone.MinWidth || z.Height < cv.Zone.MinHeight {
 		t.Fatalf("zone under minimum: %+v", z)
 	}
 }
@@ -136,7 +138,9 @@ func TestAddZoneWithName(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if got := rectOf(t, m, "z_new"); got != (Rect{10, 270, MinZoneWidth, MinZoneHeight}) {
+	// the host does not snap: 13 stays 13; only the minimum size is enforced
+	cv := testCanvas(t)
+	if got := rectOf(t, m, "z_new"); got != (Rect{13, 268, cv.Zone.MinWidth, cv.Zone.MinHeight}) {
 		t.Fatalf("new zone = %+v", got)
 	}
 	v, _ := m.GetView("v_main#z_new", "ru")
@@ -162,7 +166,8 @@ func TestFitZoneGrowsParent(t *testing.T) {
 		t.Fatal(err)
 	}
 	a, in, core := rectOf(t, m, "e_a"), rectOf(t, m, "z_in"), rectOf(t, m, "z_core")
-	if in.X != 680 || in.Y != 550 || !in.Contains(a) {
+	// exactly the content plus padding and the caption strip: no grid rounding
+	if in.X != 700-16 || in.Y != 600-16-28 || !in.Contains(a) {
 		t.Fatalf("zone %+v does not fit node %+v", in, a)
 	}
 	if !core.Contains(in) || core.X != 0 || core.Y != 0 {

@@ -19,6 +19,7 @@ import type { ModelStore, SaveTarget } from "./types.js";
 import type { RoutingMode } from "../../model/style-types.js";
 import { relationShownByDefault } from "../../model/relationVisibility.js";
 import { hostWriteHeaders } from "../../util/hostKey.js";
+import { DEFAULT_STYLE_IDS } from "../../model/StyleLibrary.js";
 
 /**
  * Reads and writes multi-file project models over HTTP.
@@ -99,7 +100,7 @@ export class HttpProjectStore implements ModelStore {
       const e: EntityEntry = entitiesRes.entities?.find?.((x) => x.id === entityId) ?? {
         id: entityId,
         name: entityId,
-        kind: vn.type || "Component",
+        kind: vn.type || DEFAULT_STYLE_IDS.node,
         codeRef: "",
       };
       const t = textRes.entries?.[entityId] ?? {
@@ -111,7 +112,7 @@ export class HttpProjectStore implements ModelStore {
       return {
         id: entityId,
         label: t.name || t.title || e.name || entityId,
-        type: vn.type || e.kind || "Component",
+        type: vn.type || e.kind || DEFAULT_STYLE_IDS.node,
         zone: vn.zone || vn.container || null,
         x: vn.x,
         y: vn.y,
@@ -343,7 +344,7 @@ export class HttpProjectStore implements ModelStore {
         currentEntities.push({
           id: n.id,
           name: n.label || n.id,
-          kind: n.type || "Component",
+          kind: n.type || DEFAULT_STYLE_IDS.node,
           origin: "authored",
           status: "present",
           codeRef: n.metadata?.codeRef || "",

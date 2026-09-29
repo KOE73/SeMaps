@@ -1,12 +1,14 @@
-import type { GraphClipboard, GraphClipboardNode } from "../model/graphClipboard.js";
+import { GRAPH_TUNING } from "../app/graph/tuning.js";
+import type { GraphClipboard,GraphClipboardNode } from "../model/graphClipboard.js";
 import { isContainer, type DiagramElement } from "../model/types.js";
+import { canvas } from "../constants/canvas.js";
 import type { DiagramEditor } from "./DiagramEditor.js";
-import { GAP_X, GAP_Y, HEIGHT, WIDTH, blockFor, drawRelations } from "./placeEntity.js";
+import { blockFor, boxMetrics, drawRelations } from "./placeEntity.js";
 
-const SNAP = 10;
-const MAX_EXTENT = 8000;
-const CONTAINER_PAD = 24;
-const CONTAINER_HEADER = 56;
+const MAX_EXTENT = GRAPH_TUNING.pasteMaxExtent;
+/** Read at use time: canvas.json is loaded after this module is evaluated. */
+const containerPad = (): number => canvas().zone.padding;
+const containerHeader = (): number => canvas().zone.headerHeight;
 
 export interface PasteResult {
   /** Element ids put on the view. */
@@ -22,7 +24,7 @@ interface Point {
   y: number;
 }
 
-const snap = (v: number): number => Math.round(v / SNAP) * SNAP;
+const snap = (v: number): number => Math.round(v / canvas().grid) * canvas().grid;
 
 /**
  * The graph's arrangement of these nodes, scaled up until no two blocks touch
@@ -32,13 +34,14 @@ const snap = (v: number): number => Math.round(v / SNAP) * SNAP;
  * across thousands of pixels) the nodes go in a tidy grid instead.
  */
 function arrange(nodes: readonly GraphClipboardNode[]): Point[] {
+  const { WIDTH, HEIGHT, GAP_X, GAP_Y } = boxMetrics();
   const pts = nodes.map((n) => ({ x: n.x, y: -n.y }));
   const grid = (): Point[] => {
-    const perRow = Math.max(1, Math.ceil(Math.sqrt(nodes.length * 1.6)));
+    const perRow = Math.max(1, Math.ceil(Math.sqrt(nodes.length * GRAPH_TUNING.pasteGridAspect)));
     return [...nodes.keys()].map((i) => ({ x: (i % perRow) * (WIDTH + GAP_X), y: Math.floor(i / perRow) * (HEIGHT + GAP_Y) }));
   };
   if (pts.length === 1) return [{ x: 0, y: 0 }];
-  if (pts.length > 300) return grid();
+  if (pts.length > GRAPH_TUNING.pasteMaxArranged) return grid();
 
   // The smallest scale at which every pair is apart by a block plus a gap, sideways or vertically.
   let scale = 0;
@@ -61,7 +64,8 @@ function arrange(nodes: readonly GraphClipboardNode[]): Point[] {
 
 /** Widen `container` (and, above it, whatever holds it) until it holds `rect` with some room. */
 function growToFit(container: DiagramElement, rect: { x: number; y: number; width: number; height: number }): void {
-  let target = { x: rect.x - CONTAINER_PAD, y: rect.y - CONTAINER_PAD, right: rect.x + rect.width + CONTAINER_PAD, bottom: rect.y + rect.height + CONTAINER_PAD };
+  const pad = containerPad();
+  let target = { x: rect.x - pad, y: rect.y - pad, right: rect.x + rect.width + pad, bottom: rect.y + rect.height + pad };
   for (let el: DiagramElement | null = container; el !== null; el = el.parent) {
     const x = Math.min(el.x, target.x);
     const y = Math.min(el.y, target.y);
@@ -71,7 +75,7 @@ function growToFit(container: DiagramElement, rect: { x: number; y: number; widt
     el.y = y;
     el.width = right - x;
     el.height = bottom - y;
-    target = { x: el.x - CONTAINER_PAD, y: el.y - CONTAINER_PAD, right: el.x + el.width + CONTAINER_PAD, bottom: el.y + el.height + CONTAINER_PAD };
+    target = { x: el.x - pad, y: el.y - pad, right: el.x + el.width + pad, bottom: el.y + el.height + pad };
   }
 }
 
@@ -90,6 +94,7 @@ export function pasteGraphNodes(editor: DiagramEditor, payload: GraphClipboard):
   const doc = editor.canvas.model;
   const result: PasteResult = { placed: [], notInModel: 0, alreadyOnView: 0 };
   if (!doc) return result;
+  const { WIDTH, HEIGHT, GAP_X, GAP_Y } = boxMetrics();
 
   const entities = new Map(doc.entities.map((e) => [e.id, e]));
   const fresh: { node: GraphClipboardNode; entityId: string }[] = [];
@@ -120,8 +125,8 @@ export function pasteGraphNodes(editor: DiagramEditor, payload: GraphClipboard):
   const container = picked === undefined ? null : isContainer(picked) ? picked : picked.parent;
   let origin: Point;
   if (container !== null) {
-    const below = container.children.length > 0 ? Math.max(...container.children.map((c) => c.y + c.height)) + GAP_Y : container.y + CONTAINER_HEADER;
-    origin = { x: container.x + CONTAINER_PAD, y: below };
+    const below = container.children.length > 0 ? Math.max(...container.children.map((c) => c.y + c.height)) + GAP_Y : container.y + containerHeader();
+    origin = { x: container.x + containerPad(), y: below };
   } else {
     const bounds = doc.bounds();
     const centre = editor.canvas.viewCenter();

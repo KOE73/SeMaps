@@ -51,11 +51,8 @@ const BLOCK_DEFAULTS: WireStyle[] = [
 /**
  * One style per C# declaration kind.
  *
- * These ids are what `parser.NodeType` writes as a node's `type` — the whole
- * point of the change on the Go side. Before it, `class` and `record` both
- * arrived as "component" and were therefore indistinguishable no matter what
- * the styles said; only `enum` and `interface` had a look of their own, which
- * is exactly why those two read clearly and the other three hundred did not.
+ * These ids are what the extractor writes as a node's `type`, so each kind
+ * looks like itself.
  */
 const CODE_KIND_STYLES: WireStyle[] = [
   {
@@ -155,39 +152,6 @@ const MODIFIER_KIND_STYLES: WireStyle[] = [
     title: { italic: true },
   },
   { id: "sealed-record", name: "Запечатанный record", appliesTo: "block", description: "Выглядит как record.", basedOn: "record" },
-];
-
-/**
- * The `type` values in the models as committed today.
- *
- * They inherit from the kind styles rather than repeating them, so the models
- * look right before regeneration and identical to the kind styles after it —
- * and when regeneration is done these three can be deleted in one edit.
- */
-const LEGACY_TYPE_STYLES: WireStyle[] = [
-  {
-    id: "component",
-    name: "Component (устар.)",
-    appliesTo: "block",
-    description: "Старый обобщённый тип: класс и record до перегенерации моделей.",
-    basedOn: "class",
-  },
-  {
-    id: "service",
-    name: "Service (устар.)",
-    appliesTo: "block",
-    description: "Старый тип для интерфейсов.",
-    basedOn: "interface",
-    icon: { glyph: "plug" },
-  },
-  {
-    id: "concept",
-    name: "Concept (устар.)",
-    appliesTo: "block",
-    description: "Старый тип для enum и ручных концептов.",
-    basedOn: "enum",
-    icon: { glyph: "bulb" },
-  },
 ];
 
 /** Hand-authored node types: things a human puts on a diagram directly. */
@@ -403,7 +367,6 @@ export const BUILTIN_STYLES: readonly WireStyle[] = [
   ...BLOCK_DEFAULTS,
   ...CODE_KIND_STYLES,
   ...MODIFIER_KIND_STYLES,
-  ...LEGACY_TYPE_STYLES,
   ...AUTHORED_STYLES,
   ...ZONE_STYLES,
   ...EDGE_STYLES,

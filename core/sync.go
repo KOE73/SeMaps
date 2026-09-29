@@ -695,7 +695,7 @@ func managed(e *object) bool {
 //  2. same namespace, same name and the same kind family.
 //
 // Names are compared by baseName (no generic parameter list, no arity), kinds
-// by kindFamily (`abstract-class` ~ `class`): a hand-written registry says
+// by normKind (modifiers stripped): a hand-written registry says
 // `IRunner<in TIn, out TOut>` / `class` where the extractor says `IRunner` /
 // `abstract-class`.
 func adopt(items []*object, symbols map[string]Symbol, order []string,
@@ -722,10 +722,10 @@ func adopt(items []*object, symbols map[string]Symbol, order []string,
 				if e.str("kind") == "" {
 					return ""
 				}
-				return e.str("namespace") + "\x00" + baseName(e.str("name")) + "\x00" + kindFamily(e.str("kind"))
+				return e.str("namespace") + "\x00" + baseName(e.str("name")) + "\x00" + normKind(e.str("kind"))
 			},
 			symbolKey: func(s Symbol) string {
-				return s.Namespace + "\x00" + baseName(s.Name) + "\x00" + kindFamily(s.NativeKind)
+				return s.Namespace + "\x00" + baseName(s.Name) + "\x00" + normKind(s.NativeKind)
 			},
 		},
 	}
@@ -754,10 +754,10 @@ func adopt(items []*object, symbols map[string]Symbol, order []string,
 			}
 			found := free[k]
 			if r.narrow && len(found) > 1 {
-				// Exact kind first, then the family; neither — leave all.
+				// Exact kind first, then the base kind; neither — leave all.
 				for _, same := range []func(string) bool{
 					func(nk string) bool { return strings.EqualFold(nk, e.str("kind")) },
-					func(nk string) bool { return kindFamily(nk) == kindFamily(e.str("kind")) },
+					func(nk string) bool { return normKind(nk) == normKind(e.str("kind")) },
 				} {
 					var narrowed []string
 					for _, sid := range found {
@@ -817,7 +817,7 @@ func renames(items []*object, symbols map[string]Symbol, order []string,
 			continue
 		}
 		if f := codeRefFile(e.str("codeRef")); f != "" {
-			g := at(f + "\x00" + kindFamily(e.str("kind")))
+			g := at(f + "\x00" + normKind(e.str("kind")))
 			g.ents = append(g.ents, i)
 		}
 	}
@@ -826,7 +826,7 @@ func renames(items []*object, symbols map[string]Symbol, order []string,
 			continue
 		}
 		s := symbols[sid]
-		if g := groups[s.File+"\x00"+kindFamily(s.NativeKind)]; g != nil {
+		if g := groups[s.File+"\x00"+normKind(s.NativeKind)]; g != nil {
 			g.syms = append(g.syms, sid)
 		}
 	}
@@ -1084,9 +1084,9 @@ func mintMemberRelationID(from, to string, via *Via, taken map[string]bool) stri
 }
 
 // newEntityID is the base of a new entity's id. A type, function or value is
-// named by its short name (`e_repetitionguard`). A module is named by its whole
-// symbol id with its native kind in front — `e_namespace_neuromodflownet_onnx_diagnostics`,
-// `e_assembly_neuromodflownet_onnx`, `e_file_editor_src_canvas_diagramcanvas`:
+// named by its short name (`e_invoiceservice`). A module is named by its whole
+// symbol id with its native kind in front — `e_namespace_shop_billing_diagnostics`,
+// `e_assembly_shop_billing`, `e_file_web_src_canvas_drawing`:
 // module short names (`Diagnostics`, `Tracking`) repeat across assemblies and
 // read as something else, and a namespace and an assembly often share a name.
 func newEntityID(s Symbol) string {
@@ -1127,20 +1127,24 @@ func baseName(name string) string {
 	return name
 }
 
-// kindFamily compares kinds without their modifiers: a native kind written as
-// `<modifier>-<kind>` (`abstract-class`, `static-class`, `record-struct`) is
-// the family of its last segment. The registry's `class` then matches the
-// extractor's `abstract-class`; `record-struct` ~ `struct`.
-func kindFamily(kind string) string {
-	kind = strings.ToLower(strings.TrimSpace(kind))
-	if i := strings.LastIndexByte(kind, '-'); i >= 0 {
-		return kind[i+1:]
+// kindModifiers are the prefixes an extractor puts in front of a base kind in
+// `nativeKind` (docs/extractors/csharp.md, "Модификаторы в nativeKind");
+// the same list as KIND_MODIFIERS in editor/src/ui/kindIcons.ts.
+var kindModifiers = map[string]bool{"abstract": true, "static": true, "sealed": true, "readonly": true, "ref": true}
+
+// normKind is the base kind: case and surrounding space ignored, leading
+// known modifiers (`abstract-class` → `class`) stripped. Compound kinds such
+// as `record-struct` stay whole and are not a `struct`.
+func normKind(kind string) string {
+	parts := strings.Split(strings.ToLower(strings.TrimSpace(kind)), "-")
+	for len(parts) > 1 && kindModifiers[parts[0]] {
+		parts = parts[1:]
 	}
-	return kind
+	return strings.Join(parts, "-")
 }
 
 // slug is the lower-cased name with every run of non-letters and non-digits
-// turned into one `_`: `NeuroModFlowNet.ONNX` → `neuromodflownet_onnx`.
+// turned into one `_`: `Shop.Billing` → `shop_billing`.
 func slug(name string) string {
 	var b strings.Builder
 	gap := false

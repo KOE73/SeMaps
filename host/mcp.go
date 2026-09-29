@@ -252,9 +252,7 @@ func (s *mcpServer) server() *mcp.Server {
 	// rebuilt in place (docs/API.md §6, PLAN_20260928-7 step 4).
 	settings := s.mcpSettingsNow()
 	srv := mcp.NewServer(&mcp.Implementation{Name: "semaps", Version: "1"}, &mcp.ServerOptions{
-		Instructions: "SeMaps registry of this repository. Read with list_*/get_*/find_*; write only through these tools. " +
-			"Nothing can be deleted; view geometry only with requestedByHuman when a human asked. " +
-			serverInstructions(settings.Tools, settings.Description),
+		Instructions: serverPreamble + serverInstructions(settings.Tools, settings.Description),
 	})
 	// A call with arguments that do not fit says which parameters the tool takes (mcp_errors.go).
 	srv.AddReceivingMiddleware(explainArgumentErrors)
@@ -267,10 +265,16 @@ func (s *mcpServer) server() *mcp.Server {
 	mcp.AddTool(srv, read("get_relations", "Relations of an entity (or all), by direction, type, status."), s.getRelations)
 	mcp.AddTool(srv, read("get_relation_types", "The relation-type vocabulary with default visibility."), s.getRelationTypes)
 	mcp.AddTool(srv, read("get_text", "Text entry of a key in one language."), s.getText)
-	mcp.AddTool(srv, read("get_view", "A view with geometry as a tree: zones with their nodes, absolute rectangles, visible lines, what is unsaved. A zone reference reads only its subtree."), s.getView)
+	mcp.AddTool(srv, read("get_view", "A view with geometry as a tree: zones with their nodes, absolute rectangles, visible lines, what is unsaved. A zone reference reads only its subtree. The answer starts with the canvas block: units, grid, default and minimum sizes, caption strip, padding, gaps."), s.getView)
 	mcp.AddTool(srv, read("doctor", "Extractors and runtimes found, and the model check of the workspace."), s.doctor)
 	mcp.AddTool(srv, read("sync_preview", "What sync would change, writing nothing (= semaps sync --dry-run)."), s.syncPreview)
 	s.registerGraphTools(srv, settings.Tools, settings.Description)
+	// The view tools carry description levels like the graph tools do
+	// (mcp_view.go); they are project-independent (layout_guide) or take the
+	// project themselves.
+	level := settings.Description
+	mcp.AddTool(srv, read("layout_guide", viewToolDescriptions["layout_guide"].at(level)), s.layoutGuide)
+	mcp.AddTool(srv, read("render_view", viewToolDescriptions["render_view"].at(level)), s.renderView)
 
 	mcp.AddTool(srv, write("set_text", "Write one text field as authored, with at = now."), s.setText)
 	mcp.AddTool(srv, write("add_relation", "Add an authored relation; the id is minted and returned."), s.addRelation)
@@ -286,6 +290,8 @@ func (s *mcpServer) server() *mcp.Server {
 	mcp.AddTool(srv, write("add_zone", "Add a zone with a rectangle, optional parent, container, style and caption. requestedByHuman."), s.addZone)
 	mcp.AddTool(srv, write("fit_zone", "Fit zones to their content (caption strip and padding); ancestors grow if they no longer hold it. requestedByHuman."), s.fitZone)
 	mcp.AddTool(srv, write("align_elements", "Align elements to the first one: left, right, top, bottom, width, height. requestedByHuman."), s.alignElements)
+	mcp.AddTool(srv, write("create_view", viewToolDescriptions["create_view"].at(level)), s.createView)
+	mcp.AddTool(srv, write("create_project", viewToolDescriptions["create_project"].at(level)), s.createProject)
 	mcp.AddTool(srv, write("save", "Save all unsaved project changes only when a human explicitly requested it."), s.save)
 	mcp.AddTool(srv, write("discard", "Discard unsaved changes only when a human explicitly requested it."), s.discard)
 	return srv
@@ -476,7 +482,12 @@ func (s *mcpServer) records(project, file string) ([]record, error) {
 
 func (s *mcpServer) model(project string) (*core.Model, error) {
 	if s.models == nil {
-		return core.LoadModel(s.workspace, s.pick(project))
+		m, err := core.LoadModel(s.workspace, s.pick(project))
+		if err != nil {
+			return nil, err
+		}
+		m.SetCanvas(loadCanvas(s.workspace))
+		return m, nil
 	}
 	id := s.pick(project)
 	if id == "" {
@@ -1036,7 +1047,17 @@ func (s *mcpServer) getView(_ context.Context, _ *mcp.CallToolRequest, in getVie
 	if err != nil {
 		return nil, nil, err
 	}
-	return nil, info, nil
+	// Every answer starts with the canvas — units, grid, sizes, gaps — so the
+	// numbers below are read against it; the data follows as JSON.
+	cv, err := m.Canvas()
+	if err != nil {
+		return nil, nil, err
+	}
+	body, err := json.Marshal(info)
+	if err != nil {
+		return nil, nil, err
+	}
+	return &mcp.CallToolResult{Content: []mcp.Content{&mcp.TextContent{Text: cv.Describe()}, &mcp.TextContent{Text: string(body)}}}, info, nil
 }
 
 // geomTarget picks the model and the view of a geometry step: view, or the view of the first reference.

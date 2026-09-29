@@ -29,6 +29,10 @@ type modelEvent struct {
 	// only `graph` set and no other content the editor understands is read
 	// as an ordinary (empty) change and safely ignored.
 	Graph *core.GraphDiff `json:"graph,omitempty"`
+	// Render asks an editor that subscribed with render=1 to draw a picture of
+	// a view (the render_view tool, host/render.go). Only those clients get
+	// such an event.
+	Render *renderRequest `json:"render,omitempty"`
 }
 
 type projectReloaded struct {
@@ -45,6 +49,12 @@ type modelService struct {
 	structureMu sync.RWMutex
 	models      map[string]*core.Model
 	clients     map[string]map[chan modelEvent]struct{}
+	// renderers: the subscribed channels (a subset of clients) of editors that
+	// can render; guarded by mu, like clients.
+	renderers map[chan modelEvent]bool
+	// pending render requests by id (render.go), guarded by renderMu.
+	renderMu sync.Mutex
+	pending  map[string]*renderCall
 }
 
 func newModelService(workspace string) (*modelService, error) {
@@ -52,7 +62,8 @@ func newModelService(workspace string) (*modelService, error) {
 	if _, err := rand.Read(b); err != nil {
 		return nil, err
 	}
-	return &modelService{workspace: workspace, key: hex.EncodeToString(b), models: map[string]*core.Model{}, clients: map[string]map[chan modelEvent]struct{}{}}, nil
+	return &modelService{workspace: workspace, key: hex.EncodeToString(b), models: map[string]*core.Model{}, clients: map[string]map[chan modelEvent]struct{}{},
+		renderers: map[chan modelEvent]bool{}, pending: map[string]*renderCall{}}, nil
 }
 
 func (s *modelService) get(id string) (*core.Model, error) {
@@ -62,12 +73,16 @@ func (s *modelService) get(id string) (*core.Model, error) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	if m := s.models[id]; m != nil {
+		m.SetCanvas(loadCanvas(s.workspace))
 		return m, nil
 	}
 	m, err := core.LoadModel(s.workspace, id)
 	if err != nil {
 		return nil, err
 	}
+	// the canvas is read each time a model is handed out, so a workspace
+	// canvas.json edited meanwhile is picked up
+	m.SetCanvas(loadCanvas(s.workspace))
 	s.models[id] = m
 	return m, nil
 }
@@ -151,6 +166,7 @@ func (s *modelService) register(mux *http.ServeMux) {
 	mux.HandleFunc("POST /api/model/{project}/save", s.save)
 	mux.HandleFunc("POST /api/model/{project}/discard", s.discard)
 	mux.HandleFunc("GET /api/events", s.events)
+	mux.HandleFunc("POST /api/render/{id}", s.answerRender)
 }
 
 func modelError(w http.ResponseWriter, err error) {
@@ -336,8 +352,16 @@ func (s *modelService) events(w http.ResponseWriter, r *http.Request) {
 		s.clients[id] = map[chan modelEvent]struct{}{}
 	}
 	s.clients[id][ch] = struct{}{}
+	if r.URL.Query().Get("render") == "1" {
+		s.renderers[ch] = true
+	}
 	s.mu.Unlock()
-	defer func() { s.mu.Lock(); delete(s.clients[id], ch); s.mu.Unlock() }()
+	defer func() {
+		s.mu.Lock()
+		delete(s.clients[id], ch)
+		delete(s.renderers, ch)
+		s.mu.Unlock()
+	}()
 	fmt.Fprint(w, ": connected\n\n")
 	f.Flush()
 	for {

@@ -38,7 +38,10 @@ var bundled embed.FS
 // Workspace files the tool ships a default for. A workspace that has its own
 // copy wins; otherwise the default is served. Saving always writes to the
 // workspace, so the first save of a default turns it into an override.
-var overridable = []string{"styles.json", "templates.json", "content/"}
+// canvas.json (grid, sizes, gaps) and graph-filters.json are served the same
+// way; the Go code never requires a default to exist at build time, only
+// canvas.json is read by the host (canvas.go).
+var overridable = []string{"styles.json", "templates.json", "content/", "canvas.json", "graph-filters.json"}
 
 // findProjectFile walks up from dir to the first directory with a .semaps
 // file. Two of them in one directory is an error, not a silent pick. Only

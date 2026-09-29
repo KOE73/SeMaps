@@ -11,6 +11,7 @@ import { resolveElementRelations } from "../../model/relations-resolver.js";
 import { renderContent } from "../../content/ContentRenderer.js";
 import { SourceCodeService } from "../../editor/code/SourceCodeService.js";
 import { DIAGRAM_CONFIG } from "../../constants/diagram-constants.js";
+import { canvas } from "../../constants/canvas.js";
 import { iconGlyph } from "./iconGlyph.js";
 
 /**
@@ -249,6 +250,6 @@ export class BoxRenderer implements ElementRenderer {
   }
 
   cornerInset(_side: Side, style?: ResolvedBlockStyle): number {
-    return (style?.radius ?? DIAGRAM_CONFIG.node.defaultRadius) + DIAGRAM_CONFIG.ports.extraCornerGap;
+    return (style?.radius ?? canvas().node.radius) + DIAGRAM_CONFIG.ports.extraCornerGap;
   }
 }

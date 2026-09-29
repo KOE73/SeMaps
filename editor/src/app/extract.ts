@@ -1,4 +1,5 @@
 import { el } from "../util/dom.js";
+import { graphFilterConfig, loadGraphFilterConfig } from "./graph/filterConfig.js";
 import { toolApi, type ExtractorView, type RunInfo, type Setup, type SyncResult } from "../shell/api.js";
 import { fmt, t } from "../shell/strings.js";
 
@@ -29,6 +30,7 @@ export async function loadExtractors(inner: HTMLElement): Promise<void> {
     .then((r) => r.json() as Promise<{ projects?: ProjectRef[] }>)
     .then((w) => w.projects ?? [])
     .catch(() => []);
+  await loadGraphFilterConfig();
   render(inner, setup);
 }
 
@@ -95,7 +97,9 @@ function extractorCard(e: ExtractorView, inner: HTMLElement): HTMLElement {
   const include = el("input", { value: listValue(e.include), placeholder: t.listHint });
   const exclude = el("input", { value: listValue(e.exclude), placeholder: t.listHint });
 
-  const edgeKinds = ["holds", "uses", "injects"];
+  // What an extractor can be told to print: graph-filters.json `extractorEdgeKinds`
+  // (`calls` is the graph's, switched on in its own panel, so it is not offered here).
+  const edgeKinds = graphFilterConfig().extractorEdgeKinds.filter((k) => !graphFilterConfig().callKinds.includes(k));
   const edgeChecks: Record<string, HTMLInputElement> = {};
   const edgeCheckboxes: HTMLElement[] = [];
   for (const kind of edgeKinds) {

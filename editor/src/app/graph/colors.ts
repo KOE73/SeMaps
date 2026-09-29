@@ -1,3 +1,4 @@
+import { GRAPH_TUNING } from "./tuning.js";
 import type { GraphEdge, GraphNode } from "./types.js";
 
 /**
@@ -120,9 +121,10 @@ export function edgeColor(e: GraphEdge): string {
  * visible without the graph looking like it was drawn in marker. */
 export function edgeSize(e: Pick<GraphEdge, "via" | "count">): number {
   // A lifted calls/constructs edge grows with how many method calls it folds.
-  if (e.count && e.count > 1) return 2 + Math.min(6, Math.log2(e.count) * 1.6);
+  const t = GRAPH_TUNING.edgeSize;
+  if (e.count && e.count > 1) return t.plain + Math.min(t.liftedMaxExtra, Math.log2(e.count) * t.liftedPerLog2);
   const card = e.via?.cardinality;
-  return card === "many" || card === "keyed" ? 3.6 : 2;
+  return card === "many" || card === "keyed" ? t.many : t.plain;
 }
 
 export function edgeRenderColor(e: GraphEdge): string {

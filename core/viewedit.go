@@ -30,14 +30,19 @@ type layout struct {
 	nodeOrder []string
 	before    map[string]string // "zone:<id>" / "node:<id>" -> the object as loaded
 	parents   map[string]string // effective parent of each zone, see zoneParents
+	cv        Canvas
 }
 
 func (m *Model) loadLayout(viewID string) (*layout, error) {
+	cv, err := m.Canvas()
+	if err != nil {
+		return nil, err
+	}
 	doc, err := m.view(viewID)
 	if err != nil {
 		return nil, refuse("no view %s", viewID)
 	}
-	l := &layout{view: viewID, nodeKey: "nodes", zones: map[string]*object{}, nodes: map[string]*object{}, before: map[string]string{}}
+	l := &layout{view: viewID, cv: cv, nodeKey: "nodes", zones: map[string]*object{}, nodes: map[string]*object{}, before: map[string]string{}}
 	for _, z := range viewItems(doc, "zones") {
 		id := z.str("id")
 		l.zones[id] = z
@@ -55,14 +60,14 @@ func (m *Model) loadLayout(viewID string) (*layout, error) {
 		l.nodeOrder = append(l.nodeOrder, id)
 		l.before["node:"+id] = objString(n)
 	}
-	l.parents = zoneParents(viewItems(doc, "zones"))
+	l.parents = zoneParents(viewItems(doc, "zones"), cv)
 	return l, nil
 }
 
 // zoneParents is where each zone nests: its `parent`, else a zone named by its
 // `container` (older files do that), else — files that only draw the frames
 // inside each other — the smallest zone whose rectangle strictly holds it.
-func zoneParents(list []*object) map[string]string {
+func zoneParents(list []*object, cv Canvas) map[string]string {
 	ids := map[string]bool{}
 	for _, z := range list {
 		ids[z.str("id")] = true
@@ -78,9 +83,9 @@ func zoneParents(list []*object) map[string]string {
 			}
 		}
 		if p == "" {
-			rz, best, bestArea := zoneRect(z), "", 0.0
+			rz, best, bestArea := zoneRect(z, cv), "", 0.0
 			for _, o := range list {
-				ro := zoneRect(o)
+				ro := zoneRect(o, cv)
 				if o == z || ro == rz || !ro.Contains(rz) {
 					continue
 				}
@@ -139,9 +144,9 @@ func (l *layout) isZone(id string) bool { return l.zones[id] != nil }
 
 func (l *layout) rect(id string) Rect {
 	if z := l.zones[id]; z != nil {
-		return zoneRect(z)
+		return zoneRect(z, l.cv)
 	}
-	return nodeRect(l.nodes[id])
+	return nodeRect(l.nodes[id], l.cv)
 }
 
 // setRect writes only the fields that differ, so a node that never had a size
@@ -233,7 +238,7 @@ func (l *layout) shift(ids []string, dx, dy float64) {
 			}
 			seen[t] = true
 			r := l.rect(t)
-			r.X, r.Y = Snap(r.X+dx), Snap(r.Y+dy)
+			r.X, r.Y = r.X+dx, r.Y+dy
 			l.setRect(t, r)
 		}
 	}
@@ -250,11 +255,10 @@ func (l *layout) union(ids []string) Rect {
 // keepContent grows a zone's right and bottom so its children stay inside.
 func (l *layout) keepContent(zone string, r Rect) Rect {
 	if c, ok := l.content(zone); ok {
-		r.Width = math.Max(r.Width, c.Right()+ZonePadding-r.X)
-		r.Height = math.Max(r.Height, c.Bottom()+ZonePadding-r.Y)
+		r.Width = math.Max(r.Width, c.Right()+l.cv.Zone.Padding-r.X)
+		r.Height = math.Max(r.Height, c.Bottom()+l.cv.Zone.Padding-r.Y)
 	}
-	r.Width, r.Height = math.Max(r.Width, MinZoneWidth), math.Max(r.Height, MinZoneHeight)
-	r.Width, r.Height = math.Ceil(r.Width/GridStep)*GridStep, math.Ceil(r.Height/GridStep)*GridStep
+	r.Width, r.Height = math.Max(r.Width, l.cv.Zone.MinWidth), math.Max(r.Height, l.cv.Zone.MinHeight)
 	return r
 }
 
@@ -262,13 +266,9 @@ func (l *layout) keepContent(zone string, r Rect) Rect {
 // then makes every ancestor still hold what is in it.
 func (l *layout) fit(zone string) {
 	if c, ok := l.content(zone); ok {
-		r := Rect{
-			X:     math.Floor((c.X-ZonePadding)/GridStep) * GridStep,
-			Y:     math.Floor((c.Y-ZonePadding-ZoneHeader)/GridStep) * GridStep,
-			Width: 0, Height: 0,
-		}
-		r.Width = math.Max(math.Ceil((c.Right()+ZonePadding-r.X)/GridStep)*GridStep, MinZoneWidth)
-		r.Height = math.Max(math.Ceil((c.Bottom()+ZonePadding-r.Y)/GridStep)*GridStep, MinZoneHeight)
+		r := Rect{X: c.X - l.cv.Zone.Padding, Y: c.Y - l.cv.Zone.Padding - l.cv.Zone.HeaderHeight}
+		r.Width = math.Max(c.Right()+l.cv.Zone.Padding-r.X, l.cv.Zone.MinWidth)
+		r.Height = math.Max(c.Bottom()+l.cv.Zone.Padding-r.Y, l.cv.Zone.MinHeight)
 		l.setRect(zone, r)
 	}
 	l.growAncestors(zone)
@@ -281,13 +281,11 @@ func (l *layout) growAncestors(id string) {
 		c, _ := l.content(p)
 		cur := l.rect(p)
 		need := Rect{
-			X:      math.Min(cur.X, math.Floor((c.X-ZonePadding)/GridStep)*GridStep),
-			Y:      math.Min(cur.Y, math.Floor((c.Y-ZonePadding-ZoneHeader)/GridStep)*GridStep),
-			Width:  0,
-			Height: 0,
+			X: math.Min(cur.X, c.X-l.cv.Zone.Padding),
+			Y: math.Min(cur.Y, c.Y-l.cv.Zone.Padding-l.cv.Zone.HeaderHeight),
 		}
-		need.Width = math.Max(cur.Right(), math.Ceil((c.Right()+ZonePadding)/GridStep)*GridStep) - need.X
-		need.Height = math.Max(cur.Bottom(), math.Ceil((c.Bottom()+ZonePadding)/GridStep)*GridStep) - need.Y
+		need.Width = math.Max(cur.Right(), c.Right()+l.cv.Zone.Padding) - need.X
+		need.Height = math.Max(cur.Bottom(), c.Bottom()+l.cv.Zone.Padding) - need.Y
 		l.setRect(p, need)
 	}
 }
@@ -408,7 +406,7 @@ func (m *Model) ResizeElements(view string, elements []string, width, height *fl
 		if l.isZone(id) {
 			r = l.keepContent(id, r)
 		} else {
-			r.Width, r.Height = math.Max(Snap(r.Width), MinNodeWidth), math.Max(Snap(r.Height), MinNodeHeight)
+			r.Width, r.Height = math.Max(r.Width, l.cv.Node.MinWidth), math.Max(r.Height, l.cv.Node.MinHeight)
 		}
 		l.setRect(id, r)
 		l.growAncestors(id)
@@ -517,7 +515,7 @@ func (m *Model) AddZone(view string, spec ZoneSpec, human bool, author string) (
 	if spec.Parent != "" {
 		z.set("parent", spec.Parent)
 	}
-	r := Rect{Snap(spec.X), Snap(spec.Y), math.Max(Snap(spec.Width), MinZoneWidth), math.Max(Snap(spec.Height), MinZoneHeight)}
+	r := Rect{spec.X, spec.Y, math.Max(spec.Width, l.cv.Zone.MinWidth), math.Max(spec.Height, l.cv.Zone.MinHeight)}
 	z.set("x", r.X)
 	z.set("y", r.Y)
 	z.set("width", r.Width)

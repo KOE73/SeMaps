@@ -56,6 +56,7 @@ type Model struct {
 	loaded     map[string]bool
 	journal    [][]Op
 	dirty      DirtySummary
+	canvas     Canvas // given by the host (SetCanvas); geometry needs it
 }
 
 var modelRegistries = map[string]struct{ file, key string }{
@@ -104,7 +105,7 @@ func cloneObject(o *object) *object {
 }
 
 func (m *Model) copy() *Model {
-	c := &Model{workspace: m.workspace, project: m.project, dir: m.dir, manifest: cloneObject(m.manifest),
+	c := &Model{workspace: m.workspace, project: m.project, dir: m.dir, manifest: cloneObject(m.manifest), canvas: m.canvas,
 		registries: map[string]*registry{}, texts: map[string]*object{}, views: map[string]*modelView{}, loaded: map[string]bool{},
 		journal: append([][]Op(nil), m.journal...), dirty: DirtySummary{Registry: append([]Ref(nil), m.dirty.Registry...), Views: map[string][]Ref{}}}
 	for k, r := range m.registries {
@@ -360,6 +361,17 @@ func (m *Model) applyOne(op Op) error {
 		return refuse("%s needs a view", op.Kind)
 	}
 	v, err := m.loadView(op.View)
+	var notFound *EditError
+	if err != nil && errors.As(err, &notFound) && op.Kind == "view" && op.ID == op.View {
+		// A view that does not exist yet is created by a `view` op that carries
+		// the whole new document, with empty `zones` and `nodes` (the shape the
+		// editor writes for a new view); it becomes a file on Save.
+		if created, cerr := m.newView(op); cerr != nil {
+			return cerr
+		} else if created {
+			return nil
+		}
+	}
 	if err != nil {
 		return err
 	}
@@ -476,6 +488,9 @@ func (m *Model) Save() error {
 	}
 	for id := range m.dirty.Views {
 		v := m.views[id]
+		if err := os.MkdirAll(filepath.Dir(v.file), 0o755); err != nil {
+			return err
+		}
 		if err := saveDoc(v.file, v.doc); err != nil {
 			return err
 		}

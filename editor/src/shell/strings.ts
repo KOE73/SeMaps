@@ -72,7 +72,7 @@ const ru = {
     "semaps mcp — MCP-сервер, через который Claude Code, Cursor, Copilot и другие агенты читают и правят эту карту сами. Не нужно объяснять агенту формат файлов: он получает инструменты, а правила контракта держит сервер.",
   mcpWhyTitle: "Что это даёт",
   mcpWhy: [
-    "Агент отвечает на вопросы об архитектуре по реестру, а не перечитывает весь код: «кто держит VmProgram», «что зависит от этой сборки».",
+    "Агент отвечает на вопросы об архитектуре по реестру, а не перечитывает весь код: «кто держит Order»,«что зависит от этой сборки».",
     "Агент сам пишет описания, подписи связей и переводы — всё помечается как авторское, с датой.",
     "После правки кода агент запускает извлечение и сверку и объясняет, что изменилось на схемах.",
     "Правила соблюдаются всегда: id выдаёт сервер, ничего не удаляется, раскладку видов агент трогает только по вашей просьбе.",
@@ -141,11 +141,11 @@ const ru = {
   mcpSaved: "Сохранено.",
   mcpAskTitle: "Что попросить у агента",
   mcpAsk: [
-    "«Какие классы держат VmProgram и через какие поля?»",
+    "«Какие классы держат Order и через какие поля?»",
     "«Опиши все сборки проекта одной строкой каждую, на русском и английском»",
     "«Я переименовал поле — сверь карту и подтверди переименование»",
-    "«Покажи на виде Операции связи injects для VmController»",
-    "«Сдвинь зону v_ops#z_transform вправо на 200» (ссылку копирует кнопка ссылки в свойствах или меню блока)",
+    "«Покажи на виде Основной связи injects для OrderService»",
+    "«Сдвинь зону v_main#z_core вправо на 200» (ссылку копирует кнопка ссылки в свойствах или меню блока)",
   ],
   // graph
   navGraph: "Граф",
@@ -389,7 +389,7 @@ const en: Strings = {
     "semaps mcp is an MCP server through which Claude Code, Cursor, Copilot and other agents read and edit this map themselves. No need to explain the file format: the agent gets tools, the server keeps the contract's rules.",
   mcpWhyTitle: "What it gives you",
   mcpWhy: [
-    "The agent answers architecture questions from the registry instead of rereading the code: who holds VmProgram, what depends on this assembly.",
+    "The agent answers architecture questions from the registry instead of rereading the code: who holds Order, what depends on this assembly.",
     "The agent writes descriptions, relation labels and translations itself — all marked authored, with a date.",
     "After a code change the agent runs extraction and sync and explains what changed on the diagrams.",
     "The rules always hold: ids come from the server, nothing is deleted, view layout is touched only when you ask.",
@@ -458,11 +458,11 @@ const en: Strings = {
   mcpSaved: "Saved.",
   mcpAskTitle: "What to ask the agent",
   mcpAsk: [
-    "“Which classes hold VmProgram, and through which fields?”",
+    "“Which classes hold Order, and through which fields?”",
     "“Describe every assembly of the project in one line, in Russian and English”",
     "“I renamed a field — sync the map and confirm the rename”",
-    "“Show the injects relations of VmController on the Operations view”",
-    "“Move the zone v_ops#z_transform 200 to the right” (the link is copied by the “link button” in Properties or the block menu)",
+    "“Show the injects relations of OrderService on the Main view”",
+    "“Move the zone v_main#z_core 200 to the right” (the link is copied by the “link button” in Properties or the block menu)",
   ],
   // graph
   navGraph: "Graph",

@@ -7,6 +7,8 @@ func TestGetViewTreeAndEdgeVisibility(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
+	cv := testCanvas(t)
+	m.SetCanvas(cv)
 	ops := []Op{
 		modelOp("zone", "z_in", "v_main", "", `{"id":"z_in","container":null,"parent":"z_core","x":20,"y":40,"width":300,"height":200}`),
 		modelOp("node", "e_b", "v_main", "", `{"entity":"e_b","zone":"z_in","x":40,"y":80}`),
@@ -26,7 +28,7 @@ func TestGetViewTreeAndEdgeVisibility(t *testing.T) {
 	if len(inner) != 1 || inner[0].ID != "z_in" || len(inner[0].Nodes) != 1 || inner[0].Nodes[0].Entity != "e_b" {
 		t.Fatalf("nesting = %+v", inner)
 	}
-	if n := inner[0].Nodes[0]; n.Width != NodeWidth || n.Height != NodeHeight || n.Name != "B" || n.Kind != "class" {
+	if n := inner[0].Nodes[0]; n.Width != cv.Node.Width || n.Height != cv.Node.Height || n.Name != "B" || n.Kind != "class" {
 		t.Fatalf("node = %+v", n)
 	}
 	if len(got.Nodes) != 1 || got.Nodes[0].Entity != "e_a" || got.Nodes[0].Zone != "" {

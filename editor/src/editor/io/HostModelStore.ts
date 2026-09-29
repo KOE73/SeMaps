@@ -5,7 +5,16 @@ import { diffModel, type ModelOp } from "./ModelSync.js";
 
 export interface ChangedRef { kind: string; id: string; view?: string; lang?: string; author: string }
 export interface DirtySummary { registry: ChangedRef[]; views: Record<string, ChangedRef[]> }
-export interface ModelEvent { client: string; author: string; changed: ChangedRef[]; dirty: DirtySummary; projectReloaded?: { oldProject: string; newProject: string; oldView?: string; newView?: string } }
+/** A request from the host for a picture of a view; answered with `POST /api/render/{id}`. */
+export interface RenderRequest {
+  id: string;
+  view: string;
+  ref?: string;
+  rect?: { x: number; y: number; width: number; height: number } | null;
+  scale?: number;
+  maxSize?: number;
+}
+export interface ModelEvent { client: string; author: string; changed: ChangedRef[]; dirty: DirtySummary; render?: RenderRequest; projectReloaded?: { oldProject: string; newProject: string; oldView?: string; newView?: string } }
 
 interface Snapshot {
   project: ProjectManifest;
@@ -155,12 +164,29 @@ export class HostModelStore extends HttpProjectStore {
     }
   }
 
+  /** Who draws a view when the host asks for a picture of it (set by the app once the editor exists). */
+  renderer: ((request: RenderRequest) => Promise<unknown>) | null = null;
+
+  private async answerRender(request: RenderRequest): Promise<void> {
+    let body: unknown;
+    try {
+      body = this.renderer ? await this.renderer(request) : { error: "this editor cannot render" };
+    } catch (e) {
+      body = { error: (e as Error).message };
+    }
+    try {
+      await this.request(`/api/render/${encodeURIComponent(request.id)}`, { method: "POST", body: JSON.stringify(body) });
+    } catch { /* the host stopped waiting */ }
+  }
+
   subscribe(project: string, onEvent: (event: ModelEvent) => void): void {
     if (this.eventProject === project) return;
     this.events?.close(); this.eventProject = project;
-    this.events = new EventSource(`/api/events?project=${encodeURIComponent(project)}`);
+    this.events = new EventSource(`/api/events?project=${encodeURIComponent(project)}&render=1`);
     this.events.onmessage = (message) => {
       const event = JSON.parse(message.data) as ModelEvent;
+      // A render request is not a model change: answer it, do not reload anything.
+      if (event.render) { void this.answerRender(event.render); return; }
       if (event.client === this.client) return;
       const deliver=()=>{this.invalidate(project);onEvent(event)};
       void this.pending.then(deliver,deliver);

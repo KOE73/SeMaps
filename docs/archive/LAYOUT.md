@@ -1,3 +1,6 @@
+> **Archived.** Written for an agent that edits view JSON files directly; superseded by the MCP tool
+> `layout_guide` (an agent works on the canvas only through MCP). Kept for history; never edited.
+
 # How a view is laid out
 
 Reference for an agent the human has asked to do something with a view's geometry — typically
@@ -5,8 +8,8 @@ the rough work: "spread the subclasses into frames by meaning, stack each frame 
 fine placement stays the human's. This file says how the picture works and what the defaults
 are; *how* to arrange things is what the human asked for, not something this file decides.
 Without such a request an agent does not write geometry at all
-([ADR_20260924](adr/ADR_20260924_contract_agent-lays-out-views-on-request.md)). File format:
-[CONTRACT.md](CONTRACT.md) §8.
+([ADR_20260924](../adr/ADR_20260924_contract_agent-lays-out-views-on-request.md)). File format:
+[CONTRACT.md](../CONTRACT.md) §8.
 
 ## Two things that are not optional
 

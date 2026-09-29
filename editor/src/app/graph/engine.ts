@@ -26,7 +26,9 @@ import { type FocusMode, type GroupBy, type LevelGroup, type ViewState, viewSett
 import type { GroupsResponse } from "./types.js";
 import { type GraphPanel, statsLine } from "./panel.js";
 import type { NodesView } from "./nodesView.js";
-import { HIERARCHY_KINDS, type Reach, nodeSelection, reachFrom, workingSet } from "./workset.js";
+import { type Reach, nodeSelection, reachFrom, workingSet } from "./workset.js";
+import { graphFilterConfig } from "./filterConfig.js";
+import { GRAPH_TUNING } from "./tuning.js";
 import { type MenuItem, openContextMenu } from "../../workbench/menus/ContextMenu.js";
 import { icons } from "../../ui/icons.js";
 import { GRAPH_CLIPBOARD_FORMAT, GRAPH_CLIPBOARD_VERSION, type GraphClipboard, type GraphClipboardNode } from "../../model/graphClipboard.js";
@@ -43,8 +45,12 @@ export interface GraphUi {
   copy(which: "selection" | "chosen"): void;
 }
 
-/** How many groups the legend lists when colouring by group; the rest is «ещё N». */
-const LEGEND_GROUP_CAP = 12;
+const LEGEND_GROUP_CAP = GRAPH_TUNING.legendGroupCap;
+
+const nodeSizeOf = (degree: number): number => {
+  const s = GRAPH_TUNING.nodeSize;
+  return s.base + Math.min(s.max, Math.sqrt(degree) * s.perSqrtDegree);
+};
 
 const edgeKey = (from: string, to: string, kind: string): string => `${from}\u0000${to}\u0000${kind}`;
 
@@ -157,7 +163,7 @@ export class GraphEngine {
     // Node size by degree, computed once the edges are in.
     this.graph.forEachNode((node) => {
       const d = this.graph.degree(node);
-      this.graph.setNodeAttribute(node, "size", 3 + Math.min(18, Math.sqrt(d) * 2.4));
+      this.graph.setNodeAttribute(node, "size", nodeSizeOf(d));
     });
 
     seedCircle(this.graph);
@@ -306,7 +312,7 @@ export class GraphEngine {
 
   /** How much of a colour stays when dimmed: «мягко» keeps over half of it. */
   private dimKeep(): number {
-    return this.focusMode === "soft" ? 0.55 : 0.16;
+    return this.focusMode === "soft" ? GRAPH_TUNING.dimKeepSoft : GRAPH_TUNING.dimKeepStrong;
   }
 
   getFocusMode(): FocusMode {
@@ -429,6 +435,12 @@ export class GraphEngine {
     });
   }
 
+  /** Width over height of the graph canvas; 1 while it is not laid out. */
+  private canvasAspect(): number {
+    const d = this.renderer?.getDimensions();
+    return d && d.width > 0 && d.height > 0 ? d.width / d.height : 1;
+  }
+
   restartLayout(): void {
     if (this.booted) this.applyLayout();
   }
@@ -517,7 +529,7 @@ export class GraphEngine {
     // Degree-based size, recomputed for everyone — cheap next to a layout.
     this.graph.forEachNode((node) => {
       const d = this.graph.degree(node);
-      this.graph.setNodeAttribute(node, "size", 3 + Math.min(18, Math.sqrt(d) * 2.4));
+      this.graph.setNodeAttribute(node, "size", nodeSizeOf(d));
     });
 
     this.data = next;
@@ -857,8 +869,8 @@ export class GraphEngine {
   private showEdgeTip(edge: string, x: number, y: number): void {
     const [from, to] = this.graph.extremities(edge);
     const kind = this.graph.getEdgeAttribute(edge, "kind") as string;
-    if (kind !== "calls" && kind !== "constructs") return;
     const info = this.edgeInfo.get(edgeKey(from, to, kind));
+    if (!info || (!info.count && !info.fromMethods?.length && !info.toMethods?.length)) return;
     const name = (id: string) => this.nodeById.get(id)?.name ?? id;
     const methods = info?.fromMethods?.length || info?.toMethods?.length ? `: ${(info.fromMethods ?? []).join(", ")} → ${(info.toMethods ?? []).join(", ")}` : "";
     const times = info?.count && info.count > 1 ? ` ×${info.count}` : "";
@@ -873,6 +885,7 @@ export class GraphEngine {
   /** Edge kinds present in the data, the inheritance ones first. */
   private edgeKindsOrdered(): string[] {
     const kinds = [...new Set(this.edges.map((e) => e.kind))];
+    const HIERARCHY_KINDS = graphFilterConfig().hierarchyKinds;
     const rank = (k: string) => (HIERARCHY_KINDS.includes(k) ? HIERARCHY_KINDS.indexOf(k) : HIERARCHY_KINDS.length);
     return kinds.sort((a, b) => rank(a) - rank(b) || a.localeCompare(b));
   }
@@ -898,8 +911,9 @@ export class GraphEngine {
       nodeSelection.add(result);
     };
     const step = (label: string, icon: string, reach: Reach, all: boolean): MenuItem => {
-      const n = found(reach, HIERARCHY_KINDS, all).size;
-      return { label, icon, note: n ? String(n) : undefined, disabled: n === 0, onSelect: take(reach, HIERARCHY_KINDS, all) };
+      const hierarchy = graphFilterConfig().hierarchyKinds;
+      const n = found(reach, hierarchy, all).size;
+      return { label, icon, note: n ? String(n) : undefined, disabled: n === 0, onSelect: take(reach, hierarchy, all) };
     };
 
     openContextMenu(
@@ -937,7 +951,7 @@ export class GraphEngine {
     take: (reach: Reach, kinds: readonly string[] | null, all: boolean) => () => void,
   ): MenuItem {
     const kindItem = (name: string, kinds: readonly string[] | null): MenuItem => {
-      const dir = kinds && !HIERARCHY_KINDS.includes(kinds[0]!) && reach !== "neighbours" ? (reach === "descendants" ? " ←" : " →") : "";
+      const dir = kinds && !graphFilterConfig().hierarchyKinds.includes(kinds[0]!) && reach !== "neighbours" ? (reach === "descendants" ? " ←" : " →") : "";
       const first = found(reach, kinds, false).size;
       const item: MenuItem = {
         label: name + dir,
@@ -1111,7 +1125,7 @@ export class GraphEngine {
 
     switch (this.layout) {
       case "hierarchy":
-        hierarchyLayout(sub);
+        hierarchyLayout(sub, graphFilterConfig().hierarchyKinds, this.canvasAspect());
         break;
       case "radial":
         // The centre is picked when the layout runs, not followed afterwards:
@@ -1153,11 +1167,11 @@ export class GraphEngine {
 }
 
 /** The canvas's own background (graph.css `--canvas-bg`): dimming mixes toward it. */
-const CANVAS_BG: [number, number, number] = [0x1c, 0x1e, 0x22];
+const CANVAS_BG = GRAPH_TUNING.canvasBg;
 
 /** A colour dimmed by mixing it into the canvas background — an opaque colour, since
  * the WebGL nodes and edges drop alpha and an rgba would read as a light smear. */
-function fade(color: string, keep = 0.16): string {
+function fade(color: string, keep: number = GRAPH_TUNING.dimKeepStrong): string {
   let r: number, g: number, b: number;
   const m = /^rgba?\(\s*(\d+)[,\s]+(\d+)[,\s]+(\d+)/.exec(color);
   if (m) [r, g, b] = [Number(m[1]), Number(m[2]), Number(m[3])];

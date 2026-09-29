@@ -6,6 +6,7 @@
  */
 
 import { parseNativeKind } from "../../ui/kindIcons.js";
+import { loadGraphFilterConfig } from "./filterConfig.js";
 
 export interface Span {
   line: number;
@@ -101,6 +102,8 @@ export interface GraphDiff {
 }
 
 export async function fetchGraph(project: string, missing = false): Promise<GraphResponse> {
+  // The filter defaults must be known before the first `filterStore.sync`.
+  await loadGraphFilterConfig();
   const res = await fetch(`/api/graph/${encodeURIComponent(project)}?fields=via,position,dynamic${missing ? "&missing=1" : ""}`, { cache: "no-store" });
   if (!res.ok) throw new Error((await res.text()).trim() || res.statusText);
   const graph = (await res.json()) as GraphResponse;

@@ -7,8 +7,6 @@ import { openModal } from "./Modal.js";
 import { iconPicker } from "../../ui/iconPicker.js";
 import { iconByKey } from "../../ui/kindIcons.js";
 
-const AXES = ["axis_layer", "axis_subsystem", "axis_process", "axis_security_zone", "axis_deployment"];
-
 /** Tints for the icon tile in the catalogue; `.catalog-icon.theme-<id>` in editor.css. */
 export const THEMES = ["blue", "green", "teal", "orange", "red", "pink", "purple", "slate"];
 
@@ -216,9 +214,11 @@ function viewDialog(editor: DiagramEditorFacade, projectId: string | undefined, 
   project.disabled = existing !== undefined;
   const id = textInput(existing?.id ?? (projectOf(selected).views.length > 0 ? "v_" : "v_main"));
   const name = textInput(existing ? editor.viewName(existing) : "");
-  const axis = textInput(existing?.axis ?? "", "axis_subsystem");
+  // The axes the workspace's own views already use; anything else is typed freely.
+  const axes = [...new Set(editor.workspace.projects.flatMap((p) => p.views.map((v) => v.axis ?? "")).filter(Boolean))];
+  const axis = textInput(existing?.axis ?? "", axes[0] ?? "");
   axis.setAttribute("list", "semaps-axes");
-  const axisList = el("datalist", { id: "semaps-axes" }, AXES.map((a) => el("option", { value: a })));
+  const axisList = el("datalist", { id: "semaps-axes" }, axes.map((a) => el("option", { value: a })));
   const look = lookPicker(existing?.icon ?? "map", existing?.theme);
 
   const siblings = (): ViewEntry[] => projectOf(project.value).views.filter((v) => v.file !== existing?.file);

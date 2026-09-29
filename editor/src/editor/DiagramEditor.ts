@@ -1,6 +1,7 @@
 import type { RoutingMode } from "../model/style-types.js";
 import { DiagramCanvas, type Selection } from "../canvas/DiagramCanvas.js";
 import type { StrokeScaling } from "../canvas/Viewport.js";
+import { canvas as canvasNumbers } from "../constants/canvas.js";
 import { layoutFreeKey } from "../util/keys.js";
 import { placeEntities } from "./placeEntity.js";
 import {
@@ -9,7 +10,7 @@ import {
   UniformPortAssigner,
 } from "../canvas/ports/assigners.js";
 import { DiagramDocument } from "../model/document.js";
-import { StyleLibrary } from "../model/StyleLibrary.js";
+import { DEFAULT_STYLE_IDS, StyleLibrary } from "../model/StyleLibrary.js";
 import { builtinStyleSheet } from "../model/style-defaults.js";
 import type { WireStyleSheet } from "../model/style-types.js";
 import { parseDocument, serializeDocument } from "../model/wire.js";
@@ -609,7 +610,7 @@ export class DiagramEditor implements InspectorHost, StylePanelHost, DiagramEdit
         this.slot("canvas").classList.toggle("with-grid", on);
         return;
       case "snap":
-        this.canvas.gridStep = on ? 10 : 0;
+        this.canvas.gridStep = on ? canvasNumbers().grid : 0;
         return;
       case "structure-edges":
         // Not a style question, which is why no style can answer it: in
@@ -1075,17 +1076,17 @@ export class DiagramEditor implements InspectorHost, StylePanelHost, DiagramEdit
     const doc = this.canvas.model;
     if (doc === null) return;
     const at = this.canvas.viewCenter();
-    const x = snap(at.x, 10);
-    const y = snap(at.y, 10);
+    const x = snap(at.x, canvasNumbers().grid);
+    const y = snap(at.y, canvasNumbers().grid);
 
     const node: DiagramElement = {
       id: `node_${Date.now().toString(36)}`,
       kind: "node",
-      type: "concept",
+      type: DEFAULT_STYLE_IDS.node,
       label: "Новый блок",
       tags: [],
-      metadata: { type: "Concept / Блок", description: "Пользовательский блок архитектуры." },
-      x, y, width: 190, height: 60,
+      metadata: {},
+      x, y, width: canvasNumbers().node.width, height: canvasNumbers().node.height,
       parent: null,
       children: [],
       wireOrder: Number.POSITIVE_INFINITY,
@@ -1111,7 +1112,7 @@ export class DiagramEditor implements InspectorHost, StylePanelHost, DiagramEdit
       semanticId: `zone.${id}`,
       tags: [],
       metadata: { description: "Пользовательский логический контейнер." },
-      x: snap(at.x, 10), y: snap(at.y, 10), width: 420, height: 300,
+      x: snap(at.x, canvasNumbers().grid), y: snap(at.y, canvasNumbers().grid), width: 420, height: 300,
       // A named style, not five inline colours. The slate theme is what the old
       // hardcoded literals here spelled out, so a new zone looks the same as
       // before while now being repaintable in one place.

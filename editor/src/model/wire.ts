@@ -1,7 +1,7 @@
 import { area, center, containsPoint, containsRect } from "../geometry/rect.js";
 import type { Rect } from "../geometry/types.js";
 import { DiagramDocument } from "./document.js";
-import type { StyleLibrary } from "./StyleLibrary.js";
+import { DEFAULT_STYLE_IDS, type StyleLibrary } from "./StyleLibrary.js";
 import type {
   DiagramEdge,
   DiagramElement,
@@ -122,7 +122,7 @@ function nodeToElement(n: WireNode, order: number): DiagramElement {
   return {
     id: n.id,
     kind: "node",
-    type: n.type ?? "component",
+    type: n.type ?? DEFAULT_STYLE_IDS.node,
     label: n.label ?? n.id,
     tags: n.tags ?? [],
     metadata: n.metadata ?? {},

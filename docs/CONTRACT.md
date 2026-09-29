@@ -34,7 +34,13 @@
 ```
 
 Стили общие для всех проектов: `<workspace>/styles.json`, а если его нет — умолчание инструмента
-[`host/defaults/styles.json`](../host/defaults/styles.json). То же для `templates.json` и `content/`.
+[`host/defaults/styles.json`](../host/defaults/styles.json). То же для `templates.json` и `content/`
+и для `canvas.json` — чисел холста (сетка, размеры узла и зоны, заголовок и отступ зоны, зазоры):
+`<workspace>/canvas.json`, а если его нет — [`host/defaults/canvas.json`](../host/defaults/canvas.json).
+Форма: `{"grid":10,"node":{"width","height","minWidth","minHeight","radius"},"zone":{"minWidth","minHeight","headerHeight","padding","radius"},"gap":{"node","zone"}}`,
+единицы — единицы модели (1 единица = 1 пиксель экрана при масштабе 1). Это единственное место,
+где числа записаны: хост (`get_view`, `layout_guide`, геометрические инструменты) и редактор читают
+один файл. Сетка — привычка редактора; **хост к сетке не привязывает**.
 Рядом с ним — ещё два общих реестра, оба введены
 [`ADR_20260903`](adr/ADR_20260903_diagrams_content-templates-and-edge-routing.md):
 `templates.json` (шаблоны содержимого
@@ -451,7 +457,13 @@ units**, результат — 8 шестнадцатеричных цифр в
    не пишут никогда. Агент пишет геометрию только по прямой просьбе человека и только
    в пределах поручения, не затирая чужую раскладку
    ([`ADR_20260924`](adr/ADR_20260924_contract_agent-lays-out-views-on-request.md);
-   как устроен вид — [`LAYOUT.md`](LAYOUT.md)).
+   как устроен вид — инструмент MCP `layout_guide`, [`API.md`](API.md) §6).
+4. **Числа геометрии.** `x`,`y` — абсолютные координаты в единицах модели, `y` растёт вниз, начало
+   произвольно; у узла внутри зоны они тоже абсолютные. Узел без размера имеет `node.width` ×
+   `node.height` из `canvas.json`, зона без размера — `zone.minWidth` × `zone.minHeight`; размер
+   не меньше `node.min*` / `zone.min*`, а зона не меньше своего содержимого с `zone.padding` и
+   строкой заголовка `zone.headerHeight`. Хост пишет числа как получил, без округления до сетки.
+   Новый вид — `{"id","project","axis","zones":[],"nodes":[]}`; имя вида — текст под его `id` (§7).
 
 ### 8.3 Совместимость имён
 

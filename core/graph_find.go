@@ -487,7 +487,7 @@ func methodDisplayName(n *GraphNode, byID map[string]*GraphNode, methodOf map[st
 
 // methodTypeMember is the coarser `Type.Member` form (no parameter list) —
 // what several overloads share, and the form resolveMethods matches a
-// query like `YoloObbFactory.CreateRunner` against.
+// query like `OrderFactory.Create` against.
 func methodTypeMember(n *GraphNode, byID map[string]*GraphNode, methodOf map[string]string) string {
 	container := containerShortName(n, byID, methodOf)
 	name, _ := splitMethodSignature(n)

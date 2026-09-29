@@ -158,7 +158,7 @@ export interface RelationVia {
   memberKind?: string;
   /** Visibility modifiers from the code. */
   modifiers?: string[];
-  /** The type text as written in code, e.g. "ConcurrentDictionary<long, Task<VmRunOutcome>>". */
+  /** The type text as written in code, e.g. "ConcurrentDictionary<long, Task<Result>>". */
   text?: string;
   /** Path from the outer type to the target class, e.g. ["value", "result"]. */
   path?: string[];

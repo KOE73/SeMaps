@@ -1,15 +1,18 @@
 import type { EntityEntry } from "../model/wire-types.js";
 import type { DiagramEditor } from "./DiagramEditor.js";
 import { relationShownByDefault } from "../model/relationVisibility.js";
+import { canvas } from "../constants/canvas.js";
 
-export const WIDTH = 180;
-export const HEIGHT = 60;
-export const GAP_X = 40;
-export const GAP_Y = 40;
+/** Default box size and the gap between boxes, from the canvas numbers (`/canvas.json`). */
+export function boxMetrics(): { WIDTH: number; HEIGHT: number; GAP_X: number; GAP_Y: number } {
+  const c = canvas();
+  return { WIDTH: c.node.width, HEIGHT: c.node.height, GAP_X: c.gap.node, GAP_Y: c.gap.node };
+}
 const PER_ROW = 4;
 
 /** The box of a registry entity at (x, y): its name and description come from the view's texts. */
 export function blockFor(doc: NonNullable<DiagramEditor["canvas"]["model"]>, entity: EntityEntry, x: number, y: number): any {
+  const { WIDTH, HEIGHT } = boxMetrics();
   const text = (doc.bundle?.text?.entries || {})[entity.id] as { name?: string; description?: string } | undefined;
   return {
     id: entity.id,
@@ -43,6 +46,7 @@ export function placeEntities(
 ): string[] {
   const doc = editor.canvas.model;
   if (!doc) return [];
+  const { WIDTH, HEIGHT, GAP_X, GAP_Y } = boxMetrics();
 
   const placed: string[] = [];
   for (const entity of entities) {
@@ -76,6 +80,7 @@ export function placeAround(
   const doc = editor.canvas.model;
   const anchor = doc?.element(anchorId);
   if (!doc || !anchor) return placeEntities(editor, entities);
+  const { WIDTH, HEIGHT, GAP_X, GAP_Y } = boxMetrics();
   const n = entities.filter((e) => doc.element(e.id) === undefined).length;
   if (n === 0) return [];
   const cols = Math.min(n, PER_ROW);

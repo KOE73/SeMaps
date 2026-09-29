@@ -60,6 +60,10 @@ func (m *Model) GetView(ref, lang string) (ViewInfo, error) {
 	if err != nil {
 		return ViewInfo{}, err
 	}
+	cv, err := m.Canvas()
+	if err != nil {
+		return ViewInfo{}, err
+	}
 	kind, err := m.ResolveRef(r)
 	if err != nil {
 		return ViewInfo{}, err
@@ -95,11 +99,11 @@ func (m *Model) GetView(ref, lang string) (ViewInfo, error) {
 	}
 
 	zoneObjs := viewItems(doc, "zones")
-	parents := zoneParents(zoneObjs)
+	parents := zoneParents(zoneObjs, cv)
 	zones := map[string]*ZoneInfo{}
 	var order []*ZoneInfo
 	for _, z := range zoneObjs {
-		info := &ZoneInfo{ID: z.str("id"), Container: z.str("container"), Parent: parents[z.str("id")], Rect: zoneRect(z),
+		info := &ZoneInfo{ID: z.str("id"), Container: z.str("container"), Parent: parents[z.str("id")], Rect: zoneRect(z, cv),
 			StyleID: z.str("styleId"), Zones: []*ZoneInfo{}, Nodes: []NodeInfo{}}
 		if raw, ok := z.vals["collapsed"]; ok {
 			_ = json.Unmarshal(raw, &info.Collapsed)
@@ -127,7 +131,7 @@ func (m *Model) GetView(ref, lang string) (ViewInfo, error) {
 	for _, key := range []string{"nodes", "placements"} {
 		for _, n := range viewItems(doc, key) {
 			id := nodeID(n)
-			info := NodeInfo{Entity: id, Zone: nodeZone(n), Rect: nodeRect(n), StyleID: n.str("styleId"), Template: n.str("template")}
+			info := NodeInfo{Entity: id, Zone: nodeZone(n), Rect: nodeRect(n, cv), StyleID: n.str("styleId"), Template: n.str("template")}
 			if e := ents[id]; e != nil {
 				info.Name, info.Kind = e.str("name"), e.str("kind")
 			}

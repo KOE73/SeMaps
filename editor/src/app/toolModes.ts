@@ -30,7 +30,8 @@ import {
   toggleGraphMissing,
   toggleGraphPanel,
 } from "./graph.js";
-import { CALLS_EDGE_KINDS, INHERITANCE_DEPENDENCY_EDGE_KINDS, INHERITANCE_EDGE_KINDS, PRESET_SYMBOL_KINDS, filterStore } from "./graph/filters.js";
+import { filterStore } from "./graph/filters.js";
+import { filterPreset } from "./graph/filterConfig.js";
 import { GRAPH_PANEL } from "./graph/dock.js";
 import { graphIcons } from "./graph/icons.js";
 import { COLOR_OPTIONS, FOCUS_OPTIONS, GROUP_OPTIONS, LAYOUT_OPTIONS } from "./graph/viewOptions.js";
@@ -40,6 +41,17 @@ import { icons } from "../ui/icons.js";
 
 /** Every graph command goes through graph.ts / the filter store; nothing
  * here imports the engine (sigma stays behind the dynamic import). */
+/** A preset of graph-filters.json: usable when the data has any of its edge kinds. */
+function presetEnabled(id: string): boolean {
+  const p = filterPreset(id);
+  return p !== undefined && filterStore.hasEdgeKind(p.edgeKinds);
+}
+
+function applyPreset(id: string): void {
+  const p = filterPreset(id);
+  if (p) filterStore.onlyKinds(p.edgeKinds, p.symbolKinds);
+}
+
 function graphCommands(): CommandDefinition[] {
   const presence = (id: string, value: "code" | "model" | "both", title: string, icon: string): CommandDefinition => ({
     id,
@@ -73,22 +85,22 @@ function graphCommands(): CommandDefinition[] {
       id: "tools.graph.filters.inheritance",
       title: t.graphOnlyInheritance,
       icon: kindIcon("edge", "extends"),
-      isEnabled: () => filterStore.hasEdgeKind(INHERITANCE_EDGE_KINDS),
-      execute: () => filterStore.onlyKinds(INHERITANCE_EDGE_KINDS, PRESET_SYMBOL_KINDS),
+      isEnabled: () => presetEnabled("inheritance"),
+      execute: () => applyPreset("inheritance"),
     },
     {
       id: "tools.graph.filters.dependencies",
       title: t.graphInheritanceDependencies,
       icon: graphIcons.hierarchy,
-      isEnabled: () => filterStore.hasEdgeKind(INHERITANCE_DEPENDENCY_EDGE_KINDS),
-      execute: () => filterStore.onlyKinds(INHERITANCE_DEPENDENCY_EDGE_KINDS, PRESET_SYMBOL_KINDS),
+      isEnabled: () => presetEnabled("inheritance-dependencies"),
+      execute: () => applyPreset("inheritance-dependencies"),
     },
     {
       id: "tools.graph.filters.calls",
       title: t.graphPresetCalls,
       icon: kindIcon("edge", "calls"),
-      isEnabled: () => filterStore.hasEdgeKind(CALLS_EDGE_KINDS),
-      execute: () => filterStore.onlyKinds(CALLS_EDGE_KINDS, PRESET_SYMBOL_KINDS),
+      isEnabled: () => presetEnabled("calls"),
+      execute: () => applyPreset("calls"),
     },
     presence("tools.graph.presence.code", "code", t.graphPresenceCode, kindIcon("presence", "code")),
     presence("tools.graph.presence.model", "model", t.graphPresenceModel, kindIcon("presence", "model")),

@@ -193,18 +193,9 @@ func otherEnd(e GraphEdge, fromID string) string {
 	return e.From
 }
 
-// normalizeMemberName: for matching a holds/injects pair (defect 3): a
-// field, a property and a constructor parameter for the same thing are
-// often spelled differently (`_context` the field, `context` the parameter,
-// `Context` the property) — compared case-insensitively, with at most one
-// leading underscore stripped.
-func normalizeMemberName(s string) string {
-	s = strings.TrimPrefix(s, "_")
-	return strings.ToLower(s)
-}
-
 // combineHoldsAndInjects folds a `holds`/`held-by` and the
-// `injects`/`injected-into` of the same member (normalizeMemberName) of the
+// `injects`/`injected-into` of the same member (spelled identically: no
+// guessing that `_context` and `Context` are one thing) of the
 // same pair (otherEnd) into one relation — the holds one, its Injected flag
 // set so a template can print "(injected)" wherever it likes (defect 3): an
 // `injects`/`injected-into` with no matching holds relation is left plain,
@@ -216,10 +207,10 @@ func combineHoldsAndInjects(rels []RelationMacros) []RelationMacros {
 	for _, r := range rels {
 		switch {
 		case strings.HasPrefix(r.Relation, "holds") || strings.HasPrefix(r.Relation, "held-by"):
-			holdsIdx[pairKey{r.other, normalizeMemberName(r.Member)}] = len(out)
+			holdsIdx[pairKey{r.other, r.Member}] = len(out)
 			out = append(out, r)
 		case strings.HasPrefix(r.Relation, "injects") || strings.HasPrefix(r.Relation, "injected-into"):
-			if i, ok := holdsIdx[pairKey{r.other, normalizeMemberName(r.Member)}]; ok {
+			if i, ok := holdsIdx[pairKey{r.other, r.Member}]; ok {
 				out[i].Injected = true
 				continue
 			}

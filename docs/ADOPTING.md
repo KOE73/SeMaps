@@ -102,7 +102,7 @@ rather than guessing the grammar.
 To point an agent at an object of a view, copy its reference in the editor («🔗» in Properties, or
 «Копировать ссылку» in the block/zone menu): `v_ops#z_undistort`. A request that names the
 reference — «сделай остальные зоны в `v_ops#z_transform` как `v_ops#z_undistort`» — is what
-the view tools work from ([LAYOUT.md](LAYOUT.md), tools in API.md §6).
+the view tools work from (the MCP tool `layout_guide` explains how; the tools are in API.md §6).
 Save before such a task, so that what the agent changes is only what it was asked to change.
 
 The agent reports each changed object and a link to the relevant view. The editor marks unsaved
@@ -225,8 +225,9 @@ report, write. `semaps extract` only runs the extractors and prints each run's i
 - Only symbols under `project.json → sources.include` enter the project.
 - The first run **adopts** entities you already have (for example the assemblies from the
   section above): same `codeRef` and `name`, or same `namespace`, `name` and `kind`. Generic
-  parameter lists in names (`IRunner<in TIn, out TOut>`) and modifiers in kinds (`class` vs
-  `abstract-class`) do not get in the way. They keep their ids, names and kinds and get a
+  parameter lists in names (`IRunner<in TIn, out TOut>`) and leading modifiers in kinds
+  (`class` vs `abstract-class`) do not get in the way; compound kinds stay whole
+  (`struct` does not adopt `record-struct`). They keep their ids, names and kinds and get a
   `symbol` field — that is the key for every later run; do not remove it.
   An entity that fits several symbols (or the reverse) is reported as `неоднозначно`: set its
   `symbol` by hand.
@@ -365,9 +366,11 @@ file of the project (`views/…`, `project.json`, `entities.json`, `relations.js
 - **Geometry only on request.** Unasked, an agent never writes `x/y/width/height`, zones or
   nodes (CONTRACT §8.2, §9.6): create the view empty and let the human place the nodes. When the
   human explicitly asks for help with a view ("spread these subclasses into frames by meaning"),
-  do what was asked and nothing more. [LAYOUT.md](LAYOUT.md) explains how a view works — sizes,
-  frames, lines — and the two things that are not optional: the shared working model must be
-  reviewed and saved by the human, and geometry outside the request stays put.
+  do what was asked and nothing more. An agent works on the canvas **only through MCP**, never by
+  editing view files: the MCP tool `layout_guide` explains how a view works — canvas numbers, each
+  tool, the order of work — and the two things that are not optional: the shared working model must
+  be reviewed and saved by the human, and geometry outside the request stays put. A new view or
+  project (`create_view`, `create_project`) only when a human explicitly asks for one.
 - **Judge `semaps check` by its exit code**: 0 is clean, 1 means findings (listed on stdout).
   Do not match the output text.
 - **A stale `semaps` binary in `PATH`** (for example `~/go/bin/semaps` from an older `go install`)

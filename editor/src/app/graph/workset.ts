@@ -187,9 +187,6 @@ export class NodeSelection {
 
 export const nodeSelection = new NodeSelection();
 
-/** Edge kinds that form the inheritance hierarchy; an edge runs child -> base. */
-export const HIERARCHY_KINDS: readonly string[] = ["implements", "extends"];
-
 export type Reach = "descendants" | "ancestors" | "neighbours";
 
 /**

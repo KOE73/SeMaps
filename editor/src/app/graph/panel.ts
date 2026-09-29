@@ -2,9 +2,11 @@ import { el, replaceChildren } from "../../util/dom.js";
 import { fmt, t } from "../../shell/strings.js";
 import { CodeViewerDialog } from "../../editor/code/CodeViewerDialog.js";
 import { kindIconEl } from "../../ui/kindIcons.js";
+import { graphFilterConfig } from "./filterConfig.js";
 import type { GraphEdge, GraphNode } from "./types.js";
 
-const CALL_KINDS = ["calls", "constructs"];
+/** Edge kinds shown apart, grouped by the other type (graph-filters.json `callKinds`). */
+const callKinds = (): readonly string[] => graphFilterConfig().callKinds;
 
 /**
  * The click-selection side panel: name, kind, file/line, entity, containers,
@@ -37,7 +39,7 @@ export class GraphPanel {
     const byKind = new Map<string, GraphEdge[]>();
     for (const e of edges) {
       if (e.from !== node.id && e.to !== node.id) continue;
-      if (CALL_KINDS.includes(e.kind)) continue; // shown apart, grouped by the other type
+      if (callKinds().includes(e.kind)) continue; // shown apart, grouped by the other type
       (byKind.get(e.kind) ?? byKind.set(e.kind, []).get(e.kind)!).push(e);
     }
     const edgeGroups = [...byKind.entries()].map(([kind, list]) =>
@@ -83,7 +85,7 @@ export class GraphPanel {
   private callSections(node: GraphNode, edges: readonly GraphEdge[], nodeById: Map<string, GraphNode>): HTMLElement[] {
     const section = (title: string, outgoing: boolean): HTMLElement | null => {
       const rows = edges
-        .filter((e) => CALL_KINDS.includes(e.kind) && (outgoing ? e.from === node.id : e.to === node.id))
+        .filter((e) => callKinds().includes(e.kind) && (outgoing ? e.from === node.id : e.to === node.id))
         .map((e) => ({ e, other: nodeById.get(outgoing ? e.to : e.from) }))
         .sort((a, b) => (b.e.count ?? 1) - (a.e.count ?? 1) || (a.other?.name ?? "").localeCompare(b.other?.name ?? ""));
       if (rows.length === 0) return null;
@@ -95,7 +97,7 @@ export class GraphPanel {
           rows.map(({ e, other }) => {
             const mine = (outgoing ? e.fromMethods : e.toMethods) ?? [];
             const theirs = (outgoing ? e.toMethods : e.fromMethods) ?? [];
-            const head = `${outgoing ? "→" : "←"} ${other?.name ?? (outgoing ? e.to : e.from)}${e.count && e.count > 1 ? ` ×${e.count}` : ""}${e.kind === "calls" ? "" : ` · ${e.kind}`}`;
+            const head = `${outgoing ? "→" : "←"} ${other?.name ?? (outgoing ? e.to : e.from)}${e.count && e.count > 1 ? ` ×${e.count}` : ""}${e.kind === callKinds()[0] ? "" : ` · ${e.kind}`}`;
             const methods = mine.length || theirs.length ? `${mine.join(", ")} ${outgoing ? "→" : "←"} ${theirs.join(", ")}` : "";
             return el("li", {}, [el("div", { text: head }), methods ? el("div", { class: "graph-panel-methods", text: methods }) : null]);
           }),

@@ -7,6 +7,7 @@ import { setAttrs, svg, text } from "../svg.js";
 import type { ElementRenderer, RenderContext } from "./ElementRenderer.js";
 import { alignX, dashArray, textAttrs } from "./textAttrs.js";
 import { DIAGRAM_CONFIG } from "../../constants/diagram-constants.js";
+import { canvas } from "../../constants/canvas.js";
 import { iconGlyph, iconGlyphByKey } from "./iconGlyph.js";
 
 /** Left inset of the header caption: clear of the collapse toggle at x+8..x+28. */
@@ -185,7 +186,7 @@ export class ContainerRenderer implements ElementRenderer {
   }
 
   cornerInset(_side: Side, style?: ResolvedBlockStyle): number {
-    return (style?.radius ?? DIAGRAM_CONFIG.container.defaultRadius) + DIAGRAM_CONFIG.ports.extraCornerGap;
+    return (style?.radius ?? canvas().zone.radius) + DIAGRAM_CONFIG.ports.extraCornerGap;
   }
 }
 

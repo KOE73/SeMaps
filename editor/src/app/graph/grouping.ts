@@ -1,5 +1,6 @@
 import type Graph from "graphology";
-import { communityGroups, deepestContainer, dirOf } from "./layouts.js";
+import { graphFilterConfig } from "./filterConfig.js";
+import { communityGroups, dirOf, innermostContainer } from "./layouts.js";
 import type { GraphNode, GroupsResponse } from "./types.js";
 import type { GroupBy } from "./viewSettings.js";
 
@@ -16,8 +17,6 @@ export interface GroupingContext {
   /** The edge kinds drawn now: the «связные компоненты» follow them. */
   drawnKinds: ReadonlySet<string>;
 }
-
-const INHERITANCE = ["implements", "extends"];
 
 const segments = (path: string, sep: RegExp, depth: number): string => path.split(sep).filter(Boolean).slice(0, depth).join("/");
 
@@ -70,12 +69,10 @@ export function groupNodes(by: GroupBy, sub: Graph, ctx: GroupingContext): Map<s
     case "folder":
       return each((n) => segments(dirOf(n.file), /\//, ctx.depth));
     case "containers": {
-      // The most specific container of the node, then up its parent chain to the wanted nesting level.
-      const memberCount = new Map<string, number>();
-      for (const id of ids) for (const c of ctx.nodeOf(id)?.containers ?? []) memberCount.set(c, (memberCount.get(c) ?? 0) + 1);
+      // The innermost container of the node by the declared nesting, then up its parent chain to the wanted level.
       const parent = new Map((ctx.groups?.containers ?? []).map((c) => [c.id, c.parent]));
       return each((n) => {
-        const own = deepestContainer(n, memberCount);
+        const own = innermostContainer(n, parent);
         if (!own) return "";
         const path = [own];
         for (let p = parent.get(own); p && !path.includes(p); p = parent.get(p)) path.unshift(p);
@@ -94,7 +91,7 @@ export function groupNodes(by: GroupBy, sub: Graph, ctx: GroupingContext): Map<s
       const bases = new Map<string, string[]>();
       const linked = new Set<string>();
       sub.forEachEdge((_e, attrs, from, to) => {
-        if (!INHERITANCE.includes(attrs.kind as string) || from === to) return;
+        if (!graphFilterConfig().hierarchyKinds.includes(attrs.kind as string) || from === to) return;
         (bases.get(from) ?? bases.set(from, []).get(from)!).push(to);
         linked.add(from).add(to);
       });

@@ -7,6 +7,7 @@ import circlepack from "graphology-layout/circlepack";
 import circular from "graphology-layout/circular";
 import random from "graphology-layout/random";
 import * as dagre from "@dagrejs/dagre";
+import { GRAPH_TUNING } from "./tuning.js";
 import type { GraphNode } from "./types.js";
 
 /** `grouped` is the one layout that groups (what by is `GroupBy`, `grouping.ts`). */
@@ -25,26 +26,25 @@ function dirOf(file: string | undefined): string {
   return i < 0 ? "" : file.slice(0, i);
 }
 
-/** The grouping key of a node for a grouped layout; "" groups ungrouped
- * nodes together rather than dropping them. */
 /**
- * A node's `containers` are the ones its rules matched, listed in containers.json
- * order (core/containers.go) — that order says nothing about depth, and the graph
- * answer carries no hierarchy. The most specific one is taken to be the container
- * with the fewest members in this graph (ties: the later one); grouping by the
- * first in the list, as before, put nodes into whichever container was declared first.
+ * The one container of a node that is innermost by the nesting containers.json
+ * declares (`parent`, served with the graph as `/groups`): the container of the
+ * node's own that no other container of the node's own nests inside. When there
+ * is no single such container — several unrelated ones, or the data gives no
+ * nesting between them — the node has none: nothing is guessed.
  */
-export function deepestContainer(n: GraphNode, memberCount: ReadonlyMap<string, number>): string {
-  let best = "";
-  let bestCount = Infinity;
-  for (const c of n.containers ?? []) {
-    const count = memberCount.get(c) ?? Infinity;
-    if (count <= bestCount) {
-      best = c;
-      bestCount = count;
+export function innermostContainer(n: GraphNode, parentOf: ReadonlyMap<string, string | undefined>): string {
+  const own = new Set(n.containers ?? []);
+  const ancestorsOfOthers = new Set<string>();
+  for (const c of own) {
+    const seen = new Set([c]);
+    for (let p = parentOf.get(c); p && !seen.has(p); p = parentOf.get(p)) {
+      seen.add(p);
+      ancestorsOfOthers.add(p);
     }
   }
-  return best;
+  const leaves = [...own].filter((c) => !ancestorsOfOthers.has(c));
+  return leaves.length === 1 ? leaves[0]! : "";
 }
 
 /** Runs Louvain on the current graph and returns node id -> community id. */
@@ -101,13 +101,13 @@ export function applyGroupedLayout(graph: Graph, groupOf: Map<string, string>): 
   });
 }
 
-const INHERITANCE = ["implements", "extends"];
-
-/** Layers by inheritance: bases on top, their children below (an edge runs
- * child -> base). Uses dagre — synchronous, ~40 kB, made for layered DAGs,
+/** Layers by the hierarchy edge kinds (graph-filters.json `hierarchyKinds`): bases on top, their
+ * children below (an edge runs child -> base). Uses dagre — synchronous, ~40 kB, made for layered DAGs,
  * where elkjs would add ~1.4 MB for nothing this needs. Sigma's y axis points
- * up, hence the sign. Nodes with no inheritance edge go in a grid below. */
-export function hierarchyLayout(graph: Graph): void {
+ * up, hence the sign. Nodes with no such edge go in a grid below. `aspect` is
+ * the canvas's width over height: the whole is packed to roughly that shape. */
+export function hierarchyLayout(graph: Graph, hierarchyKinds: readonly string[], aspect = 1): void {
+  const T = GRAPH_TUNING.hierarchy;
   // Inheritance edges (child -> base) among these nodes, and the trees they tie together.
   const links: [string, string][] = [];
   const parent = new Map<string, string>();
@@ -118,7 +118,7 @@ export function hierarchyLayout(graph: Graph): void {
     return root;
   };
   graph.forEachEdge((_e, attrs, from, to) => {
-    if (!INHERITANCE.includes(attrs.kind as string) || from === to) return;
+    if (!hierarchyKinds.includes(attrs.kind as string) || from === to) return;
     links.push([from, to]);
     for (const id of [from, to]) if (!parent.has(id)) parent.set(id, id);
     parent.set(find(from), find(to));
@@ -128,10 +128,10 @@ export function hierarchyLayout(graph: Graph): void {
 
   // Each tree on its own, spaced by what its nodes look like: a node's cell is its
   // drawn diameter plus room, so big nodes get big cells and never overlap.
-  const cell = (id: string) => 2 * (graph.getNodeAttribute(id, "size") as number) + 16;
+  const cell = (id: string) => 2 * (graph.getNodeAttribute(id, "size") as number) + T.cellPadding;
   const laid = [...trees.values()].map((ids) => {
     const g = new dagre.graphlib.Graph();
-    g.setGraph({ rankdir: "TB", nodesep: 14, ranksep: 40, marginx: 0, marginy: 0 });
+    g.setGraph({ rankdir: "TB", nodesep: T.nodeSep, ranksep: T.rankSep, marginx: 0, marginy: 0 });
     g.setDefaultEdgeLabel(() => ({}));
     const inTree = new Set(ids);
     for (const id of ids) g.setNode(id, { width: cell(id), height: cell(id) });
@@ -143,9 +143,9 @@ export function hierarchyLayout(graph: Graph): void {
 
   // Pack the trees into rows, so the whole is roughly landscape rather than one long strip.
   laid.sort((a, b) => b.width * b.height - a.width * a.height);
-  const GAP = 40;
+  const GAP = T.gap;
   const area = laid.reduce((sum, c) => sum + (c.width + GAP) * (c.height + GAP), 0);
-  const rowWidth = Math.max(laid[0]?.width ?? 0, Math.sqrt(area * 1.7));
+  const rowWidth = Math.max(laid[0]?.width ?? 0, Math.sqrt(area * aspect));
   let x = 0;
   let y = 0;
   let rowHeight = 0;
@@ -167,8 +167,8 @@ export function hierarchyLayout(graph: Graph): void {
 
   // What has no inheritance edge: a grid of its own below, as wide as the trees.
   const rest = graph.nodes().filter((id) => !parent.has(id));
-  const step = 34;
-  const cols = Math.max(4, Math.floor((laid.length > 0 ? rowWidth : Math.sqrt(rest.length * step * step * 1.7)) / step));
+  const step = T.gridStep;
+  const cols = Math.max(1, Math.floor((laid.length > 0 ? rowWidth : Math.sqrt(rest.length * step * step * aspect)) / step));
   rest.forEach((id, i) => {
     graph.setNodeAttribute(id, "x", (i % cols) * step);
     graph.setNodeAttribute(id, "y", -(bottom + (laid.length > 0 ? GAP : 0) + Math.floor(i / cols) * step));

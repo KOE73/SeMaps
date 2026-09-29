@@ -41,6 +41,7 @@ import { EDGE_ATTR } from "../interaction/roles.js";
 import { InteractionController } from "../interaction/InteractionController.js";
 import { SourceCodeService } from "../editor/code/SourceCodeService.js";
 import { DIAGRAM_CONFIG } from "../constants/diagram-constants.js";
+import { canvas } from "../constants/canvas.js";
 import { iconSvg } from "../ui/icons.js";
 
 export type SelectionKind = "zone" | "node" | "edge";
@@ -192,6 +193,8 @@ export class DiagramCanvas {
   private activeTags = new Set<string>();
   private ghostNodeId: string | null = null;
   private showOverviewShadows = false;
+  /** The lines of the last repaint, as routed. */
+  private lastLines: { id: string; from: string; to: string; path: string; points?: readonly Point[] }[] = [];
 
   /** Rubber band in model coordinates while a selection sweep is running. */
   marqueeRect: Rect | null = null;
@@ -206,7 +209,7 @@ export class DiagramCanvas {
 
   constructor(host: HTMLElement, options: DiagramCanvasOptions = {}) {
     this.host = host;
-    this.gridStep = options.gridStep ?? DIAGRAM_CONFIG.handles.defaultGridStep;
+    this.gridStep = options.gridStep ?? canvas().grid;
     this.portAssigner = options.portAssigner ?? new UniformPortAssigner();
     this.router = options.router ?? new BezierRouter();
     this.registry = options.registry ?? defaultRegistry();
@@ -1567,6 +1570,13 @@ export class DiagramCanvas {
     // depends on order; this is what takes the order out of it.
     this.rerouteConflicts(order, jobs, routes, lanesOf, endsOf, record);
     this.separateSharedCorridors(routes, scene);
+    // What was drawn, kept for `routedLines`: the same routes, not a second computation.
+    this.lastLines = [];
+    for (const r of resolved) {
+      const route = routes.get(r.edge.id);
+      if (route === undefined || r.isPotential) continue;
+      this.lastLines.push({ id: r.edge.id, from: r.from.owner.id, to: r.to.owner.id, path: route.path, ...(route.points ? { points: route.points } : {}) });
+    }
     if (this._debugRouting) this.drawRoutingDebug(scene, [...lanesOf.values()].flat(), debugEdge);
 
     for (const r of resolved) {
@@ -1714,6 +1724,42 @@ export class DiagramCanvas {
     return out;
   }
 
+  /** The SVG surface, for a caller that draws it elsewhere (a picture of a region). */
+  get svgElement(): SVGSVGElement {
+    return this.svgEl;
+  }
+
+  /** Bounds of everything shown, or null for an empty view. */
+  contentBounds(): Rect | null {
+    return this.visibleBounds();
+  }
+
+  /** Every shown element with the rectangle it is drawn in (a collapsed zone counts as its header). */
+  shownBoxes(): { el: DiagramElement; rect: Rect }[] {
+    if (this.doc === null) return [];
+    const ctx = this.context();
+    const out: { el: DiagramElement; rect: Rect }[] = [];
+    for (const el of this.doc.elements()) {
+      if (ctx.isHidden(el)) continue;
+      out.push({ el, rect: this.rendererFor(el).visibleRect(el, ctx) });
+    }
+    return out;
+  }
+
+  /**
+   * The lines as last drawn, by the router that drew them: the end elements
+   * (a collapsed zone stands for what it hides) and the polyline. A router that
+   * makes curves has no corner points, so its drawn path is sampled instead.
+   */
+  routedLines(): { id: string; from: string; to: string; points: Point[] }[] {
+    return this.lastLines.map((l) => ({
+      id: l.id,
+      from: l.from,
+      to: l.to,
+      points: l.points ? [...l.points] : samplePath(l.path),
+    }));
+  }
+
   /** Used by the interaction controller. */
   elementRectOf(el: DiagramElement): Rect {
     return elementRect(el);
@@ -1731,6 +1777,24 @@ export class DiagramCanvas {
 
   emitGestureEnd(reason: string): void {
     this.events.emit("gestureend", { reason });
+  }
+}
+
+/** A drawn SVG path as points, every few units along it. */
+function samplePath(d: string): Point[] {
+  try {
+    const path = document.createElementNS("http://www.w3.org/2000/svg", "path");
+    path.setAttribute("d", d);
+    const length = path.getTotalLength();
+    const n = Math.max(2, Math.ceil(length / 6));
+    const out: Point[] = [];
+    for (let i = 0; i <= n; i++) {
+      const p = path.getPointAtLength((length * i) / n);
+      out.push({ x: p.x, y: p.y });
+    }
+    return out;
+  } catch {
+    return [];
   }
 }
 

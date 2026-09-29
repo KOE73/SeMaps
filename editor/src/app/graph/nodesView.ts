@@ -3,6 +3,7 @@ import { fmt, t } from "../../shell/strings.js";
 import { icons } from "../../ui/icons.js";
 import { kindIcon, kindIconEl } from "../../ui/kindIcons.js";
 import { openContextMenu, type MenuItem } from "../../workbench/menus/ContextMenu.js";
+import { GRAPH_TUNING } from "./tuning.js";
 import type { GraphNode } from "./types.js";
 import { filterStore, nodeVisible, symbolKindOf } from "./filters.js";
 import { nodeSelection, workingSet } from "./workset.js";
@@ -19,7 +20,7 @@ export interface NodesSource {
 const ROW_H = 24;
 const HEAD_H = 24;
 const OVERSCAN = 8;
-const TYPE_BTN_W = 26;
+const TYPE_BTN_W = GRAPH_TUNING.typeButtonWidth;
 
 type SortKey = "chosen" | "kind" | "name" | "ns";
 

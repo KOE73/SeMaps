@@ -1,4 +1,5 @@
 import type { WireDocument, WireNode, WireZone, ViewDocument } from "../../model/wire-types.js";
+import { DEFAULT_STYLE_IDS } from "../../model/StyleLibrary.js";
 
 export interface ModelOp {
   kind: "entity" | "relation" | "relationType" | "text" | "view" | "zone" | "node";
@@ -74,7 +75,7 @@ export function diffModel(
     const entity = originalEntityById.get(node.id);
     if (!entity) {
       ops.push({ kind: "entity", id: node.id, value: { id: node.id, name: node.label ?? node.id,
-        kind: node.type ?? "Component", origin: "authored", status: "present" } });
+        kind: node.type ?? DEFAULT_STYLE_IDS.node, origin: "authored", status: "present" } });
     } else if (old && (old.type !== node.type ||
         (old.label !== node.label && !rawTexts[primaryLang]?.entries?.[node.id]?.name))) {
       ops.push({ kind: "entity", id: node.id, value: { ...entity,

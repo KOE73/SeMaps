@@ -58,7 +58,7 @@ const registry: Record<KindGroup, Record<string, string>> = {
 };
 
 /** What the extractor may put in front of a base kind in `nativeKind` (docs/extractors/csharp.md). */
-const KIND_MODIFIERS = new Set(["abstract", "static", "sealed", "partial", "readonly", "unsafe", "virtual"]);
+const KIND_MODIFIERS = new Set(["abstract", "static", "sealed", "readonly", "ref"]);
 
 /**
  * `nativeKind` is `<modifier>-<kind>` (`abstract-class`, `static-class`,
