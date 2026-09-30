@@ -2,7 +2,8 @@
 // place: from contract v3 (ADR_20260927-3: migrations live outside the loader;
 // ADR_20260927-6: the v5 shapes) and, by content, from the earlier form of v5
 // (ADR_20260930-4: code realizations; ADR_20260930-5: names of authored entities
-// are texts). A step is a pure function over the JSON trees of a project: all new
+// are texts; ADR_20260930-6: relation types are the dictionary's, the project has
+// no relation-types.json). A step is a pure function over the JSON trees of a project: all new
 // file contents are computed in memory first and written only when the whole
 // workspace converted without an error. The package is self-contained and
 // imports only the standard library.
@@ -34,6 +35,10 @@ type Options struct {
 	// DefaultStyles is the tool's shipped styles.json. A workspace style of the same
 	// id without `forKinds` is dropped: the default wins.
 	DefaultStyles []byte
+	// DefaultKinds is the tool's shipped kinds.json, the dictionary the relation
+	// types of the projects are compared with: what it already says is not written
+	// to the workspace kinds.json (ADR_20260930-6).
+	DefaultKinds []byte
 	// Extractors are the entries of the .semaps file, for the language of the
 	// code realizations. Empty (no .semaps file): a project with a `symbol` in
 	// its registry cannot be migrated — the language is not guessed.
@@ -70,6 +75,10 @@ func Workspace(workspace string, opt Options) (*Report, error) {
 	if err != nil {
 		return nil, err
 	}
+	lib, err := newRelTypeLib(workspace, opt.DefaultKinds)
+	if err != nil {
+		return nil, err
+	}
 
 	var projects []*projectMigration
 	entries, err := os.ReadDir(filepath.Join(workspace, "projects"))
@@ -83,7 +92,7 @@ func Workspace(workspace string, opt Options) (*Report, error) {
 		if _, err := os.Stat(filepath.Join(workspace, "projects", e.Name(), "project.json")); err != nil {
 			continue
 		}
-		pm, err := prepareProject(workspace, e.Name(), styles, opt)
+		pm, err := prepareProject(workspace, e.Name(), styles, lib, opt)
 		if err != nil {
 			return nil, err
 		}
@@ -94,6 +103,19 @@ func Workspace(workspace string, opt Options) (*Report, error) {
 	wsOuts, dropped, err := migrateWorkspaceFiles(workspace, stylesFile, rep, defaults, opt)
 	if err != nil {
 		return nil, err
+	}
+	// The relation types the projects declared become entries of the workspace
+	// kinds.json, one decision per type for the whole workspace.
+	if err := lib.resolve(rep); err != nil {
+		return nil, err
+	}
+	kindsOut, kindsChanged, err := lib.output()
+	if err != nil {
+		return nil, err
+	}
+	if kindsChanged {
+		wsOuts = append(wsOuts, kindsOut)
+		rep.Files = append(rep.Files, kindsOut.rel)
 	}
 	var outs []fileOut
 	for _, pm := range projects {

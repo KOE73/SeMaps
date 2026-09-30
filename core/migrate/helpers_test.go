@@ -11,6 +11,16 @@ import (
 	"time"
 )
 
+// defaultKinds is the tool's shipped dictionary, the one the relation types of a
+// project are compared with.
+func defaultKinds() []byte {
+	b, err := os.ReadFile(filepath.Join("..", "..", "host", "defaults", "kinds.json"))
+	if err != nil {
+		panic(err)
+	}
+	return b
+}
+
 // fixedNow pins the timestamps the migration writes.
 func fixedNow(t *testing.T) {
 	t.Helper()

@@ -148,11 +148,13 @@ When working with the registry files directly (not recommended for agents; usefu
      you draw is `origin: authored` and has **no** `name` here: its name is a `name` text under its
      id in `text.<lang>.json` (through MCP `add_entity`, or `set_text` with `field: name`; the id
      never changes, the name may).
-   - `relations.json` + `relation-types.json`: every `type` used must be declared in
-     `relation-types.json`; its name, description and style belong to the dictionary
-     (`relationGroups` of `kinds.json`).
+   - `relations.json`: `type` is a word without spaces; there is no file of relation types. Its name,
+     description, style and default visibility belong to the dictionary (`relationGroups` of
+     `kinds.json`); a type of the project's own goes into `<workspace>/kinds.json`, which adds to the
+     tool's dictionary (MCP `get_kinds` shows what is there; a type outside it is legal and only
+     listed by `semaps check`).
      For a derived relation, the id is `r_<from>_<to>_<type>` without the `e_` prefix.
-   - `text.<lang>.json`: descriptions for `e_`, names for `rt_`/`v_`. Every value is
+   - `text.<lang>.json`: descriptions for `e_`, names for `v_`. Every value is
      `{ "v", "at", "origin" }` — never a bare string — and `at` is UTC ISO-8601 with `Z`.
    - `views/<id>.view.json`: `id` (starts with `v_`), `project`, `axis`, and **empty**
      `placements`; optional `icon`, `theme`, `order`. The view's catalogue title is `name` under
@@ -176,8 +178,8 @@ sync with the code.
 
 ## Sync with code: `semaps sync`
 
-An extractor prints facts; `semaps sync` turns them into `entities.json`, `relations.json` and
-`relation-types.json` of a project ([EXTRACTOR.md](EXTRACTOR.md) §5 has the rules). The
+An extractor prints facts; `semaps sync` turns them into `entities.json` and `relations.json` of
+a project ([EXTRACTOR.md](EXTRACTOR.md) §5 has the rules). The
 extractors ship beside `semaps` and are listed in the `.semaps` file — which code, into which
 model project:
 
@@ -250,11 +252,12 @@ report, write. `semaps extract` only runs the extractors and prints each run's i
   appeared in the same file. Nothing is decided. If it is a rename, set the `symbol` of the old
   entity's `code[]` entry to the new symbol id (and `name`, if you want) and run again; if not, run with
   `--no-renames`. Decide with the human when the entity sits on views.
-- `extends`, `implements`, `contains`, `references` become relations (`origin: code`) and their
-  types are added to `relation-types.json`. Give each new type a name in `text.<lang>.json`
-  (`rt_contains`, …), or `semaps check` reports it. The `references` type is created with
-  `"visibility": "hidden"`: its relations are known but off on every view until switched on in
-  the editor (the relations panel checkbox).
+- `extends`, `implements`, `contains`, `depends`, `holds.*`, `uses`, `injects` become relations
+  (`origin: code`); sync writes the type on the relation and nothing else — there is no file of
+  types. Their names, descriptions, styles and default visibility are the tool's dictionary (the
+  `internal` members, `uses` and `injects` are hidden by default: their relations are known but off
+  on every view until switched on in the editor, the relations panel checkbox). A workspace that
+  wants another default replaces the entry in its own `kinds.json`.
 - Exit code: `--dry-run` gives 1 when anything would change — use it in CI next to
   `semaps check`. Without it, 1 means something is left for a human (`неоднозначно`,
   `переименование?`) or the registry contradicts itself (`сломано`, nothing written); 2 is a
@@ -307,21 +310,11 @@ whichever language you wrote first as the source.
    иногда оставляют как авторский вид. Удаление: `relations.json` вручную или
    `semaps sync` их не трогает (так и остаются `missing`).
 
-5. **Добавить имена новых типов связей в текстовые каталоги.** Каждый новый тип (`holds.one`,
-   `holds.many`, `holds.internal` и т. д.) требует названия в `text.<lang>.json` под ключом
-   `rt_<тип>`, иначе `semaps check` сообщит `не хватает`. Рекомендуемые:
-   - `holds.one`, `holds.optional`, `holds.many`, `holds.keyed` — содержит (публичный член)
-   - `holds.one.internal`, `holds.many.internal` и т. д. — внутреннее устройство
-   - `uses` — использует (параметр, возвращаемое значение)
-   - `injects` — внедряет (конструктор)
-   - `depends` — зависит (модуль от модуля)
-
-   Пример (для русскоязычного проекта):
-   ```json
-   "rt_holds.one": { "v": "содержит (одно)", … },
-   "rt_holds.many": { "v": "содержит (много)", … },
-   "rt_depends": { "v": "зависит от", … }
-   ```
+5. **Имена новых типов связей брать из словаря.** Каждый тип (`holds.one`, `holds.many`,
+   `holds.*.internal`, `uses`, `injects`, `depends`…) уже описан в базовом словаре (`relationGroups`
+   в `host/defaults/kinds.json`): имя, описание и видимость по умолчанию. Ключей `rt_<тип>` в
+   `text.<lang>.json` нет. Другое имя для рабочего пространства — запись с тем же `id` в
+   `<workspace>/kinds.json`: она заменяет словарную целиком.
 
 **Видимость по умолчанию.** На виде без явной настройки видны:
 - органические: `extends`, `implements`, `contains`, `depends`
@@ -332,8 +325,8 @@ whichever language you wrote first as the source.
 - членские через приватные члены: `holds.*.internal`
 - прочие: `uses`, `injects`
 
-Нужна другая видимость — задать `relations.except` на виде или `visibility` типа в
-`relation-types.json` (при создании типа).
+Нужна другая видимость — задать `relations.except` на виде или `visibility` типа в записи словаря
+(`<workspace>/kinds.json`, `relationGroups`): она одна на всё рабочее пространство, не на проект.
 
 **Переименование члена.** При синхронизации может появиться кандидат-переименование:
 «пропала связь `r_…_memberOld`, появилась `r_…_memberNew` с теми же `from`, `to` и
@@ -365,7 +358,7 @@ for it — no "starter" layout nobody requested (CONTRACT §8.2 rule 3, §9.6).
 `GET /api/workspace` lists what the host found; check your project and views are in it. That still
 proves nothing about loading: open `/app/`, click the view in «Каталог схем» and check that every
 file of the project (`views/…`, `project.json`, `entities.json`, `relations.json`,
-`relation-types.json`, every `text.<lang>.json`) returned 200. A 404 on a view that
+every `text.<lang>.json`) returned 200. A 404 on a view that
 `/api/workspace` listed means two servers share the port (see the port trap).
 
 ## Moving a workspace to the current contract: `semaps migrate`
@@ -418,7 +411,17 @@ What it does:
   типа» (a type is never invented — assign one, or delete the style). **`--drop-untyped-styles`** drops
   them too: the placements and edges of the views that named them lose the `styleId`, and the report
   lists which; a `styles.json` left without any style is removed, so that the shipped library applies;
-  `canvas.json`: `zone` → `container`; a `styleId` on a relation type is dropped and named;
+  `canvas.json`: `zone` → `container`;
+- **relation types** ([ADR_20260930-6](adr/ADR_20260930-6_contract_relation-types-live-in-the-dictionary.md)):
+  a project's `relation-types.json` and its `rt_<type>` texts are removed; what the dictionary (the
+  tool's, plus the workspace `kinds.json`) does not already say is carried into the **workspace**
+  `kinds.json` and listed in the report: a `visibility` that differs from the dictionary's (also a type
+  that had none where the dictionary has one), a name or description that differs from it, a type the
+  dictionary does not have (its name is the `rt_` text, else the id). The entry goes into the group
+  `relations.project` (a copy of the dictionary's entry, which replaces it whole) or, when the
+  workspace already has the type, changes there in place. The default visibility is one per workspace:
+  when projects disagree the first project wins and the report names the others. A `styleId` a type had
+  is dropped with the file and named;
 - `contractVersion` goes to 5 in every file that has one.
 
 The report ends with «Решает человек»: the `match` rules and unplaced containers of `containers.json`, styles

@@ -69,9 +69,6 @@ func AddRelation(workspace, project, from, to, relType string) (string, error) {
 	}
 	return id, m.Save()
 }
-func AddRelationType(workspace, project, id, visibility string) error {
-	return editAndSave(workspace, project, func(m *Model) error { return m.AddRelationType(id, visibility, "agent") })
-}
 func SetRelationVisible(workspace, project, viewID, relationID string, visible bool) error {
 	return editAndSave(workspace, project, func(m *Model) error { return m.SetRelationVisible(viewID, relationID, visible, "agent") })
 }
@@ -89,13 +86,13 @@ func PlaceEntities(workspace, project, viewID string, list []Placement, requeste
 
 // Records returns the items of a registry file of the project as raw JSON
 // objects, in file order: entities.json → "entities", relations.json →
-// "relations", relation-types.json → "relationTypes".
+// "relations".
 func Records(workspace, project, file string) ([]json.RawMessage, error) {
 	dir, err := ProjectDir(workspace, project)
 	if err != nil {
 		return nil, err
 	}
-	key := map[string]string{"entities.json": "entities", "relations.json": "relations", "relation-types.json": "relationTypes"}[file]
+	key := map[string]string{"entities.json": "entities", "relations.json": "relations"}[file]
 	if key == "" {
 		return nil, fmt.Errorf("not a registry file: %s", file)
 	}

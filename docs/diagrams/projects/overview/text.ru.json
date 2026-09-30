@@ -189,34 +189,6 @@
         "origin": "authored"
       }
     },
-    "rt_calls": {
-      "name": {
-        "v": "вызывает",
-        "at": "2026-09-26T09:39:53Z",
-        "origin": "authored"
-      }
-    },
-    "rt_runs": {
-      "name": {
-        "v": "запускает",
-        "at": "2026-09-26T09:39:53Z",
-        "origin": "authored"
-      }
-    },
-    "rt_reads": {
-      "name": {
-        "v": "читает",
-        "at": "2026-09-26T09:39:53Z",
-        "origin": "authored"
-      }
-    },
-    "rt_writes": {
-      "name": {
-        "v": "пишет",
-        "at": "2026-09-26T09:39:53Z",
-        "origin": "authored"
-      }
-    },
     "e_clients": {
       "name": {
         "v": "Клиенты",

@@ -143,7 +143,7 @@ export interface UiDictionary {
       readonly you: string;
       readonly agent: string;
       readonly sync: string;
-      readonly kinds: Readonly<Record<"placement" | "view" | "entity" | "relation" | "relationType" | "text" | "project", string>>;
+      readonly kinds: Readonly<Record<"placement" | "view" | "entity" | "relation" | "text" | "project", string>>;
     };
     readonly properties: {
       readonly title: string;

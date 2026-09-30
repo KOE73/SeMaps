@@ -24,6 +24,7 @@ type ProjectReport struct {
 	CodeNameTexts     int // `name` texts of entities from code that only repeated their name: removed
 	CodeEntries       int // entities whose codeRef/symbol became code[]
 	EvidenceConverted int // relations whose via/evidence took the current shape
+	RelationTypeTexts int // `rt_` texts removed: a relation type is named by the dictionary
 
 	Files   []string // changed files (relative to the workspace)
 	Removed []string // deleted files
@@ -119,6 +120,9 @@ func (r *Report) Print(w io.Writer) {
 			fmt.Fprintf(w, "  текстов name у сущностей из кода, дословно повторявших их имя (не читаются), убрано: %d\n", p.CodeNameTexts)
 		}
 		fmt.Fprintf(w, "  сущностей: codeRef/symbol → code[]: %d; связей: via/evidence в новой форме: %d\n", p.CodeEntries, p.EvidenceConverted)
+		if p.RelationTypeTexts > 0 {
+			fmt.Fprintf(w, "  текстов rt_ убрано (имя и описание типа связи — в словаре kinds.json): %d\n", p.RelationTypeTexts)
+		}
 		fmt.Fprintf(w, "  версия: %s → %d\n", from, targetVersion)
 		if len(p.Files) > 0 {
 			fmt.Fprintf(w, "  изменены файлы: %s\n", strings.Join(p.Files, ", "))

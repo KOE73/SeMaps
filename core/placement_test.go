@@ -28,6 +28,14 @@ func TestLoaderRefusesTheOldShape(t *testing.T) {
 	if err := os.Remove(containers); err != nil {
 		t.Fatal(err)
 	}
+	// relation types are the dictionary's: a project that still has the file is named
+	types := filepath.Join(ws, "projects", "p", RelationTypesFile)
+	writeFile(t, types, `{"contractVersion":5,"relationTypes":[]}`)
+	_, err = LoadModel(ws, "p", defaultKindsJSON(t))
+	refused(t, err, "relation-types.json — тип связи описан в словаре")
+	if err := os.Remove(types); err != nil {
+		t.Fatal(err)
+	}
 	view := filepath.Join(ws, "projects", "p", "views", "main.view.json")
 	for body, want := range map[string]string{
 		`{"id":"v_main","zones":[],"placements":[]}`:                        "views/main.view.json: `zones` — форма контракта 3, нужен 5",
@@ -138,6 +146,6 @@ func TestTextKeysOfContainersAreGone(t *testing.T) {
 		t.Fatal(err)
 	}
 	for _, key := range []string{"c_core", "z_core"} {
-		refused(t, m.SetText("ru", key, "name", "Ядро", "human"), "expected a prefix e_, rt_, r_ or v_")
+		refused(t, m.SetText("ru", key, "name", "Ядро", "human"), "expected a prefix e_, r_ or v_")
 	}
 }

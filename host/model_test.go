@@ -113,7 +113,6 @@ func hostModelFixture(t *testing.T) (*modelService, *httptest.Server) {
 		"project.json":         `{"id":"p","contractVersion":5,"languages":["ru"]}`,
 		"entities.json":        `{"entities":[{"id":"e_a","name":"A","kind":"class"}]}`,
 		"relations.json":       `{"relations":[]}`,
-		"relation-types.json":  `{"relationTypes":[]}`,
 		"views/main.view.json": `{"id":"v_main","project":"p","axis":"axis_test","placements":[{"entity":"e_a","parent":null,"x":1,"y":2}]}`,
 	} {
 		p := filepath.Join(dir, filepath.FromSlash(file))

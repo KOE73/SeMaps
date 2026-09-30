@@ -2,6 +2,8 @@ package core
 
 import (
 	"bytes"
+	"os"
+	"path/filepath"
 	"strings"
 	"testing"
 )
@@ -67,7 +69,6 @@ func TestSyncDropsMethodsAndCalls(t *testing.T) {
 	const relations = `{"relations":[
     {"id":"r1","from":"N.X","to":"N.Base","type":"extends"}
   ]}`
-	const types = `{"relationTypes":[{"id":"extends","name":"extends"}]}`
 
 	t.Run("empty registry", func(t *testing.T) {
 		wsWithout, dirWithout := workspace(t, project, "", "", "")
@@ -76,7 +77,7 @@ func TestSyncDropsMethodsAndCalls(t *testing.T) {
 		wsWith, dirWith := workspace(t, project, "", "", "")
 		rep := sync(t, wsWith, facts(t, factsWithMethods), SyncOptions{})
 
-		for _, name := range []string{"entities.json", "relations.json", "relation-types.json"} {
+		for _, name := range []string{"entities.json", "relations.json"} {
 			got := readFile(t, dirWith+"/"+name)
 			want := readFile(t, dirWithout+"/"+name)
 			if got != want {
@@ -95,7 +96,7 @@ func TestSyncDropsMethodsAndCalls(t *testing.T) {
 		wsWith, dirWith := workspace(t, project, "", "", "")
 		rep := sync(t, wsWith, facts(t, factsWithDynamicMarks), SyncOptions{})
 
-		for _, name := range []string{"entities.json", "relations.json", "relation-types.json"} {
+		for _, name := range []string{"entities.json", "relations.json"} {
 			got := readFile(t, dirWith+"/"+name)
 			want := readFile(t, dirWithout+"/"+name)
 			if got != want {
@@ -105,14 +106,14 @@ func TestSyncDropsMethodsAndCalls(t *testing.T) {
 		assertNoMethodsOrCalls(t, rep, dirWith)
 	})
 
-	t.Run("registry already has the types", func(t *testing.T) {
-		wsWithout, dirWithout := workspace(t, project, entities, relations, types)
+	t.Run("registry already has the entities", func(t *testing.T) {
+		wsWithout, dirWithout := workspace(t, project, entities, relations, "")
 		sync(t, wsWithout, facts(t, factsWithoutMethods), SyncOptions{})
 
-		wsWith, dirWith := workspace(t, project, entities, relations, types)
+		wsWith, dirWith := workspace(t, project, entities, relations, "")
 		rep := sync(t, wsWith, facts(t, factsWithMethods), SyncOptions{})
 
-		for _, name := range []string{"entities.json", "relations.json", "relation-types.json"} {
+		for _, name := range []string{"entities.json", "relations.json"} {
 			got := readFile(t, dirWith+"/"+name)
 			want := readFile(t, dirWithout+"/"+name)
 			if got != want {
@@ -142,11 +143,13 @@ func assertNoMethodsOrCalls(t *testing.T, rep *SyncReport, dir string) {
 			t.Fatalf("registry has a method entity: %v", e)
 		}
 	}
-	for _, rt := range v.Types {
-		id, _ := rt["id"].(string)
-		if id == "calls" || id == "constructs" || id == "overrides" {
-			t.Fatalf("relation-types.json has a %s relation type", id)
+	for _, r := range v.Relations {
+		if typ, _ := r["type"].(string); typ == "calls" || typ == "constructs" || typ == "overrides" {
+			t.Fatalf("relations.json has a relation of type %s", typ)
 		}
+	}
+	if _, err := os.Stat(filepath.Join(dir, RelationTypesFile)); err == nil {
+		t.Fatal("sync wrote relation-types.json")
 	}
 }
 

@@ -1,8 +1,9 @@
-import type { WireDocument, EntityCatalog, RelationCatalog, RelationTypeCatalog, ProjectManifest, ViewDocument } from "../../model/wire-types.js";
+import type { WireDocument, EntityCatalog, RelationCatalog, ProjectManifest, ViewDocument } from "../../model/wire-types.js";
 import type { SaveTarget } from "./types.js";
 import { HttpProjectStore } from "./ProjectStore.js";
 import { diffModel, type ModelOp } from "./ModelSync.js";
 import { entityDisplayName, type NamedEntity } from "../../model/entityName.js";
+import { KindCatalog } from "../../model/KindCatalog.js";
 
 export interface ChangedRef { kind: string; id: string; view?: string; lang?: string; author: string }
 export interface DirtySummary { registry: ChangedRef[]; views: Record<string, ChangedRef[]> }
@@ -70,7 +71,6 @@ export class HostModelStore extends HttpProjectStore {
       project: snapshot.project,
       entities: registry["entities.json"] as EntityCatalog ?? { entities: [] },
       relations: registry["relations.json"] as RelationCatalog ?? { relations: [] },
-      relationTypes: registry["relation-types.json"] as RelationTypeCatalog ?? { relationTypes: [] },
       texts: snapshot.texts,
     });
     this.baselines.set(file, clone(wire));
@@ -121,9 +121,8 @@ export class HostModelStore extends HttpProjectStore {
         const doc = snapshot.texts[op.lang!] ?? { entries: {} };
         (doc.entries ??= {})[op.id] = op.value;
         snapshot.texts[op.lang!] = doc;
-      } else if (op.value && ["entity", "relation", "relationType"].includes(op.kind)) {
-        const [fileName, key] = op.kind === "entity" ? ["entities.json", "entities"] :
-          op.kind === "relation" ? ["relations.json", "relations"] : ["relation-types.json", "relationTypes"];
+      } else if (op.value && ["entity", "relation"].includes(op.kind)) {
+        const [fileName, key] = op.kind === "entity" ? ["entities.json", "entities"] : ["relations.json", "relations"];
         const doc = (snapshot.registry[fileName] ??= {}) as Record<string, Array<Record<string, unknown>>>;
         const list = doc[key] ??= [];
         const index = list.findIndex((item) => item.id === op.id);
@@ -150,11 +149,11 @@ export class HostModelStore extends HttpProjectStore {
       const r = record("relations.json", "relations", id);
       if (!r) return id;
       const type = String(r.type ?? r.relation ?? "");
-      return `${entity(String(r.from))} → ${entity(String(r.to))} · ${text(`rt_${type}`) ?? type}`;
+      // A relation type is named by the dictionary, its id when it is not there.
+      return `${entity(String(r.from))} → ${entity(String(r.to))} · ${KindCatalog.active.relationName(type, lang)}`;
     };
     const id = ref.id;
     if (ref.kind === "project") return snapshot?.project.title ?? id;
-    if (ref.kind === "relationType") return text(`rt_${id}`) ?? id;
     if (id.startsWith("r_")) return relation(id);
     // A text under an entity's id is a change of that entity: its name resolved, whichever language it is in.
     if (id.startsWith("e_") || ref.kind === "entity" || ref.kind === "placement" || record("entities.json", "entities", id)) return entity(id);

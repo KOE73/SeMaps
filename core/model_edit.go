@@ -146,24 +146,6 @@ func (m *Model) AddRelation(from, to, relType, author string) (string, error) {
 	return id, err
 }
 
-// AddRelationType declares an authored relation type of the project. Its name,
-// description and base style live in the dictionary (kinds.json, relationGroups),
-// not here (ADR_20260930-2).
-func (m *Model) AddRelationType(id, visibility, author string) error {
-	if m.record("relationType", id) != nil {
-		return refuse("type %s exists", id)
-	}
-	o := newObject()
-	o.set("id", id)
-	o.set("origin", "authored")
-	if visibility != "" {
-		o.set("visibility", visibility)
-	}
-	b, _ := o.MarshalJSON()
-	_, err := m.Apply([]Op{{Kind: "relationType", ID: id, Value: b}}, author)
-	return err
-}
-
 func (m *Model) SetRelationVisible(viewID, relationID string, visible bool, author string) error {
 	r := m.record("relation", relationID)
 	if r == nil {
@@ -178,8 +160,8 @@ func (m *Model) SetRelationVisible(viewID, relationID string, visible bool, auth
 		return fmt.Errorf("%s: relations: %w", viewID, err)
 	}
 	def := policy.str("default")
-	if t := m.record("relationType", relationType(r)); t != nil && t.str("visibility") != "" {
-		def = t.str("visibility")
+	if v := m.kinds.RelationVisibility(relationType(r)); v != "" {
+		def = v
 	}
 	if def == "" {
 		def = "visible"
@@ -312,7 +294,7 @@ func (m *Model) PlaceEntities(viewID string, list []Placement, requestedByHuman 
 
 // Records and Text expose the current working state to API and MCP readers.
 func (m *Model) Records(file string) ([]json.RawMessage, error) {
-	kind := map[string]string{"entities.json": "entity", "relations.json": "relation", "relation-types.json": "relationType"}[file]
+	kind := map[string]string{"entities.json": "entity", "relations.json": "relation"}[file]
 	if kind == "" {
 		return nil, fmt.Errorf("not a registry file: %s", file)
 	}

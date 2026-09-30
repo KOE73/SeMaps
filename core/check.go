@@ -17,16 +17,16 @@
 //  7. the old shape — project.json of another contractVersion, a view with
 //     `zones`/`nodes`, containers.json, c_/z_ text keys, `kinds` or a zone key
 //     in a workspace file, a top-level `codeRef`/`symbol`/`via`, the `name` of
-//     an authored entity in entities.json (ADR_20260927-3): the same text the
-//     loader answers with
+//     an authored entity in entities.json, relation-types.json and `rt_` text
+//     keys (ADR_20260927-3, ADR_20260930-6): the same text the loader answers with
 //  8. placements — of no entity, in a parent that is not a container placement
 //     of the view or in a loop, an override field outside CONTRACT §11.6
 //  9. entity kinds and relation types not in the dictionary («не из словаря»):
 //     not an error of the model, a list for a human to look at (CONTRACT §6)
 //  10. styles of the workspace styles.json without `forKinds` («без типа»)
 //
-// Plus two cheap ones that catch the same rot earlier: placeholder names (a
-// name equal to the id says nothing) and relation types used but not declared.
+// Plus a cheap one that catches the same rot earlier: placeholder names (a
+// name equal to the id says nothing).
 //
 // This check is the only reason the provenance fields are worth writing:
 // unchecked, they decay into optional fields nobody fills in.
@@ -206,6 +206,9 @@ func Check(workspace, sourceRoot string, defaultKinds []byte) []Finding {
 		if exists(filepath.Join(dir, "containers.json")) {
 			report(project, "форма контракта", containersFileError)
 		}
+		if exists(filepath.Join(dir, RelationTypesFile)) {
+			report(project, "форма контракта", relationTypesFileError)
+		}
 		languages := manifest.Languages
 		if len(languages) == 0 {
 			languages = []string{"ru"}
@@ -231,22 +234,6 @@ func Check(workspace, sourceRoot string, defaultKinds []byte) []Finding {
 				report(project, "форма контракта", fmt.Sprintf("relations.json: %s: %s (`semaps migrate`, ADR_20260930-4)", r.str("id"), old))
 			}
 		}
-		var types struct {
-			RelationTypes []struct {
-				ID      string
-				StyleID string `json:"styleId"`
-			} `json:"relationTypes"`
-		}
-		declared := map[string]bool{}
-		if load("relation-types.json", &types) {
-			for _, t := range types.RelationTypes {
-				declared[t.ID] = true
-				if t.StyleID != "" {
-					report(project, "форма контракта", fmt.Sprintf("relation-types.json: %s: `styleId` — стиль связи принадлежит типу: базовый стиль задаёт kinds.json, стиль называет тип в forKinds (`semaps migrate`, ADR_20260930-2)", t.ID))
-				}
-			}
-		}
-
 		catalogues := map[string]map[string]textRecord{}
 		for _, lang := range languages {
 			var cat struct {
@@ -299,12 +286,9 @@ func Check(workspace, sourceRoot string, defaultKinds []byte) []Finding {
 		// translated. The name of an authored entity (a container is one too,
 		// CONTRACT §8.2) is a text under its id; a language without it falls back
 		// to another one, so the gap is an entity with no name in any language
-		// (ADR_20260930-5). Views and relation types are named by a human in every
-		// language, so silence there is a real gap.
+		// (ADR_20260930-5). Views are named by a human in every language, so
+		// silence there is a real gap. A relation type is named by the dictionary.
 		mustBeNamed := map[string]bool{}
-		for id := range declared {
-			mustBeNamed[id] = true
-		}
 		viewsDir := filepath.Join(dir, "views")
 		var views []viewFile
 		if files, err := os.ReadDir(viewsDir); err == nil {
@@ -331,18 +315,17 @@ func Check(workspace, sourceRoot string, defaultKinds []byte) []Finding {
 		}
 		for _, lang := range languages {
 			for _, id := range sortedKeys(mustBeNamed) {
-				key := id
-				if declared[id] {
-					key = "rt_" + id
-				}
-				record, ok := catalogues[lang][key]
+				record, ok := catalogues[lang][id]
 				if !ok || (record["name"] == nil && record["title"] == nil) {
-					report(project, "недостача", fmt.Sprintf("%s: нет имени в %s", key, lang))
+					report(project, "недостача", fmt.Sprintf("%s: нет имени в %s", id, lang))
 				}
 			}
 			for _, key := range sortedKeys(catalogues[lang]) {
 				if strings.HasPrefix(key, "c_") || strings.HasPrefix(key, "z_") {
 					report(project, "форма контракта", fmt.Sprintf("text.%s.json: %s — ключи c_/z_ упразднены, имя контейнера — текст name под id его сущности (CONTRACT §7.1)", lang, key))
+				}
+				if strings.HasPrefix(key, "rt_") {
+					report(project, "форма контракта", fmt.Sprintf("text.%s.json: %s — ключи rt_ упразднены, имя и описание типа связи — в словаре kinds.json (CONTRACT §6, `semaps migrate`, ADR_20260930-6)", lang, key))
 				}
 				// a bare string instead of a value with provenance is the shape of contract 2; nobody reads it
 				for _, field := range textFields {
@@ -397,10 +380,21 @@ func Check(workspace, sourceRoot string, defaultKinds []byte) []Finding {
 			}
 			report(project, "тип не из словаря", fmt.Sprintf("%q: %s%s", k, strings.Join(ids, ", "), more))
 		}
-		for _, id := range sortedKeys(declared) {
-			if _, ok := kinds.LookupRelation(id); !ok {
-				report(project, "тип связи не из словаря", fmt.Sprintf("%q объявлен в relation-types.json, но его нет в словаре (kinds.json, relationGroups)", id))
+		usedTypes := map[string][]string{}
+		for _, r := range rels.Relations {
+			if t := relationType(r); t != "" {
+				usedTypes[t] = append(usedTypes[t], r.str("id"))
 			}
+		}
+		for _, t := range sortedKeys(usedTypes) {
+			if _, ok := kinds.LookupRelation(t); ok {
+				continue
+			}
+			ids, more := usedTypes[t], ""
+			if len(ids) > 3 {
+				ids, more = ids[:3], fmt.Sprintf(" и ещё %d", len(usedTypes[t])-3)
+			}
+			report(project, "тип связи не из словаря", fmt.Sprintf("%q: %s%s", t, strings.Join(ids, ", "), more))
 		}
 
 		// ---------------------------------------------------- 8: размещения
@@ -410,11 +404,8 @@ func Check(workspace, sourceRoot string, defaultKinds []byte) []Finding {
 			}
 		}
 
-		// ------------------------------------------------ типы связей объявлены
+		// ---------------------------------------------------- 6: evidence[]
 		for _, r := range rels.Relations {
-			if t := relationType(r); t != "" && len(declared) > 0 && !declared[t] {
-				report(project, "тип связи", fmt.Sprintf("%s: тип %q не объявлен в relation-types.json", r.str("id"), t))
-			}
 			if err := checkCode("relation", r.str("id"), entries(r, "evidence")); err != nil {
 				report(project, "реализация", err.Error())
 			}

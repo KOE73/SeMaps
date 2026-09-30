@@ -170,7 +170,7 @@ func (g *graphService) serveFormats(w http.ResponseWriter, r *http.Request) {
 
 // graphTerms: the words of the registry's relation types and statuses that
 // `relations` (the directed names `follow` takes) does not explain, one line
-// each — what an agent meets in `get_relations`, `get_relation_types` and a
+// each — what an agent meets in `get_relations`, `get_kinds` and a
 // node's `presence`. The server's Instructions point here instead of
 // repeating them (docs/EXTRACTOR.md §5 and CONTRACT.md §4/§5 are the
 // sources).

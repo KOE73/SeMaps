@@ -109,7 +109,7 @@ func TestSyncNativeDoesNotChangeTheRegistry(t *testing.T) {
 	sync(t, wsA, facts(t, plain), SyncOptions{})
 	wsB, dirB := workspace(t, `{"id":"p","contractVersion":5}`, `{"entities":[]}`, "", "")
 	sync(t, wsB, facts(t, withNative), SyncOptions{})
-	for _, name := range []string{"entities.json", "relations.json", "relation-types.json"} {
+	for _, name := range []string{"entities.json", "relations.json"} {
 		if a, b := readFile(t, dirA+"/"+name), readFile(t, dirB+"/"+name); a != b {
 			t.Errorf("%s differs with native:\n--- without\n%s\n--- with\n%s", name, a, b)
 		}

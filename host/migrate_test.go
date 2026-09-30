@@ -20,8 +20,9 @@ func TestRunMigrate(t *testing.T) {
 		"project.json":        `{"id":"p","title":"P","contractVersion":3,"defaultAxis":"axis_a","languages":["ru"]}`,
 		"entities.json":       `{"entities":[{"id":"e_a","name":"A","kind":"class"}]}`,
 		"relations.json":      `{"relations":[]}`,
-		"relation-types.json": `{"relationTypes":[]}`,
-		"text.ru.json":        `{"contractVersion":3,"language":"ru","entries":{"v_main":{"name":{"v":"Главный","at":"2026-09-24T00:00:00Z","origin":"authored"}},"z_g":{"name":{"v":"Группа","at":"2026-09-24T00:00:00Z","origin":"authored"}}}}`,
+		"relation-types.json": `{"relationTypes":[{"id":"holds.one","origin":"code","visibility":"hidden"},{"id":"flows","origin":"authored"},{"id":"uses","origin":"code","visibility":"hidden"}]}`,
+		"text.ru.json": `{"contractVersion":3,"language":"ru","entries":{"v_main":{"name":{"v":"Главный","at":"2026-09-24T00:00:00Z","origin":"authored"}},"z_g":{"name":{"v":"Группа","at":"2026-09-24T00:00:00Z","origin":"authored"}},
+			"rt_flows":{"name":{"v":"поток","at":"2026-09-24T00:00:00Z","origin":"authored"}}}}`,
 		"views/v.view.json": `{"id":"v_main","project":"p","axis":"axis_a",
 			"zones":[{"id":"z_g","container":null,"parent":null,"x":0,"y":0,"width":300,"height":200,"styleId":"zone.red"}],
 			"nodes":[{"entity":"e_a","zone":"z_g","x":20,"y":50}]}`,
@@ -63,6 +64,29 @@ func TestRunMigrate(t *testing.T) {
 	}
 	if findings := core.Check(ws, ws, defaultKinds()); len(findings) != 0 {
 		t.Fatalf("check after migrate: %v", findings)
+	}
+
+	// The relation types of the project are the dictionary's now: the file is gone; what the
+	// dictionary did not say (holds.one is visible there, flows is not there at all) is in the
+	// workspace kinds.json, which the tool reads over its own; uses is hidden there as well.
+	if _, err := os.Stat(filepath.Join(dir, "relation-types.json")); err == nil {
+		t.Error("relation-types.json must be removed")
+	}
+	catalog, err := core.LoadKinds(ws, defaultKinds())
+	if err != nil {
+		t.Fatalf("the workspace kinds.json does not load: %v", err)
+	}
+	if typ, ok := catalog.LookupRelation("holds.one"); !ok || typ.Visibility != "hidden" || typ.Name["en"] != "holds one" {
+		t.Errorf("holds.one: %+v", typ)
+	}
+	if typ, ok := catalog.LookupRelation("flows"); !ok || typ.Name["ru"] != "поток" {
+		t.Errorf("flows: %+v", typ)
+	}
+	if typ, _ := catalog.LookupRelation("uses"); typ.Visibility != "hidden" {
+		t.Errorf("uses: %+v", typ)
+	}
+	if !strings.Contains(out.String(), "тип связи «flows» → kinds.json") || strings.Contains(out.String(), "«uses»") {
+		t.Errorf("the report lists the entries written, not what the dictionary already says:\n%s", out.String())
 	}
 
 	out.Reset()

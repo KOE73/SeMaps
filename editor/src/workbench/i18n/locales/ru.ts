@@ -142,7 +142,7 @@ export const ruDictionary: UiDictionary = {
       you: "вы",
       agent: "агент",
       sync: "сверка",
-      kinds: { placement: "размещение", view: "свойства схемы", entity: "сущность", relation: "связь", relationType: "тип связи", text: "текст", project: "проект" },
+      kinds: { placement: "размещение", view: "свойства схемы", entity: "сущность", relation: "связь", text: "текст", project: "проект" },
     },
     properties: {
       title: "Свойства",

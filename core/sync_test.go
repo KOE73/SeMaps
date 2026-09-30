@@ -31,14 +31,15 @@ func readFile(t *testing.T, path string) string {
 	return string(data)
 }
 
-// workspace makes <tmp>/projects/p with the given registry files; "" skips one.
-func workspace(t *testing.T, project, entities, relations, types string) (ws, dir string) {
+// workspace makes <tmp>/projects/p with the given registry files and the
+// workspace's kinds.json; "" skips one.
+func workspace(t *testing.T, project, entities, relations, kinds string) (ws, dir string) {
 	t.Helper()
 	ws = t.TempDir()
 	dir = filepath.Join(ws, "projects", "p")
 	writeFile(t, filepath.Join(dir, "project.json"), project)
 	for name, content := range map[string]string{
-		"entities.json": entities, "relations.json": relations, "relation-types.json": types,
+		"entities.json": entities, "relations.json": relations, filepath.Join("..", "..", KindsFile): kinds,
 	} {
 		if content != "" {
 			writeFile(t, filepath.Join(dir, name), content)
@@ -59,13 +60,12 @@ func facts(t *testing.T, doc string) *Facts {
 type registryView struct {
 	Entities  []map[string]any `json:"entities"`
 	Relations []map[string]any `json:"relations"`
-	Types     []map[string]any `json:"relationTypes"`
 }
 
 func load(t *testing.T, dir string) registryView {
 	t.Helper()
 	var v registryView
-	for _, name := range []string{"entities.json", "relations.json", "relation-types.json"} {
+	for _, name := range []string{"entities.json", "relations.json"} {
 		if data, err := os.ReadFile(filepath.Join(dir, name)); err == nil {
 			if err := json.Unmarshal(data, &v); err != nil {
 				t.Fatalf("%s: %v", name, err)
@@ -125,7 +125,6 @@ const (
 	adoptRelations = `{"contractVersion":5,"relations":[
     {"id":"r_hand","from":"e_guard","to":"e_x","type":"call","origin":"authored"}
   ]}`
-	adoptTypes = `{"contractVersion":5,"relationTypes":[{"id":"call","origin":"authored"},{"id":"extends","origin":"code"}]}`
 	adoptFacts = `{
   "language": "csharp", "root": ".",
   "edgeKinds": ["extends","implements","contains","depends","holds","uses"],
@@ -187,7 +186,7 @@ func TestReadFactsAcceptsValidOutput(t *testing.T) {
 // -------------------------------------------------------------------- sync
 
 func TestSyncFirstRunAdoptsHandMadeEntities(t *testing.T) {
-	ws, dir := workspace(t, adoptProject, adoptEntities, adoptRelations, adoptTypes)
+	ws, dir := workspace(t, adoptProject, adoptEntities, adoptRelations, "")
 	text := `{"contractVersion":5,"language":"ru","entries":{"e_x":{"description":{"v":"x","at":"2026-09-23T00:00:00Z","origin":"authored"}}}}`
 	viewDoc := `{"id":"v_main","project":"p","axis":"axis_layer","zones":[],"nodes":[{"entity":"e_x","zone":null,"x":1,"y":2}]}`
 	writeFile(t, filepath.Join(dir, "text.ru.json"), text)
@@ -249,21 +248,12 @@ func TestSyncFirstRunAdoptsHandMadeEntities(t *testing.T) {
 	if ref := find(v.Relations, "r_x_guard_2_guard"); ref == nil || ref["type"] != "uses" || ref["origin"] != "code" {
 		t.Errorf("uses relation: %v", v.Relations)
 	}
-	if rt := find(v.Types, "uses"); rt == nil || rt["visibility"] != "hidden" {
-		t.Errorf("uses type not declared: %v", v.Types)
-	}
 	if find(v.Relations, "r_hand") == nil {
 		t.Error("authored relation lost")
 	}
-
-	if find(v.Types, "contains") == nil || find(v.Types, "call") == nil {
-		t.Errorf("relation types: %v", v.Types)
-	}
-	if find(v.Types, "implements") != nil {
-		t.Error("an unused structural type was declared")
-	}
-	if n := strings.Count(readFile(t, filepath.Join(dir, "relation-types.json")), `"extends"`); n != 1 {
-		t.Errorf("extends declared %d times", n)
+	// a relation type is a string on the relation: sync writes no file of types
+	if _, err := os.Stat(filepath.Join(dir, RelationTypesFile)); err == nil {
+		t.Error("sync wrote relation-types.json")
 	}
 
 	if readFile(t, filepath.Join(dir, "text.ru.json")) != text || readFile(t, filepath.Join(dir, "views", "v_main.view.json")) != viewDoc {
@@ -303,7 +293,7 @@ func TestSyncMatchesBySymbolNotByName(t *testing.T) {
 }
 
 func TestSyncMissingThenReturns(t *testing.T) {
-	ws, dir := workspace(t, adoptProject, adoptEntities, adoptRelations, adoptTypes)
+	ws, dir := workspace(t, adoptProject, adoptEntities, adoptRelations, "")
 	sync(t, ws, facts(t, adoptFacts), SyncOptions{})
 
 	// N.Base is gone from the code (its file too): entity and relations go missing.
@@ -344,7 +334,7 @@ func TestSyncMissingThenReturns(t *testing.T) {
 }
 
 func TestSyncRenameIsOnlyACandidate(t *testing.T) {
-	ws, dir := workspace(t, adoptProject, adoptEntities, adoptRelations, adoptTypes)
+	ws, dir := workspace(t, adoptProject, adoptEntities, adoptRelations, "")
 	sync(t, ws, facts(t, adoptFacts), SyncOptions{})
 
 	// Base renamed to Root in the same file.
@@ -637,7 +627,8 @@ func TestMemberRelationIDStability(t *testing.T) {
 	}
 }
 
-// Visibility is set when new relation types are created.
+// Sync derives the type of a member relation and writes it on the relation only;
+// its default visibility is the dictionary's (CONTRACT §5, §6).
 func TestMemberRelationVisibility(t *testing.T) {
 	ws, dir := workspace(t, `{"id":"p","contractVersion":5}`, "", "", "")
 	factSet := `{"language":"csharp","root":".","edgeKinds":["holds","uses"],"symbols":[
@@ -651,22 +642,25 @@ func TestMemberRelationVisibility(t *testing.T) {
     ]}`
 	sync(t, ws, facts(t, factSet), SyncOptions{})
 	v := load(t, dir)
+	catalog := testCatalog(t)
 	for _, tc := range []struct {
-		typeID    string
-		wantVisib string
+		relID, typeID, wantVisib string
 	}{
-		{"holds.one", "visible"},
-		{"holds.one.internal", "hidden"},
-		{"uses", "hidden"},
+		{"r_a_b_pub", "holds.one", "visible"},
+		{"r_a_c_priv", "holds.one.internal", "hidden"},
+		{"r_a_b_method", "uses", "hidden"},
 	} {
-		rt := find(v.Types, tc.typeID)
-		if rt == nil {
-			t.Errorf("type %s not created", tc.typeID)
+		r := find(v.Relations, tc.relID)
+		if r == nil || r["type"] != tc.typeID {
+			t.Errorf("relation %s: %v, want type %s", tc.relID, r, tc.typeID)
 			continue
 		}
-		if rt["visibility"] != tc.wantVisib {
-			t.Errorf("type %s visibility = %v, want %v", tc.typeID, rt["visibility"], tc.wantVisib)
+		if got := catalog.RelationVisibility(tc.typeID); got != tc.wantVisib {
+			t.Errorf("type %s visibility = %v, want %v", tc.typeID, got, tc.wantVisib)
 		}
+	}
+	if _, err := os.Stat(filepath.Join(dir, RelationTypesFile)); err == nil {
+		t.Error("sync wrote relation-types.json")
 	}
 }
 

@@ -102,6 +102,7 @@ func TestKindsErrors(t *testing.T) {
 		"no name":      {ok, `{"groups":[{"id":"b","name":{"ru":"Б"},"kinds":[{"id":"q"}]}]}`, "name is empty"},
 		"dup in group": {ok, `{"groups":[{"id":"b","name":{"ru":"Б"},"kinds":[{"id":"q","name":{"ru":"я"}}]},{"id":"c","name":{"ru":"В"},"kinds":[{"id":"q","name":{"ru":"я"}}]}]}`, "unique across the catalog"},
 		"not json":     {ok, `{`, "kinds.json"},
+		"visibility":   {ok, `{"relationGroups":[{"id":"r","name":{"ru":"Р"},"types":[{"id":"t","name":{"ru":"т"},"visibility":"shown"}]}]}`, "visible, hidden or nothing"},
 	} {
 		if _, err := ParseKinds([]byte(tc.base), []byte(tc.extra)); err == nil || !strings.Contains(err.Error(), tc.want) {
 			t.Errorf("%s: want error with %q, got %v", name, tc.want, err)
@@ -178,17 +179,27 @@ func TestDictionaryCoversExtractorTables(t *testing.T) {
 	}
 }
 
-// Every relation type sync derives has a dictionary entry.
+// Every relation type sync derives has a dictionary entry, with the default
+// visibility that a project used to record for it: hidden for the members that
+// are not public, for uses and injects, visible for the rest (CONTRACT §5, §6).
 func TestDictionaryCoversDerivedRelationTypes(t *testing.T) {
 	c := testCatalog(t)
-	want := []string{"extends", "implements", "contains", "depends", "uses", "injects"}
+	want := map[string]string{"extends": "visible", "implements": "visible", "contains": "visible", "depends": "visible", "uses": "hidden", "injects": "hidden"}
 	for _, base := range []string{"holds.one", "holds.optional", "holds.many", "holds.many.ro", "holds.keyed", "holds.keyed.ro"} {
-		want = append(want, base, base+".internal")
+		want[base], want[base+".internal"] = "visible", "hidden"
 	}
-	for _, id := range want {
-		if _, ok := c.LookupRelation(id); !ok {
+	for id, visibility := range want {
+		typ, ok := c.LookupRelation(id)
+		if !ok {
 			t.Errorf("relation type %s (derived by sync) is not in the dictionary", id)
+			continue
 		}
+		if typ.Visibility != visibility || c.RelationVisibility(id) != visibility {
+			t.Errorf("relation type %s: visibility %q, want %q", id, typ.Visibility, visibility)
+		}
+	}
+	if c.RelationVisibility("not-in-the-dictionary") != "" || (*KindCatalog)(nil).RelationVisibility("uses") != "" {
+		t.Error("a type outside the dictionary says nothing about its visibility: the view decides")
 	}
 	for _, via := range []*Via{nil, {Cardinality: "optional"}, {Cardinality: "many", Mutability: "readonly"}, {Cardinality: "keyed"}, {Cardinality: "keyed", Mutability: "readonly", Modifiers: []string{"private"}}} {
 		if id := deriveRelationType("holds", via); id != "" {

@@ -53,7 +53,7 @@ func TestSyncIgnoresPositionFields(t *testing.T) {
 	wsWith, dirWith := workspace(t, project, "", "", "")
 	sync(t, wsWith, facts(t, factsWith), SyncOptions{})
 
-	for _, name := range []string{"entities.json", "relations.json", "relation-types.json"} {
+	for _, name := range []string{"entities.json", "relations.json"} {
 		got := readFile(t, dirWith+"/"+name)
 		want := readFile(t, dirWithout+"/"+name)
 		if got != want {

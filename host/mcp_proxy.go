@@ -119,7 +119,7 @@ func runMCPProxy(proj project, workspace, projectID string) int {
 
 func projectTool(name string) bool {
 	switch name {
-	case "list_views", "get_entity", "find_entities", "get_relations", "get_relation_types", "get_kinds", "get_view", "get_text", "set_text", "add_entity", "add_relation", "add_relation_type", "set_relation_visible", "confirm_rename", "place_entities", "move_elements", "resize_elements", "set_parent", "add_container", "fit_container", "align_elements", "save", "discard", "render_view", "create_view":
+	case "list_views", "get_entity", "find_entities", "get_relations", "get_kinds", "get_view", "get_text", "set_text", "add_entity", "add_relation", "set_relation_visible", "confirm_rename", "place_entities", "move_elements", "resize_elements", "set_parent", "add_container", "fit_container", "align_elements", "save", "discard", "render_view", "create_view":
 		return true
 	}
 	return false

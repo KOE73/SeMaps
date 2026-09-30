@@ -51,7 +51,7 @@ func (s *mcpServer) mcpSettingsNow() mcpSettings {
 
 // Every structured answer is a JSON object: MCP clients (Claude Code among
 // them) reject an array in structuredContent, so lists come wrapped —
-// {views: [...]}, {relationTypes: [...]}, {runs: [...]}, {reports: [...]}.
+// {views: [...]}, {relations: [...]}, {runs: [...]}, {reports: [...]}.
 
 // Tool inputs. `project` is optional everywhere: --project, else the only one.
 
@@ -85,7 +85,7 @@ type relationsIn struct {
 type textIn struct {
 	Project string `json:"project,omitempty"`
 	Lang    string `json:"lang" jsonschema:"language of text.<lang>.json: ru, en..."`
-	Key     string `json:"key" jsonschema:"e_, rt_, r_ or v_ id"`
+	Key     string `json:"key" jsonschema:"e_, r_ or v_ id"`
 }
 
 type setTextIn struct {
@@ -109,13 +109,7 @@ type addRelationIn struct {
 	Project string `json:"project,omitempty"`
 	From    string `json:"from"`
 	To      string `json:"to"`
-	Type    string `json:"type" jsonschema:"an id from relation-types.json"`
-}
-
-type addTypeIn struct {
-	Project    string `json:"project,omitempty"`
-	ID         string `json:"id"`
-	Visibility string `json:"visibility,omitempty" jsonschema:"visible or hidden: the default on views"`
+	Type    string `json:"type" jsonschema:"a relation type: an id of get_kinds (relationGroups), or a word of your own (the dictionary is open; flagged by check until kinds.json describes it)"`
 }
 
 type visibleIn struct {
@@ -289,8 +283,7 @@ func (s *mcpServer) server() *mcp.Server {
 	mcp.AddTool(srv, read("get_entity", "One entity by id or by symbol."), s.getEntity)
 	mcp.AddTool(srv, read("find_entities", "Entities by name/symbol/namespace substring, kind, status."), s.findEntities)
 	mcp.AddTool(srv, read("get_relations", "Relations of an entity (or all), by direction, type, status."), s.getRelations)
-	mcp.AddTool(srv, read("get_relation_types", "The relation-type vocabulary with default visibility."), s.getRelationTypes)
-	mcp.AddTool(srv, read("get_kinds", "The dictionary (kinds.json): groups of entity kinds with names, descriptions, whether a kind is a container, its base style; groups of relation types with names, descriptions, base style; unknown lists the project's kinds and relation types outside it."), s.getKinds)
+	mcp.AddTool(srv, read("get_kinds", "The dictionary (kinds.json): groups of entity kinds with names, descriptions, whether a kind is a container, its base style; groups of relation types with names, descriptions, base style, default visibility; unknown lists the project's kinds and relation types outside it."), s.getKinds)
 	mcp.AddTool(srv, read("get_text", "Text entry of a key in one language."), s.getText)
 	mcp.AddTool(srv, read("get_view", "A view with geometry as a tree: placements, containers with what lies in them (children), absolute rectangles, visible lines, what is unsaved. A container reference view#e_x reads only its subtree. The answer starts with the canvas block: units, grid, default and minimum sizes, caption strip, padding, gaps."), s.getView)
 	mcp.AddTool(srv, read("doctor", "Extractors and runtimes found, and the model check of the workspace."), s.doctor)
@@ -306,7 +299,6 @@ func (s *mcpServer) server() *mcp.Server {
 	mcp.AddTool(srv, write("set_text", "Write one text field as authored, with at = now."), s.setText)
 	mcp.AddTool(srv, write("add_entity", "Add an authored entity: a part of the system no extractor reports (a kind of get_kinds: app, external, database…); the id is minted unless given."), s.addEntity)
 	mcp.AddTool(srv, write("add_relation", "Add an authored relation; the id is minted and returned."), s.addRelation)
-	mcp.AddTool(srv, write("add_relation_type", "Add an authored relation type to the project (origin, default visibility). Its name, description and style belong to the dictionary of relation types (get_kinds; the workspace kinds.json adds to it)."), s.addRelationType)
 	mcp.AddTool(srv, write("set_relation_visible", "Show or hide one relation on one view (relations.except)."), s.setRelationVisible)
 	mcp.AddTool(srv, write("confirm_rename", "Answer a sync rename candidate: entity + symbol, or relation + member."), s.confirmRename)
 	mcp.AddTool(srv, write("extract", "Run the extractors of the .semaps file; returns run ids."), s.extract)
@@ -692,14 +684,6 @@ func (s *mcpServer) getRelations(_ context.Context, _ *mcp.CallToolRequest, in r
 	return nil, map[string]any{"total": total, "relations": raws(out)}, nil
 }
 
-func (s *mcpServer) getRelationTypes(_ context.Context, _ *mcp.CallToolRequest, in projectIn) (*mcp.CallToolResult, any, error) {
-	types, err := s.records(in.Project, "relation-types.json")
-	if err != nil {
-		return nil, nil, err
-	}
-	return nil, map[string]any{"relationTypes": raws(types)}, nil
-}
-
 // kindOut and friends are the dictionary of get_kinds, its texts in one language.
 type kindOut struct {
 	ID          string `json:"id"`
@@ -721,6 +705,7 @@ type relationTypeOut struct {
 	Name        string `json:"name"`
 	Description string `json:"description,omitempty"`
 	Style       string `json:"style,omitempty"`
+	Visibility  string `json:"visibility,omitempty"`
 }
 
 type relationGroupOut struct {
@@ -745,7 +730,7 @@ func dictionaryOut(catalog *core.KindCatalog, lang string) map[string]any {
 	for _, g := range catalog.RelationGroups {
 		out := relationGroupOut{ID: g.ID, Name: core.Localized(g.Name, lang), Description: core.Localized(g.Description, lang), Types: []relationTypeOut{}}
 		for _, t := range g.Types {
-			out.Types = append(out.Types, relationTypeOut{ID: t.ID, Name: core.Localized(t.Name, lang), Description: core.Localized(t.Description, lang), Style: t.Style})
+			out.Types = append(out.Types, relationTypeOut{ID: t.ID, Name: core.Localized(t.Name, lang), Description: core.Localized(t.Description, lang), Style: t.Style, Visibility: t.Visibility})
 		}
 		relations = append(relations, out)
 	}
@@ -753,8 +738,8 @@ func dictionaryOut(catalog *core.KindCatalog, lang string) map[string]any {
 }
 
 // getKinds answers the merged dictionary (the tool's default and the
-// workspace's kinds.json) and what the project's entities and relation types
-// use that it lacks.
+// workspace's kinds.json) and what the project's entities and relations use
+// that it lacks.
 func (s *mcpServer) getKinds(_ context.Context, _ *mcp.CallToolRequest, in kindsIn) (*mcp.CallToolResult, any, error) {
 	catalog, err := core.LoadKinds(s.workspace, defaultKinds())
 	if err != nil {
@@ -774,9 +759,9 @@ func (s *mcpServer) getKinds(_ context.Context, _ *mcp.CallToolRequest, in kinds
 			unknownKinds = append(unknownKinds, k)
 		}
 	}
-	types, _ := s.records(in.Project, "relation-types.json")
-	for _, t := range types {
-		id := t.str("id")
+	rels, _ := s.records(in.Project, "relations.json")
+	for _, r := range rels {
+		id := r.str("type")
 		if _, ok := catalog.LookupRelation(id); !ok && id != "" && !seen["rt:"+id] {
 			seen["rt:"+id] = true
 			unknownTypes = append(unknownTypes, id)
@@ -1060,18 +1045,6 @@ func (s *mcpServer) addRelation(_ context.Context, _ *mcp.CallToolRequest, in ad
 	}
 	s.changed(in.Project, m)
 	return done("%s added, not saved; review and Save: %s", id, s.reviewLink(m, id))
-}
-
-func (s *mcpServer) addRelationType(_ context.Context, _ *mcp.CallToolRequest, in addTypeIn) (*mcp.CallToolResult, any, error) {
-	m, err := s.model(in.Project)
-	if err != nil {
-		return nil, nil, err
-	}
-	if err := m.AddRelationType(in.ID, in.Visibility, "agent"); err != nil {
-		return nil, nil, err
-	}
-	s.changed(in.Project, m)
-	return done("type %s added, not saved; give it a name: set_text key rt_%s; review: %s", in.ID, in.ID, s.reviewLink(m, "rt_"+in.ID))
 }
 
 func (s *mcpServer) setRelationVisible(_ context.Context, _ *mcp.CallToolRequest, in visibleIn) (*mcp.CallToolResult, any, error) {

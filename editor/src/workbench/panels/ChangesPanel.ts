@@ -7,7 +7,7 @@ import { iconEl, type IconName } from "../../ui/icons.js";
 
 /** What a changed object looks like in the list: keys of the one UI icon registry. */
 const KIND_ICONS: Record<string, IconName> = {
-  placement: "box", view: "map", entity: "category", relation: "link", relationType: "listDetails", text: "pencil", project: "folder",
+  placement: "box", view: "map", entity: "category", relation: "link", text: "pencil", project: "folder",
 };
 
 /**

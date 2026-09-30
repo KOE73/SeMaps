@@ -142,7 +142,7 @@ export const enDictionary: UiDictionary = {
       you: "you",
       agent: "agent",
       sync: "sync",
-      kinds: { placement: "placement", view: "diagram properties", entity: "entity", relation: "relation", relationType: "relation type", text: "text", project: "project" },
+      kinds: { placement: "placement", view: "diagram properties", entity: "entity", relation: "relation", text: "text", project: "project" },
     },
     properties: {
       title: "Properties",

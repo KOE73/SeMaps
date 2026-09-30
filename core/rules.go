@@ -32,8 +32,6 @@ func (after *Model) validate(before *Model, ops []Op) error {
 			err = after.checkEntity(before, op.ID)
 		case "relation":
 			err = after.checkRelation(before, op.ID)
-		case "relationType":
-			err = after.checkRelationType(before, op.ID)
 		case "text":
 			err = after.checkText(before, op.Lang, op.ID)
 		case "placement":
@@ -112,9 +110,10 @@ func (after *Model) checkRelation(before *Model, id string) error {
 		}
 	}
 	if changed(old, o, "type") || changed(old, o, "relation") {
+		// the set of types is open: any word is a type, the dictionary describes the known ones (CONTRACT §5, §6)
 		t := relationType(o)
-		if findByID(after.registries["relationType"].items, t) == nil {
-			return refuse("relation %s: no relation type %q in relation-types.json (CONTRACT §4)", id, t)
+		if strings.TrimSpace(t) == "" || strings.ContainsAny(t, " \t\"") {
+			return refuse("relation %s: type %q: a word without spaces (CONTRACT §4)", id, t)
 		}
 	}
 	if changed(old, o, "origin") && !oneOf(o, "origin", "code", "authored") {
@@ -125,17 +124,6 @@ func (after *Model) checkRelation(before *Model, id string) error {
 	}
 	if changed(old, o, "evidence") {
 		return checkCode("relation", id, entries(o, "evidence"))
-	}
-	return nil
-}
-
-func (after *Model) checkRelationType(before *Model, id string) error {
-	old, o := findByID(before.registries["relationType"].items, id), findByID(after.registries["relationType"].items, id)
-	if old == nil && strings.ContainsAny(id, " \t\"") {
-		return refuse("type id %q: a word without spaces", id)
-	}
-	if changed(old, o, "visibility") && !oneOf(o, "visibility", "visible", "hidden") {
-		return refuse("type %s: visibility %q: visible, hidden or nothing", id, o.str("visibility"))
 	}
 	return nil
 }

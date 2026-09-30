@@ -363,8 +363,7 @@ func containerFixture(t *testing.T) *httptest.Server {
 		"entities.json": `{"entities":[
 			{"id":"e_grp","kind":"group","origin":"authored","status":"present"},
 			{"id":"e_a","name":"A","kind":"class","origin":"code","status":"present","code":[{"lang":"csharp","ref":"A.cs","symbol":"A"}]}]}`,
-		"relations.json":      `{"relations":[{"id":"r_grp_a_contains","from":"e_grp","to":"e_a","type":"contains","origin":"authored"}]}`,
-		"relation-types.json": `{"relationTypes":[{"id":"contains","origin":"code"}]}`,
+		"relations.json": `{"relations":[{"id":"r_grp_a_contains","from":"e_grp","to":"e_a","type":"contains","origin":"authored"}]}`,
 		// the group is authored: its name is a text (ADR_20260930-5)
 		"text.ru.json": `{"contractVersion":5,"language":"ru","entries":{"e_grp":{"name":{"v":"Frontend","at":"2026-09-30T00:00:00Z","origin":"authored"}}}}`,
 		"views/v.view.json": `{"id":"v","project":"p","axis":"axis_b","placements":[

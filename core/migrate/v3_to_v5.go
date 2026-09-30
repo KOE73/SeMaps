@@ -120,18 +120,21 @@ type projectMigration struct {
 	zoneEnt map[string]*newEnt // zone id → entity (zones without a container)
 	contEnt map[string]*newEnt // container id → entity
 
-	added         []containRel
-	newRels       []any
-	containsType  *obj   // the `contains` type of relation-types.json, if any
-	addContainsRT bool   // relation-types.json needs the type
-	containsVis   string // "visible", "hidden" or ""
+	added       []containRel
+	newRels     []any
+	containsVis string // the default visibility of `contains`: "visible", "hidden" or ""
+
+	// rtEntries are the types of relation-types.json as the project recorded them;
+	// lib is the dictionary they are claimed on (relation_types.go).
+	rtEntries []rtEntry
+	lib       *relTypeLib
 }
 
 // prepareProject computes every new content of one project in memory. It does
 // not collect the outputs: the workspace styles are decided after all projects
 // are prepared, and a style dropped there is dropped from the views here first
 // (dropStyleRefs), so collect comes last.
-func prepareProject(ws, id string, styles *styleLib, opt Options) (*projectMigration, error) {
+func prepareProject(ws, id string, styles *styleLib, lib *relTypeLib, opt Options) (*projectMigration, error) {
 	rel := "projects/" + id
 	pr := &ProjectReport{ID: id}
 	proj, err := loadFile(ws, rel+"/project.json", true)
@@ -147,7 +150,7 @@ func prepareProject(ws, id string, styles *styleLib, opt Options) (*projectMigra
 	}
 	pr.FromVersion = ver
 	m := &projectMigration{
-		ws: ws, id: id, rel: rel, rep: pr, styles: styles, proj: proj, opt: opt,
+		ws: ws, id: id, rel: rel, rep: pr, styles: styles, lib: lib, proj: proj, opt: opt,
 		fromV3:     !(has && ver >= targetVersion),
 		textByLang: map[string]*textData{},
 		origEnts:   map[string]bool{}, entIDs: map[string]bool{},
@@ -159,7 +162,7 @@ func prepareProject(ws, id string, styles *styleLib, opt Options) (*projectMigra
 		steps = append(steps, m.parseViews, m.makeEntities, m.containment,
 			m.convertTexts, m.rewriteViews, m.exceptions, m.appendRegistry)
 	}
-	steps = append(steps, m.finalShape)
+	steps = append(steps, m.finalShape, m.relationTypes)
 	for _, s := range steps {
 		if err := s(); err != nil {
 			return nil, err
@@ -245,16 +248,16 @@ func (m *projectMigration) loadAll() error {
 				return ferr(m.rtypes.rel, fmt.Sprintf("relationTypes[%d]", i), "ожидался объект")
 			}
 			id, _ := asStr(o.get("id"))
-			if id == "contains" && m.containsType == nil {
-				m.containsType = o
+			vis, _, err := strField(o, "visibility")
+			if err != nil {
+				return ferr(m.rtypes.rel, fmt.Sprintf("relationTypes[%d].visibility", i), "%v", err)
 			}
-			// A relation type has no style of its own in the project: the base style of
-			// a type is in the dictionary and the style names its types in forKinds
-			// (ADR_20260930-2). The old link is dropped and named for a human.
+			m.rtEntries = append(m.rtEntries, rtEntry{id: id, vis: vis})
+			// A relation type has no style of its own: the base style of a type is in the
+			// dictionary and the style names its types in forKinds (ADR_20260930-2). The
+			// old link goes with the file and is named for a human.
 			if sid, ok := asStr(o.get("styleId")); ok {
-				o.del("styleId")
-				m.rtypes.dirty = true
-				m.rep.Notes = append(m.rep.Notes, fmt.Sprintf("тип связи %s: styleId %q снят из relation-types.json — назовите %q в forKinds стиля %s (или укажите style у типа в kinds.json)", id, sid, id, sid))
+				m.rep.Notes = append(m.rep.Notes, fmt.Sprintf("тип связи %s: styleId %q был в relation-types.json — назовите %q в forKinds стиля %s (или укажите style у типа в kinds.json)", id, sid, id, sid))
 			}
 		}
 	}
@@ -607,14 +610,21 @@ func (m *projectMigration) containment() error {
 		}
 	}
 	m.rep.ContainsAdded = len(m.added)
-	if len(m.added) > 0 && m.containsType == nil {
-		m.addContainsRT = true
-		m.containsVis = "hidden"
-	}
-	if m.containsType != nil {
-		if s, ok, _ := strField(m.containsType, "visibility"); ok && (s == "visible" || s == "hidden") {
-			m.containsVis = s
+	// The containment relations made here are hidden by default unless the project
+	// said otherwise: it is the type's visibility, which the step of relation types
+	// carries to the workspace kinds.json (the view is not where nesting is drawn twice).
+	declared := false
+	for _, e := range m.rtEntries {
+		if e.id == "contains" {
+			declared = true
+			if e.vis == "visible" || e.vis == "hidden" {
+				m.containsVis = e.vis
+			}
 		}
+	}
+	if len(m.added) > 0 && !declared {
+		m.rtEntries = append(m.rtEntries, rtEntry{id: "contains", vis: "hidden"})
+		m.containsVis = "hidden"
 	}
 	return nil
 }
@@ -889,29 +899,7 @@ func (m *projectMigration) convertTexts() error {
 		}
 		m.rep.TextsRemoved += len(removed)
 
-		var rt *obj
-		if m.addContainsRT && !td.entries.has("rt_contains") {
-			name := ""
-			switch td.lang {
-			case "ru":
-				name = "содержит"
-			case "en":
-				name = "contains"
-			default:
-				m.rep.Notes = append(m.rep.Notes,
-					fmt.Sprintf("text.%s.json: имя типа связи contains не добавлено — язык «%s» не ru/en", td.lang, td.lang))
-			}
-			if name != "" {
-				prov := newObj()
-				prov.set("v", jsonStr(name))
-				prov.set("at", jsonStr(nowUTC()))
-				prov.set("origin", jsonStr("authored"))
-				rt = newObj()
-				rt.set("name", prov)
-			}
-		}
-
-		if !td.changed && len(removed) == 0 && rt == nil {
+		if !td.changed && len(removed) == 0 {
 			continue
 		}
 		anchor := map[string][]*newEnt{}
@@ -946,9 +934,6 @@ func (m *projectMigration) convertTexts() error {
 			if ne := newEntries[e.id]; ne != nil && !emitted[e.id] {
 				out.set(e.id, ne)
 			}
-		}
-		if rt != nil {
-			out.set("rt_contains", rt)
 		}
 		td.f.root.set("entries", out)
 		td.entries = out // what later steps add goes into the object that is written
@@ -1218,21 +1203,6 @@ func (m *projectMigration) appendRegistry() error {
 		m.rels.root.set("relations", append(arr, m.newRels...))
 		m.rels.dirty = true
 	}
-	if m.addContainsRT {
-		if m.rtypes == nil {
-			m.rtypes = newFile(m.ws, m.rel+"/relation-types.json")
-		}
-		arr, err := m.rtypes.array("relationTypes")
-		if err != nil {
-			return err
-		}
-		t := newObj()
-		t.set("id", jsonStr("contains"))
-		t.set("origin", jsonStr("authored"))
-		t.set("visibility", jsonStr("hidden"))
-		m.rtypes.root.set("relationTypes", append(arr, t))
-		m.rtypes.dirty = true
-	}
 	return nil
 }
 
@@ -1240,11 +1210,14 @@ func (m *projectMigration) collect() ([]fileOut, error) {
 	m.proj.bump, m.proj.ensureVersion = true, true
 	var files []*file
 	files = append(files, m.proj)
-	for _, f := range []*file{m.ents, m.rels, m.rtypes} {
+	for _, f := range []*file{m.ents, m.rels} {
 		if f != nil {
 			f.bump = true
 			files = append(files, f)
 		}
+	}
+	if m.rtypes != nil { // relation-types.json is gone from the contract: its types are the dictionary's
+		files = append(files, m.rtypes)
 	}
 	for _, v := range m.views {
 		v.f.bump = true

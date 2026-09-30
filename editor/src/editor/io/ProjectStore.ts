@@ -7,7 +7,6 @@ import type {
   ProjectManifest,
   ModelIssue,
   RelationCatalog,
-  RelationTypeCatalog,
   TextCatalog,
   ViewDocument,
   ViewPlacement,
@@ -38,7 +37,6 @@ const OLD_PLACEMENT_KEYS = ["zone", "container", "id"] as const;
  * - `project.json`
  * - `entities.json`
  * - `relations.json`
- * - `relation-types.json`
  * - `text.<lang>.json`
  * - `views/<view_id>.view.json`
  *
@@ -59,7 +57,6 @@ export class HttpProjectStore implements ModelStore {
     project: ProjectManifest;
     entities: EntityCatalog;
     relations: RelationCatalog;
-    relationTypes: RelationTypeCatalog;
     texts: Record<string, unknown>;
   }): Promise<WireDocument> {
     if (typeof viewData?.project !== "string") {
@@ -82,8 +79,8 @@ export class HttpProjectStore implements ModelStore {
 
     const languages = (projectManifest.languages?.length ? projectManifest.languages : ["ru"]) as string[];
 
-    const [entitiesRes, relationsRes, relationTypesRes, ...rawTexts] = provided ? [
-      provided.entities, provided.relations, provided.relationTypes,
+    const [entitiesRes, relationsRes, ...rawTexts] = provided ? [
+      provided.entities, provided.relations,
       ...languages.map((lang) => provided.texts[lang] ?? {}),
     ] : await Promise.all([
       fetch(url("entities.json"))
@@ -92,9 +89,6 @@ export class HttpProjectStore implements ModelStore {
       fetch(url("relations.json"))
         .then((r) => r.json())
         .catch(() => ({ relations: [] })) as Promise<RelationCatalog>,
-      fetch(url("relation-types.json"))
-        .then((r) => r.json())
-        .catch(() => ({ relationTypes: [] })) as Promise<RelationTypeCatalog>,
       ...languages.map(
         (lang) =>
           fetch(url(`text.${lang}.json`))
@@ -160,11 +154,11 @@ export class HttpProjectStore implements ModelStore {
     });
 
     // No edge list of its own: the registry's relations, as the view's and
-    // the types' visibility defaults allow (CONTRACT.md §8.5).
+    // the dictionary's visibility defaults allow (CONTRACT.md §8.5).
     const rawEdges = Array.isArray(viewData.edges)
       ? viewData.edges
       : (relationsRes.relations || []).filter((r) =>
-          relationShownByDefault(r, viewData.relations as any, relationTypesRes));
+          relationShownByDefault(r, viewData.relations as any, kinds));
 
     // A view's own edge entries don't repeat `origin` — only the relation
     // registry does — so look it up by id to know whether this edge is
@@ -228,7 +222,6 @@ export class HttpProjectStore implements ModelStore {
       project: projectManifest,
       entities: entitiesRes,
       relations: relationsRes,
-      relationTypes: relationTypesRes,
       text: textRes,
       textRegistries,
       textFiles,

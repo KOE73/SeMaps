@@ -40,6 +40,11 @@ export interface RelationTypeDef {
   readonly description?: LocalizedText;
   /** Base style; absent — the style whose id equals the type (§11.5). */
   readonly style?: string;
+  /**
+   * What a view shows of relations of this type when it decided nothing (§8.5);
+   * absent — the view's own `relations.default` decides.
+   */
+  readonly visibility?: "visible" | "hidden";
 }
 
 export interface RelationGroup {
@@ -146,6 +151,11 @@ export class KindCatalog {
 
   relationBaseStyle(type: string): string | undefined {
     return this.lookupRelation(type)?.style;
+  }
+
+  /** The dictionary's default visibility of the type; undefined — the view decides. */
+  relationVisibility(type: string): "visible" | "hidden" | undefined {
+    return this.lookupRelation(type)?.visibility;
   }
 
   // ------------------------------------------------------------------- texts

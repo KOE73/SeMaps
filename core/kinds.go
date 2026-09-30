@@ -40,16 +40,27 @@ type KindGroup struct {
 	Kinds       []Kind            `json:"kinds"`
 }
 
-// RelationType is a type of relation with its texts and base style. It is the
-// dictionary entry; a project's relation-types.json says which of the types the
-// project uses, with their origin and visibility (CONTRACT §5).
+// RelationType is a type of relation with its texts, base style and default
+// visibility. It is the dictionary entry and the only place a relation type
+// is described: a relation carries the type as a string, a project has no file
+// of types (CONTRACT §5, §6).
 type RelationType struct {
 	ID          string            `json:"id"`
 	Name        map[string]string `json:"name"`
 	Description map[string]string `json:"description,omitempty"`
 	// Style is the type's base style; empty — the style whose id is the type (CONTRACT §11.5).
 	Style string `json:"style,omitempty"`
+	// Visibility is what a view shows of the relations of this type when it made
+	// no decision of its own: "visible" or "hidden". Empty — the view's own
+	// default decides (CONTRACT §8.5).
+	Visibility string `json:"visibility,omitempty"`
 }
+
+// Relation type visibilities.
+const (
+	VisibilityVisible = "visible"
+	VisibilityHidden  = "hidden"
+)
 
 type RelationGroup struct {
 	ID          string            `json:"id"`
@@ -112,6 +123,9 @@ func parseKindsDoc(name string, data []byte) (*kindsDoc, error) {
 			}
 			if len(t.Name) == 0 {
 				return nil, fmt.Errorf("%s: relation type %s: name is empty (CONTRACT §6)", name, t.ID)
+			}
+			if t.Visibility != "" && t.Visibility != VisibilityVisible && t.Visibility != VisibilityHidden {
+				return nil, fmt.Errorf("%s: relation type %s: visibility %q: visible, hidden or nothing (CONTRACT §6)", name, t.ID, t.Visibility)
 			}
 		}
 	}
@@ -268,6 +282,14 @@ func (c *KindCatalog) LookupRelation(relationType string) (RelationType, bool) {
 	}
 	t, ok := c.relIndex[relationType]
 	return t, ok
+}
+
+// RelationVisibility is the dictionary's default visibility of a relation type
+// ("visible", "hidden"); "" when the type is outside the dictionary or says
+// nothing — then the view's own default decides (CONTRACT §8.5).
+func (c *KindCatalog) RelationVisibility(relationType string) string {
+	t, _ := c.LookupRelation(relationType)
+	return t.Visibility
 }
 
 // Localized picks lang, else any language present (the first by code, so the

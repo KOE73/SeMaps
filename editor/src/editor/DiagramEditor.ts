@@ -99,18 +99,6 @@ function clamp(value: number, min: number, max: number): number {
   return Math.min(max, Math.max(min, value));
 }
 
-/**
- * List a relation type in the project's own vocabulary (`relation-types.json`,
- * CONTRACT.md §5): a relation may only have a type the project lists, and the
- * dictionary offers types the project has not used yet.
- */
-function registerRelationType(doc: DiagramDocument, type: string): void {
-  const bundle = doc.bundle;
-  if (bundle === null) return;
-  const catalog = (bundle.relationTypes ??= { relationTypes: [] });
-  if (!catalog.relationTypes.some((t) => t.id === type)) catalog.relationTypes.push({ id: type, origin: "authored" });
-}
-
 type Slot =
   | "canvas" | "catalog"
   | "inspector-badge" | "inspector-body" | "edges-body" | "filters-body" | "title" | "zoom"
@@ -364,7 +352,7 @@ export class DiagramEditor implements InspectorHost, StylePanelHost, DiagramEdit
 
   /**
    * Open the view a change lives on and put the object in the middle, selected.
-   * A change with no place on a view (a relation type, the project) says so.
+   * A change with no place on a view (the project) says so.
    */
   async revealChange(ref: ChangedRef): Promise<void> {
     const views = this.workspace.projects.flatMap((p) => p.views);
@@ -372,7 +360,7 @@ export class DiagramEditor implements InspectorHost, StylePanelHost, DiagramEdit
     const view = target ? views.find((v) => v.id === target && this.projectOf(v)?.id === (this.currentView && this.projectOf(this.currentView)?.id)) : undefined;
     if (view && this.currentView?.file !== view.file) await this.loadView(view);
     if (ref.kind === "view" || (ref.kind === "text" && ref.id.startsWith("v_"))) { this.canvas.fit(); return; }
-    if (ref.kind === "project" || ref.kind === "relationType" || ref.id.startsWith("rt_")) {
+    if (ref.kind === "project") {
       this.notify("У этого изменения нет места на схеме: оно в реестре проекта.");
       return;
     }
@@ -1506,8 +1494,8 @@ export class DiagramEditor implements InspectorHost, StylePanelHost, DiagramEdit
    *
    * A relation is a registry record and, when drawn, an entry of the view's own
    * `edges`; the type goes to both, the style only to the entry (a relation
-   * shown as a ghost has none). A type read from code stays the code's. A new
-   * type is listed in the project's `relation-types.json` in the same batch.
+   * shown as a ghost has none). A type read from code stays the code's. A type
+   * is a string on the relation: the dictionary describes it, the project lists none.
    */
   applyRelationTypeAndStyle(ids: readonly string[], type: string, styleId: string | null): void {
     const doc = this.canvas.model;
@@ -1540,7 +1528,6 @@ export class DiagramEditor implements InspectorHost, StylePanelHost, DiagramEdit
       if (!typeChanged && (edge === undefined || edge.styleId === nextStyle)) continue;
 
       if (typeChanged) {
-        registerRelationType(doc, nextType);
         if (edge !== undefined) edge.type = nextType;
         if (relation !== undefined) relation.type = nextType;
       }

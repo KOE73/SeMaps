@@ -222,18 +222,14 @@ func (m *Model) visibleEdges(doc *object, placed map[string]bool) []EdgeInfo {
 			}
 		}
 	}
-	types := map[string]*object{}
-	for _, t := range m.records("relationType") {
-		types[t.str("id")] = t
-	}
 	for _, r := range m.records("relation") {
 		from, to := r.str("from"), r.str("to")
 		if !placed[from] || !placed[to] {
 			continue
 		}
 		d := def
-		if t := types[relationType(r)]; t != nil && t.str("visibility") != "" {
-			d = t.str("visibility")
+		if v := m.kinds.RelationVisibility(relationType(r)); v != "" {
+			d = v
 		}
 		if (d == "visible") != slices.Contains(except, r.str("id")) {
 			out = append(out, EdgeInfo{ID: r.str("id"), From: from, To: to, Type: relationType(r)})

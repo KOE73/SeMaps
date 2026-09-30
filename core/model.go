@@ -64,9 +64,8 @@ type Model struct {
 }
 
 var modelRegistries = map[string]struct{ file, key string }{
-	"entity":       {"entities.json", "entities"},
-	"relation":     {"relations.json", "relations"},
-	"relationType": {"relation-types.json", "relationTypes"},
+	"entity":   {"entities.json", "entities"},
+	"relation": {"relations.json", "relations"},
 }
 
 // LoadModel loads a project with its work journal. defaultKinds is the tool's
@@ -344,9 +343,9 @@ func (m *Model) applyOne(op Op) error {
 			if r.str("origin") == "code" {
 				return refuse("relation %s comes from code: it has no texts, its label is drawn from the `via` of its evidence (CONTRACT §4)", op.ID)
 			}
-		case strings.HasPrefix(op.ID, "rt_"), strings.HasPrefix(op.ID, "v_"):
+		case strings.HasPrefix(op.ID, "v_"):
 		default:
-			return refuse("key %q: expected a prefix e_, rt_, r_ or v_ (CONTRACT §7.1)", op.ID)
+			return refuse("key %q: expected a prefix e_, r_ or v_ (CONTRACT §7.1)", op.ID)
 		}
 		doc, err := m.loadText(op.Lang)
 		if err != nil {
@@ -375,6 +374,9 @@ func (m *Model) applyOne(op Op) error {
 		entries.set(op.ID, entry)
 		doc.set("entries", entries)
 		return nil
+	}
+	if op.Kind != "view" && op.Kind != "placement" {
+		return refuse("unknown operation kind %q", op.Kind)
 	}
 	if op.View == "" {
 		return refuse("%s needs a view", op.Kind)
@@ -407,9 +409,6 @@ func (m *Model) applyOne(op Op) error {
 			}
 		}
 		return nil
-	}
-	if op.Kind != "placement" {
-		return refuse("unknown operation kind %q", op.Kind)
 	}
 	items := viewItems(v.doc, "placements")
 	index := -1
@@ -569,6 +568,9 @@ func LoadModelWithoutJournal(workspace, project string, defaultKinds []byte) (*M
 	}
 	if exists(filepath.Join(m.dir, "containers.json")) {
 		return nil, refuse("%s", containersFileError)
+	}
+	if exists(filepath.Join(m.dir, RelationTypesFile)) {
+		return nil, refuse("%s", relationTypesFileError)
 	}
 	for kind, spec := range modelRegistries {
 		r, err := loadRegistry(m.dir, spec.file, spec.key, freshList(spec.key))

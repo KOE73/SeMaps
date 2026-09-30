@@ -11,7 +11,7 @@ This document defines the host/backend communication contract for the SeMaps edi
 The editor operates over a project workspace containing:
 1. **Workspace index**: `GET /api/workspace` — the projects and views the host found on disk, with titles and names from the working model (§2.2). There is no list file.
 2. **Global Styles**: `styles.json` defining color schemes, strokes, typography, and badges of blocks, containers and edges; each style belongs to the entity kinds or relation types named in its `forKinds` (`CONTRACT.md` §11.5).
-2a. **Dictionary**: `kinds.json` — groups of entity kinds and of relation types with names, descriptions and a base style (`CONTRACT.md` §6). The tool's default is embedded; the workspace file adds to it.
+2a. **Dictionary**: `kinds.json` — groups of entity kinds and of relation types with names, descriptions, a base style and, for a relation type, its default `visibility` (`CONTRACT.md` §5, §6). The tool's default is embedded; the workspace file adds to it. A project has no file of relation types: a relation's `type` is a string and the dictionary is the one place that says what it means.
 3. **Content templates**: `templates.json`, the named registry of block content
    templates (`CONTRACT.md` §11.2) — sits next to `styles.json`, not inside it.
 4. **Content assets**: `content/index.json`, the manifest of named images for the
@@ -21,7 +21,6 @@ The editor operates over a project workspace containing:
    - `project.json` — Project manifest
    - `entities.json` — Catalog of code entities / types
    - `relations.json` — Catalog of code relations & dependencies
-   - `relation-types.json` — Authored vocabulary of relation types
    - `text.<lang>.json` — Localized texts with per-field provenance
    - `views/<view_id>.view.json` — Classification axis, geometry, one `placements` array (blocks and containers alike)
 
@@ -38,7 +37,6 @@ Workspace Root (--workspace, e.g. docs/diagrams/)
         ├── project.json
         ├── entities.json
         ├── relations.json
-        ├── relation-types.json
         ├── text.ru.json
         └── views/
             └── <view_id>.view.json
@@ -67,11 +65,10 @@ The backend serves application assets and global workspace JSON. Project model r
 | `/projects/<project_id>/project.json` | `GET` | `application/json` | Project manifest |
 | `/projects/<project_id>/entities.json` | `GET` | `application/json` | Catalog of all entities |
 | `/projects/<project_id>/relations.json` | `GET` | `application/json` | Catalog of all relations |
-| `/projects/<project_id>/relation-types.json` | `GET` | `application/json` | Relation type vocabulary (404 tolerated: the client falls back to an empty vocabulary) |
 | `/projects/<project_id>/text.<lang>.json` | `GET` | `application/json` | Localized strings (e.g. `text.ru.json`) |
 | `/projects/<project_id>/views/<view_id>.view.json` | `GET` | `application/json` | Axis, placement & geometry layout |
 
-There is no `containers.json`: a container is an entity of a container kind (`CONTRACT.md` §6, §8.2). A workspace that still has one is refused by `semaps check` and rewritten by `semaps migrate`.
+There is no `containers.json`: a container is an entity of a container kind (`CONTRACT.md` §6, §8.2). There is no `relation-types.json` either: a relation type is a string on the relation and the dictionary describes it (`CONTRACT.md` §5, §6). A workspace that still has either is refused by the loader and by `semaps check` and rewritten by `semaps migrate`.
 
 ### 2.1a. Tool defaults and workspace overrides
 
@@ -88,7 +85,9 @@ answer — nobody merges files themselves. A broken `kinds.json` is `500` with t
 
 - Without `lang`: every text in all its languages, as stored —
   `{groups:[{id, name:{ru,en}, description?:{…}, kinds:[{id, name:{…}, description?:{…}, container?, style?}]}],
-  relationGroups:[{id, name:{…}, description?:{…}, types:[{id, name:{…}, description?:{…}, style?}]}]}`.
+  relationGroups:[{id, name:{…}, description?:{…}, types:[{id, name:{…}, description?:{…}, style?, visibility?}]}]}`.
+  `visibility` (`visible` \| `hidden`) is the default of a relation type on a view that decided nothing
+  (`CONTRACT.md` §8.5); absent — the view decides.
 - With `lang=<code>`: the same tree with `name` and `description` picked in that language (else any
   present, the first by code) and `container` always present — the shape of `get_kinds` (§6).
 
@@ -195,7 +194,7 @@ The host creates `<project root>/.semaps/host.json` containing `{pid, port, key}
 | `/api/events?project=<id>&render=1` | `GET` | The same stream; `render=1` marks an editor that can draw a view. Only such subscribers receive events carrying `render` (below); graph-mode subscribers omit the parameter. |
 | `/api/events?project=<id>` | `GET` | SSE: one `data:` JSON object per accepted batch/save/discard: `{client,author,changed,dirty}`. Clients ignore their own `client` id. A `render_view` call (§6) adds to render subscribers only an event `{author:"host",changed:[],dirty,render:{id,view,ref?,rect?,scale,maxSize}}`: draw `ref` (a `view#entity` reference: a container draws that container) or the view, or just `rect` (`{x,y,width,height}`, model units) when given, at `scale` (0.25–4), the longer side at most `maxSize` px, from the editor's current unsaved state, and answer `POST /api/render/{id}`. The host waits 20 s for the first successful answer (an error from one editor is kept while the others are awaited; all failed → the first error); no render subscriber for the project is an immediate tool error. Structural changes add `projectReloaded:{oldProject,newProject,oldView?,newView?}`. A run finishing with new facts adds `graph:{addedNodes,removedNodes,changedNodes,addedEdges,removedEdges}` (ids only, node ids for the first three, `{from,to,kind}` for the edges) instead of the whole graph — a subscriber that wants the new content re-reads `GET /api/graph/{project}`. The current editor's `ModelEvent` interface does not declare `graph`; its handler does `JSON.parse(...) as ModelEvent` with no runtime validation, so the field is present in the payload but simply unread — safe today, and there for a future graph page. |
 
-An operation is `{kind,id,view?,lang?,value,author?}`. `kind` is `project`, `entity`, `relation`, `relationType`, `text`, `view`, or `placement`. `project` replaces the `project.json` manifest and is counted in registry dirt; its `contractVersion` may not be changed by an op. `value` is the whole object; `null` removes a placement only (its `id` is the placed entity). Registry records and the manifest cannot be removed. `text` requires `lang`; `view` and `placement` require `view`. `view` replaces the view's properties without `placements` (they change one by one). The one op `placement` covers blocks and containers alike: a placement is `{entity, parent, x, y, width, height, styleId?, override?, template?, collapsed?}` (`CONTRACT.md` §8.2). The host sets `author: human` on browser ops; the agent path sets `author: agent`. A changed reference is `{kind,id,view?,lang?,author}`. `dirty` is `{registry:[Ref],views:{<view-id>:[Ref]}}`, with the last author per touched object. The conflict unit is an object: later accepted replacement wins, with no field merge. The SSE event is emitted after the batch is in the journal. A view is loaded lazily when first read or changed.
+An operation is `{kind,id,view?,lang?,value,author?}`. `kind` is `project`, `entity`, `relation`, `text`, `view`, or `placement`; any other `kind` (`relationType` was one before `ADR_20260930-6`) is refused. `project` replaces the `project.json` manifest and is counted in registry dirt; its `contractVersion` may not be changed by an op. `value` is the whole object; `null` removes a placement only (its `id` is the placed entity). Registry records and the manifest cannot be removed. `text` requires `lang`; `view` and `placement` require `view`. `view` replaces the view's properties without `placements` (they change one by one). The one op `placement` covers blocks and containers alike: a placement is `{entity, parent, x, y, width, height, styleId?, override?, template?, collapsed?}` (`CONTRACT.md` §8.2). The host sets `author: human` on browser ops; the agent path sets `author: agent`. A changed reference is `{kind,id,view?,lang?,author}`. `dirty` is `{registry:[Ref],views:{<view-id>:[Ref]}}`, with the last author per touched object. The conflict unit is an object: later accepted replacement wins, with no field merge. The SSE event is emitted after the batch is in the journal. A view is loaded lazily when first read or changed.
 
 Every batch is checked against the contract, whoever sends it — editor, agent, sync
 ([`ADR_20260926`](adr/ADR_20260926_core_one-rule-set-for-every-writer.md), `core/rules.go`). The
@@ -211,8 +210,9 @@ entity and the `evidence[]` of a relation the shape of `CONTRACT.md` §3–§4 (
 a `ref`, `symbol` or `via`, one entry per language), the top-level `codeRef`, `symbol` and `via` of
 the earlier form are refused ([`ADR_20260930-4`](adr/ADR_20260930-4_contract_code-shape-now-multi-language-later.md));
 a relation existing ends and
-a type from `relation-types.json`; a text field a value `{v, origin, at}` with a non-empty `v`,
-under a key with the prefix `e_`, `r_`, `rt_` or `v_` (`c_` and `z_` are gone); a placement an
+a `type` that is a word without spaces (the set of types is open: the dictionary describes the known
+ones, `CONTRACT.md` §5); a text field a value `{v, origin, at}` with a non-empty `v`,
+under a key with the prefix `e_`, `r_` or `v_` (`c_`, `z_` and `rt_` are gone); a placement an
 existing entity, a `parent` (`null` for none) that is a container placement of the same view — an
 entity whose kind is a container kind — not itself or its own content, and an `override` with only
 the fields of the table in `CONTRACT.md` §11.6; a removed container placement must not leave
@@ -305,10 +305,10 @@ offers the same interactively.
 exits with `1` when anything is found. It does not serve. Besides the texts, axes and `code[].ref`
 (a file that is gone; a malformed `code[]` or `evidence[]` entry; an authored entity with a `name`
 text in no language) it reports the old shape (a project below contract 5, a view with `zones`/`nodes`, a
-`containers.json`, `c_`/`z_` text keys, a bare string instead of a text value, `kinds` or `zone`
-in a workspace file, `styleId` on a relation type, a top-level `codeRef`/`symbol`/`via`, the `name`
-of an authored entity in `entities.json`), entity kinds and relation types outside the
-dictionary («не из словаря»), placements that break §8.2, and styles without `forKinds`
+`containers.json`, `relation-types.json`, `c_`/`z_`/`rt_` text keys, a bare string instead of a text value,
+`kinds` or `zone` in a workspace file, a top-level `codeRef`/`symbol`/`via`, the `name`
+of an authored entity in `entities.json`), entity kinds and relation types (of the relations)
+outside the dictionary («не из словаря»), placements that break §8.2, and styles without `forKinds`
 («без типа»).
 
 `migrate` rewrites the workspace of a contract-3 project to contract 5 — and one already at 5 in
@@ -320,6 +320,12 @@ what already has the current shape is left alone. All new contents are computed 
 whole workspace converted; `--dry-run` writes nothing and exits `1` when anything would change.
 `--drop-untyped-styles` also drops the workspace styles that name no type (`forKinds`); the
 placements and edges of the views that named them lose the `styleId`, and the report says which.
+A project's `relation-types.json` and `rt_` texts are removed
+([`ADR_20260930-6`](adr/ADR_20260930-6_contract_relation-types-live-in-the-dictionary.md)); a `visibility`
+that differs from the dictionary's, a name or description that differs from it, and a type the dictionary
+does not have are written to the **workspace** `kinds.json` (the entry of a type in group
+`relations.project`, or the workspace's own entry changed in place) and listed in the report — the default
+visibility is one per workspace, the first project that recorded one wins and the report names the others.
 The language of the code realizations comes from the `extractors` of the `.semaps` file — when all of
 a project's extractors have one language; otherwise `migrate` stops and asks (nothing is written).
 It does not serve and needs no running host.
@@ -633,8 +639,7 @@ editor's sandbox land in the same file.
 | `get_entity` | `id` \| `symbol` (of any entry of its `code[]`) | the entity as in `entities.json`; an authored entity — which has no `name` there — comes with its `name` taken from the text (main language, else another, else the id) |
 | `find_entities` | `query?` (substring of name, symbol, namespace, id), `kind?`, `status?`, `limit?` = 50 | `{total, entities}`, each as `get_entity` gives it |
 | `get_relations` | `entity?`, `direction?` = `both` \| `out` \| `in`, `type?` (a prefix ending with `.` matches `holds.`), `status?`, `limit?` = 200 | `{total, relations}` |
-| `get_relation_types` | — | `{relationTypes}`: the vocabulary with `visibility` |
-| `get_kinds` | `lang?` = `ru`, `project?` | The dictionary (§2.1b) in one language: `{groups:[{id,name,description?,kinds:[{id,name,description?,container,style?}]}], relationGroups:[{id,name,description?,types:[{id,name,description?,style?}]}], unknown:{kinds, relationTypes}}`. `container: true` marks a kind whose entity is a frame that holds other placements; `style` is the base style of a kind or relation type (empty: the style whose id is the type, `CONTRACT.md` §11.5). `unknown` lists what the project's entities and `relation-types.json` use that the dictionary lacks. The agent reads it before `add_entity`, `add_container` and `add_relation_type` to choose a kind or type that exists |
+| `get_kinds` | `lang?` = `ru`, `project?` | The dictionary (§2.1b) in one language: `{groups:[{id,name,description?,kinds:[{id,name,description?,container,style?}]}], relationGroups:[{id,name,description?,types:[{id,name,description?,style?,visibility?}]}], unknown:{kinds, relationTypes}}`. `container: true` marks a kind whose entity is a frame that holds other placements; `style` is the base style of a kind or relation type (empty: the style whose id is the type, `CONTRACT.md` §11.5); `visibility` is a relation type's default on a view that decided nothing (absent: the view decides, `CONTRACT.md` §8.5). `unknown` lists the kinds of the project's entities and the types of its relations that the dictionary lacks. The agent reads it before `add_entity`, `add_container` and `add_relation` to choose a kind or type that exists; a type of its own it adds by writing an entry into the workspace `kinds.json` (there is no tool for that) |
 | `get_view` | `view` (a view id, or a container reference `v_ops#e_a` for that subtree only), `project?` | The text answer has two parts: first the canvas block (`core.Canvas.Describe`, the same lines as in `layout_guide`: units, axes, grid and that the host does not snap, block/container default and minimum sizes, caption strip, padding, gaps), then the data as JSON, also the structured content: `{view:{id,project,axis,axisInherited?,relations,routing,scope?}, placements, edges, unsaved}`. `axis` is the view's own, else `project.defaultAxis` with `axisInherited: true` (CONTRACT §8.1). `placements` is a tree: each has `entity`, `name`, `kind` (of its entity), `container` (the kind is a container kind), `parent` (`null` at the top), absolute rectangle `x,y,width,height` (default size when the file has none), `styleId`, `override`, `template`, `collapsed`; a container also has `children` (its placements, nested the same way; `[]` when it holds nothing). `edges` are the lines the view shows, each `{id,from,to,type,styleId?,override?,routing?}`: its own `edges` list when it has the key, else relations by CONTRACT §8.5. `unsaved` lists the view's unsaved objects with their authors |
 | `layout_guide` | — | Markdown for working on a view: how to look (`get_view`, `render_view`), each view tool, the workflow (sample → decide → apply in steps → check → say what is unsaved, give the link), `requestedByHuman`, no grid snapping, and the canvas block. No JSON file format in it. Project-independent; the canvas numbers come from `canvas.json` (§2.1a) |
 | `render_view` | `project?`, `view?` \| `ref?` (`view#entity`), `rect?` (`{x,y,width,height}`), `scale?` = 1 (0.25–4), `maxSize?` = 1600 (cap 4096) | a picture from the editor open on the project, over the bridge of §3.4 (`render=1`, `POST /api/render/{id}`): an MCP `ImageContent` (`image/png`) plus a text with the problems as lines `kind: text (ids)` or `no problems found`, the model rectangle drawn (the content bounds of the view/container, or `rect`) and a note that it is the editor's unsaved state. No editor subscribed: error «no editor is open on this project: open the view in the editor (`/app/#<view>`) and repeat»; no answer in 20 s: an error saying the editor did not answer. Read-only, no `requestedByHuman` |
@@ -652,8 +657,7 @@ editor's sandbox land in the same file.
 |---|---|---|
 | `set_text` | `lang`, `key`, `field` (`name`, `title`, `description`, `doc`, `fromLabel`, `toLabel`), `value` | one field, authored |
 | `add_entity` | `name`, `kind`, `id?`, `description?`, `lang?` (default: the project's first language) | authored entity (`origin: authored`, `status: present`) **with its name as a `name` text in `lang`** in the same batch — there is no name in `entities.json` (CONTRACT §7.1); a rename later is `set_text` with `field: name`, the id stays; the id is minted from the name unless given; an existing id is refused; `kind` is a kind of `get_kinds`, a kind outside it is allowed and listed by `check`; `description` goes as a text; what an entity may be is checked by `Apply` (§3.4) as for every writer. Place it with `place_entities` (a container: `add_container`) |
-| `add_relation` | `from`, `to`, `type` | authored relation; both entities and the type must exist; the id comes back |
-| `add_relation_type` | `id`, `visibility?` | authored type of the project (`origin`, default visibility); its name and description are the dictionary's (`kinds.json`, `relationGroups`) and its style is a style with the type in `forKinds`, not a field of the project's file (`CONTRACT.md` §5, §11.5) |
+| `add_relation` | `from`, `to`, `type` | authored relation; both entities must exist and the type is a word without spaces (the set of types is open: an id of `get_kinds` or one of the agent's own, listed by `check` until `kinds.json` describes it); the id comes back |
 | `set_relation_visible` | `view`, `relation`, `visible` | the relation into or out of `relations.except` against the default (CONTRACT §8.5) |
 | `confirm_rename` | `entity` + `symbol` \| `relation` + `member` | answers «переименование?» of sync: the old entity's realization (the entry of its `code[]` with a symbol; an entity realized in several languages is refused) takes the new `symbol`, the old member relation the new `via.member` in its `evidence[]`; then `sync` again |
 | `extract` | `extractor?` | runs the extractors of the `.semaps` file one by one → `{runs: [{run, extractor, project}]}` |

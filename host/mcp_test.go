@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"os"
 	"path/filepath"
+	"reflect"
 	"strings"
 	"testing"
 
@@ -18,11 +19,10 @@ func mcpSession(t *testing.T) (*mcp.ClientSession, string) {
 	ws := t.TempDir()
 	dir := filepath.Join(ws, "projects", "p")
 	files := map[string]string{
-		"project.json":        `{"id":"p","contractVersion":5}`,
-		"entities.json":       `{"entities":[{"id":"e_a","name":"A","kind":"class","origin":"code","code":[{"lang":"csharp","symbol":"N.A"}]},{"id":"e_b","name":"B","kind":"interface","origin":"code","code":[{"lang":"csharp","symbol":"N.B"}]}]}`,
-		"relations.json":      `{"relations":[{"id":"r_a_b_implements","from":"e_a","to":"e_b","type":"implements","origin":"code","status":"present"}]}`,
-		"relation-types.json": `{"relationTypes":[{"id":"implements","origin":"code","visibility":"visible"},{"id":"call","origin":"authored"}]}`,
-		"views/v.view.json":   `{"id":"v_main","axis":"axis_layer","placements":[]}`,
+		"project.json":      `{"id":"p","contractVersion":5}`,
+		"entities.json":     `{"entities":[{"id":"e_a","name":"A","kind":"class","origin":"code","code":[{"lang":"csharp","symbol":"N.A"}]},{"id":"e_b","name":"B","kind":"interface","origin":"code","code":[{"lang":"csharp","symbol":"N.B"}]}]}`,
+		"relations.json":    `{"relations":[{"id":"r_a_b_implements","from":"e_a","to":"e_b","type":"implements","origin":"code","status":"present"}]}`,
+		"views/v.view.json": `{"id":"v_main","axis":"axis_layer","placements":[]}`,
 	}
 	for name, body := range files {
 		p := filepath.Join(dir, filepath.FromSlash(name))
@@ -71,7 +71,7 @@ func TestMCPListsAllTools(t *testing.T) {
 		have[tl.Name] = true
 	}
 	for _, n := range []string{"list_projects", "list_views", "get_entity", "find_entities", "get_relations",
-		"get_text", "sync_preview", "doctor", "set_text", "add_entity", "add_relation", "add_relation_type",
+		"get_text", "sync_preview", "doctor", "set_text", "add_entity", "add_relation",
 		"set_relation_visible", "confirm_rename", "extract", "sync", "place_entities", "get_view", "move_elements", "resize_elements", "set_parent", "add_container", "fit_container", "align_elements",
 		"get_kinds", "layout_guide", "render_view", "create_view", "create_project"} {
 		if !have[n] {
@@ -128,7 +128,7 @@ func TestMCPRefusalsAreToolErrors(t *testing.T) {
 	for name, args := range map[string]map[string]any{
 		"set_text":       {"lang": "ru", "key": "r_a_b_implements", "field": "name", "value": "x"},
 		"place_entities": {"view": "v_main", "entities": []any{map[string]any{"entity": "e_a", "x": 1, "y": 1}}},
-		"add_relation":   {"from": "e_a", "to": "e_b", "type": "nope"},
+		"add_relation":   {"from": "e_a", "to": "e_b", "type": "no pe"},
 	} {
 		res, text := call(t, cs, name, args)
 		if !res.IsError {
@@ -158,14 +158,14 @@ func TestMCPRefusalsAreToolErrors(t *testing.T) {
 func TestMCPStructuredContentIsAnObject(t *testing.T) {
 	cs, _ := mcpSession(t)
 	for name, args := range map[string]map[string]any{
-		"list_projects":      {},
-		"list_views":         {},
-		"get_relation_types": {},
-		"find_entities":      {},
-		"get_relations":      {},
-		"get_entity":         {"id": "e_a"},
-		"get_text":           {"lang": "ru", "key": "e_a"},
-		"doctor":             {},
+		"list_projects": {},
+		"list_views":    {},
+		"get_kinds":     {},
+		"find_entities": {},
+		"get_relations": {},
+		"get_entity":    {"id": "e_a"},
+		"get_text":      {"lang": "ru", "key": "e_a"},
+		"doctor":        {},
 	} {
 		res, text := call(t, cs, name, args)
 		if res.IsError {
@@ -315,7 +315,7 @@ func TestMCPGetKinds(t *testing.T) {
 			}
 		}
 		RelationGroups []struct {
-			Types []struct{ ID, Name string }
+			Types []struct{ ID, Name, Visibility string }
 		} `json:"relationGroups"`
 		Unknown struct {
 			Kinds         []string
@@ -337,14 +337,18 @@ func TestMCPGetKinds(t *testing.T) {
 	if container, ok := kinds["class"]; !ok || container {
 		t.Errorf("class is a kind but no container: %v", kinds["class"])
 	}
-	types := map[string]bool{}
+	types, visibility := map[string]bool{}, map[string]string{}
 	for _, g := range out.RelationGroups {
 		for _, ty := range g.Types {
-			types[ty.ID] = true
+			types[ty.ID], visibility[ty.ID] = true, ty.Visibility
 		}
 	}
 	if !types["implements"] || !types["call"] {
 		t.Errorf("the relation types of the dictionary are missing: %v", types)
+	}
+	// the default visibility of a type is the dictionary's; an authored type says none: the view decides
+	if visibility["uses"] != "hidden" || visibility["implements"] != "visible" || visibility["call"] != "" {
+		t.Errorf("visibility of relation types: %v", visibility)
 	}
 	if len(out.Unknown.Kinds) != 0 || len(out.Unknown.RelationTypes) != 0 {
 		t.Errorf("nothing of the fixture is outside the dictionary: %+v", out.Unknown)
@@ -356,5 +360,16 @@ func TestMCPGetKinds(t *testing.T) {
 	_, text = call(t, cs, "get_kinds", map[string]any{"lang": "en"})
 	if !strings.Contains(text, `"cell"`) || !strings.Contains(text, `"gadget"`) {
 		t.Fatalf("workspace kind or unknown kind missing: %s", text)
+	}
+
+	// the set of relation types is open: a relation of a type the dictionary lacks is listed, not refused
+	call(t, cs, "add_relation", map[string]any{"from": "e_a", "to": "e_b", "type": "homemade"})
+	call(t, cs, "add_relation", map[string]any{"from": "e_b", "to": "e_a", "type": "call"})
+	_, text = call(t, cs, "get_kinds", map[string]any{"lang": "en"})
+	if err := json.Unmarshal([]byte(text), &out); err != nil {
+		t.Fatalf("get_kinds: %v\n%s", err, text)
+	}
+	if !reflect.DeepEqual(out.Unknown.RelationTypes, []string{"homemade"}) {
+		t.Fatalf("unknown relation types: %v", out.Unknown.RelationTypes)
 	}
 }

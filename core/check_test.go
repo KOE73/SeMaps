@@ -29,8 +29,10 @@ func TestCheckContainersKindsAndShape(t *testing.T) {
 		{"id":"e_a","name":"A","kind":"class"},
 		{"id":"e_w","name":"W","kind":"weird"},
 		{"id":"e_w2","name":"W2","kind":"weird"}]}`)
-	writeFile(t, filepath.Join(proj, "relations.json"), `{"contractVersion":5,"relations":[]}`)
-	writeFile(t, filepath.Join(proj, "relation-types.json"), `{"contractVersion":5,"relationTypes":[{"id":"call"},{"id":"homemade","styleId":"edge.homemade"}]}`)
+	writeFile(t, filepath.Join(proj, "relations.json"), `{"contractVersion":5,"relations":[
+		{"id":"r_a_w_call","from":"e_a","to":"e_w","type":"call","origin":"authored"},
+		{"id":"r_a_w_homemade","from":"e_a","to":"e_w","type":"homemade","origin":"authored"}]}`)
+	writeFile(t, filepath.Join(proj, "relation-types.json"), `{"contractVersion":5,"relationTypes":[{"id":"call"}]}`)
 	writeFile(t, filepath.Join(proj, "containers.json"), `{"contractVersion":3,"containers":[]}`)
 	writeFile(t, filepath.Join(proj, "views", "v_main.view.json"), `{
 		"id":"v_main","project":"p","axis":"axis_a",
@@ -68,7 +70,8 @@ func TestCheckContainersKindsAndShape(t *testing.T) {
 		"p: views/v_old.view.json: `zones` — форма контракта 3, нужен 5",
 		"text.ru.json: c_grp",
 		"containers.json — контейнер это сущность",
-		"relation-types.json: homemade: `styleId`",
+		"relation-types.json — тип связи описан в словаре",
+		"text.ru.json: rt_call — ключи rt_ упразднены",
 	} {
 		if !strings.Contains(byKind["форма контракта"], want) {
 			t.Errorf("old shape: want %q in %q", want, byKind["форма контракта"])
@@ -77,7 +80,7 @@ func TestCheckContainersKindsAndShape(t *testing.T) {
 	if got := byKind["тип не из словаря"]; got != `p: "weird": e_w, e_w2;` {
 		t.Errorf("kinds outside the dictionary: %q", got)
 	}
-	if got := byKind["тип связи не из словаря"]; !strings.Contains(got, `"homemade"`) || strings.Contains(got, `"call"`) {
+	if got := byKind["тип связи не из словаря"]; got != `p: "homemade": r_a_w_homemade;` {
 		t.Errorf("relation types outside the dictionary: %q", got)
 	}
 	got := byKind["размещение"]

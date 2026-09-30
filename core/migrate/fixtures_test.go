@@ -13,7 +13,7 @@ var fixtureNames = []string{"shapes_demo", "overview", "nmfn_like"}
 // fixtureOptions: the one extractor of the nmfn_like project is a C# one, as
 // its .semaps file would say (the language of code realizations is never guessed).
 func fixtureOptions(dry bool) Options {
-	return Options{DryRun: dry, Extractors: []Extractor{{Project: "nmfn", Language: "csharp"}}}
+	return Options{DryRun: dry, DefaultKinds: defaultKinds(), Extractors: []Extractor{{Project: "nmfn", Language: "csharp"}}}
 }
 
 // checkV5Shape verifies invariants every migrated fixture must satisfy.
@@ -29,6 +29,9 @@ func checkV5Shape(t *testing.T, ws string) {
 		}
 		if exists(ws, "projects/"+id+"/containers.json") {
 			t.Errorf("%s: containers.json still there", id)
+		}
+		if exists(ws, "projects/"+id+"/relation-types.json") {
+			t.Errorf("%s: relation-types.json still there", id)
 		}
 		ents := map[string]bool{}
 		for _, eid := range entityIDs(t, ws, id) {
@@ -101,7 +104,7 @@ func checkV5Shape(t *testing.T, ws string) {
 				continue
 			}
 			for _, k := range keysOf(t, tr, "entries") {
-				if strings.HasPrefix(k, "z_") || strings.HasPrefix(k, "c_") {
+				if strings.HasPrefix(k, "z_") || strings.HasPrefix(k, "c_") || strings.HasPrefix(k, "rt_") {
 					t.Errorf("%s: text key %s remains", tf, k)
 				}
 			}
@@ -196,7 +199,7 @@ func TestShapesDemo(t *testing.T) {
 	fixedNow(t)
 	ws := copyFixture(t, "shapes_demo")
 	orig := snapshot(t, ws)
-	rep := run(t, ws, Options{})
+	rep := run(t, ws, Options{DefaultKinds: defaultKinds()})
 	p := rep.Projects[0]
 	if p.Zones != 3 || p.ZoneEntities != 3 || p.ContainerEntities != 0 || p.Placements != 11 ||
 		p.Overrides != 3 || p.ContainsAdded != 0 || p.TextsMoved != 3 || p.TextsRemoved != 3 ||
@@ -207,11 +210,41 @@ func TestShapesDemo(t *testing.T) {
 	base := "projects/shapes_demo/"
 
 	// Files whose only change is the version are edited textually.
-	for _, f := range []string{"project.json", "relations.json", "relation-types.json"} {
+	for _, f := range []string{"project.json", "relations.json"} {
 		want := strings.Replace(orig[base+f], `"contractVersion": 3`, `"contractVersion": 5`, 1)
 		if after[base+f] != want {
 			t.Errorf("%s is not a minimal textual edit:\n%s", f, after[base+f])
 		}
+	}
+
+	// Relation types are the dictionary's (ADR_20260930-6): the file and the rt_ texts are
+	// gone; the names and descriptions the project wrote itself, which differ from the
+	// dictionary's, became the entries of the workspace kinds.json. Nothing is said of
+	// visibility: neither the project nor the dictionary had one for these types.
+	if _, ok := after[base+"relation-types.json"]; ok || !contains(rep.Projects[0].Removed, base+"relation-types.json") {
+		t.Error("relation-types.json must be removed")
+	}
+	if !contains(rep.Files, "kinds.json") || rep.Projects[0].RelationTypeTexts != 3 {
+		t.Errorf("kinds.json must be written, three rt_ texts dropped: %v, %d", rep.Files, rep.Projects[0].RelationTypeTexts)
+	}
+	kinds := readTree(t, ws, "kinds.json")
+	if got := js(t, kinds, "contractVersion"); got != "5" || strings.Join(keysOf(t, kinds), ",") != "contractVersion,relationGroups" {
+		t.Errorf("kinds.json: %s", js(t, kinds))
+	}
+	if str(t, kinds, "relationGroups", 0, "id") != "relations.project" || arrLen(t, kinds, "relationGroups", 0, "types") != 3 {
+		t.Fatalf("group: %s", js(t, kinds, "relationGroups"))
+	}
+	call := at(t, kinds, "relationGroups", 0, "types", 0)
+	if got := js(t, call); got != `{"id":"call","name":{"ru":"вызов","en":"calls"},`+
+		`"description":{"ru":"Одна сторона обращается к другой и ждёт ответа.","en":"One part calls another and waits for the answer."}}` {
+		t.Errorf("call: %s", got)
+	}
+	if got := str(t, kinds, "relationGroups", 0, "types", 2, "name", "ru"); got != "чтение и запись" {
+		t.Errorf("storage name: %s", got)
+	}
+	// the loader reads the workspace with this dictionary: the entry replaced the default's whole
+	if !anyContains(rep.WorkspaceNotes, "тип связи «call» → kinds.json, группа relations.project: запись словаря по умолчанию заменена целиком; name.ru «вызывает» → «вызов»") {
+		t.Errorf("notes: %v", rep.WorkspaceNotes)
 	}
 
 	view := readTree(t, ws, base+"views/v_main.view.json")
@@ -302,7 +335,7 @@ func TestShapesDemo(t *testing.T) {
 func TestOverview(t *testing.T) {
 	fixedNow(t)
 	ws := copyFixture(t, "overview")
-	rep := run(t, ws, Options{})
+	rep := run(t, ws, Options{DefaultKinds: defaultKinds()})
 	p := rep.Projects[0]
 	// 15 authored entities and 5 groups: 20 names become texts
 	if p.Zones != 5 || p.ZoneEntities != 5 || p.Placements != 20 || p.Overrides != 5 || p.TextsMoved != 0 || p.TextsRemoved != 5 ||
@@ -337,8 +370,21 @@ func TestOverview(t *testing.T) {
 	}
 	// The entity descriptions were not touched.
 	text := readTree(t, ws, "projects/overview/text.ru.json")
-	if !has(at(t, text, "entries"), "e_editor") || !has(at(t, text, "entries"), "rt_calls") {
-		t.Error("entity and relation-type texts must stay")
+	if !has(at(t, text, "entries"), "e_editor") || has(at(t, text, "entries"), "rt_calls") {
+		t.Error("entity texts must stay, the texts of relation types must go")
+	}
+	// The four relation types the project declared are not in the dictionary and had a
+	// visibility: they are written to the workspace kinds.json, named as the project named them.
+	kinds := readTree(t, ws, "kinds.json")
+	types := at(t, kinds, "relationGroups", 0, "types")
+	if str(t, kinds, "relationGroups", 0, "id") != "relations.project" || len(types.([]any)) != 4 {
+		t.Fatalf("kinds.json: %s", js(t, kinds))
+	}
+	if got := js(t, kinds, "relationGroups", 0, "types", 0); got != `{"id":"calls","visibility":"visible","name":{"ru":"вызывает"}}` {
+		t.Errorf("calls: %s", got)
+	}
+	if !anyContains(rep.WorkspaceNotes, "тип связи «runs» → kinds.json, группа relations.project: типа нет в словаре; visibility не задана → visible; name.ru «запускает»") {
+		t.Errorf("notes: %v", rep.WorkspaceNotes)
 	}
 }
 
@@ -444,7 +490,7 @@ func TestNmfnLike(t *testing.T) {
 		t.Error("containers.json must be removed")
 	}
 
-	// Texts: moved to the entity keys in both languages, rt_contains added.
+	// Texts: moved to the entity keys in both languages; the rt_ text is gone.
 	ru := readTree(t, ws, base+"text.ru.json")
 	en := readTree(t, ws, base+"text.en.json")
 	if got := str(t, ru, "entries", "e_onnx_core", "doc", "v"); got != "Почему ядро вынесено отдельно.\n\nСм. ADR." {
@@ -459,14 +505,8 @@ func TestNmfnLike(t *testing.T) {
 	if got := js(t, en, "entries", "e_onnx_2", "description", "fromHash"); got != `"a3f19c01"` {
 		t.Errorf("provenance must move as it is: %s", got)
 	}
-	if got := js(t, ru, "entries", "rt_contains"); got != `{"name":{"v":"содержит","at":"2026-09-30T12:00:00Z","origin":"authored"}}` {
-		t.Errorf("rt_contains ru: %s", got)
-	}
-	if got := str(t, en, "entries", "rt_contains", "name", "v"); got != "contains" {
-		t.Errorf("rt_contains en: %s", got)
-	}
 	// Key position: the entity entry takes the place of its first source key.
-	if got := keysOf(t, ru, "entries"); !reflect.DeepEqual(got, []string{"e_onnx_2", "e_graph", "e_onnx_core", "e_deco", "e_session", "v_assemblies", "rt_depends", "e_sub", "e_odd", "e_teal", "rt_contains"}) {
+	if got := keysOf(t, ru, "entries"); !reflect.DeepEqual(got, []string{"e_onnx_2", "e_graph", "e_onnx_core", "e_deco", "e_session", "v_assemblies", "e_sub", "e_odd", "e_teal"}) {
 		t.Errorf("ru entries: %v", got)
 	}
 	if got := str(t, en, "entries", "v_assemblies", "name", "v"); got != "Assemblies <&>" {
@@ -491,9 +531,30 @@ func TestNmfnLike(t *testing.T) {
 	if got := str(t, rels, "relations", 3, "id"); got != "r_graph_tracker_contains" {
 		t.Errorf("relation: %s", got)
 	}
-	rt := readTree(t, ws, base+"relation-types.json")
-	if got := js(t, rt, "relationTypes", 4); got != `{"id":"contains","origin":"authored","visibility":"hidden"}` {
-		t.Errorf("relation type: %s", got)
+	// The relation types: the file is gone. `implements` was recorded without a visibility
+	// (the view decided) where the dictionary says visible, `depends` was named "зависит"
+	// where the dictionary says "зависит от", the containment relations made from the zones
+	// are hidden by default; `depends` visible, `holds.one` visible and `injects` hidden are
+	// the dictionary's own and are not written.
+	if exists(ws, base+"relation-types.json") || !contains(p.Removed, base+"relation-types.json") {
+		t.Error("relation-types.json must be removed")
+	}
+	kinds := readTree(t, ws, "kinds.json")
+	var typeIDs []string
+	for _, tv := range at(t, kinds, "relationGroups", 0, "types").([]any) {
+		typeIDs = append(typeIDs, str(t, tv, "id"))
+	}
+	if !reflect.DeepEqual(typeIDs, []string{"implements", "depends", "contains"}) {
+		t.Errorf("types written to kinds.json: %v", typeIDs)
+	}
+	if has(at(t, kinds, "relationGroups", 0, "types", 0), "visibility") {
+		t.Errorf("implements must have no visibility: %s", js(t, kinds, "relationGroups", 0, "types", 0))
+	}
+	if got := str(t, kinds, "relationGroups", 0, "types", 1, "name", "ru"); got != "зависит" || str(t, kinds, "relationGroups", 0, "types", 1, "visibility") != "visible" {
+		t.Errorf("depends: %s", js(t, kinds, "relationGroups", 0, "types", 1))
+	}
+	if got := str(t, kinds, "relationGroups", 0, "types", 2, "visibility"); got != "hidden" {
+		t.Errorf("contains: %s", js(t, kinds, "relationGroups", 0, "types", 2))
 	}
 
 	// Views.

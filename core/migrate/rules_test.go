@@ -221,7 +221,8 @@ func TestContainsRelationsAndExceptions(t *testing.T) {
 		"projects/p/views/v_e.view.json": strings.Replace(nestedView(`"relations":{"default":"visible","except":["r_x"]},`), `"id":"v"`, `"id":"v_e"`, 1),
 		"projects/p/views/v_f.view.json": strings.Replace(nestedView(`"relations":{"default":"visible"},`), `"id":"v"`, `"id":"v_f"`, 1),
 	}))
-	rep := run(t, ws, Options{})
+	opt := Options{DefaultKinds: defaultKinds()}
+	rep := run(t, ws, opt)
 	p := rep.Projects[0]
 	if p.ContainsAdded != 2 {
 		t.Fatalf("contains added %d", p.ContainsAdded)
@@ -233,10 +234,14 @@ func TestContainsRelationsAndExceptions(t *testing.T) {
 	if got := js(t, rels, "relations", 2); got != `{"id":"r_c_a_contains","from":"e_c","to":"e_a","type":"contains","origin":"authored"}` {
 		t.Errorf("relation 2: %s", got)
 	}
-	// An existing `contains` type stays as it is.
-	rt := readTree(t, ws, "projects/p/relation-types.json")
-	if arrLen(t, rt, "relationTypes") != 1 {
-		t.Errorf("relation types %s", js(t, rt))
+	// The project's `contains` type had no visibility (the views decide) where the
+	// dictionary says visible: the entry of the workspace kinds.json says nothing either.
+	if exists(ws, "projects/p/relation-types.json") {
+		t.Error("relation-types.json must be removed")
+	}
+	kinds := readTree(t, ws, "kinds.json")
+	if got := str(t, kinds, "relationGroups", 0, "types", 0, "id"); got != "contains" || has(at(t, kinds, "relationGroups", 0, "types", 0), "visibility") {
+		t.Errorf("contains in kinds.json: %s", js(t, kinds))
 	}
 	except := `["r_p_c_contains_2","r_c_a_contains"]`
 	v := readTree(t, ws, "projects/p/views/v_a.view.json")
@@ -262,7 +267,7 @@ func TestContainsRelationsAndExceptions(t *testing.T) {
 		t.Errorf("v_f relations %s", got)
 	}
 	// Second run: nothing.
-	if run(t, ws, Options{}).Changed() {
+	if run(t, ws, opt).Changed() {
 		t.Error("not idempotent")
 	}
 }
@@ -276,20 +281,32 @@ func TestContainsTypeVisibility(t *testing.T) {
 		}))
 	}
 	// A hidden type: no exception even if the view says nothing.
+	opt := Options{DefaultKinds: defaultKinds()}
 	ws := mk(`{"relationTypes":[{"id":"contains","origin":"code","visibility":"hidden"}]}`)
-	run(t, ws, Options{})
+	run(t, ws, opt)
 	if got := js(t, readTree(t, ws, "projects/p/views/v.view.json"), "relations"); got != `{"default":"hidden"}` {
 		t.Errorf("hidden type: %s", got)
 	}
-	// A visible type beats the view default.
+	// the dictionary says visible: the hidden default of the project becomes an entry of the workspace kinds.json
+	if got := str(t, readTree(t, ws, "kinds.json"), "relationGroups", 0, "types", 0, "visibility"); got != "hidden" {
+		t.Errorf("hidden type in kinds.json: %s", got)
+	}
+	// A visible type beats the view default; it is the dictionary's own, nothing is written.
 	ws = mk(`{"relationTypes":[{"id":"contains","origin":"code","visibility":"visible"}]}`)
-	run(t, ws, Options{})
+	run(t, ws, opt)
 	if got := js(t, readTree(t, ws, "projects/p/views/v.view.json"), "relations", "except"); got != `["r_p_c_contains","r_c_a_contains"]` {
 		t.Errorf("visible type: %s", got)
 	}
+	if exists(ws, "kinds.json") {
+		t.Error("the dictionary already says visible: no kinds.json needed")
+	}
 }
 
-func TestContainsTypeAndTextAdded(t *testing.T) {
+// The containment relations made from zones and containers.json are hidden by
+// default, as they always were: the type `contains` gets the visibility `hidden`
+// in the workspace kinds.json, named and described as the dictionary does — no
+// text is written for it in any language.
+func TestContainsTypeHiddenByDefaultWhenMade(t *testing.T) {
 	fixedNow(t)
 	ws := mkws(t, baseProject(map[string]string{
 		"projects/p/project.json":      `{"id":"p","title":"P","contractVersion":3,"languages":["ru","en","de"]}`,
@@ -298,25 +315,24 @@ func TestContainsTypeAndTextAdded(t *testing.T) {
 		"projects/p/text.de.json":      `{"contractVersion":3,"language":"de","entries":{}}`,
 		"projects/p/views/v.view.json": nestedView(""),
 	}))
-	rep := run(t, ws, Options{})
-	rt := readTree(t, ws, "projects/p/relation-types.json")
-	if got := js(t, rt, "relationTypes", 0); got != `{"id":"contains","origin":"authored","visibility":"hidden"}` {
-		t.Errorf("type %s", got)
+	rep := run(t, ws, Options{DefaultKinds: defaultKinds()})
+	if exists(ws, "projects/p/relation-types.json") {
+		t.Error("relation-types.json must not be made")
 	}
-	ru := readTree(t, ws, "projects/p/text.ru.json")
-	if got := js(t, ru, "entries", "rt_contains", "name"); got != `{"v":"содержит","at":"2026-09-30T12:00:00Z","origin":"authored"}` {
-		t.Errorf("ru %s", got)
+	kinds := readTree(t, ws, "kinds.json")
+	if got := js(t, kinds, "relationGroups", 0, "types", 0, "visibility"); got != `"hidden"` || str(t, kinds, "relationGroups", 0, "types", 0, "id") != "contains" {
+		t.Errorf("type %s", js(t, kinds))
 	}
-	en := readTree(t, ws, "projects/p/text.en.json")
-	if got := str(t, en, "entries", "rt_contains", "name", "v"); got != "contains" {
-		t.Errorf("en %s", got)
+	if got := str(t, kinds, "relationGroups", 0, "types", 0, "name", "ru"); got != "содержит" {
+		t.Errorf("the name is the dictionary's: %s", got)
 	}
-	de := readTree(t, ws, "projects/p/text.de.json")
-	if has(at(t, de, "entries"), "rt_contains") {
-		t.Error("de must get no text")
+	for _, lang := range []string{"ru", "en", "de"} {
+		if has(at(t, readTree(t, ws, "projects/p/text."+lang+".json"), "entries"), "rt_contains") {
+			t.Errorf("%s: no text for a relation type", lang)
+		}
 	}
-	if !anyContains(rep.Projects[0].Notes, "text.de.json") {
-		t.Errorf("notes %v", rep.Projects[0].Notes)
+	if !anyContains(rep.WorkspaceNotes, "тип связи «contains» → kinds.json, группа relations.project: запись словаря по умолчанию заменена целиком; visibility visible → hidden") {
+		t.Errorf("notes %v", rep.WorkspaceNotes)
 	}
 	// The hidden type keeps the views alone.
 	if has(readTree(t, ws, "projects/p/views/v.view.json"), "relations") {
@@ -758,19 +774,21 @@ func TestMissingRegistryFilesAreCreated(t *testing.T) {
 
 // A relation type has no style of its own in the project (ADR_20260930-2): the
 // old `styleId` is dropped and named in the report for a human.
-func TestRelationTypeStyleIdIsDropped(t *testing.T) {
+// The style a project once gave a relation type goes with the file; the report
+// names it, so that a human can name the type in `forKinds` of that style.
+func TestRelationTypeStyleIdIsReported(t *testing.T) {
 	ws := mkws(t, baseProject(map[string]string{
 		"projects/p/relation-types.json": `{"relationTypes":[{"id":"security","origin":"authored","styleId":"edge.security"},{"id":"call","origin":"authored"}]}`,
 	}))
-	rep := run(t, ws, Options{})
-	got := js(t, readTree(t, ws, "projects/p/relation-types.json"))
-	if got != `{"relationTypes":[{"id":"security","origin":"authored"},{"id":"call","origin":"authored"}]}` {
-		t.Errorf("relation-types.json: %s", got)
+	opt := Options{DefaultKinds: defaultKinds()}
+	rep := run(t, ws, opt)
+	if exists(ws, "projects/p/relation-types.json") {
+		t.Error("relation-types.json must be removed")
 	}
-	if out := printed(rep); !strings.Contains(out, `тип связи security: styleId "edge.security" снят`) {
+	if out := printed(rep); !strings.Contains(out, `тип связи security: styleId "edge.security" был в relation-types.json`) {
 		t.Errorf("report: %s", out)
 	}
-	if again := run(t, ws, Options{}); again.Changed() {
+	if again := run(t, ws, opt); again.Changed() {
 		t.Error("the second run changes something")
 	}
 }

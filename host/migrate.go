@@ -16,9 +16,10 @@ import (
 //
 // The language of code realizations comes from the extractors of the .semaps
 // file (extractors), the ids of the shipped styles from the tool's own
-// styles.json; dropUntyped is --drop-untyped-styles.
+// styles.json, the relation types the dictionary already describes from its
+// kinds.json; dropUntyped is --drop-untyped-styles.
 func runMigrate(w io.Writer, workspace string, dryRun, dropUntyped bool, extractors []extractorConf) int {
-	opt := migrate.Options{DryRun: dryRun, DropUntypedStyles: dropUntyped}
+	opt := migrate.Options{DryRun: dryRun, DropUntypedStyles: dropUntyped, DefaultKinds: defaultKinds()}
 	if b, err := bundled.ReadFile("defaults/styles.json"); err == nil {
 		opt.DefaultStyles = b
 	}

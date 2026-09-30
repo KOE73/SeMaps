@@ -8,7 +8,7 @@ import { nameIsText, type NamedEntity } from "../../model/entityName.js";
  * `value` the whole placement or null to take it off the view.
  */
 export interface ModelOp {
-  kind: "entity" | "relation" | "relationType" | "text" | "view" | "placement";
+  kind: "entity" | "relation" | "text" | "view" | "placement";
   id: string;
   view?: string;
   lang?: string;
@@ -108,16 +108,11 @@ export function diffModel(
     }
   }
 
-  // A relation's type is the registry's (relations.json), and the project must
-  // list it (relation-types.json): both are written with the batch that changes it.
+  // A relation's type is a string on the relation (relations.json); what the type
+  // means is the dictionary's, the project lists none (CONTRACT.md §5).
   const registryOps: ModelOp[] = [];
   const beforeRelations = new Map((before.bundle?.relations?.relations ?? []).map((r) => [r.id, r]));
-  const knownTypes = new Set((before.bundle?.relationTypes?.relationTypes ?? []).map((t) => t.id));
-  const afterTypes = new Map((after.bundle?.relationTypes?.relationTypes ?? []).map((t) => [t.id, t]));
   const rawRelationById = new Map(rawRelations.map((r) => [String(r.id), r]));
-  for (const [id, type] of afterTypes) {
-    if (!knownTypes.has(id)) registryOps.push({ kind: "relationType", id, value: { ...type } });
-  }
   for (const r of after.bundle?.relations?.relations ?? []) {
     const old = beforeRelations.get(r.id);
     const raw = rawRelationById.get(r.id);

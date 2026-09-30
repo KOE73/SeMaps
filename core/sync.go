@@ -1,7 +1,7 @@
 package core
 
-// Sync reconciles one project's registry (entities.json, relations.json,
-// relation-types.json) with extractor facts. The rules are normative in
+// Sync reconciles one project's registry (entities.json, relations.json) with
+// extractor facts. The rules are normative in
 // docs/EXTRACTOR.md §5; why they are what they are:
 // ADR_20260923-9_core_sync-symbol-mapping-and-containment.
 //
@@ -55,7 +55,7 @@ type SyncReport struct {
 	Ambiguous []string `json:"ambiguous"` // неоднозначно: an entity without `symbol` fits several symbols, or the reverse
 	Renames   []string `json:"renames"`   // переименование?: gone and new in one file, same kind
 	Gone      []string `json:"gone"`      // лишнее: marked `status: missing`
-	Added     []string `json:"added"`     // не хватает: new entities, relations, relation types
+	Added     []string `json:"added"`     // не хватает: new entities and relations
 	Changed   []string `json:"changed"`   // изменилось: fields updated, entities adopted, returned from missing
 
 	Written []string `json:"written"` // files written, workspace-relative
@@ -133,7 +133,7 @@ func (r *SyncReport) Print(w io.Writer) {
 // mark. Dropped by kind, never by extractor: symbols of kind "method", edges
 // of kind "calls"/"constructs"/"overrides", and "contains"/"implements" edges
 // with a method at either end. `calls` in edgeKinds is likewise ignored:
-// nothing is ever marked missing for it and no relation type is minted.
+// nothing is ever marked missing for it.
 func dropMethodsAndCalls(facts *Facts) *Facts {
 	out := *facts
 	out.Symbols = make([]Symbol, 0, len(facts.Symbols))
@@ -229,7 +229,7 @@ func Sync(model *Model, facts *Facts, opt SyncOptions) (*SyncReport, error) {
 		covered[k] = true
 	}
 
-	ents, rels, types := working.registries["entity"], working.registries["relation"], working.registries["relationType"]
+	ents, rels := working.registries["entity"], working.registries["relation"]
 
 	// ------------------------------------------------ registry must be sane
 	taken := map[string]bool{}   // every entity id, any origin
@@ -588,58 +588,14 @@ func Sync(model *Model, facts *Facts, opt SyncOptions) (*SyncReport, error) {
 		}
 	}
 
-	// ------------------------------------------------ relation types
-	declared := map[string]bool{}
-	for _, t := range types.items {
-		declared[t.str("id")] = true
-	}
-	used := map[string]bool{}
-	for _, r := range rels.items {
-		if r.str("origin") == "code" {
-			used[relationType(r)] = true
-		}
-	}
-
-	// Organic types
-	for _, t := range structuralTypes {
-		if used[t] && !declared[t] {
-			o := newObject()
-			o.set("id", t)
-			o.set("origin", "code")
-			o.set("visibility", "visible")
-			types.items = append(types.items, o)
-			types.dirty = true
-			rep.Added = append(rep.Added, "relation-types.json: "+t)
-		}
-	}
-
-	// Member relation types derived from holds/uses edges
-	for _, typeID := range []string{
-		"holds.one", "holds.optional", "holds.many", "holds.many.ro", "holds.keyed", "holds.keyed.ro",
-		"holds.one.internal", "holds.optional.internal", "holds.many.internal", "holds.many.ro.internal",
-		"holds.keyed.internal", "holds.keyed.ro.internal",
-		"uses", "injects",
-	} {
-		if used[typeID] && !declared[typeID] {
-			o := newObject()
-			o.set("id", typeID)
-			o.set("origin", "code")
-			visibility := "visible"
-			if strings.HasSuffix(typeID, ".internal") || typeID == "uses" || typeID == "injects" {
-				visibility = "hidden"
-			}
-			o.set("visibility", visibility)
-			types.items = append(types.items, o)
-			types.dirty = true
-			rep.Added = append(rep.Added, "relation-types.json: "+typeID)
-		}
-	}
-
+	// A relation type needs no record: it is a string on the relation, and what
+	// it means — name, base style, default visibility — is the dictionary's
+	// (CONTRACT §5, §6).
 	if opt.DryRun {
 		return rep, nil
 	}
 	var ops []Op
-	for _, kind := range []string{"entity", "relation", "relationType"} {
+	for _, kind := range []string{"entity", "relation"} {
 		reg := working.registries[kind]
 		if !reg.dirty {
 			continue

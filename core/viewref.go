@@ -128,6 +128,15 @@ func oldPlacementShape(p *object) string {
 // project directory that still has a containers.json: a container is an entity now.
 var containersFileError = fmt.Sprintf("containers.json — контейнер это сущность с типом-контейнером, файл упразднён в контракте %d (`semaps migrate`, ADR_20260927-6)", ContractVersion)
 
+// RelationTypesFile is the file a project had before relation types moved to
+// the dictionary; it is not read.
+const RelationTypesFile = "relation-types.json"
+
+// relationTypesFileError is the answer of the loader and of semaps check to a
+// project directory that still has a relation-types.json: a relation type is a
+// string on the relation and everything about it is in the dictionary.
+var relationTypesFileError = fmt.Sprintf("%s — тип связи описан в словаре (kinds.json, relationGroups), у проекта своего перечня типов нет: файл упразднён в контракте %d (`semaps migrate`, ADR_20260930-6)", RelationTypesFile, ContractVersion)
+
 // oldShapeError is the one text of the loader and of semaps check about a view
 // of an old contract (ADR_20260927-3).
 func oldShapeError(file, what string) string {

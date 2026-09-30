@@ -11,14 +11,18 @@ import (
 )
 
 // editWorkspace: one project with two entities, a code relation with via, a
-// type and a view with one node.
+// view with one node, and a kinds.json with one container kind and two relation
+// types: holds.many, visible, and secret, hidden.
 func editWorkspace(t *testing.T) string {
 	t.Helper()
 	ws := t.TempDir()
 	dir := filepath.Join(ws, "projects", "p")
 	files := map[string]string{
-		"project.json":     `{"id":"p","contractVersion":5}`,
-		"../../kinds.json": `{"groups":[{"id":"t","name":{"ru":"т"},"kinds":[{"id":"group","name":{"ru":"группа"},"container":true}]}]}`,
+		"project.json": `{"id":"p","contractVersion":5}`,
+		"../../kinds.json": `{"groups":[{"id":"t","name":{"ru":"т"},"kinds":[{"id":"group","name":{"ru":"группа"},"container":true}]}],
+  "relationGroups":[{"id":"r","name":{"ru":"р"},"types":[
+    {"id":"holds.many","visibility":"visible","name":{"ru":"держит много"}},
+    {"id":"secret","visibility":"hidden","name":{"ru":"тайная"}}]}]}`,
 		"entities.json": `{"entities":[
   {"id":"e_a","name":"A","kind":"class","origin":"code","code":[{"lang":"csharp","symbol":"N.A"}]},
   {"id":"e_b","name":"B","kind":"class","origin":"code","code":[{"lang":"csharp","symbol":"N.B"}]},
@@ -30,9 +34,6 @@ func editWorkspace(t *testing.T) string {
 		"relations.json": `{"contractVersion":5,"relations":[
   {"id":"r_a_b_items_item","from":"e_a","to":"e_b","type":"holds.many","origin":"code","status":"present",
    "evidence":[{"lang":"csharp","symbol":"N.A","via":{"member":"items","path":["item"],"cardinality":"many","mutability":"mutable"}}]}]}`,
-		"relation-types.json": `{"contractVersion":5,"relationTypes":[
-  {"id":"holds.many","origin":"code","visibility":"visible"},
-  {"id":"call","origin":"authored"}]}`,
 		"views/main.view.json": `{"id":"v_main","project":"p","axis":"axis_layer","relations":{"default":"visible"},
   "placements":[{"entity":"e_core","parent":null,"x":0,"y":0,"width":500,"height":500},
    {"entity":"e_a","parent":null,"x":10,"y":20}]}`,
@@ -89,7 +90,7 @@ func TestSetTextWritesAuthoredValueAndDropsTranslation(t *testing.T) {
 		t.Fatalf("doc keeps its translation: %v", doc.Entries["e_a"]["doc"])
 	}
 	// A new language file is created.
-	if err := SetText(ws, "", "en", "rt_call", "name", "call"); err != nil {
+	if err := SetText(ws, "", "en", "v_main", "name", "Main"); err != nil {
 		t.Fatal(err)
 	}
 }
@@ -100,6 +101,7 @@ func TestSetTextRefusals(t *testing.T) {
 	refused(t, SetText(ws, "", "ru", "e_a", "name", "x"), "not translated")
 	refused(t, SetText(ws, "", "ru", "e_a", "note", "x"), "field")
 	refused(t, SetText(ws, "", "ru", "q_a", "name", "x"), "prefix")
+	refused(t, SetText(ws, "", "ru", "rt_call", "name", "x"), "prefix") // a relation type is named by the dictionary
 	refused(t, SetText(ws, "", "ru", "e_a", "doc", "  "), "empty")
 }
 
@@ -113,14 +115,17 @@ func TestAddRelationMintsIDAndChecksEnds(t *testing.T) {
 	refused(t, err, "already")
 	_, err = AddRelation(ws, "", "e_a", "e_nope", "call")
 	refused(t, err, "no entity")
-	_, err = AddRelation(ws, "", "e_a", "e_b", "flows")
-	refused(t, err, "no relation type")
+	_, err = AddRelation(ws, "", "e_a", "e_b", "two words")
+	refused(t, err, "a word without spaces")
+	// the set of types is open: a type the dictionary does not know is a type
+	if _, err = AddRelation(ws, "", "e_a", "e_b", "flows"); err != nil {
+		t.Fatal(err)
+	}
 
 	var rels struct{ Relations []map[string]any }
 	readAs(t, ws, "relations.json", &rels)
-	last := rels.Relations[len(rels.Relations)-1]
-	if last["origin"] != "authored" || last["type"] != "call" {
-		t.Fatalf("added: %v", last)
+	if n := len(rels.Relations); n != 3 || rels.Relations[1]["origin"] != "authored" || rels.Relations[1]["type"] != "call" || rels.Relations[2]["type"] != "flows" {
+		t.Fatalf("added: %v", rels.Relations)
 	}
 	// The code relation kept its via, in its evidence.
 	if ev, _ := rels.Relations[0]["evidence"].([]any); len(ev) != 1 || ev[0].(map[string]any)["via"] == nil {
@@ -128,13 +133,29 @@ func TestAddRelationMintsIDAndChecksEnds(t *testing.T) {
 	}
 }
 
-func TestAddRelationType(t *testing.T) {
+// The default visibility of a relation is its type's in the dictionary
+// (CONTRACT §6, §8.5): showing a relation of a hidden type is an exception.
+func TestSetRelationVisibleFollowsTheTypesDictionaryVisibility(t *testing.T) {
 	ws := editWorkspace(t)
-	if err := AddRelationType(ws, "", "security", "hidden"); err != nil {
+	id, err := AddRelation(ws, "", "e_a", "e_x", "secret")
+	if err != nil {
 		t.Fatal(err)
 	}
-	refused(t, AddRelationType(ws, "", "security", ""), "exists")
-	refused(t, AddRelationType(ws, "", "x", "shown"), "visibility")
+	if err := SetRelationVisible(ws, "", "v_main", id, true); err != nil {
+		t.Fatal(err)
+	}
+	var v map[string]any
+	readAs(t, ws, "views/main.view.json", &v)
+	if ex := v["relations"].(map[string]any)["except"].([]any); len(ex) != 1 || ex[0] != id {
+		t.Fatalf("except %v: showing a relation of a hidden type is the exception", ex)
+	}
+	if err := SetRelationVisible(ws, "", "v_main", id, false); err != nil {
+		t.Fatal(err)
+	}
+	readAs(t, ws, "views/main.view.json", &v)
+	if ex := v["relations"].(map[string]any)["except"].([]any); len(ex) != 0 {
+		t.Fatalf("except %v: hiding it again is the default", ex)
+	}
 }
 
 func TestSetRelationVisibleKeepsExceptTheSmallerSide(t *testing.T) {
