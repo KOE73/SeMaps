@@ -11,6 +11,7 @@ import (
 	"bytes"
 	"encoding/json"
 	"path/filepath"
+	"slices"
 	"strings"
 )
 
@@ -28,10 +29,16 @@ func (after *Model) validate(before *Model, ops []Op) error {
 		seen[k] = true
 		var err error
 		switch op.Kind {
-		case "entity":
-			err = after.checkEntity(before, op.ID)
-		case "relation":
-			err = after.checkRelation(before, op.ID)
+		case "entity", "relation":
+			// what the batch leaves out of the registry, it withdrew
+			switch {
+			case findByID(after.registries[op.Kind].items, op.ID) == nil:
+				err = after.checkWithdrawn(op.Kind, op.ID)
+			case op.Kind == "entity":
+				err = after.checkEntity(before, op.ID)
+			default:
+				err = after.checkRelation(before, op.ID)
+			}
 		case "text":
 			err = after.checkText(before, op.Lang, op.ID)
 		case "placement":
@@ -41,6 +48,60 @@ func (after *Model) validate(before *Model, ops []Op) error {
 		}
 		if err != nil {
 			return err
+		}
+	}
+	return nil
+}
+
+// checkWithdrawn: a record withdrawn by the batch is named nowhere (ADR_20260930-8).
+// A withdrawn entity stands on no view and is no end of a relation; a withdrawn
+// relation is in no view's `edges` or `relations.except`. Every view of the
+// project is looked at, not only those the batch touched: the same id may stand
+// on a view the editor never opened.
+func (after *Model) checkWithdrawn(kind, id string) error {
+	if kind == "entity" {
+		for _, r := range after.registries["relation"].items {
+			if r.str("from") == id || r.str("to") == id {
+				return refuse("cannot withdraw entity %s: relation %s still has it as an end; withdraw the relation in the same batch", id, r.str("id"))
+			}
+		}
+	}
+	files, _ := filepath.Glob(filepath.Join(after.dir, "views", "*.view.json"))
+	for _, file := range files {
+		doc, err := loadDoc(file)
+		if err != nil {
+			return err
+		}
+		view := doc.str("id")
+		if view == "" {
+			view = strings.TrimSuffix(filepath.Base(file), ".view.json")
+		}
+		if v := after.views[view]; v != nil {
+			doc = v.doc // the batch's own state of the view wins over the file
+		}
+		if kind == "entity" {
+			for _, p := range viewItems(doc, "placements") {
+				if p.str("entity") == id {
+					return refuse("cannot withdraw entity %s: it still stands on %s; remove its placement in the same batch", id, view)
+				}
+			}
+			continue
+		}
+		for _, e := range viewItems(doc, "edges") {
+			if e.str("id") == id {
+				return refuse("cannot withdraw relation %s: %s still has an entry for it in edges; remove it in the same batch", id, view)
+			}
+		}
+		var rel struct {
+			Except []string `json:"except"`
+		}
+		if raw, ok := doc.vals["relations"]; ok {
+			_ = json.Unmarshal(raw, &rel)
+		}
+		for _, x := range rel.Except {
+			if x == id {
+				return refuse("cannot withdraw relation %s: %s still names it in relations.except; remove it in the same batch", id, view)
+			}
 		}
 	}
 	return nil
@@ -263,28 +324,102 @@ func (after *Model) checkPlacement(before *Model, view, id string) error {
 			return refuse("placement %s on %s: %v", id, view, err)
 		}
 	}
+	for _, field := range []string{"styleId", "template"} {
+		if raw, ok := o.vals[field]; ok && changed(old, o, field) {
+			var s string
+			if json.Unmarshal(raw, &s) != nil || strings.TrimSpace(s) == "" {
+				return refuse("placement %s on %s: %s is a non-empty string; to drop it, take the field out (CONTRACT §8.2)", id, view, field)
+			}
+		}
+	}
+	if raw, ok := o.vals["collapsed"]; ok && changed(old, o, "collapsed") {
+		var b bool
+		if json.Unmarshal(raw, &b) != nil {
+			return refuse("placement %s on %s: collapsed is true or false (CONTRACT §8.2)", id, view)
+		}
+		if e := findByID(entities, id); e == nil || !after.kinds.IsContainer(e.str("kind")) {
+			return refuse("placement %s on %s: collapsed belongs to a container placement; %s is not a container (CONTRACT §8.2)", id, view, id)
+		}
+	}
 	return nil
 }
 
-// checkViewEdges: an `override` of an edge entry of the view's own `edges`
-// has only the fields of the edge table (CONTRACT §8.5, §11.6). Entries that
-// the batch did not change are not looked at.
+// checkRouting: a `routing` is one of the modes of CONTRACT §11.3.
+func checkRouting(raw json.RawMessage, on string) error {
+	var s string
+	if json.Unmarshal(raw, &s) != nil || !slices.Contains(RoutingModes, s) {
+		return refuse("%s: routing %s: one of %s (CONTRACT §11.3)", on, string(raw), strings.Join(RoutingModes, ", "))
+	}
+	return nil
+}
+
+// checkViewEdges: an entry of the view's `edges` refers to a relation of the
+// registry and holds only what is its own — styleId, override, routing
+// (CONTRACT §8.5). A new or changed entry has no from/to/type, names a relation
+// that exists after the batch, has at least one own field and an id that no other
+// entry has; its `override` has only the fields of the edge table (§11.6).
+// Entries that the batch did not change are not looked at.
 func (after *Model) checkViewEdges(before *Model, view string) error {
 	if after.views[view] == nil {
 		return nil
 	}
+	// the view's own routing, when the batch changed it
+	if raw, ok := after.views[view].doc.vals["routing"]; ok {
+		var was json.RawMessage
+		if doc := before.viewDocNoCache(view); doc != nil {
+			was = doc.vals["routing"]
+		}
+		if !bytes.Equal(was, raw) {
+			if err := checkRouting(raw, "view "+view); err != nil {
+				return err
+			}
+		}
+	}
 	old := map[string]string{}
 	if doc := before.viewDocNoCache(view); doc != nil {
 		for _, e := range viewItems(doc, "edges") {
-			old[e.str("id")] = string(e.vals["override"])
+			b, _ := e.MarshalJSON()
+			old[e.str("id")] = string(b)
 		}
 	}
-	for _, e := range viewItems(after.views[view].doc, "edges") {
-		if prev, ok := old[e.str("id")]; ok && prev == string(e.vals["override"]) {
+	entries := viewItems(after.views[view].doc, "edges")
+	count := map[string]int{}
+	for _, e := range entries {
+		count[e.str("id")]++
+	}
+	relations := after.registries["relation"]
+	for _, e := range entries {
+		id := e.str("id")
+		b, _ := e.MarshalJSON()
+		if prev, ok := old[id]; ok && prev == string(b) {
 			continue
 		}
-		if err := CheckEdgeOverride(e.vals["override"]); err != nil {
-			return refuse("edge %s on %s: %v", e.str("id"), view, err)
+		if id == "" {
+			return refuse("an entry of edges on %s has no id: it names a relation of the registry (CONTRACT §8.5)", view)
+		}
+		for _, key := range []string{"from", "to", "type"} {
+			if _, ok := e.vals[key]; ok {
+				return refuse("edge %s on %s: `%s` is the relation's, not the view's: an entry of edges is {id, styleId?, override?, routing?} (CONTRACT §8.5)", id, view, key)
+			}
+		}
+		if relations == nil || findByID(relations.items, id) == nil {
+			return refuse("edge %s on %s: no relation %s in the registry; a line is a relation, add it with add_relation (CONTRACT §8.5)", id, view, id)
+		}
+		if count[id] > 1 {
+			return refuse("edge %s is listed twice on %s", id, view)
+		}
+		override, hasOverride := e.vals["override"]
+		hasOverride = hasOverride && string(override) != "null"
+		if e.str("styleId") == "" && e.str("routing") == "" && !hasOverride {
+			return refuse("edge %s on %s has none of styleId, override, routing: an entry with nothing of its own is not written (CONTRACT §8.5)", id, view)
+		}
+		if raw, ok := e.vals["routing"]; ok {
+			if err := checkRouting(raw, "edge "+id+" on "+view); err != nil {
+				return err
+			}
+		}
+		if err := CheckEdgeOverride(override); err != nil {
+			return refuse("edge %s on %s: %v", id, view, err)
 		}
 	}
 	return nil

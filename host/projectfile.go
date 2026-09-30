@@ -55,6 +55,10 @@ const (
 	DefaultMcpFormat      = "facts"
 	DefaultMcpListCap     = 50
 	DefaultMcpLimit       = 200
+	// DefaultMcpViewFullMax: get_view without `detail` answers in full for a view
+	// (or a container's subtree) of at most this many placements, else as a tree.
+	// A constant, not a `.semaps` setting: nothing has needed it changed.
+	DefaultMcpViewFullMax = 60
 )
 
 // withDefaults fills in every key `mcpSettings` left zero-valued.

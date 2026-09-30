@@ -26,6 +26,10 @@ type ProjectReport struct {
 	EvidenceConverted int // relations whose via/evidence took the current shape
 	RelationTypeTexts int // `rt_` texts removed: a relation type is named by the dictionary
 
+	// ViewEdges: a view whose `edges` was a full list became an overlay on the
+	// registry (ADR_20260930-7); one line per view.
+	ViewEdges []string
+
 	Files   []string // changed files (relative to the workspace)
 	Removed []string // deleted files
 
@@ -122,6 +126,10 @@ func (r *Report) Print(w io.Writer) {
 		fmt.Fprintf(w, "  сущностей: codeRef/symbol → code[]: %d; связей: via/evidence в новой форме: %d\n", p.CodeEntries, p.EvidenceConverted)
 		if p.RelationTypeTexts > 0 {
 			fmt.Fprintf(w, "  текстов rt_ убрано (имя и описание типа связи — в словаре kinds.json): %d\n", p.RelationTypeTexts)
+		}
+		if len(p.ViewEdges) > 0 {
+			fmt.Fprintf(w, "  виды с полным списком edges → перекрытие реестра (видимость решает relations, в edges только styleId, override, routing): %d\n", len(p.ViewEdges))
+			printList(w, "    ", p.ViewEdges)
 		}
 		fmt.Fprintf(w, "  версия: %s → %d\n", from, targetVersion)
 		if len(p.Files) > 0 {

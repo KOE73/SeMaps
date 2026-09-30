@@ -120,6 +120,10 @@ func Workspace(workspace string, opt Options) (*Report, error) {
 	var outs []fileOut
 	for _, pm := range projects {
 		pm.dropStyleRefs(dropped)
+		// after the dictionary is decided: the visibility of a relation type is read from it
+		if err := pm.viewEdges(); err != nil {
+			return nil, err
+		}
 		o, err := pm.collect()
 		if err != nil {
 			return nil, err

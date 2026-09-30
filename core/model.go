@@ -241,7 +241,9 @@ func (m *Model) apply(ops []Op, author string, record bool) ([]Ref, error) {
 		}
 		ref := Ref{Kind: op.Kind, ID: op.ID, View: op.View, Lang: op.Lang, Author: op.Author}
 		refs = append(refs, ref)
-		if op.View == "" {
+		if _, reg := modelRegistries[op.Kind]; reg && bytes.Equal(bytes.TrimSpace(op.Value), []byte("null")) {
+			// a withdrawn record is not unsaved: withdraw took it off the list
+		} else if op.View == "" {
 			m.dirty.Registry = upsertRef(m.dirty.Registry, ref)
 		} else {
 			m.dirty.Views[op.View] = upsertRef(m.dirty.Views[op.View], ref)
@@ -307,8 +309,11 @@ func (m *Model) applyOne(op Op) error {
 		return nil
 	}
 	if spec, ok := modelRegistries[op.Kind]; ok {
-		if op.View != "" || bytes.Equal(bytes.TrimSpace(op.Value), []byte("null")) {
-			return refuse("registry %s cannot be removed or scoped to a view", op.Kind)
+		if op.View != "" {
+			return refuse("registry %s cannot be scoped to a view", op.Kind)
+		}
+		if bytes.Equal(bytes.TrimSpace(op.Value), []byte("null")) {
+			return m.withdraw(op)
 		}
 		o := newObject()
 		if err := json.Unmarshal(op.Value, o); err != nil {
@@ -443,6 +448,50 @@ func (m *Model) applyOne(op Op) error {
 	return nil
 }
 
+// withdraw removes a record created in the unsaved working state, as if it had
+// never been created (ADR_20260930-8): from the registry, from the dirty list,
+// and with it every text under its id in the loaded catalogues (a text has no
+// life of its own: the same batch takes it away). A record of the saved file is
+// never removed. Withdrawing what is not there is not an error: a journal replay
+// after a partial Discard meets it. Whether a view or a relation still names
+// the record is the batch rule's (checkWithdrawn), not this one's.
+func (m *Model) withdraw(op Op) error {
+	r := m.registries[op.Kind]
+	if r.saved[op.ID] {
+		return refuse("%s %s is in the saved registry: a saved record is never removed; only one created in the unsaved state can be withdrawn (API.md §3.4)", op.Kind, op.ID)
+	}
+	for i, item := range r.items {
+		if item.str("id") == op.ID {
+			r.items = append(r.items[:i:i], r.items[i+1:]...)
+			break
+		}
+	}
+	keep := m.dirty.Registry[:0:0]
+	for _, ref := range m.dirty.Registry {
+		if ref.ID == op.ID && (ref.Kind == op.Kind || ref.Kind == "text") {
+			continue
+		}
+		keep = append(keep, ref)
+	}
+	m.dirty.Registry = keep
+	// the registry is dirty while something else of its kind is still unsaved
+	r.dirty = false
+	for _, ref := range keep {
+		if ref.Kind == op.Kind {
+			r.dirty = true
+		}
+	}
+	for _, doc := range m.texts {
+		if entries, err := child(doc, "entries"); err == nil {
+			if _, ok := entries.vals[op.ID]; ok {
+				entries.del(op.ID)
+				doc.set("entries", entries)
+			}
+		}
+	}
+	return nil
+}
+
 func (m *Model) Dirty() DirtySummary {
 	m.mu.Lock()
 	defer m.mu.Unlock()
@@ -494,6 +543,7 @@ func (m *Model) Save() error {
 	m.dirty = DirtySummary{Views: map[string][]Ref{}}
 	for _, r := range m.registries {
 		r.dirty = false
+		r.markSaved()
 	}
 	return nil
 }

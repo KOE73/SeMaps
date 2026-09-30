@@ -181,6 +181,8 @@ type findNodeIn struct {
 type getViewIn struct {
 	Project string `json:"project,omitempty"`
 	View    string `json:"view" jsonschema:"a view id, or a container reference view#e_x to read only that subtree"`
+	Detail  string `json:"detail,omitempty" jsonschema:"full: every placement nested in its container, and the visible lines; tree: containers only, each with its rectangle and blocks (the count of blocks lying directly in it), the blocks outside any container in full, and lines (a count) instead of the list. Default: full for a small view or subtree, tree for a big one — the answer says when it chose tree"`
+	Hidden  bool   `json:"hidden,omitempty" jsonschema:"also list, as hiddenEdges, the relations with both ends placed that the rule hides; default false"`
 }
 
 type kindsIn struct {
@@ -210,6 +212,28 @@ type setParentIn struct {
 	RequestedByHuman bool     `json:"requestedByHuman" jsonschema:"true only when a human asked for this layout in so many words"`
 }
 
+// setPlacementIn: only the fields present in the call change; null drops a field
+// (which of them are present is read from the raw arguments, since a pointer
+// cannot tell absent from null).
+type setPlacementIn struct {
+	Project          string          `json:"project,omitempty"`
+	View             string          `json:"view,omitempty" jsonschema:"view id; may be left out when elements are references view#e_x"`
+	Elements         []string        `json:"elements" jsonschema:"entity ids of placements (blocks or containers), or references view#e_x"`
+	StyleID          *string         `json:"styleId,omitempty" jsonschema:"the placement's style; null drops it (the style of the entity's kind applies)"`
+	Override         *map[string]any `json:"override,omitempty" jsonschema:"a partial style of these placements: fill, border {color, dash}, header {fill}, icon {glyph}; null drops it"`
+	Template         *string         `json:"template,omitempty" jsonschema:"the content template of these placements; null drops it"`
+	Collapsed        *bool           `json:"collapsed,omitempty" jsonschema:"containers only: collapsed to the header; null drops it"`
+	RequestedByHuman bool            `json:"requestedByHuman" jsonschema:"true only when a human asked for this in so many words"`
+}
+
+type setRoutingIn struct {
+	Project          string   `json:"project,omitempty"`
+	View             string   `json:"view" jsonschema:"view id"`
+	Routing          *string  `json:"routing" jsonschema:"bezier, orthogonal, tree-horizontal or tree-vertical; null removes the choice"`
+	Relations        []string `json:"relations,omitempty" jsonschema:"relation ids: set the shape of only these lines on this view; without it the whole view's own routing is set"`
+	RequestedByHuman bool     `json:"requestedByHuman" jsonschema:"true only when a human asked for this in so many words"`
+}
+
 type fitContainerIn struct {
 	Project          string `json:"project,omitempty"`
 	View             string `json:"view,omitempty" jsonschema:"view id; may be left out when container is a reference view#e_x"`
@@ -220,15 +244,16 @@ type fitContainerIn struct {
 type addContainerIn struct {
 	Project          string  `json:"project,omitempty"`
 	View             string  `json:"view"`
-	Entity           string  `json:"entity,omitempty" jsonschema:"an existing entity of a container kind to place; else give name and kind"`
-	Name             string  `json:"name,omitempty" jsonschema:"a new authored entity: its name (the container's caption), written as a text in the project's first language; the id is minted"`
-	Kind             string  `json:"kind,omitempty" jsonschema:"kind of the new entity: a container kind of get_kinds; default group"`
+	Entity           string  `json:"entity" jsonschema:"the container's entity id: e_ then lowercase letters, digits, underscore. An existing entity of a container kind is placed as it is; one that does not exist is created with this id, from name and kind. The id is never made from a name"`
+	Name             string  `json:"name,omitempty" jsonschema:"only for an entity that does not exist yet (then required): its name, the container's caption, written as a text in the project's first language. Refused for an existing entity: change a name with set_text"`
+	Kind             string  `json:"kind,omitempty" jsonschema:"kind of a new entity: a container kind of get_kinds; default group. For an existing entity it may only repeat its own kind"`
 	Parent           string  `json:"parent,omitempty" jsonschema:"entity id of the container placement it goes into; empty for none"`
 	StyleID          string  `json:"styleId,omitempty"`
 	X                float64 `json:"x"`
 	Y                float64 `json:"y"`
-	Width            float64 `json:"width"`
-	Height           float64 `json:"height"`
+	Width            float64 `json:"width,omitempty" jsonschema:"required unless contents is true; with contents, a minimum"`
+	Height           float64 `json:"height,omitempty" jsonschema:"required unless contents is true; with contents, a minimum"`
+	Contents         bool    `json:"contents,omitempty" jsonschema:"also place what the container directly contains (its contains relations), one level, in a grid; the container is sized to hold it. A container already on the view gets only its missing members"`
 	RequestedByHuman bool    `json:"requestedByHuman"`
 }
 
@@ -285,7 +310,7 @@ func (s *mcpServer) server() *mcp.Server {
 	mcp.AddTool(srv, read("get_relations", "Relations of an entity (or all), by direction, type, status."), s.getRelations)
 	mcp.AddTool(srv, read("get_kinds", "The dictionary (kinds.json): groups of entity kinds with names, descriptions, whether a kind is a container, its base style; groups of relation types with names, descriptions, base style, default visibility; unknown lists the project's kinds and relation types outside it."), s.getKinds)
 	mcp.AddTool(srv, read("get_text", "Text entry of a key in one language."), s.getText)
-	mcp.AddTool(srv, read("get_view", "A view with geometry as a tree: placements, containers with what lies in them (children), absolute rectangles, visible lines, what is unsaved. A container reference view#e_x reads only its subtree. The answer starts with the canvas block: units, grid, default and minimum sizes, caption strip, padding, gaps."), s.getView)
+	mcp.AddTool(srv, read("get_view", getViewDescription), s.getView)
 	mcp.AddTool(srv, read("doctor", "Extractors and runtimes found, and the model check of the workspace."), s.doctor)
 	mcp.AddTool(srv, read("sync_preview", "What sync would change, writing nothing (= semaps sync --dry-run)."), s.syncPreview)
 	s.registerGraphTools(srv, settings.Tools, settings.Description)
@@ -307,7 +332,12 @@ func (s *mcpServer) server() *mcp.Server {
 	mcp.AddTool(srv, write("move_elements", "Move placements by dx/dy or to x/y; a container goes with everything inside it. Only when a human asked: requestedByHuman."), s.moveElements)
 	mcp.AddTool(srv, write("resize_elements", "Set width/height of placements, not below the minimum nor, for a container, below its content. requestedByHuman."), s.resizeElements)
 	mcp.AddTool(srv, write("set_parent", "Put placements into a container (parent: its entity id), or out of any (parent: null); coordinates untouched. requestedByHuman."), s.setParent)
-	mcp.AddTool(srv, write("add_container", "Place a container on a view: an existing entity of a container kind, or a new authored entity (name, kind: a container kind, default group), with a rectangle, optional parent and style — entity and placement in one step. requestedByHuman."), s.addContainer)
+	mcp.AddTool(srv, write("set_placement", "Change the look of placements already on a view: styleId, override (fill, border, header fill, icon), template, collapsed (containers only); only the fields you give change, null drops one; geometry and parent untouched. requestedByHuman."), s.setPlacement)
+	mcp.AddTool(srv, write("set_routing", "Set the shape of lines on a view: routing bezier, orthogonal, tree-horizontal or tree-vertical, null to remove the choice. Without relations it is the view's own routing; with relations (ids) only those lines' own routing on this view. The routed path is never stored. requestedByHuman."), s.setRouting)
+	mcp.AddTool(srv, write("add_container", "Place a container on a view by its entity id (required, e_<name>): an existing entity of a container kind is placed as it is (no name, no other kind); an id that does not exist yet creates an authored entity with that id, name (required) and kind (a container kind, default group) — entity and placement in one step, with a rectangle, optional parent and style. The id is never made from a name. "+
+		"With contents: true it also places what the container directly contains — its `contains` relations, one level, members that are missing left out — in a plain grid (default block size and gap, on the grid step, by name), sized to hold them; width and height are then only a minimum. "+
+		"A member of a container kind comes as an empty frame (call again for it); a member already on the view is not moved and is named in the answer; a container already on the view gets only the members it lacks, under its lowest child. "+
+		"Membership is a fact of the registry, the grid only a starting arrangement to be adjusted. One step: it applies whole or not at all. requestedByHuman."), s.addContainer)
 	mcp.AddTool(srv, write("fit_container", "Fit a container to its content (caption strip and padding); ancestors grow if they no longer hold it. requestedByHuman."), s.fitContainer)
 	mcp.AddTool(srv, write("align_elements", "Align elements to the first one: left, right, top, bottom, width, height. requestedByHuman."), s.alignElements)
 	mcp.AddTool(srv, write("create_view", viewToolDescriptions["create_view"].at(level)), s.createView)
@@ -1201,12 +1231,13 @@ func (s *mcpServer) getView(_ context.Context, _ *mcp.CallToolRequest, in getVie
 	if err != nil {
 		return nil, nil, err
 	}
-	info, err := m.GetView(in.View)
+	info, err := m.GetViewWith(in.View, core.ViewOptions{Detail: in.Detail, FullMax: DefaultMcpViewFullMax, Hidden: in.Hidden})
 	if err != nil {
 		return nil, nil, err
 	}
 	// Every answer starts with the canvas — units, grid, sizes, gaps — so the
-	// numbers below are read against it; the data follows as JSON.
+	// numbers below are read against it; the data follows as JSON. The answer is
+	// given once, as text: no structured copy of the same data.
 	cv, err := m.Canvas()
 	if err != nil {
 		return nil, nil, err
@@ -1215,8 +1246,27 @@ func (s *mcpServer) getView(_ context.Context, _ *mcp.CallToolRequest, in getVie
 	if err != nil {
 		return nil, nil, err
 	}
-	return &mcp.CallToolResult{Content: []mcp.Content{&mcp.TextContent{Text: cv.Describe()}, &mcp.TextContent{Text: string(body)}}}, info, nil
+	head := cv.Describe()
+	if info.FellBack {
+		// the first line says the answer was cut and how to see more, as get_graph's does
+		r, _ := core.ParseRef(in.View)
+		what := "this view has"
+		if info.View.Scope != "" {
+			what = info.View.Scope + " holds"
+		}
+		head = fmt.Sprintf("Shown as a tree: %s %d placements (more than %d), so only containers are listed, each with the count of its blocks, and the lines only as a count; "+
+			"read one container in full with a reference (`%s#e_x`), or everything with detail \"full\".\n", what, info.Scoped, DefaultMcpViewFullMax, r.View) + head
+	}
+	return &mcp.CallToolResult{Content: []mcp.Content{&mcp.TextContent{Text: head}, &mcp.TextContent{Text: string(body)}}}, nil, nil
 }
+
+// getViewDescription: what get_view answers. The size that decides the default
+// detail is the one constant, DefaultMcpViewFullMax.
+var getViewDescription = fmt.Sprintf("A view with geometry: placements, containers with what lies in them (children), absolute rectangles, the visible lines (relations of the registry, with the view's own styleId, override, routing when it has them), what is unsaved; the view's own rule for lines is in view.relations, its shape of lines in view.routing. "+
+	"`detail`: full (every placement nested in its container, each visible line) or tree (only containers, nested, each with its rectangle and `blocks`, the number of blocks lying directly in it; blocks outside any container in full; `lines`, a count, instead of the list). "+
+	"Default: full when the view or subtree has at most %d placements, else tree — and then the first line of the answer says so and how to see more. "+
+	"A container reference view#e_x reads only that subtree, in either detail. `hidden: true` adds hiddenEdges: the relations with both ends placed that the rule hides. "+
+	"The answer starts with the canvas block: units, grid, default and minimum sizes, caption strip, padding, gaps; the data follows once, as JSON.", DefaultMcpViewFullMax)
 
 // geomTarget picks the model and the view of a geometry step: view, or the view of the first reference.
 func (s *mcpServer) geomTarget(project, view string, elements []string) (*core.Model, string, error) {
@@ -1290,6 +1340,59 @@ func (s *mcpServer) setParent(_ context.Context, _ *mcp.CallToolRequest, in setP
 	return s.geomDone(m, view, in.Project, rep)
 }
 
+func (s *mcpServer) setPlacement(_ context.Context, req *mcp.CallToolRequest, in setPlacementIn) (*mcp.CallToolResult, any, error) {
+	m, view, err := s.geomTarget(in.Project, in.View, in.Elements)
+	if err != nil {
+		return nil, nil, err
+	}
+	// a field is set when its key is in the call, null included (which drops it)
+	given := map[string]json.RawMessage{}
+	if req != nil && req.Params != nil {
+		_ = json.Unmarshal(req.Params.Arguments, &given)
+	}
+	fields := map[string]json.RawMessage{}
+	for _, key := range core.PlacementLookFields {
+		if raw, ok := given[key]; ok {
+			fields[key] = raw
+		}
+	}
+	rep, err := m.SetPlacement(view, in.Elements, fields, in.RequestedByHuman, "agent")
+	if err != nil {
+		return nil, nil, err
+	}
+	return s.geomDone(m, view, in.Project, rep)
+}
+
+func (s *mcpServer) setRouting(_ context.Context, _ *mcp.CallToolRequest, in setRoutingIn) (*mcp.CallToolResult, any, error) {
+	if in.View == "" {
+		return nil, nil, errors.New("give view")
+	}
+	m, view, err := s.geomTarget(in.Project, in.View, nil)
+	if err != nil {
+		return nil, nil, err
+	}
+	rep, err := m.SetRouting(view, in.Routing, in.Relations, in.RequestedByHuman, "agent")
+	if err != nil {
+		return nil, nil, err
+	}
+	s.changed(in.Project, m)
+	link := "/app/#" + view
+	what := "the view's routing"
+	if len(in.Relations) > 0 {
+		link += "?highlight=" + url.QueryEscape(strings.Join(rep.Relations, ","))
+		what = fmt.Sprintf("the routing of %d line(s)", len(rep.Relations))
+	}
+	value := "removed"
+	if in.Routing != nil {
+		value = "set to " + *in.Routing
+	}
+	text := fmt.Sprintf("%s %s on %s, not saved; review and Save: %s", what, value, view, link)
+	if len(rep.NotDrawn) > 0 {
+		text += fmt.Sprintf(". Accepted, but not drawn on this view now (an end is not placed, or the line is hidden): %s", strings.Join(rep.NotDrawn, ", "))
+	}
+	return &mcp.CallToolResult{Content: []mcp.Content{&mcp.TextContent{Text: text}}}, map[string]any{"relations": rep.Relations, "notDrawn": rep.NotDrawn, "saved": false, "link": link}, nil
+}
+
 func (s *mcpServer) fitContainer(_ context.Context, _ *mcp.CallToolRequest, in fitContainerIn) (*mcp.CallToolResult, any, error) {
 	if in.Container == "" {
 		return nil, nil, errors.New("give container")
@@ -1322,21 +1425,53 @@ func (s *mcpServer) addContainer(_ context.Context, _ *mcp.CallToolRequest, in a
 	if err != nil {
 		return nil, nil, err
 	}
+	if !in.Contents && (in.Width <= 0 || in.Height <= 0) {
+		return nil, nil, errors.New("give width and height (or contents: true, then they are only a minimum)")
+	}
 	id, rep, err := m.AddContainer(view, core.ContainerSpec{Entity: in.Entity, Name: in.Name, Kind: in.Kind, Parent: in.Parent, StyleID: in.StyleID,
-		Rect: core.Rect{X: in.X, Y: in.Y, Width: in.Width, Height: in.Height}}, in.RequestedByHuman, "agent")
+		Rect: core.Rect{X: in.X, Y: in.Y, Width: in.Width, Height: in.Height}, Contents: in.Contents}, in.RequestedByHuman, "agent")
 	if err != nil {
 		return nil, nil, err
 	}
 	res, out, err := s.geomDone(m, view, in.Project, rep)
 	if o, ok := out.(map[string]any); ok {
 		o["entity"] = id
+		if rep.Contents != nil {
+			o["contents"] = rep.Contents
+		}
 	}
 	if res != nil && len(res.Content) > 0 {
 		if tc, ok := res.Content[0].(*mcp.TextContent); ok {
-			tc.Text = fmt.Sprintf("container %s placed. %s", id, tc.Text)
+			if rep.Contents != nil {
+				tc.Text = fmt.Sprintf("container %s: %s%s", id, contentsSentence(rep.Contents), tc.Text)
+			} else {
+				tc.Text = fmt.Sprintf("container %s placed. %s", id, tc.Text)
+			}
 		}
 	}
 	return res, out, err
+}
+
+// contentsSentence says what add_container with contents did: how many members
+// were placed, which were left out and why, and where the grid went.
+func contentsSentence(c *core.ContentsReport) string {
+	if c == nil {
+		return ""
+	}
+	var b strings.Builder
+	fmt.Fprintf(&b, "%d member(s) placed inside it", len(c.Placed))
+	if len(c.Placed) > 0 {
+		fmt.Fprintf(&b, " (%s; %s)", strings.Join(c.Placed, ", "), c.Note)
+	}
+	b.WriteString(". Membership is the registry's; the grid is only a starting arrangement.")
+	if len(c.Skipped) > 0 {
+		parts := make([]string, len(c.Skipped))
+		for i, s := range c.Skipped {
+			parts[i] = fmt.Sprintf("%s (%s)", s.Entity, s.Reason)
+		}
+		fmt.Fprintf(&b, " Skipped: %s.", strings.Join(parts, "; "))
+	}
+	return b.String() + " "
 }
 
 func orInt(n, def int) int {

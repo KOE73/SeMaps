@@ -369,7 +369,7 @@ of [ADR_20260930-5](adr/ADR_20260930-5_contract_authored-entity-name-is-text.md)
 contract 3 — a `project.json` below 5, views with `zones`/`nodes`, a `containers.json`, `c_`/`z_` text
 keys, `kinds` in `styles.json`, `zone` in `canvas.json` — or a contract-5 one in the earlier form — a
 `codeRef`/`symbol` on an entity, a `via` on a relation, the `name` of an authored entity in
-`entities.json` — is refused with an error that names the file and the field, and `semaps check` says
+`entities.json`, an `edges` entry of a view with `from`/`to`/`type` — is refused with an error that names the file and the field, and `semaps check` says
 the same. The way out is one command, run from the consuming repo:
 
 ```
@@ -422,6 +422,18 @@ What it does:
   workspace already has the type, changes there in place. The default visibility is one per workspace:
   when projects disagree the first project wins and the report names the others. A `styleId` a type had
   is dropped with the file and named;
+- **view lines** ([ADR_20260930-7](adr/ADR_20260930-7_contract_view-edges-are-an-overlay.md)): a view's
+  `edges` was a full list — `id`, `from`, `to`, `type` of every line — that replaced the registry; it is
+  an overlay on it now, `{id, styleId?, override?, routing?}` per line, and what is drawn is decided
+  only by both ends being placed, the type's visibility in the dictionary (else the view's
+  `relations.default`) and `relations.except`. For a view with the old list, a line the registry does
+  not have becomes a relation `origin: authored`, `status: present` when both its ends are entities of
+  the registry (otherwise it is dropped and named in the report); `relations.except` is recomputed so
+  that exactly the lines of the list stay drawn; `edges` keeps only the entries that have a style, an
+  override or a routing of their own, and the key is removed when none is left; an old `edges: []`
+  («no lines») becomes exceptions. The relations added this way are hidden on the views that had no
+  such list, so their picture does not change. The report gives per view the entries and the exceptions
+  before and after. Do not write `edges: []` in the current shape: leave the key out;
 - `contractVersion` goes to 5 in every file that has one.
 
 The report ends with «Решает человек»: the `match` rules and unplaced containers of `containers.json`, styles

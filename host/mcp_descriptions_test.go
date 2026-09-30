@@ -235,6 +235,29 @@ func TestServerInstructionsNoForbiddenReferences(t *testing.T) {
 	}
 }
 
+// A view is a subset over the registry — for entities and for relations — and
+// the agent is told so once, in the server instructions of every level and tools set.
+func TestServerInstructionsSayAViewIsASubsetOfTheRegistry(t *testing.T) {
+	for _, toolsSet := range []string{"one", "narrow"} {
+		for level, want := range map[string]string{
+			"brief":    "references to registry entities and relations plus geometry and look, no copies",
+			"standard": "a line is a registry relation",
+			"full":     "a line is a registry relation",
+		} {
+			text := serverInstructions(toolsSet, level)
+			if !strings.Contains(strings.ToLower(text), want) {
+				t.Errorf("%s/%s: no %q in:\n%s", toolsSet, level, want, text)
+			}
+			if level != "brief" && (!strings.Contains(text, "`set_relation_visible`") || !strings.Contains(text, "`add_relation`") || !strings.Contains(text, "`hidden: true`")) {
+				t.Errorf("%s/%s: the view/registry rule lacks its tools:\n%s", toolsSet, level, text)
+			}
+		}
+	}
+	if text := serverInstructions("one", "full"); !strings.Contains(text, "never decides visibility") || !strings.Contains(text, "store no entities or relations of their own") {
+		t.Errorf("one/full: %s", text)
+	}
+}
+
 // TestMCPComboBudgets: the six tools×description combinations, sized the
 // way /api/mcp sizes them (name+description+schema of the graph tools, plus
 // the server Instructions text) must not exceed a budget on the `narrow`

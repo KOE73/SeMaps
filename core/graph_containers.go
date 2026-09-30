@@ -2,6 +2,11 @@ package core
 
 import "sort"
 
+// ContainsKind is the edge kind — the family of a relation type, before its
+// first dot — of "a container holds a member": a `contains` relation goes from
+// the container to what lies in it.
+const ContainsKind = "contains"
+
 // Containers of the graph: ADR_20260930_contract_graph-containers-from-contains.
 // A container is a node whose kind is a container kind of the dictionary
 // (kinds.json, `container: true`); the members of a container are the nodes it
@@ -23,7 +28,7 @@ func assignContainers(nodes []GraphNode, edges []GraphEdge, kindOf map[string]st
 	// contained node -> the containers that contain it directly
 	direct := map[string][]string{}
 	for _, e := range edges {
-		if e.Kind != "contains" || e.From == e.To || !isContainer(e.From) {
+		if e.Kind != ContainsKind || e.From == e.To || !isContainer(e.From) {
 			continue
 		}
 		direct[e.To] = appendUnique(direct[e.To], e.From)

@@ -101,14 +101,15 @@ func TestDropUntypedStyles(t *testing.T) {
 	}
 	// the placement and the edge entry that named a dropped style lose it and say so; the rest stay
 	v := readTree(t, ws, "projects/p/views/v.view.json")
-	if has(at(t, v, "placements", 0), "styleId") || has(at(t, v, "edges", 0), "styleId") {
+	if has(at(t, v, "placements", 0), "styleId") {
 		t.Errorf("a dropped style is still named: %s", js(t, v))
 	}
 	if got := js(t, v, "placements", 1, "styleId"); got != `"class"` {
 		t.Errorf("the style of a shipped default stays named: %s", got)
 	}
-	if got := js(t, v, "edges", 1, "styleId"); got != `"call"` {
-		t.Errorf("edge style: %s", got)
+	// the entry that had only the dropped style has nothing of its own left and goes
+	if got := js(t, v, "edges"); got != `[{"id":"r_y","styleId":"call"}]` {
+		t.Errorf("edges: %s", got)
 	}
 	// the style that was based on a dropped one loses the link
 	if got := js(t, readTree(t, ws, "styles.json"), "styles", 1); got != `{"id":"iface2","appliesTo":"block","forKinds":["interface"]}` {

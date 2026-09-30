@@ -210,6 +210,81 @@ func TestModelAPIAuthSnapshotSaveDiscardAndRules(t *testing.T) {
 	}
 }
 
+// ADR_20260930-8 over HTTP, with the batches the editor sends: a drawn line is
+// created, undone (withdrawn together with the view's mention of it) and the
+// project saved — the relations file is what it was, byte for byte. A saved
+// record is still refused.
+func TestModelAPIWithdrawUnsavedCreation(t *testing.T) {
+	s, srv := hostModelFixture(t)
+	defer srv.Close()
+	c := srv.Client()
+	post := func(path, body string) (int, string) {
+		t.Helper()
+		res := modelRequest(t, c, srv.URL+"/api/model/p/"+path, s.key, "POST", body)
+		defer res.Body.Close()
+		b, _ := io.ReadAll(res.Body)
+		return res.StatusCode, string(b)
+	}
+	if code, b := post("ops", `{"client":"one","ops":[{"kind":"entity","id":"e_b","value":{"id":"e_b","name":"B","kind":"class","origin":"code"}}]}`); code != 200 {
+		t.Fatalf("entity: %d %s", code, b)
+	}
+	if code, b := post("save", ""); code != 200 {
+		t.Fatalf("save: %d %s", code, b)
+	}
+	file := filepath.Join(s.workspace, "projects", "p", "relations.json")
+	before, err := os.ReadFile(file)
+	if err != nil {
+		t.Fatal(err)
+	}
+	draw := `{"client":"one","ops":[
+{"kind":"relation","id":"r_a_b_link","value":{"id":"r_a_b_link","from":"e_a","to":"e_b","type":"link","origin":"authored"}},
+{"kind":"view","id":"v_main","view":"v_main","value":{"id":"v_main","edges":[{"id":"r_a_b_link","routing":"orthogonal"}]}}]}`
+	if code, b := post("ops", draw); code != 200 {
+		t.Fatalf("draw: %d %s", code, b)
+	}
+	// withdrawing without taking the view's entry away is refused as a whole
+	if code, _ := post("ops", `{"client":"one","ops":[{"kind":"relation","id":"r_a_b_link","value":null}]}`); code != 422 {
+		t.Fatalf("dangling edges entry: %d", code)
+	}
+	undo := `{"client":"one","ops":[
+{"kind":"relation","id":"r_a_b_link","value":null},
+{"kind":"view","id":"v_main","view":"v_main","value":{"id":"v_main","edges":null}}]}`
+	if code, b := post("ops", undo); code != 200 {
+		t.Fatalf("undo: %d %s", code, b)
+	}
+	res := modelRequest(t, c, srv.URL+"/api/model/p/save", "", "GET", "")
+	var dirty struct{ Registry []any }
+	json.NewDecoder(res.Body).Decode(&dirty)
+	res.Body.Close()
+	if len(dirty.Registry) != 0 {
+		t.Fatalf("withdrawn record still unsaved: %v", dirty.Registry)
+	}
+	// redo creates the same id again; undo again; then save
+	if code, b := post("ops", draw); code != 200 {
+		t.Fatalf("redo: %d %s", code, b)
+	}
+	if code, b := post("ops", undo); code != 200 {
+		t.Fatalf("undo 2: %d %s", code, b)
+	}
+	if code, b := post("save", ""); code != 200 {
+		t.Fatalf("save: %d %s", code, b)
+	}
+	after, _ := os.ReadFile(file)
+	if !bytes.Equal(before, after) {
+		t.Fatalf("relations.json changed:\n%s", after)
+	}
+	// once saved, the same line is a saved record: not removable
+	if code, b := post("ops", draw); code != 200 {
+		t.Fatalf("draw 3: %d %s", code, b)
+	}
+	if code, b := post("save", ""); code != 200 {
+		t.Fatalf("save 3: %d %s", code, b)
+	}
+	if code, b := post("ops", undo); code != 422 || !strings.Contains(b, "saved registry") {
+		t.Fatalf("saved record withdrawn: %d %s", code, b)
+	}
+}
+
 // GET /api/kinds is the dictionary: the default with the workspace kinds.json
 // added; without lang every text in all its languages.
 func TestModelAPIKinds(t *testing.T) {

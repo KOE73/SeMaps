@@ -24,7 +24,7 @@ import (
 // serverPreamble opens the server Instructions.
 const serverPreamble = "SeMaps registry of this repository. Read with list_*/get_*/find_*; write only through these tools. " +
 	"Nothing can be deleted; view geometry only with requestedByHuman when a human asked. " +
-	"Work on a view only through the tools, never by editing files; call `layout_guide` before you move, resize or place anything, and check the result with `get_view` and `render_view`. " +
+	"Work on a view only through the tools, never by editing files; call `layout_guide` before you move, resize or place anything, and check the result with `get_view` and `render_view` (any view of a project an editor has open, not only the one on screen). " +
 	"`create_view` and `create_project` only when a human explicitly asked for a new view or project. "
 
 // viewToolDescriptions: the three description levels (mcp.description) of the
@@ -37,20 +37,21 @@ var viewToolDescriptions = map[string]toolDescriptions{
 			"(look at the sample, decide, apply in steps, check, say what is unsaved and give the link), when `requestedByHuman` is needed, and the numbers of the canvas " +
 			"(units, grid, default and minimum sizes, caption strip, padding, gaps). Call it once before moving, resizing or placing anything. No parameters; it does not depend on the project.",
 		Full: "layout_guide returns a Markdown guide for working on a view: how to look at one (`get_view`, `render_view`), what each geometry tool does " +
-			"(`move_elements`, `resize_elements`, `set_parent`, `add_container`, `fit_container`, `align_elements`, `place_entities`, `create_view`, `create_project`, `save`, `discard`, `set_text`, `add_entity`, `get_kinds`), " +
+			"(`move_elements`, `resize_elements`, `set_parent`, `set_placement`, `set_routing`, `add_container`, `fit_container`, `align_elements`, `place_entities`, `create_view`, `create_project`, `save`, `discard`, `set_text`, `add_entity`, `get_kinds`), " +
 			"the workflow (look at the sample, decide, apply in steps, check with `get_view` or `render_view`, say what is unsaved and give the link), when `requestedByHuman` is needed, " +
 			"that the host does not snap to the grid, and the numbers of the canvas (units, grid, default and minimum sizes, caption strip, padding, gaps) — the same block that heads every `get_view` answer. " +
 			"Call it once before moving, resizing or placing anything. No parameters; it does not depend on the project.",
 	},
 	"render_view": {
-		Brief: "A PNG of a view, a container or a rectangle from the editor open on it, plus the problems the editor finds (overlaps, clipped captions, lines through boxes). Needs the view open in an editor.",
+		Brief: "A PNG of a view, a container or a rectangle from the editor open on the project, plus the problems the editor finds (overlaps, clipped captions, lines through boxes). Any view of the project can be drawn; the human's screen is not changed. Needs an editor open on the project.",
 		Standard: "render_view asks the editor that has the project open to draw a view, a container (`ref` like `v_main#e_core`) or a rectangle (`rect`: x, y, width, height in model units) and returns the picture with a list of problems: " +
-			"overlaps, clipped captions and rows, lines through boxes, crossing lines, blocks outside their container. It shows the editor's current, unsaved state. " +
+			"overlaps, clipped captions and rows, lines through boxes, crossing lines, blocks outside their container. It shows the editor's current, unsaved state. Any view of the project can be drawn, not only the one on the human's screen; what the human sees is not changed. " +
 			"`scale` (0.25 to 4, default 1) and `maxSize` (pixels of the longer side, default 1600, at most 4096) bound the picture. Without an editor open on the project it fails and says which link to open.",
 		Full: "render_view asks the editor that has the project open to draw a view, a container (`ref` like `v_main#e_core`) or a rectangle (`rect`: x, y, width, height in model units) and returns the picture with a list of problems: " +
 			"overlap, clipped-caption, clipped-rows, line-through-box, line-crossing, outside-container — each with the ids involved. The problems come from the editor's real router and text measurement, so they match what the human sees. " +
 			"It shows the editor's current, unsaved state, including your own unsaved changes. `view` is the view id (or give `ref`); `scale` (0.25 to 4, default 1) and `maxSize` (pixels of the longer side, default 1600, at most 4096) bound the picture. " +
-			"The answer states the model rectangle that was drawn. Without an editor open on the project it fails and says which link to open; if the editor does not answer within 20 seconds it fails too — check that the view is open.",
+			"Any view of the project can be drawn, not only the one on the human's screen: the editor draws it on a hidden canvas and the human's view, selection and zoom stay as they are. " +
+			"The answer states the model rectangle that was drawn (margin included) and the scale in pixels per model unit. Without an editor open on the project it fails and says which link to open; if the editor does not answer within 20 seconds it fails too.",
 	},
 	"create_view": {
 		Brief: "Create a new, empty view. Only when a human explicitly asked for a new view; requestedByHuman.",
@@ -94,14 +95,28 @@ Everything you do to a view goes through the tools below — never by editing fi
 applied to the model the editor shares, so it shows up in an open editor at once, unsaved and marked as
 yours; the human reviews and saves.
 
+## A view is a subset of the registry
+
+A view stores no entities and no relations of its own. A placement is a reference to an entity of the registry plus its own geometry and
+look (x, y, size, parent, style, override, template, collapsed); the name, the kind and the members come from the registry. A line is a
+relation of the registry: it is drawn when both its ends are placed on the view and the rule says visible — the relation type's default
+in the dictionary, else the view's default; ` + "`set_relation_visible`" + ` flips one relation on one view. A view's own entry for a line holds only its look
+(style, override, routing) and never decides whether the line is drawn.
+So to make something appear, place an entity (` + "`place_entities`" + `) or add it to the registry first (` + "`add_entity`" + `, ` + "`add_relation`" + `) — never "draw" it on the view. A relation
+that is new in the code shows on every view that has both ends.
+
 ## Seeing
 
-- ` + "`get_view`" + ` — the view as data: placements, containers with what lies in them (children), absolute rectangles, visible lines, what is unsaved.
-  A container reference (` + "`v_main#e_core`" + `) reads only that subtree. Every answer starts with the canvas block below.
+- ` + "`get_view`" + ` — the view as data: placements, containers with what lies in them (children), absolute rectangles, the visible lines, what is unsaved.
+  ` + "`detail`" + ` is ` + "`full`" + ` (every placement, each visible line) or ` + "`tree`" + ` (only the containers, nested, each with its rectangle and ` + "`blocks`" + `, the number of blocks lying
+  directly in it; blocks outside any container in full; ` + "`lines`" + `, a count, instead of the list). Without it a big view comes as a tree — the first line of the answer says so —
+  and a small one in full. A container reference (` + "`v_main#e_core`" + `) reads only that subtree, in either detail: look at a big view as a tree, then read the containers you need.
+  A line that is hidden is not in ` + "`edges`" + `: ` + "`hidden: true`" + ` adds ` + "`hiddenEdges`" + `, the relations with both ends placed that the rule hides (the answer's ` + "`view.relations`" + ` holds the view's ` + "`default`" + ` and the ` + "`except`" + ` list).
+  Every answer starts with the canvas block below and gives the data once.
 - ` + "`get_kinds`" + ` — the dictionary: which kinds exist, which of them are containers (a placement of an entity of such a kind is a frame that holds other placements).
-- ` + "`render_view`" + ` — a picture (PNG) of the view, a container or a rectangle from the editor open on it, and a list of problems
-  (overlaps, clipped captions, lines through boxes, crossing lines, blocks outside their container). It needs the view open in an
-  editor and shows the editor's current, unsaved state. Look at it after each group of steps.
+- ` + "`render_view`" + ` — a picture (PNG) of the view, a container or a rectangle from the editor open on the project, and a list of problems
+  (overlaps, clipped captions, lines through boxes, crossing lines, blocks outside their container). It needs an editor open on the
+  project — any view of it, not necessarily the one on screen — and shows the editor's current, unsaved state. Look at it after each group of steps.
 - The human points at objects with references: ` + "`<view>#<id>`" + ` (` + "`v_ops#e_undistort`" + ` for a container, ` + "`v_ops#e_op_crop`" + ` for a block),
   ` + "`<project>/<view>#<id>`" + ` when the workspace has several projects; several are joined by commas. Every tool takes them wherever it
   takes an object of a view. A view opens in the editor at ` + "`/app/#<view>?highlight=<id>`" + `.
@@ -112,9 +127,9 @@ yours; the human reviews and saves.
 	b.WriteString(c.Describe())
 	fmt.Fprintf(&b, `
 Membership is explicit: a block is in a container because it was put there (`+"`set_parent`"+`, the `+"`parent`"+` of its placement), not because it happens to lie inside its rectangle.
-A block inside a container still has absolute coordinates. A container is an entity of a container kind (`+"`get_kinds`"+`); `+"`add_container`"+` makes the entity and its frame in one step. Sizes do not follow content: text is not wrapped, a caption longer than its box runs
+A block inside a container still has absolute coordinates. A container is an entity of a container kind (`+"`get_kinds`"+`); `+"`add_container`"+` places the entity by its id and, when there is none of that id yet, makes it and its frame in one step. Sizes do not follow content: text is not wrapped, a caption longer than its box runs
 past the edge, and the rows of a box that lists members simply continue past its bottom if the box is short (roughly 55 + 15 per row + 3 per
-section high) — give such boxes room. Lines are not stored: they are routed from the boxes on every repaint; orthogonal lines keep 8 units off
+section high) — give such boxes room. The path of a line is never stored: it is routed from the boxes on every repaint; orthogonal lines keep 8 units off
 boxes and settle 16 to 24 units apart, so a gap between two boxes narrower than about 16 is not a corridor for a line. A box straight above another
 blocks the straight line from the lower one.
 
@@ -124,8 +139,11 @@ blocks the straight line from the lower one.
 |---|---|
 | shift things; a container goes with everything in it | `+"`move_elements`"+` (dx/dy, or x/y for the top-left corner of the common box) |
 | change a size (never under the minimum, and a container never under its content) | `+"`resize_elements`"+` |
+| place a container together with what it directly contains (its `+"`contains`"+` relations, one level), in a grid, the container sized to hold it; a container already on the view gets only its missing members | `+"`add_container`"+` with `+"`contents: true`"+` |
 | put blocks or containers into a container, coordinates untouched | `+"`set_parent`"+` (parent null takes them out) |
-| add a container: an entity of a container kind (existing, or new: name and kind, default group) with a rectangle, optional parent, style | `+"`add_container`"+` |
+| add a container by the id of its entity (required): an existing entity of a container kind is placed as it is; a new id is created, with name and kind (default group); a rectangle, optional parent, style | `+"`add_container`"+` |
+| change the look of placements already on the view: style, override, template, collapsed (containers only); only the fields you give change, null drops one | `+"`set_placement`"+` |
+| change the shape of lines: the whole view's routing, or of chosen relations only | `+"`set_routing`"+` |
 | make a container as tight as its content (caption strip and padding), ancestors grow | `+"`fit_container`"+` |
 | line elements up on the first one: left, right, top, bottom, width, height | `+"`align_elements`"+` |
 | put entities on a view | `+"`place_entities`"+` |
@@ -133,6 +151,21 @@ blocks the straight line from the lower one.
 | caption a view (a text under its id, field name), in every language of the project; a container is captioned by the name of its entity — for one drawn by hand a text under the entity's id, field name, which changes freely while the id stays | `+"`set_text`"+` |
 | a new view or project — only when a human explicitly asked | `+"`create_view`"+`, `+"`create_project`"+` |
 | write what is unsaved / drop it — only when a human explicitly asked | `+"`save`"+`, `+"`discard`"+` |
+
+## The shape of lines
+
+A line's shape is a choice of one of four modes, never a stored path:
+
+- `+"`bezier`"+` — a smooth curve (the default);
+- `+"`orthogonal`"+` — horizontal and vertical segments with right-angle bends;
+- `+"`tree-horizontal`"+` — a tree fan, the trunk running horizontally;
+- `+"`tree-vertical`"+` — a tree fan, the trunk running vertically.
+
+The choice is taken from the most specific place that has one: the line's own `+"`routing`"+` on this view, then the view's `+"`routing`"+`, then the style of the relation type,
+then `+"`bezier`"+`. `+"`set_routing`"+` with `+"`relations`"+` writes the first, without it the second; null removes the choice so the next place decides. The routed polyline
+is never stored — it is computed from the boxes on every repaint. `+"`get_view`"+` shows the view's `+"`view.routing`"+` and a line's own `+"`routing`"+` when it has one.
+
+What is in a container is a fact of the registry (the `+"`contains`"+` relation); the grid `+"`add_container`"+` lays it out in is only a starting arrangement — a member of a container kind comes as an empty frame, and you move, resize or nest the rest as the picture needs.
 
 Each step is one batch: it applies whole or not at all. Geometry you were not asked about stays as it is. There is no tool that lays things out
 "like another container": which block stands for which is your judgement; the tools give you eyes (get_view, render_view) and precise hands.
@@ -150,7 +183,7 @@ Put positions and sizes on multiples of %s yourself, and leave the default gaps 
 
 ## Workflow
 
-1. Look at the sample: `+"`get_view`"+` (and `+"`render_view`"+`) on the reference and on the target — containers, blocks, rectangles.
+1. Look at the sample: `+"`get_view`"+` (and `+"`render_view`"+`) on the reference and on the target — containers, blocks, rectangles. A big view comes as a tree: read the containers you need by reference.
 2. Decide which block stands for which and work out the moves and sizes yourself; say the plan to the person.
 3. Apply it in steps (`+"`move_elements`"+`, `+"`resize_elements`"+`, `+"`set_parent`"+`, `+"`fit_container`"+`), fewest steps first.
 4. Check after each group: `+"`get_view`"+` for numbers, `+"`render_view`"+` for what a human sees and for problems; fix what it lists.
@@ -215,7 +248,7 @@ func (s *mcpServer) renderView(_ context.Context, _ *mcp.CallToolRequest, in ren
 	ans, err := s.models.render(m.ProjectID(), renderRequest{View: r.View, Ref: in.Ref, Rect: in.Rect, Scale: scale, MaxSize: maxSize})
 	switch {
 	case errors.Is(err, errNoRenderClient):
-		return nil, nil, fmt.Errorf("no editor is open on this project: open the view in the editor (%s) and repeat", link)
+		return nil, nil, fmt.Errorf("no editor is open on this project: open the editor on the project (%s) and repeat", link)
 	case err != nil:
 		return nil, nil, fmt.Errorf("%w (view %s: %s)", err, r.View, link)
 	}
@@ -224,13 +257,19 @@ func (s *mcpServer) renderView(_ context.Context, _ *mcp.CallToolRequest, in ren
 		return nil, nil, errors.New("the editor sent no usable picture")
 	}
 	var text strings.Builder
+	// The rectangle the editor drew; only without one the content bounds of the view.
 	rect := viewBounds(info)
-	what := "the content of " + target + " (the editor may add a margin)"
-	if in.Rect != nil {
-		rect, what = *in.Rect, "the requested rectangle"
+	if ans.Rect != nil {
+		rect = *ans.Rect
+	} else if in.Rect != nil {
+		rect = *in.Rect
 	}
-	fmt.Fprintf(&text, "Rendered %s: x=%g y=%g width=%g height=%g in model units, image %dx%d px. This is the editor's current, unsaved state.\n",
-		what, rect.X, rect.Y, rect.Width, rect.Height, ans.Width, ans.Height)
+	perUnit := 0.0
+	if rect.Width > 0 {
+		perUnit = float64(ans.Width) / rect.Width
+	}
+	fmt.Fprintf(&text, "Rendered %s: x=%g y=%g width=%g height=%g model units, image %dx%d px, %.3g px per unit; the editor's current, unsaved state.\n",
+		target, rect.X, rect.Y, rect.Width, rect.Height, ans.Width, ans.Height, perUnit)
 	if len(ans.Problems) == 0 {
 		text.WriteString("no problems found\n")
 	}

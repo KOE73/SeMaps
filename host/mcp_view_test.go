@@ -23,12 +23,22 @@ func TestLayoutGuideAndCanvasBlock(t *testing.T) {
 	if res.IsError {
 		t.Fatal(text)
 	}
-	for _, want := range []string{"get_view", "render_view", "move_elements", "resize_elements", "set_parent", "add_container", "fit_container", "align_elements",
+	for _, want := range []string{"get_view", "render_view", "move_elements", "resize_elements", "set_parent", "set_placement", "set_routing", "add_container", "fit_container", "align_elements",
 		"place_entities", "create_view", "create_project", "save", "set_text", "get_kinds", "requestedByHuman", "does not snap",
+		"`set_placement`", "`set_routing`", "## The shape of lines", "`tree-horizontal`", "`tree-vertical`", "`orthogonal`", "`bezier`", "`view.routing`", "never stored",
 		"Look at the sample", "Grid step 10", "180x60", "28 high", "40 between containers", "3 x 180 + 2 x 40 = 620"} {
 		if !strings.Contains(text, want) {
 			t.Errorf("layout_guide lacks %q; tail:\n%s", want, text[max(0, len(text)-1500):])
 		}
+	}
+	for _, want := range []string{"A view is a subset of the registry", "stores no entities and no relations of its own", "never decides whether the line is drawn",
+		"`set_relation_visible`", "`view.relations`", "never \"draw\" it on the view", "by the id of its entity (required)"} {
+		if !strings.Contains(text, want) {
+			t.Errorf("layout_guide lacks %q", want)
+		}
+	}
+	if strings.Contains(text, "Lines are not stored") {
+		t.Error("layout_guide still says lines are not stored")
 	}
 	for _, banned := range []string{".view.json", `"zones"`, `"nodes"`, "set_zone", "add_zone", "fit_zone", "CONTRACT", "LAYOUT.md"} {
 		if strings.Contains(text, banned) {
@@ -237,6 +247,7 @@ func TestRenderViewOK(t *testing.T) {
 			t.Errorf("request = %+v", req)
 		}
 		f.answer(t, req.ID, map[string]any{"png": base64.StdEncoding.EncodeToString(png), "width": 600, "height": 400,
+			"rect":     map[string]any{"x": -24, "y": -24, "width": 348, "height": 248},
 			"problems": []map[string]any{{"kind": "overlap", "ids": []string{"e_a", "e_b"}, "text": "A covers B"}}})
 	}()
 	res, err := f.cs.CallTool(context.Background(), &mcp.CallToolParams{Name: "render_view",
@@ -249,10 +260,14 @@ func TestRenderViewOK(t *testing.T) {
 		t.Fatalf("content[0] = %#v", res.Content[0])
 	}
 	text := res.Content[1].(*mcp.TextContent).Text
-	for _, want := range []string{"overlap: A covers B (e_a, e_b)", "width=300", "600x400", "unsaved"} {
+	// the rectangle is the one the editor reports (margin included), not the one asked for
+	for _, want := range []string{"overlap: A covers B (e_a, e_b)", "x=-24 y=-24 width=348 height=248", "600x400", "1.72 px per unit", "unsaved"} {
 		if !strings.Contains(text, want) {
 			t.Errorf("text lacks %q:\n%s", want, text)
 		}
+	}
+	if strings.Contains(text, "may add a margin") {
+		t.Errorf("stale wording:\n%s", text)
 	}
 	select {
 	case r := <-plain:
@@ -279,6 +294,19 @@ func TestRenderViewErrorsThenOK(t *testing.T) {
 	}
 }
 
+// An editor that reports no rectangle: the host falls back to the bounds of the view.
+func TestRenderViewWithoutReportedRect(t *testing.T) {
+	f := newRenderFixture(t)
+	editor := f.subscribe(t, "&render=1")
+	go func() {
+		f.answer(t, (<-editor).ID, map[string]any{"png": base64.StdEncoding.EncodeToString([]byte("x")), "width": 100, "height": 50})
+	}()
+	res, text := call(t, f.cs, "render_view", map[string]any{"project": "p", "view": "v_main"})
+	if res.IsError || !strings.Contains(text, "Rendered v_main: x=") || !strings.Contains(text, "px per unit") {
+		t.Fatalf("%v %s", res.IsError, text)
+	}
+}
+
 func TestRenderViewAllEditorsFail(t *testing.T) {
 	f := newRenderFixture(t)
 	one := f.subscribe(t, "&render=1")
@@ -293,7 +321,7 @@ func TestRenderViewNoEditor(t *testing.T) {
 	f := newRenderFixture(t)
 	f.subscribe(t, "") // graph mode only
 	res, text := call(t, f.cs, "render_view", map[string]any{"project": "p", "view": "v_main"})
-	if !res.IsError || !strings.Contains(text, "no editor is open on this project: open the view in the editor (/app/#v_main) and repeat") {
+	if !res.IsError || !strings.Contains(text, "no editor is open on this project: open the editor on the project (/app/#v_main) and repeat") {
 		t.Fatalf("%v %s", res.IsError, text)
 	}
 }

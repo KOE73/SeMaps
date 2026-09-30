@@ -94,9 +94,9 @@ func viewItems(doc *object, key string) []*object {
 	return items
 }
 
-// oldViewShape names what makes a view a shape of contract 3 or older —
-// `zones`, `nodes`, a placement with `zone`/`container` or `id` instead of
-// `entity`; "" when the view is of the current shape (CONTRACT §8). The loader
+// oldViewShape names what makes a view an old shape — of contract 3: `zones`,
+// `nodes`, a placement with `zone`/`container` or `id` instead of `entity`; of the
+// earlier contract 5: an `edges` entry with from/to/type; "" when the view is of the current shape (CONTRACT §8). The loader
 // does not read it; `semaps migrate` rewrites it (ADR_20260927-3).
 func oldViewShape(doc *object) string {
 	for _, key := range []string{"zones", "nodes"} {
@@ -109,8 +109,19 @@ func oldViewShape(doc *object) string {
 			return fmt.Sprintf("placements[%d]: %s", i, s)
 		}
 	}
+	for i, e := range viewItems(doc, "edges") {
+		for _, key := range []string{"from", "to", "type"} {
+			if _, ok := e.vals[key]; ok {
+				return fmt.Sprintf("%s%d] (%s): `%s` — запись edges была полной копией связи", edgesShapePrefix, i, e.str("id"), key)
+			}
+		}
+	}
 	return ""
 }
+
+// edgesShapePrefix starts what oldViewShape says of an `edges` entry that still
+// has from/to/type: a shape of the earlier contract 5, not of contract 3.
+const edgesShapePrefix = "edges["
 
 func oldPlacementShape(p *object) string {
 	for _, key := range []string{"zone", "container"} {
@@ -140,5 +151,8 @@ var relationTypesFileError = fmt.Sprintf("%s — тип связи описан 
 // oldShapeError is the one text of the loader and of semaps check about a view
 // of an old contract (ADR_20260927-3).
 func oldShapeError(file, what string) string {
+	if strings.HasPrefix(what, edgesShapePrefix) {
+		return fmt.Sprintf("%s: %s — теперь запись `edges` вида есть ссылка на связь реестра {id, styleId?, override?, routing?}, видимость решает relations (CONTRACT §8.5; `semaps migrate`, ADR_20260930-7)", file, what)
+	}
 	return fmt.Sprintf("%s: %s — форма контракта 3, нужен %d (`semaps migrate`, ADR_20260927-3)", file, what, ContractVersion)
 }

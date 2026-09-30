@@ -145,7 +145,7 @@ func TestSetParentAndCycle(t *testing.T) {
 func TestAddContainerNewOrExisting(t *testing.T) {
 	m := geomModel(t)
 	cv := testCanvas(t)
-	id, rep, err := m.AddContainer("v_main", ContainerSpec{Name: "Storage", Parent: "e_core", Rect: Rect{X: 13, Y: 268, Width: 50, Height: 50}}, true, "agent")
+	id, rep, err := m.AddContainer("v_main", ContainerSpec{Entity: "e_storage", Name: "Storage", Parent: "e_core", Rect: Rect{X: 13, Y: 268, Width: 50, Height: 50}}, true, "agent")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -183,10 +183,29 @@ func TestAddContainerNewOrExisting(t *testing.T) {
 	refused(t, err, "already on v_main")
 	_, _, err = m.AddContainer("v_main", ContainerSpec{Entity: "e_x"}, true, "agent")
 	refused(t, err, "not a container kind")
-	_, _, err = m.AddContainer("v_main", ContainerSpec{Name: "App", Kind: "app"}, true, "agent")
+	_, _, err = m.AddContainer("v_main", ContainerSpec{Entity: "e_app", Name: "App", Kind: "app"}, true, "agent")
 	refused(t, err, `kind "app" is not a container kind`)
 	_, _, err = m.AddContainer("v_main", ContainerSpec{}, true, "agent")
-	refused(t, err, "give entity")
+	refused(t, err, "entity is required")
+	// the id is the caller's, never made from a name
+	_, _, err = m.AddContainer("v_main", ContainerSpec{Entity: "storage", Name: "Storage"}, true, "agent")
+	refused(t, err, "starts with e_")
+	_, _, err = m.AddContainer("v_main", ContainerSpec{Entity: "e_missing"}, true, "agent")
+	refused(t, err, "no entity e_missing")
+	// an existing entity: no name (set_text changes it), no other kind
+	if _, err := m.AddEntity("e_sub2", "Sub2", "subsystem", "", "agent"); err != nil {
+		t.Fatal(err)
+	}
+	_, _, err = m.AddContainer("v_main", ContainerSpec{Entity: "e_sub2", Name: "Renamed"}, true, "agent")
+	refused(t, err, "set_text")
+	_, _, err = m.AddContainer("v_main", ContainerSpec{Entity: "e_sub2", Kind: "group"}, true, "agent")
+	refused(t, err, "does not change a kind")
+	if _, _, err := m.AddContainer("v_main", ContainerSpec{Entity: "e_sub2", Kind: "subsystem", Rect: Rect{X: 900, Y: 300}}, true, "agent"); err != nil {
+		t.Fatal(err)
+	}
+	if m.EntityName("e_sub2") != "Sub2" {
+		t.Fatalf("an existing name is untouched: %q", m.EntityName("e_sub2"))
+	}
 }
 
 func TestFitContainerGrowsParent(t *testing.T) {

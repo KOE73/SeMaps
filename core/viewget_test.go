@@ -61,14 +61,47 @@ func TestGetViewTreeAndEdgeVisibility(t *testing.T) {
 	if _, err := m.GetView("v_main#e_a"); err == nil {
 		t.Fatal("a block is not a scope")
 	}
-	// the view's own edges list replaces the registry and may carry an override
-	if _, err := m.Apply([]Op{modelOp("view", "v_main", "v_main", "", `{"id":"v_main","edges":[{"id":"r_x","from":"e_a","to":"e_b","type":"call","override":{"line":{"color":"#ff0000","dash":"4,4"}}}]}`)}, "human"); err != nil {
+	// an entry of the view's edges decides nothing about visibility: the hidden
+	// line stays hidden, and an entry of a line that is not visible draws nothing
+	edges := func(list string) []Op {
+		return []Op{modelOp("view", "v_main", "v_main", "", `{"id":"v_main","edges":`+list+`}`)}
+	}
+	if _, err := m.Apply(edges(`[{"id":"r_a_b_items_item","routing":"bezier"}]`), "human"); err != nil {
 		t.Fatal(err)
 	}
-	if got, _ = m.GetView("v_main"); len(got.Edges) != 1 || got.Edges[0].ID != "r_x" || string(got.Edges[0].Override) != `{"line":{"color":"#ff0000","dash":"4,4"}}` {
-		t.Fatalf("own edges = %+v", got.Edges)
+	if got, _ = m.GetView("v_main"); len(got.Edges) != 0 {
+		t.Fatalf("an entry showed a hidden line: %+v", got.Edges)
 	}
-	// an edge override outside the table is refused
-	_, err = m.Apply([]Op{modelOp("view", "v_main", "v_main", "", `{"id":"v_main","edges":[{"id":"r_x","from":"e_a","to":"e_b","type":"call","override":{"fill":"#ff0000"}}]}`)}, "human")
+	// shown again, the line carries what its entry says
+	if err := m.SetRelationVisible("v_main", "r_a_b_items_item", true, "human"); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := m.Apply(edges(`[{"id":"r_a_b_items_item","styleId":"call","override":{"line":{"color":"#ff0000","dash":"4,4"}},"routing":"bezier"}]`), "human"); err != nil {
+		t.Fatal(err)
+	}
+	got, _ = m.GetView("v_main")
+	if len(got.Edges) != 1 || got.Edges[0].ID != "r_a_b_items_item" || got.Edges[0].From != "e_a" || got.Edges[0].To != "e_b" || got.Edges[0].Type == "" ||
+		got.Edges[0].StyleID != "call" || got.Edges[0].Routing != "bezier" || string(got.Edges[0].Override) != `{"line":{"color":"#ff0000","dash":"4,4"}}` {
+		t.Fatalf("decorated edge = %+v", got.Edges)
+	}
+	// what the rules refuse
+	_, err = m.Apply(edges(`[{"id":"r_a_b_items_item","override":{"fill":"#ff0000"}}]`), "human")
 	refused(t, err, `"fill" cannot be overridden on an edge`)
+	_, err = m.Apply(edges(`[{"id":"r_a_b_items_item","from":"e_a","routing":"bezier"}]`), "human")
+	refused(t, err, "`from` is the relation's")
+	_, err = m.Apply(edges(`[{"id":"r_a_b_items_item","type":"call","routing":"bezier"}]`), "human")
+	refused(t, err, "`type` is the relation's")
+	_, err = m.Apply(edges(`[{"id":"r_nope","routing":"bezier"}]`), "human")
+	refused(t, err, "no relation r_nope")
+	_, err = m.Apply(edges(`[{"id":"r_a_b_items_item"}]`), "human")
+	refused(t, err, "none of styleId, override, routing")
+	_, err = m.Apply(edges(`[{"id":"r_a_b_items_item","routing":"bezier"},{"id":"r_a_b_items_item","styleId":"call"}]`), "human")
+	refused(t, err, "listed twice")
+	// no edges key: no decoration, the rule alone
+	if _, err := m.Apply([]Op{modelOp("view", "v_main", "v_main", "", `{"id":"v_main","edges":null}`)}, "human"); err != nil {
+		t.Fatal(err)
+	}
+	if got, _ = m.GetView("v_main"); len(got.Edges) != 1 || got.Edges[0].Routing != "" || got.Edges[0].Override != nil {
+		t.Fatalf("edges = %+v", got.Edges)
+	}
 }

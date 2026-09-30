@@ -342,6 +342,24 @@ func (m *Model) RegistrySnapshot() map[string]json.RawMessage {
 	return out
 }
 
+// Unsaved lists the ids of the records that exist only in the working state —
+// not in the saved registry — by kind ("entity", "relation"): the ones an
+// editor may withdraw (ADR_20260930-8). Never nil lists, for the wire.
+func (m *Model) Unsaved() map[string][]string {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	out := map[string][]string{"entity": {}, "relation": {}}
+	for kind := range modelRegistries {
+		r := m.registries[kind]
+		for _, o := range r.items {
+			if id := o.str("id"); !r.saved[id] {
+				out[kind] = append(out[kind], id)
+			}
+		}
+	}
+	return out
+}
+
 func (m *Model) TextSnapshot() (map[string]json.RawMessage, error) {
 	m.mu.Lock()
 	defer m.mu.Unlock()

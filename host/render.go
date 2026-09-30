@@ -50,6 +50,7 @@ type renderAnswer struct {
 	PNG      string          `json:"png,omitempty"` // base64, no prefix
 	Width    int             `json:"width,omitempty"`
 	Height   int             `json:"height,omitempty"`
+	Rect     *core.Rect      `json:"rect,omitempty"` // the model rectangle drawn, margin included
 	Problems []renderProblem `json:"problems,omitempty"`
 	Error    string          `json:"error,omitempty"`
 }
@@ -124,7 +125,7 @@ func (s *modelService) render(project string, req renderRequest) (renderAnswer, 
 				return renderAnswer{}, errors.New(first.Error)
 			}
 		case <-timer.C:
-			return renderAnswer{}, fmt.Errorf("the editor did not answer within %d seconds: is the view open in it?", int(renderTimeout/time.Second))
+			return renderAnswer{}, fmt.Errorf("the editor did not answer within %d seconds: is an editor open on the project?", int(renderTimeout/time.Second))
 		}
 	}
 }

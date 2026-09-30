@@ -105,13 +105,13 @@ func serverInstructions(toolsSet, level string) string {
 // its own tools (there is no get_graph or graph_formats in that set).
 func mentalModel(narrow bool, level string) string {
 	if level == "brief" {
-		return "SeMaps has three layers: the registry (entities and relations, in git, changed only through these tools and `sync`), the live graph (facts read from the code, never stored), and views (a human's picture of part of the model). " +
+		return "SeMaps has three layers: the registry (entities and relations, in git, changed only through these tools and `sync`), the live graph (facts read from the code, never stored), and views (a picture of part of the model: references to registry entities and relations plus geometry and look, no copies). " +
 			"The graph follows the code by itself; the registry follows it only through `sync`."
 	}
 	common := "SeMaps has three layers. " +
 		"The registry (the model) holds entities `e_*` and the relations between them; it lives in git and changes only through these tools and `sync`. " +
 		"The live graph holds the facts an extractor reads from the code — types, methods, calls; it is never stored in git or in the registry. " +
-		"Views are a human's projection of part of the model: boxes with geometry, grouped in containers (entities of a container kind) that follow an `axis`. " +
+		viewsLayer(narrow) +
 		"When the code changes and the extractor runs, the live graph updates by itself; the registry changes only through `sync` — look with `sync_preview` first, confirm each rename with `confirm_rename`, and `discard` unsaved changes only when a human asked. " +
 		"An entity or relation is `present` (found in the code at the last sync) or `missing` (kept in the registry, ids are never deleted, but no longer found in the code); an entity may also be `planned`. "
 	if narrow {
@@ -122,6 +122,20 @@ func mentalModel(narrow bool, level string) string {
 		"(all descendants of a type = `follow` `extended-by` and `implemented-by` with `depth` `all`; `depth` is otherwise 1-5); " +
 		"the drawn architecture → `get_view` (a container reference reads only its subtree); one entity's relations with their evidence → `get_relations`; " +
 		"the relation vocabulary, `holds.*` and status terms, and answer formats → `graph_formats`; the kinds of entities and relation types with their meaning → `get_kinds`."
+}
+
+// viewsLayer is what a view is: a subset over the registry, for entities and
+// for relations alike. The narrow set has a size budget (TestMCPComboBudgets),
+// so its wording is the short one.
+func viewsLayer(narrow bool) string {
+	if narrow {
+		return "Views store no entities or relations: a placement references a registry entity and adds only its geometry and look; a line is a registry relation, " +
+			"drawn when both ends are placed and the rule says visible (`set_relation_visible` flips one on one view), and a view's entry for it holds only its look. " +
+			"To make something appear, place an entity or add it to the registry (`add_entity`, `add_relation`); `get_view` with `hidden: true` lists the hidden lines. "
+	}
+	return "Views are a human's projection of part of the model and store no entities or relations of their own: a placement is a reference to a registry entity plus its own geometry and look (x, y, size, parent, style, override, template, collapsed), the name, kind and members coming from the registry; containers are placements of entities of a container kind, following an `axis`. " +
+		"A line is a registry relation, drawn when both ends are placed and the rule says visible (the type's default in the dictionary, else the view's; `set_relation_visible` flips one on one view); a view's entry for a line holds only its look and never decides visibility. " +
+		"So to make something appear, place an entity or add it to the registry (`add_entity`, `add_relation`), never draw it on a view; a relation new in the code shows on every view with both ends. `get_view` returns the visible lines; `hidden: true` adds the hidden ones (`hiddenEdges`); a big view comes as a tree of its containers, and a container reference reads one in full. "
 }
 
 func serverInstructionsBody(toolsSet, level string) string {

@@ -275,8 +275,12 @@ func TestShapesDemo(t *testing.T) {
 	if got := js(t, view, "placements", 7); !strings.Contains(got, `"template":"picture"`) || !strings.Contains(got, `"parent":"e_zone_machine"`) {
 		t.Errorf("node with template: %s", got)
 	}
-	if arrLen(t, view, "edges") != 6 {
-		t.Error("edges must stay")
+	// the list was a full copy of the registry: what stays is what the entries had of their own
+	if got := js(t, view, "edges"); got != `[{"id":"r_user_edits","routing":"tree-vertical"},{"id":"r_library_compiles","routing":"bezier"}]` {
+		t.Errorf("edges: %s", got)
+	}
+	if has(view, "relations") {
+		t.Errorf("every line of the list is a relation of the registry: nothing to hide: %s", js(t, view))
 	}
 
 	// Entities: three groups appended, named from the texts.
@@ -588,7 +592,7 @@ func TestNmfnLike(t *testing.T) {
 		t.Error("hidden contains type: no relations.except expected")
 	}
 	ops := readTree(t, ws, base+"views/v_ops.view.json")
-	if got := strings.Join(ops.keys, ","); got != "id,project,axis,routing,placements,edges" {
+	if got := strings.Join(ops.keys, ","); got != "id,project,axis,routing,placements" {
 		t.Errorf("v_ops keys: %s", got)
 	}
 	if got := str(t, ops, "placements", 0, "entity"); got != "e_onnx_2" {

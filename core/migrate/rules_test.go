@@ -251,8 +251,13 @@ func TestContainsRelationsAndExceptions(t *testing.T) {
 	if got := js(t, v, "relations"); got != `{"default":"visible","except":`+except+`}` {
 		t.Errorf("v_a relations %s", got)
 	}
-	if has(readTree(t, ws, "projects/p/views/v_b.view.json"), "relations") {
-		t.Error("a view with its own edges must not get relations")
+	// `edges: []` meant no lines: every relation with both ends placed is hidden (r_p_c_contains is of a type the dictionary hides anyway), the key is gone
+	vb := readTree(t, ws, "projects/p/views/v_b.view.json")
+	if has(vb, "edges") {
+		t.Errorf("an emptied edges key stays: %s", js(t, vb))
+	}
+	if got := js(t, vb, "relations"); got != `{"default":"visible","except":["r_p_c_contains_2","r_c_a_contains"]}` {
+		t.Errorf("v_b relations %s", got)
 	}
 	if got := js(t, readTree(t, ws, "projects/p/views/v_c.view.json"), "relations"); got != `{"default":"hidden"}` {
 		t.Errorf("hidden view: %s", got)

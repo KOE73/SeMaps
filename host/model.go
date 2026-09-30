@@ -362,7 +362,7 @@ func (s *modelService) snapshot(w http.ResponseWriter, r *http.Request) {
 			}
 		}
 	}
-	writeJSON(w, map[string]any{"project": json.RawMessage(manifest), "registry": m.RegistrySnapshot(), "texts": texts, "views": views, "viewFiles": viewFiles, "dirty": m.Dirty()})
+	writeJSON(w, map[string]any{"project": json.RawMessage(manifest), "registry": m.RegistrySnapshot(), "texts": texts, "views": views, "viewFiles": viewFiles, "dirty": m.Dirty(), "unsaved": m.Unsaved()})
 }
 
 func (s *modelService) view(w http.ResponseWriter, r *http.Request) {

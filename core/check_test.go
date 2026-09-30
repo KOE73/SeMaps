@@ -47,13 +47,16 @@ func TestCheckContainersKindsAndShape(t *testing.T) {
 			{"entity":"e_w","parent":"e_a","x":0,"y":0},
 			{"entity":"e_ghost","x":0,"y":0}
 		],
-		"edges":[{"id":"r_x","from":"e_a","to":"e_w","type":"call","override":{"fill":"#f00"}}]}`)
+		"edges":[{"id":"r_a_w_call","override":{"fill":"#f00"}},{"id":"r_ghost","routing":"bezier"},{"id":"r_a_w_call","routing":"bezier"},{"id":"r_a_w_homemade"}]}`)
 	writeFile(t, filepath.Join(proj, "views", "v_old.view.json"), `{"id":"v_old","project":"p","zones":[],"nodes":[]}`)
+	writeFile(t, filepath.Join(proj, "views", "v_oldedges.view.json"), `{"id":"v_oldedges","project":"p","axis":"axis_a","placements":[],
+		"edges":[{"id":"r_a_w_call","from":"e_a","to":"e_w","type":"call"}]}`)
 	name := `{"v":"%s","at":"2026-09-24T00:00:00Z","origin":"authored"}`
 	writeFile(t, filepath.Join(proj, "text.ru.json"), `{"contractVersion":5,"language":"ru","entries":{
 		"v_main":{"name":`+strings.Replace(name, "%s", "Главный", 1)+`},
 		"v_bad":{"name":`+strings.Replace(name, "%s", "Плохой", 1)+`},
 		"v_old":{"name":`+strings.Replace(name, "%s", "Старый", 1)+`},
+		"v_oldedges":{"name":`+strings.Replace(name, "%s", "Старые линии", 1)+`},
 		"rt_call":{"name":`+strings.Replace(name, "%s", "вызов", 1)+`},
 		"rt_homemade":{"name":`+strings.Replace(name, "%s", "своя", 1)+`},
 		"c_grp":{"name":`+strings.Replace(name, "%s", "Подпись контейнера", 1)+`}
@@ -68,6 +71,7 @@ func TestCheckContainersKindsAndShape(t *testing.T) {
 	for _, want := range []string{
 		"q: project.json: contractVersion 3 — форма контракта 3, нужен 5 (`semaps migrate`, ADR_20260927-3)",
 		"p: views/v_old.view.json: `zones` — форма контракта 3, нужен 5",
+		"p: views/v_oldedges.view.json: edges[0] (r_a_w_call): `from` — запись edges была полной копией связи",
 		"text.ru.json: c_grp",
 		"containers.json — контейнер это сущность",
 		"relation-types.json — тип связи описан в словаре",
@@ -84,10 +88,19 @@ func TestCheckContainersKindsAndShape(t *testing.T) {
 		t.Errorf("relation types outside the dictionary: %q", got)
 	}
 	got := byKind["размещение"]
-	for _, want := range []string{`v_bad.view.json: e_a: override: "shape"`, "e_w: parent e_a", "e_ghost: нет такой сущности", "e_ghost: нет поля parent", `связь r_x: override: "fill"`} {
+	for _, want := range []string{`v_bad.view.json: e_a: override: "shape"`, "e_w: parent e_a", "e_ghost: нет такой сущности", "e_ghost: нет поля parent", `связь r_a_w_call: override: "fill"`} {
 		if !strings.Contains(got, want) {
 			t.Errorf("placements: want %q in %q", want, got)
 		}
+	}
+	lines := byKind["линия вида"]
+	for _, want := range []string{"v_bad.view.json: r_ghost — такой связи нет", "v_bad.view.json: r_a_w_call записана дважды", "v_bad.view.json: r_a_w_homemade — записи нечего хранить"} {
+		if !strings.Contains(lines, want) {
+			t.Errorf("edge entries: want %q in %q", want, lines)
+		}
+	}
+	if strings.Contains(lines, "v_main") {
+		t.Errorf("a clean view reported: %q", lines)
 	}
 	if strings.Contains(got, "v_main") {
 		t.Errorf("a clean view reported: %q", got)

@@ -15,12 +15,13 @@
 //  6. broken code[].ref — a file that is no longer there; a malformed code[]
 //     or evidence[] entry (ADR_20260930-4)
 //  7. the old shape — project.json of another contractVersion, a view with
-//     `zones`/`nodes`, containers.json, c_/z_ text keys, `kinds` or a zone key
-//     in a workspace file, a top-level `codeRef`/`symbol`/`via`, the `name` of
+//     `zones`/`nodes` or an `edges` entry with from/to/type, containers.json,
+//     c_/z_ text keys, `kinds` or a zone key in a workspace file, a top-level `codeRef`/`symbol`/`via`, the `name` of
 //     an authored entity in entities.json, relation-types.json and `rt_` text
 //     keys (ADR_20260927-3, ADR_20260930-6): the same text the loader answers with
 //  8. placements — of no entity, in a parent that is not a container placement
-//     of the view or in a loop, an override field outside CONTRACT §11.6
+//     of the view or in a loop, an override field outside CONTRACT §11.6; an `edges`
+//     entry of no relation, listed twice or with nothing of its own («линия вида»)
 //  9. entity kinds and relation types not in the dictionary («не из словаря»):
 //     not an error of the model, a list for a human to look at (CONTRACT §6)
 //  10. styles of the workspace styles.json without `forKinds` («без типа»)
@@ -402,6 +403,23 @@ func Check(workspace, sourceRoot string, defaultKinds []byte) []Finding {
 			for _, msg := range checkPlacements(vf.doc, entityKind, kinds) {
 				report(project, "размещение", fmt.Sprintf("views/%s: %s", vf.name, msg))
 			}
+			relationIDs := map[string]bool{}
+			for _, r := range rels.Relations {
+				relationIDs[r.str("id")] = true
+			}
+			listed := map[string]bool{}
+			for _, e := range viewItems(vf.doc, "edges") {
+				id := e.str("id")
+				switch {
+				case !relationIDs[id]:
+					report(project, "линия вида", fmt.Sprintf("views/%s: %s — такой связи нет в relations.json (линия — связь реестра)", vf.name, id))
+				case listed[id]:
+					report(project, "линия вида", fmt.Sprintf("views/%s: %s записана дважды", vf.name, id))
+				case e.str("styleId") == "" && e.str("routing") == "" && (e.vals["override"] == nil || string(e.vals["override"]) == "null"):
+					report(project, "линия вида", fmt.Sprintf("views/%s: %s — записи нечего хранить: нет ни styleId, ни override, ни routing", vf.name, id))
+				}
+				listed[id] = true
+			}
 		}
 
 		// ---------------------------------------------------- 6: evidence[]
@@ -463,7 +481,7 @@ func Check(workspace, sourceRoot string, defaultKinds []byte) []Finding {
 // places an entity of entities.json at most once, names its parent (null for
 // none), a parent is a container placement of the same view and there is no
 // loop, an override has only the fields of the table (CONTRACT §8.2, §11.6);
-// the same for the override of an edge entry of the view's own `edges`.
+// the same for the override of an entry of the view's `edges`.
 func checkPlacements(doc *object, entityKind map[string]string, kinds *KindCatalog) []string {
 	var out []string
 	items := viewItems(doc, "placements")

@@ -16,6 +16,23 @@ import (
 // of every placement whose object changed.
 type GeomReport struct {
 	Touched []string `json:"touched"`
+	// Contents is set by add_container with contents: what was placed in the
+	// container and what was left out.
+	Contents *ContentsReport `json:"contents,omitempty"`
+}
+
+// ContentsReport says what "a container with what it contains" did.
+type ContentsReport struct {
+	Placed  []string      `json:"placed"`
+	Skipped []ContentSkip `json:"skipped"`
+	// Note says where the grid went when the container was already on the view.
+	Note string `json:"note,omitempty"`
+}
+
+// ContentSkip is a member that was not placed, and why.
+type ContentSkip struct {
+	Entity string `json:"entity"`
+	Reason string `json:"reason"`
 }
 
 const needHuman = "geometry of a view is written only on a human's direct request (CONTRACT §8.2 p. 4)"
@@ -391,8 +408,9 @@ func setParent(o *object, parent string) {
 	o.set("parent", parent)
 }
 
-// ContainerSpec is a new container placement: of an existing entity (Entity),
-// or of a new authored entity (Name, Kind; Kind defaults to "group").
+// ContainerSpec is a new container placement of the entity Entity (its id,
+// required): an existing one of a container kind is placed as it is; one that
+// does not exist yet is created with Name and Kind (defaults to "group").
 type ContainerSpec struct {
 	Entity  string
 	Name    string
@@ -400,10 +418,16 @@ type ContainerSpec struct {
 	Parent  string
 	StyleID string
 	Rect
+	// Contents also places what the container directly contains (its `contains`
+	// relations), in a grid; the container is then sized to hold it and Width and
+	// Height are only a minimum. A container already on the view is not touched
+	// but for the members it lacks.
+	Contents bool
 }
 
 // AddContainer places a container entity on a view — creating the entity
-// first when the spec names none — as one batch. It returns the entity id.
+// first when there is none of that id — as one batch. The id is the caller's,
+// never made from a name. It returns the entity id.
 func (m *Model) AddContainer(view string, spec ContainerSpec, human bool, author string) (string, GeomReport, error) {
 	if !human {
 		return "", GeomReport{}, refuse(needHuman)
@@ -414,30 +438,30 @@ func (m *Model) AddContainer(view string, spec ContainerSpec, human bool, author
 	}
 	var extra []Op
 	id := spec.Entity
-	if id != "" {
-		if spec.Name != "" || spec.Kind != "" {
-			return "", GeomReport{}, refuse("give entity, or name and kind for a new one, not both")
-		}
-		e := m.record("entity", id)
-		if e == nil {
-			return "", GeomReport{}, refuse("no entity %s", id)
-		}
+	if id == "" {
+		return "", GeomReport{}, refuse("entity is required: the id of the container's entity (e_<name>) — an existing one is placed, a new one is created with name and kind")
+	}
+	if !hasIDPrefix(id, "e_") {
+		return "", GeomReport{}, refuse("entity id %q: starts with e_ (CONTRACT §3)", id)
+	}
+	if e := m.record("entity", id); e != nil {
 		if !m.kinds.IsContainer(e.str("kind")) {
 			return "", GeomReport{}, refuse("entity %s is of kind %q, which is not a container kind of kinds.json", id, e.str("kind"))
 		}
+		if strings.TrimSpace(spec.Name) != "" {
+			return "", GeomReport{}, refuse("entity %s exists: a name is changed with set_text (field name), not by add_container", id)
+		}
+		if spec.Kind != "" && spec.Kind != e.str("kind") {
+			return "", GeomReport{}, refuse("entity %s is of kind %q, not %q: add_container does not change a kind", id, e.str("kind"), spec.Kind)
+		}
 	} else {
 		if strings.TrimSpace(spec.Name) == "" {
-			return "", GeomReport{}, refuse("give entity, or name (and kind) for a new one")
+			return "", GeomReport{}, refuse("no entity %s: to create it give name (and kind, default group)", id)
 		}
 		kind := orDefault(spec.Kind, "group")
 		if !m.kinds.IsContainer(kind) {
 			return "", GeomReport{}, refuse("kind %q is not a container kind of kinds.json (get_kinds)", kind)
 		}
-		taken := map[string]bool{}
-		for _, e := range m.records("entity") {
-			taken[e.str("id")] = true
-		}
-		id = mint("e_"+slug(spec.Name), taken)
 		e := newObject()
 		e.set("id", id)
 		e.set("kind", kind)
@@ -451,38 +475,164 @@ func (m *Model) AddContainer(view string, spec ContainerSpec, human bool, author
 		}
 		extra = append(extra, Op{Kind: "entity", ID: id, Value: b}, nameOp)
 	}
-	if l.items[id] != nil {
+	already := l.items[id] != nil
+	if already && !spec.Contents {
 		return "", GeomReport{}, refuse("%s is already on %s", id, view)
 	}
-	if spec.Parent != "" {
-		if spec.Parent, err = l.id(spec.Parent); err != nil {
-			return "", GeomReport{}, err
+	// the placements this call makes, in the order they are written: a container
+	// before what is in it
+	var added []string
+	if !already {
+		if spec.Parent != "" {
+			if spec.Parent, err = l.id(spec.Parent); err != nil {
+				return "", GeomReport{}, err
+			}
+			if !l.isContainer(spec.Parent) {
+				return "", GeomReport{}, refuse("%s is not a container", spec.Parent)
+			}
 		}
-		if !l.isContainer(spec.Parent) {
-			return "", GeomReport{}, refuse("%s is not a container", spec.Parent)
+		p := newObject()
+		p.set("entity", id)
+		setParent(p, spec.Parent)
+		r := Rect{spec.X, spec.Y, math.Max(spec.Width, l.cv.Container.MinWidth), math.Max(spec.Height, l.cv.Container.MinHeight)}
+		p.set("x", r.X)
+		p.set("y", r.Y)
+		p.set("width", r.Width)
+		p.set("height", r.Height)
+		if spec.StyleID != "" {
+			p.set("styleId", spec.StyleID)
+		}
+		l.items[id], l.container[id], l.before[id] = p, true, objString(p)
+		l.order = append(l.order, id)
+		added = append(added, id)
+	}
+	var contents *ContentsReport
+	if spec.Contents {
+		var members []string
+		contents, members = m.placeContents(l, id, already)
+		added = append(added, members...)
+		// the container holds what was put in it; the ancestors after it
+		if len(members) > 0 {
+			l.setRect(id, l.keepContent(id, l.rect(id)))
 		}
 	}
-	p := newObject()
-	p.set("entity", id)
-	setParent(p, spec.Parent)
-	r := Rect{spec.X, spec.Y, math.Max(spec.Width, l.cv.Container.MinWidth), math.Max(spec.Height, l.cv.Container.MinHeight)}
-	p.set("x", r.X)
-	p.set("y", r.Y)
-	p.set("width", r.Width)
-	p.set("height", r.Height)
-	if spec.StyleID != "" {
-		p.set("styleId", spec.StyleID)
-	}
-	b, _ := p.MarshalJSON()
-	extra = append(extra, Op{Kind: "placement", ID: id, View: view, Value: b})
-	// the new placement is the last of the view; it is written by its own op,
-	// its parent grows around it if it must
-	l.items[id], l.container[id], l.before[id] = p, true, objString(p)
-	l.order = append(l.order, id)
 	l.growAncestors(id)
+	// a new placement is written by its own op, with what it ended up as
+	for _, a := range added {
+		b, _ := l.items[a].MarshalJSON()
+		extra = append(extra, Op{Kind: "placement", ID: a, View: view, Value: b})
+		l.before[a] = objString(l.items[a])
+	}
 	rep, err := m.commit(l, extra, author, human)
+	rep.Contents = contents
 	return id, rep, err
 }
+
+// placeContents puts what the container directly contains into the layout, in a
+// grid, and says what it did. Membership is the `contains` relation of the
+// registry (a relation or an entity that is missing is left out); the grid is
+// only a starting arrangement. An entity already on the view stays where it is.
+// A member of a container kind is placed as an empty frame of the default
+// container size. It returns the entity ids of the new placements.
+func (m *Model) placeContents(l *layout, id string, already bool) (*ContentsReport, []string) {
+	rep := &ContentsReport{Placed: []string{}, Skipped: []ContentSkip{}}
+	kinds, status, known := map[string]string{}, map[string]string{}, map[string]bool{}
+	for _, e := range m.records("entity") {
+		kinds[e.str("id")], status[e.str("id")], known[e.str("id")] = e.str("kind"), e.str("status"), true
+	}
+	// members in the order the relations list them, each with whether some
+	// relation to it is not missing
+	var order []string
+	live := map[string]bool{}
+	for _, r := range m.records("relation") {
+		if r.str("from") != id {
+			continue
+		}
+		if family, _, _ := strings.Cut(relationType(r), "."); family != ContainsKind {
+			continue
+		}
+		to := r.str("to")
+		if to == id {
+			continue
+		}
+		if _, seen := live[to]; !seen {
+			order = append(order, to)
+			live[to] = false
+		}
+		if r.str("status") != "missing" {
+			live[to] = true
+		}
+	}
+	names := m.EntityNames()
+	slices.SortFunc(order, func(a, b string) int {
+		if c := strings.Compare(strings.ToLower(names[a]), strings.ToLower(names[b])); c != 0 {
+			return c
+		}
+		return strings.Compare(a, b)
+	})
+	var place []string
+	for _, e := range order {
+		switch {
+		case l.items[e] != nil:
+			rep.Skipped = append(rep.Skipped, ContentSkip{e, "already on the view, not moved"})
+		case !known[e]:
+			rep.Skipped = append(rep.Skipped, ContentSkip{e, "no such entity in the registry"})
+		case status[e] == "missing":
+			rep.Skipped = append(rep.Skipped, ContentSkip{e, "the entity is missing (no longer in the code)"})
+		case !live[e]:
+			rep.Skipped = append(rep.Skipped, ContentSkip{e, "the relation is missing (no longer in the code)"})
+		default:
+			place = append(place, e)
+		}
+	}
+	if len(place) == 0 {
+		return rep, nil
+	}
+
+	// one cell for everyone, so that a frame among blocks overlaps nothing
+	cv := l.cv
+	cc := cv.Container
+	cellW, cellH := cv.Node.Width, cv.Node.Height
+	for _, e := range place {
+		if m.kinds.IsContainer(kinds[e]) {
+			cellW, cellH = math.Max(cellW, cc.MinWidth), math.Max(cellH, cc.MinHeight)
+		}
+	}
+	stepX, stepY := gridUp(cellW+cv.Gap.Node, cv.Grid), gridUp(cellH+cv.Gap.Node, cv.Grid)
+	box := l.rect(id)
+	originX, originY := gridUp(box.X+cc.Padding, cv.Grid), gridUp(box.Y+cc.HeaderHeight+cc.Padding, cv.Grid)
+	rep.Note = "the grid starts at the top left of the container's content"
+	if already {
+		if content, ok := l.content(id); ok {
+			originX, originY = gridUp(content.X, cv.Grid), gridUp(content.Bottom()+cv.Gap.Node, cv.Grid)
+			rep.Note = "the container was already on the view: the missing members are in a grid under its lowest child, and the container grew to hold them"
+		} else {
+			rep.Note = "the container was already on the view, empty: the members are in a grid at the top left of its content, and the container grew to hold them"
+		}
+	}
+	cols := int(math.Ceil(math.Sqrt(float64(len(place)))))
+	for i, e := range place {
+		o := newObject()
+		o.set("entity", e)
+		setParent(o, id)
+		o.set("x", originX+float64(i%cols)*stepX)
+		o.set("y", originY+float64(i/cols)*stepY)
+		isFrame := m.kinds.IsContainer(kinds[e])
+		w, h := cv.Node.Width, cv.Node.Height
+		if isFrame {
+			w, h = cc.MinWidth, cc.MinHeight
+		}
+		o.set("width", w)
+		o.set("height", h)
+		l.items[e], l.container[e], l.before[e] = o, isFrame, objString(o)
+		l.order = append(l.order, e)
+		rep.Placed = append(rep.Placed, e)
+	}
+	return rep, place
+}
+
+// gridUp rounds v up to a multiple of the grid step.
+func gridUp(v, grid float64) float64 { return math.Ceil(v/grid-1e-9) * grid }
 
 // FitContainer sets each container to its content and grows the ancestors
 // that stop holding it.

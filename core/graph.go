@@ -299,7 +299,7 @@ func attachAssemblies(nodes []GraphNode, edges []GraphEdge) {
 	// sorted, first one wins.
 	containerOf := map[string]string{}
 	for _, e := range edges {
-		if e.Kind != "contains" {
+		if e.Kind != ContainsKind {
 			continue
 		}
 		if _, ok := containerOf[e.To]; !ok {

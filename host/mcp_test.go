@@ -72,7 +72,7 @@ func TestMCPListsAllTools(t *testing.T) {
 	}
 	for _, n := range []string{"list_projects", "list_views", "get_entity", "find_entities", "get_relations",
 		"get_text", "sync_preview", "doctor", "set_text", "add_entity", "add_relation",
-		"set_relation_visible", "confirm_rename", "extract", "sync", "place_entities", "get_view", "move_elements", "resize_elements", "set_parent", "add_container", "fit_container", "align_elements",
+		"set_relation_visible", "confirm_rename", "extract", "sync", "place_entities", "get_view", "move_elements", "resize_elements", "set_parent", "set_placement", "set_routing", "add_container", "fit_container", "align_elements",
 		"get_kinds", "layout_guide", "render_view", "create_view", "create_project"} {
 		if !have[n] {
 			t.Errorf("no tool %s", n)
@@ -231,15 +231,23 @@ func TestMCPGetView(t *testing.T) {
 
 func TestMCPGeometryTools(t *testing.T) {
 	cs, _ := mcpSession(t)
-	res, text := call(t, cs, "add_container", map[string]any{"view": "v_main", "name": "Core", "x": 0, "y": 0, "width": 300, "height": 200, "requestedByHuman": false})
+	res, text := call(t, cs, "add_container", map[string]any{"view": "v_main", "entity": "e_core", "name": "Core", "x": 0, "y": 0, "width": 300, "height": 200, "requestedByHuman": false})
 	if !res.IsError || !strings.Contains(text, "direct request") {
 		t.Fatalf("without requestedByHuman: %v %s", res.IsError, text)
 	}
-	res, text = call(t, cs, "add_container", map[string]any{"view": "v_main", "name": "Core", "kind": "class", "x": 0, "y": 0, "width": 300, "height": 200, "requestedByHuman": true})
+	res, text = call(t, cs, "add_container", map[string]any{"view": "v_main", "entity": "e_core", "name": "Core", "kind": "class", "x": 0, "y": 0, "width": 300, "height": 200, "requestedByHuman": true})
 	if !res.IsError || !strings.Contains(text, "not a container kind") {
 		t.Fatalf("a kind that is no container: %v %s", res.IsError, text)
 	}
 	res, text = call(t, cs, "add_container", map[string]any{"view": "v_main", "name": "Core", "x": 0, "y": 0, "width": 300, "height": 200, "requestedByHuman": true})
+	if !res.IsError || !strings.Contains(text, `missing properties: ["entity"]`) {
+		t.Fatalf("no id in the call: %v %s", res.IsError, text)
+	}
+	res, text = call(t, cs, "add_container", map[string]any{"view": "v_main", "entity": "", "name": "Core", "x": 0, "y": 0, "width": 300, "height": 200, "requestedByHuman": true})
+	if !res.IsError || !strings.Contains(text, "entity is required") {
+		t.Fatalf("an empty id: %v %s", res.IsError, text)
+	}
+	res, text = call(t, cs, "add_container", map[string]any{"view": "v_main", "entity": "e_core", "name": "Core", "x": 0, "y": 0, "width": 300, "height": 200, "requestedByHuman": true})
 	if res.IsError || !strings.Contains(text, "not saved") || !strings.Contains(text, "container e_core placed") || !strings.Contains(text, "highlight=e_core") {
 		t.Fatalf("add_container: %v %s", res.IsError, text)
 	}
@@ -257,7 +265,7 @@ func TestMCPGeometryTools(t *testing.T) {
 // as a tree and fit_container closes the frame around them.
 func TestMCPContainerTree(t *testing.T) {
 	cs, _ := mcpSession(t)
-	call(t, cs, "add_container", map[string]any{"view": "v_main", "name": "Core", "x": 0, "y": 0, "width": 160, "height": 100, "requestedByHuman": true})
+	call(t, cs, "add_container", map[string]any{"view": "v_main", "entity": "e_core", "name": "Core", "x": 0, "y": 0, "width": 160, "height": 100, "requestedByHuman": true})
 	res, text := call(t, cs, "place_entities", map[string]any{"view": "v_main", "requestedByHuman": true,
 		"entities": []any{map[string]any{"entity": "e_a", "parent": "e_core", "x": 400, "y": 300}}})
 	if res.IsError {

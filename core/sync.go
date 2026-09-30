@@ -1255,10 +1255,22 @@ type registry struct {
 	top     *object
 	items   []*object
 	dirty   bool
+	// saved: the ids the file held when it was loaded or last saved. A record
+	// outside it was created in the unsaved working state and can be withdrawn
+	// (ADR_20260930-8). Replaced, never mutated, so a copy may share it.
+	saved map[string]bool
+}
+
+// markSaved remembers the ids now in items as the saved ones.
+func (r *registry) markSaved() {
+	r.saved = make(map[string]bool, len(r.items))
+	for _, o := range r.items {
+		r.saved[o.str("id")] = true
+	}
 }
 
 func loadRegistry(dir, name, listKey string, fresh func() *object) (*registry, error) {
-	r := &registry{file: filepath.Join(dir, name), name: name, listKey: listKey}
+	r := &registry{file: filepath.Join(dir, name), name: name, listKey: listKey, saved: map[string]bool{}}
 	data, err := os.ReadFile(r.file)
 	if errors.Is(err, fs.ErrNotExist) {
 		r.top = fresh()
@@ -1276,6 +1288,7 @@ func loadRegistry(dir, name, listKey string, fresh func() *object) (*registry, e
 			return nil, fmt.Errorf("%s: %s: %w", name, listKey, err)
 		}
 	}
+	r.markSaved()
 	return r, nil
 }
 
