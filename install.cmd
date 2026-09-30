@@ -20,6 +20,8 @@ set "STAGE=%TEMP%\semaps-build"
 if exist "%STAGE%" rmdir /s /q "%STAGE%"
 mkdir "%STAGE%\extractors"
 go build -o "%STAGE%\semaps.exe" ./host || exit /b 1
+rem The Go extractor is its own module (golang.org/x/tools stays out of the root one).
+go build -C extractors\go -o "%STAGE%\extractors\go\semaps-extract-go.exe" . || exit /b 1
 
 where dotnet >nul 2>nul
 if not errorlevel 1 (
