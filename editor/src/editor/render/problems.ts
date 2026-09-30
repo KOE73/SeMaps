@@ -11,7 +11,7 @@ export type ProblemKind =
   | "clipped-rows"
   | "line-through-box"
   | "line-crossing"
-  | "outside-zone";
+  | "outside-container";
 
 export interface Problem {
   kind: ProblemKind;
@@ -94,7 +94,7 @@ function outsideZone(boxes: readonly Box[], add: (p: Problem) => void): void {
     if (el.origin !== undefined && !el.origin.zoneDeclared) continue;
     const zone = rects.get(el.parent.id);
     if (zone !== undefined && !inside(zone, rect)) {
-      add({ kind: "outside-zone", ids: [el.id, el.parent.id], text: `${el.id} is not inside its zone ${el.parent.id}` });
+      add({ kind: "outside-container", ids: [el.id, el.parent.id], text: `${el.id} is not inside its container ${el.parent.id}` });
     }
   }
 }

@@ -1,58 +1,63 @@
 package core
 
 import (
-	"encoding/json"
 	"path/filepath"
 	"sort"
 )
 
 // GroupData is what the graph mode can group nodes by beyond the facts
-// themselves: the containers' nesting (containers.json `parent`) and, per
-// axis, which zone of the project's views each entity sits in. It is read-only
-// and built from the working model (unsaved edits included); nothing in it is
-// ever written back.
+// themselves: the containers of the graph with their nesting (`contains`
+// between container nodes, GraphContainers) and, per axis, which container
+// placement of the project's views each entity sits in. It is read-only and
+// built from the working model (unsaved edits included); nothing in it is ever
+// written back.
 type GroupData struct {
 	Containers []GroupContainer `json:"containers"`
 	Axes       []GroupAxis      `json:"axes"`
 }
 
-type GroupContainer struct {
+// GroupAxis is one axis (`axis_*`, CONTRACT §8.1) the project's views declare —
+// or inherit from `defaultAxis` — with the containers placed on those views and,
+// per entity, the container it is placed in (`parent` of its placement). An
+// entity a view places outside any container (`parent: null`), or no view of
+// the axis places at all, is absent from `Of`. When views of one axis place the
+// same entity in different containers (which CONTRACT §8.1 forbids), the first
+// view in file order wins.
+type GroupAxis struct {
+	Axis       string               `json:"axis"`
+	Containers []GroupAxisContainer `json:"containers"`
+	Of         map[string]string    `json:"of"`
+}
+
+// GroupAxisContainer is a container entity placed on a view of the axis, with
+// the container it is placed in on that view. Ids are entity ids.
+type GroupAxisContainer struct {
 	ID     string `json:"id"`
+	Name   string `json:"name,omitempty"`
 	Parent string `json:"parent,omitempty"`
 }
 
-// GroupAxis is one axis (`axis_*`, CONTRACT §8.1) the project's views declare —
-// or inherit from `defaultAxis` — with the zones of those views and, per
-// entity, the zone it is placed in. An entity a view places outside any zone
-// (`zone: null`), or no view of the axis places at all, is absent from `Of`.
-// When views of one axis place the same entity in different zones (which
-// CONTRACT §8.1 forbids), the first view in file order wins.
-type GroupAxis struct {
-	Axis  string            `json:"axis"`
-	Zones []GroupZone       `json:"zones"`
-	Of    map[string]string `json:"of"`
+// Groups is the GroupData of the model's project for a graph built from it.
+func (m *Model) Groups(g *Graph) (*GroupData, error) {
+	axes, err := m.AxisGroups()
+	if err != nil {
+		return nil, err
+	}
+	return &GroupData{Containers: GraphContainers(g), Axes: axes}, nil
 }
 
-type GroupZone struct {
-	ID        string `json:"id"`
-	Container string `json:"container,omitempty"`
-	Parent    string `json:"parent,omitempty"`
-}
-
-// Groups builds the GroupData of the model's project.
-func (m *Model) Groups() (*GroupData, error) {
+// AxisGroups reads the views of the project, an unsaved edit of a view winning
+// over its file.
+func (m *Model) AxisGroups() ([]GroupAxis, error) {
 	m.mu.Lock()
 	defer m.mu.Unlock()
 
-	data := &GroupData{Containers: []GroupContainer{}, Axes: []GroupAxis{}}
-	if containers, err := LoadContainers(m.dir); err != nil {
-		return nil, err
-	} else if containers != nil {
-		for _, c := range containers.List {
-			data.Containers = append(data.Containers, GroupContainer{ID: c.ID, Parent: c.Parent})
+	names := map[string]string{}
+	if r := m.registries["entity"]; r != nil {
+		for _, e := range r.items {
+			names[e.str("id")] = e.str("name")
 		}
 	}
-
 	defaultAxis := m.manifest.str("defaultAxis")
 	files, _ := filepath.Glob(filepath.Join(m.dir, "views", "*.view.json"))
 	sort.Strings(files)
@@ -70,6 +75,9 @@ func (m *Model) Groups() (*GroupData, error) {
 		if cached := m.views[id]; cached != nil {
 			doc = cached.doc // an unsaved edit of the view wins over the file
 		}
+		if old := oldViewShape(doc); old != "" {
+			return nil, refuse("%s", oldShapeError("views/"+filepath.Base(file), old))
+		}
 		axis := doc.str("axis")
 		if axis == "" {
 			axis = defaultAxis
@@ -79,58 +87,43 @@ func (m *Model) Groups() (*GroupData, error) {
 		}
 		a := byAxis[axis]
 		if a == nil {
-			a = &GroupAxis{Axis: axis, Zones: []GroupZone{}, Of: map[string]string{}}
+			a = &GroupAxis{Axis: axis, Containers: []GroupAxisContainer{}, Of: map[string]string{}}
 			byAxis[axis] = a
 			order = append(order, axis)
 		}
-		var zones []struct {
-			ID        string `json:"id"`
-			Container string `json:"container"`
-			Parent    string `json:"parent"`
-		}
-		_ = json.Unmarshal(doc.vals["zones"], &zones)
 		seen := map[string]bool{}
-		for _, z := range a.Zones {
-			seen[z.ID] = true
+		for _, c := range a.Containers {
+			seen[c.ID] = true
 		}
-		for _, z := range zones {
-			if z.ID != "" && !seen[z.ID] {
-				a.Zones = append(a.Zones, GroupZone{ID: z.ID, Container: z.Container, Parent: z.Parent})
-				seen[z.ID] = true
+		items := viewItems(doc, "placements")
+		isContainer := map[string]bool{}
+		if r := m.registries["entity"]; r != nil {
+			for _, e := range r.items {
+				isContainer[e.str("id")] = m.kinds.IsContainer(e.str("kind"))
 			}
 		}
-		// `nodes`/`placements`, `entity`/`id`, `zone`/`container`: the loader takes both spellings (CONTRACT §8.3).
-		raw := doc.vals["nodes"]
-		if raw == nil {
-			raw = doc.vals["placements"]
-		}
-		var nodes []struct {
-			Entity    string `json:"entity"`
-			ID        string `json:"id"`
-			Zone      string `json:"zone"`
-			Container string `json:"container"`
-		}
-		_ = json.Unmarshal(raw, &nodes)
-		for _, n := range nodes {
-			entity, zone := n.Entity, n.Zone
+		for _, p := range items {
+			entity, parent := p.str("entity"), p.str("parent")
 			if entity == "" {
-				entity = n.ID
+				continue
 			}
-			if zone == "" {
-				zone = n.Container
+			if isContainer[entity] && !seen[entity] {
+				a.Containers = append(a.Containers, GroupAxisContainer{ID: entity, Name: names[entity], Parent: parent})
+				seen[entity] = true
 			}
-			if entity == "" || zone == "" {
+			if parent == "" {
 				continue
 			}
 			if _, placed := a.Of[entity]; !placed {
-				a.Of[entity] = zone
+				a.Of[entity] = parent
 			}
 		}
 	}
+	out := []GroupAxis{}
 	for _, axis := range order {
-		data.Axes = append(data.Axes, *byAxis[axis])
+		out = append(out, *byAxis[axis])
 	}
-	return data, nil
+	return out, nil
 }
 
 func filepathBase(file string) string {

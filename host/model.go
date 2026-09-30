@@ -77,7 +77,7 @@ func (s *modelService) get(id string) (*core.Model, error) {
 		m.SetCanvas(loadCanvas(s.workspace))
 		return m, nil
 	}
-	m, err := core.LoadModel(s.workspace, id)
+	m, err := core.LoadModel(s.workspace, id, defaultKinds())
 	if err != nil {
 		return nil, err
 	}
@@ -294,6 +294,24 @@ func (s *modelService) register(mux *http.ServeMux) {
 	mux.HandleFunc("POST /api/model/{project}/discard", s.discard)
 	mux.HandleFunc("GET /api/events", s.events)
 	mux.HandleFunc("POST /api/render/{id}", s.answerRender)
+	mux.HandleFunc("GET /api/kinds", s.kinds)
+}
+
+// kinds answers GET /api/kinds: the dictionary — the tool's default with the
+// workspace kinds.json added (CONTRACT §6). Without `lang` every text comes in
+// all its languages; with it, names and descriptions in that one (as get_kinds).
+func (s *modelService) kinds(w http.ResponseWriter, r *http.Request) {
+	catalog, err := core.LoadKinds(s.workspace, defaultKinds())
+	if err != nil {
+		modelError(w, err)
+		return
+	}
+	w.Header().Set("Cache-Control", "no-cache")
+	if lang := r.URL.Query().Get("lang"); lang != "" {
+		writeJSON(w, dictionaryOut(catalog, lang))
+		return
+	}
+	writeJSON(w, catalog)
 }
 
 func modelError(w http.ResponseWriter, err error) {
@@ -338,8 +356,6 @@ func (s *modelService) snapshot(w http.ResponseWriter, r *http.Request) {
 					modelError(w, err)
 					return
 				}
-				delete(props, "zones")
-				delete(props, "nodes")
 				delete(props, "placements")
 				views[v.ID], _ = json.Marshal(props)
 				viewFiles[v.ID] = v.File

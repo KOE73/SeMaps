@@ -36,10 +36,10 @@ func (after *Model) validate(before *Model, ops []Op) error {
 			err = after.checkRelationType(before, op.ID)
 		case "text":
 			err = after.checkText(before, op.Lang, op.ID)
-		case "zone":
-			err = after.checkZone(before, op.View, op.ID)
-		case "node":
-			err = after.checkNode(before, op.View, op.ID)
+		case "placement":
+			err = after.checkPlacement(before, op.View, op.ID)
+		case "view":
+			err = after.checkViewEdges(before, op.View)
 		}
 		if err != nil {
 			return err
@@ -176,22 +176,14 @@ func (m *Model) loadTextNoCache(lang string) (*object, error) {
 	return loadDoc(filepath.Join(m.dir, "text."+lang+".json"))
 }
 
-// viewObjects: zones or nodes of a view doc by id (a node by its entity).
-func viewObjects(doc *object, kind string) map[string]*object {
+// placementsOf: the placements of a view doc by entity.
+func placementsOf(doc *object) map[string]*object {
 	out := map[string]*object{}
 	if doc == nil {
 		return out
 	}
-	if kind == "zone" {
-		for _, z := range viewItems(doc, "zones") {
-			out[z.str("id")] = z
-		}
-		return out
-	}
-	for _, key := range []string{"nodes", "placements"} {
-		for _, n := range viewItems(doc, key) {
-			out[nodeID(n)] = n
-		}
+	for _, p := range viewItems(doc, "placements") {
+		out[p.str("entity")] = p
 	}
 	return out
 }
@@ -207,45 +199,74 @@ func (m *Model) viewDocNoCache(view string) *object {
 	return doc
 }
 
-func (after *Model) checkZone(before *Model, view, id string) error {
-	o := viewObjects(after.views[view].doc, "zone")[id]
+// checkPlacement: a placement places an entity of entities.json, names its
+// parent (null for none) and only a container placement of the same view as
+// the parent, without a loop; its override has only the fields of the table
+// (CONTRACT §8.2, §11.6). A removed container must not leave placements
+// pointing at it.
+func (after *Model) checkPlacement(before *Model, view, id string) error {
+	all := placementsOf(after.views[view].doc)
+	o := all[id]
 	if o == nil {
-		return nil // removed
-	}
-	old := viewObjects(before.viewDocNoCache(view), "zone")[id]
-	if old == nil && !hasIDPrefix(id, "z_") {
-		return refuse("zone id %q: starts with z_ (CONTRACT §8.2)", id)
-	}
-	if !changed(old, o, "parent") {
+		for _, p := range viewItems(after.views[view].doc, "placements") {
+			if p.str("parent") == id {
+				return refuse("%s on %s still lies in %s: move it out or remove it in the same batch", p.str("entity"), view, id)
+			}
+		}
 		return nil
 	}
-	zones := viewObjects(after.views[view].doc, "zone")
-	for p, hops := o.str("parent"), 0; p != ""; p, hops = zones[p].str("parent"), hops+1 {
-		if zones[p] == nil {
-			return refuse("%s is not a zone", p)
+	if s := oldPlacementShape(o); s != "" {
+		return refuse("placement %s on %s: %s — форма контракта 3, нужен %d (CONTRACT §8.2)", id, view, s, ContractVersion)
+	}
+	if _, ok := o.vals["parent"]; !ok {
+		return refuse("placement %s on %s: parent is required; null for none (CONTRACT §8.2)", id, view)
+	}
+	old := placementsOf(before.viewDocNoCache(view))[id]
+	entities := after.registries["entity"].items
+	if old == nil && findByID(entities, id) == nil {
+		return refuse("no entity %s: a placement places an entity of entities.json (CONTRACT §8.2)", id)
+	}
+	if changed(old, o, "parent") {
+		for p, hops := o.str("parent"), 0; p != ""; p, hops = all[p].str("parent"), hops+1 {
+			if all[p] == nil {
+				return refuse("no container %s on %s", p, view)
+			}
+			if e := findByID(entities, p); e == nil || !after.kinds.IsContainer(e.str("kind")) {
+				return refuse("%s is not a container: its kind is not a container kind of kinds.json (CONTRACT §8.2)", p)
+			}
+			if p == id || hops > len(all) {
+				return refuse("%s cannot go into itself or its own content", id)
+			}
 		}
-		if p == id || hops > len(zones) {
-			return refuse("zone %s cannot go into itself or its own content", id)
+	}
+	if changed(old, o, "override") {
+		if err := CheckOverride(o.vals["override"]); err != nil {
+			return refuse("placement %s on %s: %v", id, view, err)
 		}
 	}
 	return nil
 }
 
-func (after *Model) checkNode(before *Model, view, id string) error {
-	o := viewObjects(after.views[view].doc, "node")[id]
-	if o == nil {
-		return nil // removed
+// checkViewEdges: an `override` of an edge entry of the view's own `edges`
+// has only the fields of the edge table (CONTRACT §8.5, §11.6). Entries that
+// the batch did not change are not looked at.
+func (after *Model) checkViewEdges(before *Model, view string) error {
+	if after.views[view] == nil {
+		return nil
 	}
-	old := viewObjects(before.viewDocNoCache(view), "node")[id]
-	if (changed(old, o, "entity") || changed(old, o, "id")) && findByID(after.registries["entity"].items, id) == nil {
-		return refuse("no entity %s: a node places an entity of entities.json (CONTRACT §8.2)", id)
+	old := map[string]string{}
+	if doc := before.viewDocNoCache(view); doc != nil {
+		for _, e := range viewItems(doc, "edges") {
+			old[e.str("id")] = string(e.vals["override"])
+		}
 	}
-	zoneKey := "zone"
-	if _, ok := o.vals["zone"]; !ok {
-		zoneKey = "container" // legacy spelling (CONTRACT §8.2)
-	}
-	if z := o.str(zoneKey); z != "" && changed(old, o, zoneKey) && viewObjects(after.views[view].doc, "zone")[z] == nil {
-		return refuse("no zone %s on %s", z, view)
+	for _, e := range viewItems(after.views[view].doc, "edges") {
+		if prev, ok := old[e.str("id")]; ok && prev == string(e.vals["override"]) {
+			continue
+		}
+		if err := CheckEdgeOverride(e.vals["override"]); err != nil {
+			return refuse("edge %s on %s: %v", e.str("id"), view, err)
+		}
 	}
 	return nil
 }

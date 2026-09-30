@@ -1,35 +1,33 @@
 package core
 
 import (
-	"encoding/json"
 	"math"
 	"slices"
 	"strings"
 )
 
 // Geometry of a view, in steps a person would name: move, resize, put into a
-// zone, add a zone, fit a zone to its content, align. Each step reads the view,
-// changes copies of the zone and node objects, and applies all of them as one
-// batch — everything or nothing. Every step needs requestedByHuman
-// (CONTRACT §8.2 p. 3, ADR_20260924).
+// container, add a container, fit a container to its content, align. Each step
+// reads the view, changes copies of its placements, and applies all of them as
+// one batch — everything or nothing. Every step needs requestedByHuman
+// (CONTRACT §8.2 p. 4, ADR_20260924).
 
-// GeomReport says what a geometry step did. Touched are references `view#id`
-// of every zone and node whose object changed.
+// GeomReport says what a geometry step did. Touched are references `view#entity`
+// of every placement whose object changed.
 type GeomReport struct {
 	Touched []string `json:"touched"`
 }
 
-const needHuman = "geometry of a view is written only on a human's direct request (CONTRACT §8.2 p. 3)"
+const needHuman = "geometry of a view is written only on a human's direct request (CONTRACT §8.2 p. 4)"
 
+// layout is a view's placements by entity id, in file order. Whether a
+// placement is a container is its entity's kind (CONTRACT §8.2).
 type layout struct {
 	view      string
-	nodeKey   string
-	zones     map[string]*object
-	nodes     map[string]*object
-	zoneOrder []string
-	nodeOrder []string
-	before    map[string]string // "zone:<id>" / "node:<id>" -> the object as loaded
-	parents   map[string]string // effective parent of each zone, see zoneParents
+	items     map[string]*object
+	order     []string
+	container map[string]bool
+	before    map[string]string // entity -> the placement as loaded
 	cv        Canvas
 }
 
@@ -42,69 +40,24 @@ func (m *Model) loadLayout(viewID string) (*layout, error) {
 	if err != nil {
 		return nil, refuse("no view %s", viewID)
 	}
-	l := &layout{view: viewID, cv: cv, nodeKey: "nodes", zones: map[string]*object{}, nodes: map[string]*object{}, before: map[string]string{}}
-	for _, z := range viewItems(doc, "zones") {
-		id := z.str("id")
-		l.zones[id] = z
-		l.zoneOrder = append(l.zoneOrder, id)
-		l.before["zone:"+id] = objString(z)
+	kinds := map[string]string{}
+	for _, e := range m.records("entity") {
+		kinds[e.str("id")] = e.str("kind")
 	}
-	if _, ok := doc.vals["nodes"]; !ok {
-		if _, ok := doc.vals["placements"]; ok {
-			l.nodeKey = "placements"
-		}
+	l := &layout{view: viewID, cv: cv, items: map[string]*object{}, container: map[string]bool{}, before: map[string]string{}}
+	for _, p := range viewItems(doc, "placements") {
+		id := p.str("entity")
+		l.items[id] = p
+		l.order = append(l.order, id)
+		l.container[id] = m.kinds.IsContainer(kinds[id])
+		l.before[id] = objString(p)
 	}
-	for _, n := range viewItems(doc, l.nodeKey) {
-		id := nodeID(n)
-		l.nodes[id] = n
-		l.nodeOrder = append(l.nodeOrder, id)
-		l.before["node:"+id] = objString(n)
-	}
-	l.parents = zoneParents(viewItems(doc, "zones"), cv)
 	return l, nil
-}
-
-// zoneParents is where each zone nests: its `parent`, else a zone named by its
-// `container` (older files do that), else — files that only draw the frames
-// inside each other — the smallest zone whose rectangle strictly holds it.
-func zoneParents(list []*object, cv Canvas) map[string]string {
-	ids := map[string]bool{}
-	for _, z := range list {
-		ids[z.str("id")] = true
-	}
-	out := map[string]string{}
-	for _, z := range list {
-		id := z.str("id")
-		p := z.str("parent")
-		if p == "" || !ids[p] || p == id {
-			p = z.str("container")
-			if !ids[p] || p == id {
-				p = ""
-			}
-		}
-		if p == "" {
-			rz, best, bestArea := zoneRect(z, cv), "", 0.0
-			for _, o := range list {
-				ro := zoneRect(o, cv)
-				if o == z || ro == rz || !ro.Contains(rz) {
-					continue
-				}
-				if a := ro.Width * ro.Height; best == "" || a < bestArea {
-					best, bestArea = o.str("id"), a
-				}
-			}
-			p = best
-		}
-		if p != "" {
-			out[id] = p
-		}
-	}
-	return out
 }
 
 func objString(o *object) string { b, _ := o.MarshalJSON(); return string(b) }
 
-// id turns a reference `view#id` or a bare id into a bare id of this layout.
+// id turns a reference `view#entity` or a bare entity id into an entity placed on this view.
 func (l *layout) id(s string) (string, error) {
 	s = strings.TrimSpace(s)
 	if strings.Contains(s, "#") || strings.Contains(s, "/") {
@@ -117,7 +70,7 @@ func (l *layout) id(s string) (string, error) {
 		}
 		s = r.ID
 	}
-	if l.zones[s] == nil && l.nodes[s] == nil {
+	if l.items[s] == nil {
 		return "", refuse("%s is not on view %s", s, l.view)
 	}
 	return s, nil
@@ -140,22 +93,14 @@ func (l *layout) ids(list []string) ([]string, error) {
 	return out, nil
 }
 
-func (l *layout) isZone(id string) bool { return l.zones[id] != nil }
+func (l *layout) isContainer(id string) bool { return l.container[id] }
 
-func (l *layout) rect(id string) Rect {
-	if z := l.zones[id]; z != nil {
-		return zoneRect(z, l.cv)
-	}
-	return nodeRect(l.nodes[id], l.cv)
-}
+func (l *layout) rect(id string) Rect { return placementRect(l.items[id], l.container[id], l.cv) }
 
-// setRect writes only the fields that differ, so a node that never had a size
-// does not get one for being moved.
+// setRect writes only the fields that differ, so a placement that never had a
+// size does not get one for being moved.
 func (l *layout) setRect(id string, r Rect) {
-	o := l.zones[id]
-	if o == nil {
-		o = l.nodes[id]
-	}
+	o := l.items[id]
 	cur := l.rect(id)
 	for _, f := range []struct {
 		key      string
@@ -170,26 +115,21 @@ func (l *layout) setRect(id string, r Rect) {
 
 func has(o *object, key string) bool { _, ok := o.vals[key]; return ok }
 
+// parentOf is the container a placement lies in on this view; "" when none.
 func (l *layout) parentOf(id string) string {
-	if l.zones[id] != nil {
-		return l.parents[id]
-	}
-	if n := l.nodes[id]; n != nil {
-		return nodeZone(n)
+	if o := l.items[id]; o != nil {
+		if p := o.str("parent"); p != id && l.container[p] {
+			return p
+		}
 	}
 	return ""
 }
 
-// children of a zone: zones whose parent it is, nodes in it.
-func (l *layout) children(zone string) []string {
+// children of a container: the placements whose parent it is, in file order.
+func (l *layout) children(c string) []string {
 	var out []string
-	for _, id := range l.zoneOrder {
-		if id != zone && l.parents[id] == zone {
-			out = append(out, id)
-		}
-	}
-	for _, id := range l.nodeOrder {
-		if nodeZone(l.nodes[id]) == zone {
+	for _, id := range l.order {
+		if id != c && l.parentOf(id) == c {
 			out = append(out, id)
 		}
 	}
@@ -206,7 +146,7 @@ func (l *layout) subtree(id string) []string {
 		}
 		seen[id] = true
 		out := []string{id}
-		if l.isZone(id) {
+		if l.isContainer(id) {
 			for _, c := range l.children(id) {
 				out = append(out, walk(c)...)
 			}
@@ -216,14 +156,14 @@ func (l *layout) subtree(id string) []string {
 	return walk(id)
 }
 
-func (l *layout) content(zone string) (Rect, bool) {
+func (l *layout) content(c string) (Rect, bool) {
 	var box Rect
 	found := false
-	for _, c := range l.children(zone) {
+	for _, ch := range l.children(c) {
 		if found {
-			box = box.Union(l.rect(c))
+			box = box.Union(l.rect(ch))
 		} else {
-			box, found = l.rect(c), true
+			box, found = l.rect(ch), true
 		}
 	}
 	return box, found
@@ -252,40 +192,42 @@ func (l *layout) union(ids []string) Rect {
 	return box
 }
 
-// keepContent grows a zone's right and bottom so its children stay inside.
-func (l *layout) keepContent(zone string, r Rect) Rect {
-	if c, ok := l.content(zone); ok {
-		r.Width = math.Max(r.Width, c.Right()+l.cv.Zone.Padding-r.X)
-		r.Height = math.Max(r.Height, c.Bottom()+l.cv.Zone.Padding-r.Y)
+// keepContent grows a container's right and bottom so its children stay inside.
+func (l *layout) keepContent(c string, r Rect) Rect {
+	if box, ok := l.content(c); ok {
+		r.Width = math.Max(r.Width, box.Right()+l.cv.Container.Padding-r.X)
+		r.Height = math.Max(r.Height, box.Bottom()+l.cv.Container.Padding-r.Y)
 	}
-	r.Width, r.Height = math.Max(r.Width, l.cv.Zone.MinWidth), math.Max(r.Height, l.cv.Zone.MinHeight)
+	r.Width, r.Height = math.Max(r.Width, l.cv.Container.MinWidth), math.Max(r.Height, l.cv.Container.MinHeight)
 	return r
 }
 
-// fit sets a zone to its content — caption strip and padding around it — and
-// then makes every ancestor still hold what is in it.
-func (l *layout) fit(zone string) {
-	if c, ok := l.content(zone); ok {
-		r := Rect{X: c.X - l.cv.Zone.Padding, Y: c.Y - l.cv.Zone.Padding - l.cv.Zone.HeaderHeight}
-		r.Width = math.Max(c.Right()+l.cv.Zone.Padding-r.X, l.cv.Zone.MinWidth)
-		r.Height = math.Max(c.Bottom()+l.cv.Zone.Padding-r.Y, l.cv.Zone.MinHeight)
-		l.setRect(zone, r)
+// fit sets a container to its content — caption strip and padding around it —
+// and then makes every ancestor still hold what is in it.
+func (l *layout) fit(c string) {
+	if box, ok := l.content(c); ok {
+		cc := l.cv.Container
+		r := Rect{X: box.X - cc.Padding, Y: box.Y - cc.Padding - cc.HeaderHeight}
+		r.Width = math.Max(box.Right()+cc.Padding-r.X, cc.MinWidth)
+		r.Height = math.Max(box.Bottom()+cc.Padding-r.Y, cc.MinHeight)
+		l.setRect(c, r)
 	}
-	l.growAncestors(zone)
+	l.growAncestors(c)
 }
 
 func (l *layout) growAncestors(id string) {
 	seen := map[string]bool{id: true}
-	for p := l.parentOf(id); p != "" && l.zones[p] != nil && !seen[p]; p = l.parentOf(p) {
+	cc := l.cv.Container
+	for p := l.parentOf(id); p != "" && !seen[p]; p = l.parentOf(p) {
 		seen[p] = true
 		c, _ := l.content(p)
 		cur := l.rect(p)
 		need := Rect{
-			X: math.Min(cur.X, c.X-l.cv.Zone.Padding),
-			Y: math.Min(cur.Y, c.Y-l.cv.Zone.Padding-l.cv.Zone.HeaderHeight),
+			X: math.Min(cur.X, c.X-cc.Padding),
+			Y: math.Min(cur.Y, c.Y-cc.Padding-cc.HeaderHeight),
 		}
-		need.Width = math.Max(cur.Right(), c.Right()+l.cv.Zone.Padding) - need.X
-		need.Height = math.Max(cur.Bottom(), c.Bottom()+l.cv.Zone.Padding) - need.Y
+		need.Width = math.Max(cur.Right(), c.Right()+cc.Padding) - need.X
+		need.Height = math.Max(cur.Bottom(), c.Bottom()+cc.Padding) - need.Y
 		l.setRect(p, need)
 	}
 }
@@ -302,23 +244,18 @@ func (m *Model) commitMode(l *layout, extra []Op, author string, human, dry bool
 	}
 	var ops []Op
 	var touched []string
-	add := func(kind, id string, o *object, was string) {
-		if objString(o) == was {
-			return
+	ops = append(ops, extra...)
+	for _, id := range l.order {
+		o := l.items[id]
+		if objString(o) == l.before[id] {
+			continue
 		}
 		b, _ := o.MarshalJSON()
-		ops = append(ops, Op{Kind: kind, ID: id, View: l.view, Value: b})
+		ops = append(ops, Op{Kind: "placement", ID: id, View: l.view, Value: b})
 		touched = append(touched, l.view+"#"+id)
 	}
-	ops = append(ops, extra...)
-	for _, id := range l.zoneOrder {
-		add("zone", id, l.zones[id], l.before["zone:"+id])
-	}
-	for _, id := range l.nodeOrder {
-		add("node", id, l.nodes[id], l.before["node:"+id])
-	}
 	for _, op := range extra {
-		if op.Kind == "zone" {
+		if op.Kind == "placement" {
 			touched = append(touched, l.view+"#"+op.ID)
 		}
 	}
@@ -334,7 +271,7 @@ func (m *Model) commitMode(l *layout, extra []Op, author string, human, dry bool
 // ---------------------------------------------------------------- the steps
 
 // MoveElements shifts by (dx, dy), or puts the top-left corner of the elements'
-// common box at (x, y). A zone goes with everything inside it.
+// common box at (x, y). A container goes with everything inside it.
 func (m *Model) MoveElements(view string, elements []string, dx, dy, x, y *float64, human bool, author string) (GeomReport, error) {
 	if !human {
 		return GeomReport{}, refuse(needHuman)
@@ -379,7 +316,7 @@ func deref(p *float64) float64 {
 }
 
 // ResizeElements sets width and/or height, not below the minimum of the sort
-// and, for a zone, not below what it holds.
+// and, for a container, not below what it holds.
 func (m *Model) ResizeElements(view string, elements []string, width, height *float64, human bool, author string) (GeomReport, error) {
 	if !human {
 		return GeomReport{}, refuse(needHuman)
@@ -403,7 +340,7 @@ func (m *Model) ResizeElements(view string, elements []string, width, height *fl
 		if height != nil {
 			r.Height = *height
 		}
-		if l.isZone(id) {
+		if l.isContainer(id) {
 			r = l.keepContent(id, r)
 		} else {
 			r.Width, r.Height = math.Max(r.Width, l.cv.Node.MinWidth), math.Max(r.Height, l.cv.Node.MinHeight)
@@ -414,9 +351,9 @@ func (m *Model) ResizeElements(view string, elements []string, width, height *fl
 	return m.commit(l, nil, author, human)
 }
 
-// SetZone puts nodes and zones into a zone (zone "" takes them out of any).
-// Coordinates stay as they are.
-func (m *Model) SetZone(view string, elements []string, zone string, human bool, author string) (GeomReport, error) {
+// SetParent puts placements into a container (parent "" takes them out of
+// any). Coordinates stay as they are.
+func (m *Model) SetParent(view string, elements []string, parent string, human bool, author string) (GeomReport, error) {
 	if !human {
 		return GeomReport{}, refuse(needHuman)
 	}
@@ -428,137 +365,124 @@ func (m *Model) SetZone(view string, elements []string, zone string, human bool,
 	if err != nil {
 		return GeomReport{}, err
 	}
-	if zone != "" {
-		if zone, err = l.id(zone); err != nil {
+	if parent != "" {
+		if parent, err = l.id(parent); err != nil {
 			return GeomReport{}, err
 		}
-		if !l.isZone(zone) {
-			return GeomReport{}, refuse("%s is not a zone", zone)
+		if !l.isContainer(parent) {
+			return GeomReport{}, refuse("%s is not a container: its kind is not a container kind of kinds.json", parent)
 		}
 	}
 	for _, id := range ids {
-		if l.isZone(id) {
-			if zone != "" && slices.Contains(l.subtree(id), zone) {
-				return GeomReport{}, refuse("zone %s cannot go into itself or its own content", id)
-			}
-			setOrDrop(l.zones[id], "parent", zone)
-			if c := l.zones[id].str("container"); l.zones[c] != nil {
-				l.zones[id].set("container", nil)
-				if zone != "" {
-					l.zones[id].set("container", zone)
-				}
-			}
-		} else {
-			key := "zone"
-			if !has(l.nodes[id], "zone") && has(l.nodes[id], "container") {
-				key = "container"
-			}
-			if zone == "" {
-				l.nodes[id].set(key, nil)
-			} else {
-				l.nodes[id].set(key, zone)
-			}
+		if parent != "" && slices.Contains(l.subtree(id), parent) {
+			return GeomReport{}, refuse("%s cannot go into itself or its own content", id)
 		}
+		setParent(l.items[id], parent)
 	}
 	return m.commit(l, nil, author, human)
 }
 
-func setOrDrop(o *object, key, value string) {
-	if value == "" {
-		o.del(key)
+// setParent writes `parent`, null for none: the field is required (CONTRACT §8.2).
+func setParent(o *object, parent string) {
+	if parent == "" {
+		o.set("parent", nil)
 		return
 	}
-	o.set(key, value)
+	o.set("parent", parent)
 }
 
-// ZoneSpec is a new zone. Container is a container id of containers.json or empty.
-type ZoneSpec struct {
-	ID        string
-	Parent    string
-	Container string
-	StyleID   string
-	Name      string
-	Lang      string
+// ContainerSpec is a new container placement: of an existing entity (Entity),
+// or of a new authored entity (Name, Kind; Kind defaults to "group").
+type ContainerSpec struct {
+	Entity  string
+	Name    string
+	Kind    string
+	Parent  string
+	StyleID string
 	Rect
 }
 
-// AddZone adds a zone. Its name, when given, is a text under the zone's id.
-func (m *Model) AddZone(view string, spec ZoneSpec, human bool, author string) (GeomReport, error) {
+// AddContainer places a container entity on a view — creating the entity
+// first when the spec names none — as one batch. It returns the entity id.
+func (m *Model) AddContainer(view string, spec ContainerSpec, human bool, author string) (string, GeomReport, error) {
 	if !human {
-		return GeomReport{}, refuse(needHuman)
+		return "", GeomReport{}, refuse(needHuman)
 	}
 	l, err := m.loadLayout(view)
 	if err != nil {
-		return GeomReport{}, err
+		return "", GeomReport{}, err
 	}
-	if l.zones[spec.ID] != nil {
-		return GeomReport{}, refuse("zone %s already exists on %s", spec.ID, view)
+	var extra []Op
+	id := spec.Entity
+	if id != "" {
+		if spec.Name != "" || spec.Kind != "" {
+			return "", GeomReport{}, refuse("give entity, or name and kind for a new one, not both")
+		}
+		e := m.record("entity", id)
+		if e == nil {
+			return "", GeomReport{}, refuse("no entity %s", id)
+		}
+		if !m.kinds.IsContainer(e.str("kind")) {
+			return "", GeomReport{}, refuse("entity %s is of kind %q, which is not a container kind of kinds.json", id, e.str("kind"))
+		}
+	} else {
+		if strings.TrimSpace(spec.Name) == "" {
+			return "", GeomReport{}, refuse("give entity, or name (and kind) for a new one")
+		}
+		kind := orDefault(spec.Kind, "group")
+		if !m.kinds.IsContainer(kind) {
+			return "", GeomReport{}, refuse("kind %q is not a container kind of kinds.json (get_kinds)", kind)
+		}
+		taken := map[string]bool{}
+		for _, e := range m.records("entity") {
+			taken[e.str("id")] = true
+		}
+		id = mint("e_"+slug(spec.Name), taken)
+		e := newObject()
+		e.set("id", id)
+		e.set("name", spec.Name)
+		e.set("kind", kind)
+		e.set("origin", "authored")
+		e.set("status", "present")
+		b, _ := e.MarshalJSON()
+		extra = append(extra, Op{Kind: "entity", ID: id, Value: b})
+	}
+	if l.items[id] != nil {
+		return "", GeomReport{}, refuse("%s is already on %s", id, view)
 	}
 	if spec.Parent != "" {
 		if spec.Parent, err = l.id(spec.Parent); err != nil {
-			return GeomReport{}, err
+			return "", GeomReport{}, err
+		}
+		if !l.isContainer(spec.Parent) {
+			return "", GeomReport{}, refuse("%s is not a container", spec.Parent)
 		}
 	}
-	z := newObject()
-	z.set("id", spec.ID)
-	if spec.Container != "" {
-		z.set("container", spec.Container)
-	} else {
-		z.set("container", nil)
-	}
-	if spec.Parent != "" {
-		z.set("parent", spec.Parent)
-	}
-	r := Rect{spec.X, spec.Y, math.Max(spec.Width, l.cv.Zone.MinWidth), math.Max(spec.Height, l.cv.Zone.MinHeight)}
-	z.set("x", r.X)
-	z.set("y", r.Y)
-	z.set("width", r.Width)
-	z.set("height", r.Height)
+	p := newObject()
+	p.set("entity", id)
+	setParent(p, spec.Parent)
+	r := Rect{spec.X, spec.Y, math.Max(spec.Width, l.cv.Container.MinWidth), math.Max(spec.Height, l.cv.Container.MinHeight)}
+	p.set("x", r.X)
+	p.set("y", r.Y)
+	p.set("width", r.Width)
+	p.set("height", r.Height)
 	if spec.StyleID != "" {
-		z.set("styleId", spec.StyleID)
+		p.set("styleId", spec.StyleID)
 	}
-	b, _ := z.MarshalJSON()
-	extra := []Op{{Kind: "zone", ID: spec.ID, View: view, Value: b}}
-	if spec.Name != "" {
-		lang := spec.Lang
-		if lang == "" {
-			lang = m.firstLanguage()
-		}
-		txt := newObject()
-		entry := newObject()
-		entry.set("v", spec.Name)
-		entry.set("at", now().Format("2006-01-02T15:04:05Z"))
-		entry.set("origin", "authored")
-		txt.set("name", entry)
-		tb, _ := txt.MarshalJSON()
-		extra = append(extra, Op{Kind: "text", ID: spec.ID, Lang: lang, Value: tb})
-	}
-	l.zones[spec.ID] = z
-	l.zoneOrder = append(l.zoneOrder, spec.ID)
-	l.before["zone:"+spec.ID] = objString(z)
+	b, _ := p.MarshalJSON()
+	extra = append(extra, Op{Kind: "placement", ID: id, View: view, Value: b})
+	// the new placement is the last of the view; it is written by its own op,
+	// its parent grows around it if it must
+	l.items[id], l.container[id], l.before[id] = p, true, objString(p)
+	l.order = append(l.order, id)
+	l.growAncestors(id)
 	rep, err := m.commit(l, extra, author, human)
-	if err != nil {
-		return rep, err
-	}
-	// the new zone's own op was counted from extra; a parent that had to grow is in Touched already
-	return rep, nil
+	return id, rep, err
 }
 
-func (m *Model) firstLanguage() string {
-	m.mu.Lock()
-	defer m.mu.Unlock()
-	var langs []string
-	if raw, ok := m.manifest.vals["languages"]; ok {
-		_ = json.Unmarshal(raw, &langs)
-	}
-	if len(langs) > 0 {
-		return langs[0]
-	}
-	return "ru"
-}
-
-// FitZone sets each zone to its content and grows the ancestors that stop holding it.
-func (m *Model) FitZone(view string, zones []string, human bool, author string) (GeomReport, error) {
+// FitContainer sets each container to its content and grows the ancestors
+// that stop holding it.
+func (m *Model) FitContainer(view string, containers []string, human bool, author string) (GeomReport, error) {
 	if !human {
 		return GeomReport{}, refuse(needHuman)
 	}
@@ -566,13 +490,13 @@ func (m *Model) FitZone(view string, zones []string, human bool, author string) 
 	if err != nil {
 		return GeomReport{}, err
 	}
-	ids, err := l.ids(zones)
+	ids, err := l.ids(containers)
 	if err != nil {
 		return GeomReport{}, err
 	}
 	for _, id := range ids {
-		if !l.isZone(id) {
-			return GeomReport{}, refuse("%s is not a zone", id)
+		if !l.isContainer(id) {
+			return GeomReport{}, refuse("%s is not a container", id)
 		}
 		l.fit(id)
 	}
@@ -614,13 +538,13 @@ func (m *Model) AlignElements(view string, elements []string, mode string, human
 			l.shift([]string{id}, 0, ref.Bottom()-r.Bottom())
 		case "width":
 			r.Width = ref.Width
-			if l.isZone(id) {
+			if l.isContainer(id) {
 				r = l.keepContent(id, r)
 			}
 			l.setRect(id, r)
 		case "height":
 			r.Height = ref.Height
-			if l.isZone(id) {
+			if l.isContainer(id) {
 				r = l.keepContent(id, r)
 			}
 			l.setRect(id, r)

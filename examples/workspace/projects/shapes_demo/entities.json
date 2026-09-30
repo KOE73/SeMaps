@@ -24,11 +24,36 @@
       "status": "present",
       "codeRef": "editor/src/content/TemplateLibrary.ts",
       "members": [
-        { "kind": "field", "name": "sheet", "type": "WireTemplateSheet", "visibility": "private" },
-        { "kind": "field", "name": "compiled", "type": "Map<string, CompileResult>", "visibility": "private" },
-        { "kind": "method", "name": "load()", "type": "Promise<void>", "visibility": "public" },
-        { "kind": "method", "name": "get(id)", "type": "CompileResult", "visibility": "public" },
-        { "kind": "method", "name": "setText(id, src)", "type": "CompileResult", "visibility": "public" }
+        {
+          "kind": "field",
+          "name": "sheet",
+          "type": "WireTemplateSheet",
+          "visibility": "private"
+        },
+        {
+          "kind": "field",
+          "name": "compiled",
+          "type": "Map<string, CompileResult>",
+          "visibility": "private"
+        },
+        {
+          "kind": "method",
+          "name": "load()",
+          "type": "Promise<void>",
+          "visibility": "public"
+        },
+        {
+          "kind": "method",
+          "name": "get(id)",
+          "type": "CompileResult",
+          "visibility": "public"
+        },
+        {
+          "kind": "method",
+          "name": "setText(id, src)",
+          "type": "CompileResult",
+          "visibility": "public"
+        }
       ]
     },
     {
@@ -38,9 +63,21 @@
       "origin": "authored",
       "status": "present",
       "members": [
-        { "kind": "field", "name": "id", "type": "text PK" },
-        { "kind": "field", "name": "name", "type": "text" },
-        { "kind": "field", "name": "lines", "type": "text[]" }
+        {
+          "kind": "field",
+          "name": "id",
+          "type": "text PK"
+        },
+        {
+          "kind": "field",
+          "name": "name",
+          "type": "text"
+        },
+        {
+          "kind": "field",
+          "name": "lines",
+          "type": "text[]"
+        }
       ]
     },
     {
@@ -74,6 +111,27 @@
       "origin": "authored",
       "status": "present",
       "members": []
+    },
+    {
+      "id": "e_zone_human",
+      "name": "Человек",
+      "kind": "group",
+      "origin": "authored",
+      "status": "present"
+    },
+    {
+      "id": "e_zone_machine",
+      "name": "Разбор",
+      "kind": "group",
+      "origin": "authored",
+      "status": "present"
+    },
+    {
+      "id": "e_zone_storage",
+      "name": "Хранение",
+      "kind": "group",
+      "origin": "authored",
+      "status": "present"
     }
   ]
 }

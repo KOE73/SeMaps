@@ -1,0 +1,111 @@
+{
+  "id": "v_assemblies",
+  "project": "nmfn",
+  "axis": "axis_assembly",
+  "icon": "layers",
+  "zones": [
+    {
+      "id": "z_onnx",
+      "container": "c_onnx",
+      "parent": null,
+      "x": 0,
+      "y": 0,
+      "width": 900,
+      "height": 700,
+      "styleId": "zone.blue"
+    },
+    {
+      "id": "z_graph",
+      "container": "c_graph",
+      "parent": null,
+      "x": 1000,
+      "y": 0,
+      "width": 500,
+      "height": 400,
+      "styleId": "zone.red"
+    },
+    {
+      "id": "z_core",
+      "container": "c_onnx_core",
+      "parent": "z_onnx",
+      "x": 40,
+      "y": 60,
+      "width": 500,
+      "height": 300,
+      "styleId": "zone.red.dashed",
+      "collapsed": false
+    },
+    {
+      "id": "z_deco",
+      "container": null,
+      "x": 1000,
+      "y": 500,
+      "width": 500,
+      "height": 200,
+      "styleId": "zone.blue"
+    },
+    {
+      "id": "z_sub",
+      "container": "z_deco",
+      "x": 1020,
+      "y": 540,
+      "width": 200,
+      "height": 100
+    },
+    {
+      "id": "z_odd",
+      "container": null,
+      "x": -600,
+      "y": 0,
+      "width": 300,
+      "height": 200,
+      "styleId": "class"
+    },
+    {
+      "id": "z_teal",
+      "container": null,
+      "x": -600,
+      "y": 300,
+      "width": 300,
+      "height": 200,
+      "styleId": "zone.teal"
+    }
+  ],
+  "nodes": [
+    {
+      "entity": "e_onnxmodel",
+      "zone": "z_core",
+      "x": 60,
+      "y": 120,
+      "width": 210,
+      "height": 60,
+      "template": "class"
+    },
+    {
+      "entity": "e_session",
+      "zone": "z_onnx",
+      "x": 600,
+      "y": 120
+    },
+    {
+      "entity": "e_graphbuilder",
+      "zone": "z_graph",
+      "x": 1040,
+      "y": 60
+    },
+    {
+      "entity": "e_tracker",
+      "zone": null,
+      "x": 1600,
+      "y": 60,
+      "styleId": "class"
+    },
+    {
+      "entity": "e_onnx",
+      "zone": "z_missing",
+      "x": 300,
+      "y": 500,
+      "width": 300
+    }
+  ]
+}

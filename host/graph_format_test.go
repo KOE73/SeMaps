@@ -20,7 +20,7 @@ func setsFixture(t *testing.T) (*graphService, *modelService) {
 	ws := t.TempDir()
 	dir := filepath.Join(ws, "projects", "p")
 	files := map[string]string{
-		"project.json":   `{"id":"p"}`,
+		"project.json":   `{"id":"p","contractVersion":5}`,
 		"entities.json":  `{"entities":[]}`,
 		"relations.json": `{"relations":[]}`,
 	}

@@ -125,8 +125,10 @@ semaps check
 ```
 
 Same project lookup as above. Reports stale translations, texts that are missing, views without
-an axis, one node in two containers on the same axis, broken `codeRef`. Exit code 1 when
-anything is found, so a consuming project can run it in CI.
+an axis, one block in two containers on the same axis, entity kinds and relation types outside
+the dictionary, broken `codeRef`, and a workspace of an older contract. Exit code 1 when
+anything is found, so a consuming project can run it in CI. A workspace written for an older
+contract is rewritten by `semaps migrate` ([`docs/ADOPTING.md`](docs/ADOPTING.md)).
 
 ### Setting up a map with an agent
 

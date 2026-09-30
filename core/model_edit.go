@@ -123,7 +123,10 @@ func (m *Model) AddRelation(from, to, relType, author string) (string, error) {
 	return id, err
 }
 
-func (m *Model) AddRelationType(id, visibility, styleID, author string) error {
+// AddRelationType declares an authored relation type of the project. Its name,
+// description and base style live in the dictionary (kinds.json, relationGroups),
+// not here (ADR_20260930-2).
+func (m *Model) AddRelationType(id, visibility, author string) error {
 	if m.record("relationType", id) != nil {
 		return refuse("type %s exists", id)
 	}
@@ -132,9 +135,6 @@ func (m *Model) AddRelationType(id, visibility, styleID, author string) error {
 	o.set("origin", "authored")
 	if visibility != "" {
 		o.set("visibility", visibility)
-	}
-	if styleID != "" {
-		o.set("styleId", styleID)
 	}
 	b, _ := o.MarshalJSON()
 	_, err := m.Apply([]Op{{Kind: "relationType", ID: id, Value: b}}, author)
@@ -219,29 +219,20 @@ func (m *Model) ConfirmRelationRename(relationID, member, author string) error {
 	return err
 }
 
+// PlaceEntities puts entities on a view, each at the end of its placements.
+// A parent must be a container placement of the view, or one placed by the
+// same call before it.
 func (m *Model) PlaceEntities(viewID string, list []Placement, requestedByHuman bool, author string) error {
 	if !requestedByHuman {
-		return refuse("geometry of a view is written only on a human's direct request (CONTRACT §8.2 p. 3)")
+		return refuse(needHuman)
 	}
 	view, err := m.view(viewID)
 	if err != nil {
 		return err
 	}
-	key := "nodes"
-	if _, ok := view.vals["nodes"]; !ok {
-		if _, ok := view.vals["placements"]; ok {
-			key = "placements"
-		}
-	}
-	var nodes []*object
-	if raw := view.vals[key]; len(raw) > 0 && string(raw) != "null" {
-		if err := json.Unmarshal(raw, &nodes); err != nil {
-			return fmt.Errorf("%s: %s: %w", viewID, key, err)
-		}
-	}
 	placed := map[string]bool{}
-	for _, n := range nodes {
-		placed[orDefault(n.str("entity"), n.str("id"))] = true
+	for _, p := range viewItems(view, "placements") {
+		placed[p.str("entity")] = true
 	}
 	ops := make([]Op, 0, len(list))
 	for _, p := range list {
@@ -251,11 +242,7 @@ func (m *Model) PlaceEntities(viewID string, list []Placement, requestedByHuman 
 		placed[p.Entity] = true
 		n := newObject()
 		n.set("entity", p.Entity)
-		if p.Zone != "" {
-			n.set("zone", p.Zone)
-		} else {
-			n.set("zone", nil)
-		}
+		setParent(n, p.Parent)
 		n.set("x", p.X)
 		n.set("y", p.Y)
 		if p.Width > 0 {
@@ -265,7 +252,7 @@ func (m *Model) PlaceEntities(viewID string, list []Placement, requestedByHuman 
 			n.set("height", p.Height)
 		}
 		b, _ := n.MarshalJSON()
-		ops = append(ops, Op{Kind: "node", ID: p.Entity, View: viewID, Value: b})
+		ops = append(ops, Op{Kind: "placement", ID: p.Entity, View: viewID, Value: b})
 	}
 	_, err = m.Apply(ops, author)
 	return err

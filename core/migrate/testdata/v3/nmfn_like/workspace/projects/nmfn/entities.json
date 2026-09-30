@@ -1,0 +1,57 @@
+{
+  "contractVersion": 3,
+  "entities": [
+    {
+      "id": "e_onnx",
+      "name": "NeuroModFlowNet.ONNX",
+      "kind": "assembly",
+      "origin": "code",
+      "status": "present",
+      "symbol": "NeuroModFlowNet.ONNX"
+    },
+    {
+      "id": "e_onnxmodel",
+      "name": "OnnxModel",
+      "kind": "class",
+      "origin": "code",
+      "status": "present",
+      "namespace": "NeuroModFlowNet.ONNX",
+      "codeRef": "src/NeuroModFlowNet.ONNX/OnnxModel.cs",
+      "symbol": "NeuroModFlowNet.ONNX.OnnxModel",
+      "members": []
+    },
+    {
+      "id": "e_session",
+      "name": "OnnxSession",
+      "kind": "class",
+      "origin": "code",
+      "status": "present",
+      "namespace": "NeuroModFlowNet.ONNX",
+      "codeRef": "src/NeuroModFlowNet.ONNX/OnnxSession.cs",
+      "symbol": "NeuroModFlowNet.ONNX.OnnxSession",
+      "members": []
+    },
+    {
+      "id": "e_graphbuilder",
+      "name": "GraphBuilder",
+      "kind": "class",
+      "origin": "code",
+      "status": "present",
+      "namespace": "NeuroModFlowNet.ONNX.Graph",
+      "codeRef": "src/NeuroModFlowNet.ONNX.Graph/GraphBuilder.cs",
+      "symbol": "NeuroModFlowNet.ONNX.Graph.GraphBuilder",
+      "members": []
+    },
+    {
+      "id": "e_tracker",
+      "name": "Tracker",
+      "kind": "class",
+      "origin": "code",
+      "status": "present",
+      "namespace": "NeuroModFlowNet.CV",
+      "codeRef": "src/NeuroModFlowNet.CV/Tracker.cs",
+      "symbol": "NeuroModFlowNet.CV.Tracker",
+      "members": []
+    }
+  ]
+}

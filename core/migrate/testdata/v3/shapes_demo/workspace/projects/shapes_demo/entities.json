@@ -1,0 +1,79 @@
+{
+  "entities": [
+    {
+      "id": "actor_user",
+      "name": "Владелец схемы",
+      "kind": "external",
+      "origin": "authored",
+      "status": "present",
+      "members": []
+    },
+    {
+      "id": "uc_edit",
+      "name": "Править содержимое блока",
+      "kind": "usecase",
+      "origin": "authored",
+      "status": "present",
+      "members": []
+    },
+    {
+      "id": "cls_template",
+      "name": "TemplateLibrary",
+      "kind": "class",
+      "origin": "authored",
+      "status": "present",
+      "codeRef": "editor/src/content/TemplateLibrary.ts",
+      "members": [
+        { "kind": "field", "name": "sheet", "type": "WireTemplateSheet", "visibility": "private" },
+        { "kind": "field", "name": "compiled", "type": "Map<string, CompileResult>", "visibility": "private" },
+        { "kind": "method", "name": "load()", "type": "Promise<void>", "visibility": "public" },
+        { "kind": "method", "name": "get(id)", "type": "CompileResult", "visibility": "public" },
+        { "kind": "method", "name": "setText(id, src)", "type": "CompileResult", "visibility": "public" }
+      ]
+    },
+    {
+      "id": "tbl_templates",
+      "name": "templates.json",
+      "kind": "database",
+      "origin": "authored",
+      "status": "present",
+      "members": [
+        { "kind": "field", "name": "id", "type": "text PK" },
+        { "kind": "field", "name": "name", "type": "text" },
+        { "kind": "field", "name": "lines", "type": "text[]" }
+      ]
+    },
+    {
+      "id": "store_assets",
+      "name": "content/",
+      "kind": "database",
+      "origin": "authored",
+      "status": "present",
+      "members": []
+    },
+    {
+      "id": "dec_valid",
+      "name": "Текст разобрался?",
+      "kind": "decision",
+      "origin": "authored",
+      "status": "present",
+      "members": []
+    },
+    {
+      "id": "stage_compile",
+      "name": "Компиляция",
+      "kind": "stage",
+      "origin": "authored",
+      "status": "present",
+      "members": []
+    },
+    {
+      "id": "pic_model",
+      "name": "Модель",
+      "kind": "concept",
+      "origin": "authored",
+      "status": "present",
+      "members": []
+    }
+  ]
+}

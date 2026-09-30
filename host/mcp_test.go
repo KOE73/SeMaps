@@ -18,11 +18,11 @@ func mcpSession(t *testing.T) (*mcp.ClientSession, string) {
 	ws := t.TempDir()
 	dir := filepath.Join(ws, "projects", "p")
 	files := map[string]string{
-		"project.json":        `{"id":"p"}`,
+		"project.json":        `{"id":"p","contractVersion":5}`,
 		"entities.json":       `{"entities":[{"id":"e_a","name":"A","kind":"class","origin":"code","symbol":"N.A"},{"id":"e_b","name":"B","kind":"interface","origin":"code","symbol":"N.B"}]}`,
 		"relations.json":      `{"relations":[{"id":"r_a_b_implements","from":"e_a","to":"e_b","type":"implements","origin":"code","status":"present"}]}`,
 		"relation-types.json": `{"relationTypes":[{"id":"implements","origin":"code","visibility":"visible"},{"id":"call","origin":"authored"}]}`,
-		"views/v.view.json":   `{"id":"v_main","axis":"axis_layer","nodes":[]}`,
+		"views/v.view.json":   `{"id":"v_main","axis":"axis_layer","placements":[]}`,
 	}
 	for name, body := range files {
 		p := filepath.Join(dir, filepath.FromSlash(name))
@@ -72,8 +72,8 @@ func TestMCPListsAllTools(t *testing.T) {
 	}
 	for _, n := range []string{"list_projects", "list_views", "get_entity", "find_entities", "get_relations",
 		"get_text", "sync_preview", "doctor", "set_text", "add_entity", "add_relation", "add_relation_type",
-		"set_relation_visible", "confirm_rename", "extract", "sync", "place_entities", "get_view", "move_elements", "resize_elements", "set_zone", "add_zone", "fit_zone", "align_elements",
-		"layout_guide", "render_view", "create_view", "create_project"} {
+		"set_relation_visible", "confirm_rename", "extract", "sync", "place_entities", "get_view", "move_elements", "resize_elements", "set_parent", "add_container", "fit_container", "align_elements",
+		"get_kinds", "layout_guide", "render_view", "create_view", "create_project"} {
 		if !have[n] {
 			t.Errorf("no tool %s", n)
 		}
@@ -138,8 +138,13 @@ func TestMCPRefusalsAreToolErrors(t *testing.T) {
 	var v map[string]json.RawMessage
 	data, _ := os.ReadFile(filepath.Join(ws, "projects", "p", "views", "v.view.json"))
 	json.Unmarshal(data, &v)
-	if string(v["nodes"]) != "[]" {
-		t.Fatalf("view written: %s", v["nodes"])
+	if string(v["placements"]) != "[]" {
+		t.Fatalf("view written: %s", v["placements"])
+	}
+	for _, gone := range []string{"set_zone", "add_zone", "fit_zone"} {
+		if _, err := cs.CallTool(context.Background(), &mcp.CallToolParams{Name: gone, Arguments: map[string]any{}}); err == nil {
+			t.Errorf("%s is gone with the zones (ADR_20260927-6): it must not be a tool", gone)
+		}
 	}
 	res, _ := call(t, cs, "place_entities", map[string]any{"view": "v_main", "requestedByHuman": true,
 		"entities": []any{map[string]any{"entity": "e_a", "x": 1, "y": 1}}})
@@ -215,31 +220,141 @@ func TestMCPCallLog(t *testing.T) {
 func TestMCPGetView(t *testing.T) {
 	cs, _ := mcpSession(t)
 	res, text := call(t, cs, "get_view", map[string]any{"view": "v_main"})
-	if res.IsError || !strings.Contains(text, `"zones":[]`) || !strings.Contains(text, `"edges":[]`) {
+	if res.IsError || !strings.Contains(text, `"placements":[]`) || !strings.Contains(text, `"edges":[]`) {
 		t.Fatalf("get_view: %s", text)
 	}
-	res, text = call(t, cs, "get_view", map[string]any{"view": "v_main#z_nope"})
-	if !res.IsError || !strings.Contains(text, "z_nope is not on view v_main") {
+	res, text = call(t, cs, "get_view", map[string]any{"view": "v_main#e_nope"})
+	if !res.IsError || !strings.Contains(text, "e_nope is not on view v_main") {
 		t.Fatalf("unknown object: %v %s", res.IsError, text)
 	}
 }
 
 func TestMCPGeometryTools(t *testing.T) {
 	cs, _ := mcpSession(t)
-	res, text := call(t, cs, "add_zone", map[string]any{"view": "v_main", "id": "z_a", "x": 0, "y": 0, "width": 300, "height": 200, "requestedByHuman": false})
+	res, text := call(t, cs, "add_container", map[string]any{"view": "v_main", "name": "Core", "x": 0, "y": 0, "width": 300, "height": 200, "requestedByHuman": false})
 	if !res.IsError || !strings.Contains(text, "direct request") {
 		t.Fatalf("without requestedByHuman: %v %s", res.IsError, text)
 	}
-	res, text = call(t, cs, "add_zone", map[string]any{"view": "v_main", "id": "z_a", "x": 0, "y": 0, "width": 300, "height": 200, "requestedByHuman": true})
-	if res.IsError || !strings.Contains(text, "not saved") || !strings.Contains(text, "highlight=z_a") {
-		t.Fatalf("add_zone: %v %s", res.IsError, text)
+	res, text = call(t, cs, "add_container", map[string]any{"view": "v_main", "name": "Core", "kind": "class", "x": 0, "y": 0, "width": 300, "height": 200, "requestedByHuman": true})
+	if !res.IsError || !strings.Contains(text, "not a container kind") {
+		t.Fatalf("a kind that is no container: %v %s", res.IsError, text)
 	}
-	res, text = call(t, cs, "move_elements", map[string]any{"elements": []string{"v_main#z_a"}, "dx": 40, "dy": 0, "requestedByHuman": true})
+	res, text = call(t, cs, "add_container", map[string]any{"view": "v_main", "name": "Core", "x": 0, "y": 0, "width": 300, "height": 200, "requestedByHuman": true})
+	if res.IsError || !strings.Contains(text, "not saved") || !strings.Contains(text, "container e_core placed") || !strings.Contains(text, "highlight=e_core") {
+		t.Fatalf("add_container: %v %s", res.IsError, text)
+	}
+	res, text = call(t, cs, "move_elements", map[string]any{"elements": []string{"v_main#e_core"}, "dx": 40, "dy": 0, "requestedByHuman": true})
 	if res.IsError || !strings.Contains(text, "1 changed") {
 		t.Fatalf("move_elements by reference: %v %s", res.IsError, text)
 	}
-	_, text = call(t, cs, "get_view", map[string]any{"view": "v_main#z_a"})
-	if !strings.Contains(text, `"x":40`) {
+	_, text = call(t, cs, "get_view", map[string]any{"view": "v_main#e_core"})
+	if !strings.Contains(text, `"x":40`) || !strings.Contains(text, `"container":true`) {
 		t.Fatalf("get_view after move: %s", text)
+	}
+}
+
+// A block goes into a container through `parent`; get_view shows the placements
+// as a tree and fit_container closes the frame around them.
+func TestMCPContainerTree(t *testing.T) {
+	cs, _ := mcpSession(t)
+	call(t, cs, "add_container", map[string]any{"view": "v_main", "name": "Core", "x": 0, "y": 0, "width": 160, "height": 100, "requestedByHuman": true})
+	res, text := call(t, cs, "place_entities", map[string]any{"view": "v_main", "requestedByHuman": true,
+		"entities": []any{map[string]any{"entity": "e_a", "parent": "e_core", "x": 400, "y": 300}}})
+	if res.IsError {
+		t.Fatalf("place_entities into a container: %s", text)
+	}
+	res, text = call(t, cs, "place_entities", map[string]any{"view": "v_main", "requestedByHuman": true,
+		"entities": []any{map[string]any{"entity": "e_b", "parent": "e_a", "x": 0, "y": 0}}})
+	if !res.IsError || !strings.Contains(text, "not a container") {
+		t.Fatalf("a block as a parent: %v %s", res.IsError, text)
+	}
+	res, text = call(t, cs, "fit_container", map[string]any{"container": "v_main#e_core", "requestedByHuman": true})
+	if res.IsError {
+		t.Fatalf("fit_container: %s", text)
+	}
+	_, text = call(t, cs, "get_view", map[string]any{"view": "v_main"})
+	var v struct {
+		Placements []struct {
+			Entity   string
+			Children []struct{ Entity string }
+			X, Y     float64
+		}
+	}
+	if err := json.Unmarshal([]byte(text[strings.Index(text, "{"):]), &v); err != nil {
+		// the answer starts with the canvas block, then the JSON
+		t.Fatalf("get_view: %v\n%s", err, text)
+	}
+	if len(v.Placements) != 1 || v.Placements[0].Entity != "e_core" || len(v.Placements[0].Children) != 1 || v.Placements[0].Children[0].Entity != "e_a" {
+		t.Fatalf("placements are not a tree: %s", text)
+	}
+	if v.Placements[0].X >= 400 {
+		t.Fatalf("the container was not fitted to its content: %s", text)
+	}
+	res, text = call(t, cs, "set_parent", map[string]any{"elements": []string{"e_a"}, "view": "v_main", "parent": nil, "requestedByHuman": true})
+	if res.IsError {
+		t.Fatalf("set_parent null: %s", text)
+	}
+	_, text = call(t, cs, "get_view", map[string]any{"view": "v_main#e_core"})
+	if !strings.Contains(text, `"children":[]`) {
+		t.Fatalf("e_a still in the container: %s", text)
+	}
+}
+
+func TestMCPGetKinds(t *testing.T) {
+	cs, ws := mcpSession(t)
+	res, text := call(t, cs, "get_kinds", map[string]any{"lang": "en"})
+	if res.IsError {
+		t.Fatalf("get_kinds: %s", text)
+	}
+	var out struct {
+		Groups []struct {
+			Kinds []struct {
+				ID        string
+				Name      string
+				Container bool
+			}
+		}
+		RelationGroups []struct {
+			Types []struct{ ID, Name string }
+		} `json:"relationGroups"`
+		Unknown struct {
+			Kinds         []string
+			RelationTypes []string `json:"relationTypes"`
+		}
+	}
+	if err := json.Unmarshal([]byte(text), &out); err != nil {
+		t.Fatalf("get_kinds: %v\n%s", err, text)
+	}
+	kinds := map[string]bool{}
+	for _, g := range out.Groups {
+		for _, k := range g.Kinds {
+			kinds[k.ID] = k.Container
+		}
+	}
+	if container, ok := kinds["namespace"]; !ok || !container {
+		t.Errorf("namespace is a container kind of the dictionary: %v", kinds["namespace"])
+	}
+	if container, ok := kinds["class"]; !ok || container {
+		t.Errorf("class is a kind but no container: %v", kinds["class"])
+	}
+	types := map[string]bool{}
+	for _, g := range out.RelationGroups {
+		for _, ty := range g.Types {
+			types[ty.ID] = true
+		}
+	}
+	if !types["implements"] || !types["call"] {
+		t.Errorf("the relation types of the dictionary are missing: %v", types)
+	}
+	if len(out.Unknown.Kinds) != 0 || len(out.Unknown.RelationTypes) != 0 {
+		t.Errorf("nothing of the fixture is outside the dictionary: %+v", out.Unknown)
+	}
+
+	// the workspace kinds.json adds to it, and an entity of a kind outside it is listed, not refused
+	os.WriteFile(filepath.Join(ws, "kinds.json"), []byte(`{"groups":[{"id":"mine","name":{"en":"Mine"},"kinds":[{"id":"cell","name":{"en":"Cell"},"container":true}]}]}`), 0o644)
+	call(t, cs, "add_entity", map[string]any{"name": "Odd", "kind": "gadget"})
+	_, text = call(t, cs, "get_kinds", map[string]any{"lang": "en"})
+	if !strings.Contains(text, `"cell"`) || !strings.Contains(text, `"gadget"`) {
+		t.Fatalf("workspace kind or unknown kind missing: %s", text)
 	}
 }

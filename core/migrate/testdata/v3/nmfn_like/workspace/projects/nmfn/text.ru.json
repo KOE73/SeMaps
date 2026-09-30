@@ -1,0 +1,96 @@
+{
+  "contractVersion": 3,
+  "language": "ru",
+  "entries": {
+    "c_onnx": {
+      "name": {
+        "v": "ONNX",
+        "at": "2026-09-01T10:00:00Z",
+        "origin": "authored"
+      },
+      "description": {
+        "v": "Сборка с моделью и сессией.",
+        "at": "2026-09-01T10:00:00Z",
+        "origin": "authored"
+      }
+    },
+    "c_graph": {
+      "name": {
+        "v": "Graph",
+        "at": "2026-09-01T10:00:00Z",
+        "origin": "authored"
+      }
+    },
+    "c_onnx_core": {
+      "name": {
+        "v": "Ядро ONNX",
+        "at": "2026-09-01T10:00:00Z",
+        "origin": "authored"
+      },
+      "doc": {
+        "v": "Почему ядро вынесено отдельно.\n\nСм. ADR.",
+        "at": "2026-09-01T10:00:00Z",
+        "origin": "authored"
+      }
+    },
+    "c_orphan": {
+      "name": {
+        "v": "Сирота",
+        "at": "2026-09-01T10:00:00Z",
+        "origin": "authored"
+      }
+    },
+    "z_core": {
+      "description": {
+        "v": "Зона ядра на виде сборок.",
+        "at": "2026-09-01T10:00:00Z",
+        "origin": "authored"
+      },
+      "title": {
+        "v": "Заголовок",
+        "at": "2026-09-01T10:00:00Z",
+        "origin": "authored"
+      }
+    },
+    "z_deco": {
+      "name": {
+        "v": "Декор",
+        "at": "2026-09-01T10:00:00Z",
+        "origin": "authored"
+      },
+      "description": {
+        "v": "Просто рамка для глаза.",
+        "at": "2026-09-01T10:00:00Z",
+        "origin": "authored"
+      }
+    },
+    "z_stale": {
+      "name": {
+        "v": "Забытая зона",
+        "at": "2026-09-01T10:00:00Z",
+        "origin": "authored"
+      }
+    },
+    "e_session": {
+      "description": {
+        "v": "Сессия выполнения модели.",
+        "at": "2026-09-01T10:00:00Z",
+        "origin": "authored"
+      }
+    },
+    "v_assemblies": {
+      "name": {
+        "v": "Сборки",
+        "at": "2026-09-01T10:00:00Z",
+        "origin": "authored"
+      }
+    },
+    "rt_depends": {
+      "name": {
+        "v": "зависит",
+        "at": "2026-09-01T10:00:00Z",
+        "origin": "authored"
+      }
+    }
+  }
+}

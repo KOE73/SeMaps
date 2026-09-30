@@ -25,7 +25,7 @@ func TestCreateProjectAndView(t *testing.T) {
 	if err := CreateProject(ws, NewProject{ID: "ov", Title: "Again"}); !errors.Is(err, ErrExists) {
 		t.Fatalf("second create: %v", err)
 	}
-	m, err := LoadModel(ws, "ov")
+	m, err := LoadModel(ws, "ov", defaultKindsJSON(t))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -60,7 +60,7 @@ func TestCreateProjectAndView(t *testing.T) {
 		t.Fatalf("project.json = %s", manifest)
 	}
 	view, _ := os.ReadFile(filepath.Join(ws, "projects", "ov", "views", "v_all.view.json"))
-	if strings.Contains(string(view), `"edges"`) || !strings.Contains(string(view), `"zones": []`) {
+	if strings.Contains(string(view), `"edges"`) || !strings.Contains(string(view), `"placements": []`) {
 		t.Fatalf("view file = %s", view)
 	}
 }
@@ -73,7 +73,7 @@ func TestLiveIndexShowsUnsavedNamesAndGetViewInheritsAxis(t *testing.T) {
 	if err := CreateView(ws, "ov", NewView{ID: "v_all"}); err != nil {
 		t.Fatal(err)
 	}
-	m, err := LoadModel(ws, "ov")
+	m, err := LoadModel(ws, "ov", defaultKindsJSON(t))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -88,7 +88,7 @@ func TestLiveIndexShowsUnsavedNamesAndGetViewInheritsAxis(t *testing.T) {
 	if got := live.Projects[0].Views[0].Names["ru"]; got != "Всё" {
 		t.Fatalf("live name = %q", got)
 	}
-	v, err := m.GetView("v_all", "ru")
+	v, err := m.GetView("v_all")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -98,7 +98,7 @@ func TestLiveIndexShowsUnsavedNamesAndGetViewInheritsAxis(t *testing.T) {
 }
 
 func TestAddEntityMintsRefusesAndChecks(t *testing.T) {
-	m, err := LoadModel(editWorkspace(t), "p")
+	m, err := LoadModel(editWorkspace(t), "p", defaultKindsJSON(t))
 	if err != nil {
 		t.Fatal(err)
 	}

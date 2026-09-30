@@ -45,7 +45,7 @@ func TestSyncIgnoresPositionFields(t *testing.T) {
   ]
 }`
 
-	project := `{"id":"p","contractVersion":3,"sources":{"include":["src"]}}`
+	project := `{"id":"p","contractVersion":5,"sources":{"include":["src"]}}`
 
 	wsWithout, dirWithout := workspace(t, project, "", "", "")
 	sync(t, wsWithout, facts(t, factsWithout), SyncOptions{})

@@ -12,7 +12,7 @@ import (
 // identical to the same facts with that dynamic data removed, whether the
 // registry starts empty or already has the types.
 func TestSyncDropsMethodsAndCalls(t *testing.T) {
-	const project = `{"id":"p","contractVersion":3,"sources":{"include":["src"]}}`
+	const project = `{"id":"p","contractVersion":5,"sources":{"include":["src"]}}`
 
 	const factsWithoutMethods = `{
   "language": "csharp", "root": ".",
@@ -154,7 +154,7 @@ func assertNoMethodsOrCalls(t *testing.T, rep *SyncReport, dir string) {
 // present in one facts document and absent from the next must not be marked
 // missing, since sync never saw it as a symbol to begin with.
 func TestSyncSecondPassMarksNothingMissingForRemovedMethod(t *testing.T) {
-	const project = `{"id":"p","contractVersion":3,"sources":{"include":["src"]}}`
+	const project = `{"id":"p","contractVersion":5,"sources":{"include":["src"]}}`
 	const factsWithMethod = `{
   "language": "csharp", "root": ".",
   "edgeKinds": ["contains","calls"],

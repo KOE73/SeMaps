@@ -17,20 +17,22 @@ func editWorkspace(t *testing.T) string {
 	ws := t.TempDir()
 	dir := filepath.Join(ws, "projects", "p")
 	files := map[string]string{
-		"project.json": `{"id":"p"}`,
+		"project.json":     `{"id":"p","contractVersion":5}`,
+		"../../kinds.json": `{"groups":[{"id":"t","name":{"ru":"т"},"kinds":[{"id":"group","name":{"ru":"группа"},"container":true}]}]}`,
 		"entities.json": `{"entities":[
   {"id":"e_a","name":"A","kind":"class","origin":"code","symbol":"N.A"},
   {"id":"e_b","name":"B","kind":"class","origin":"code","symbol":"N.B"},
-  {"id":"e_x","name":"X","kind":"app","origin":"authored"}]}`,
-		"relations.json": `{"contractVersion":3,"relations":[
+  {"id":"e_x","name":"X","kind":"app","origin":"authored"},
+  {"id":"e_core","name":"Core","kind":"group","origin":"authored"}]}`,
+		"relations.json": `{"contractVersion":5,"relations":[
   {"id":"r_a_b_items_item","from":"e_a","to":"e_b","type":"holds.many","origin":"code","status":"present",
    "via":{"member":"items","path":["item"],"cardinality":"many","mutability":"mutable"}}]}`,
-		"relation-types.json": `{"contractVersion":3,"relationTypes":[
+		"relation-types.json": `{"contractVersion":5,"relationTypes":[
   {"id":"holds.many","origin":"code","visibility":"visible"},
   {"id":"call","origin":"authored"}]}`,
 		"views/main.view.json": `{"id":"v_main","project":"p","axis":"axis_layer","relations":{"default":"visible"},
-  "zones":[{"id":"z_core","container":null,"x":0,"y":0,"width":500,"height":500}],
-  "nodes":[{"entity":"e_a","zone":null,"x":10,"y":20}]}`,
+  "placements":[{"entity":"e_core","parent":null,"x":0,"y":0,"width":500,"height":500},
+   {"entity":"e_a","parent":null,"x":10,"y":20}]}`,
 	}
 	for name, body := range files {
 		p := filepath.Join(dir, filepath.FromSlash(name))
@@ -64,7 +66,7 @@ func TestSetTextWritesAuthoredValueAndDropsTranslation(t *testing.T) {
 	now = func() time.Time { return time.Date(2026, 9, 24, 10, 0, 0, 0, time.UTC) }
 	defer func() { now = func() time.Time { return time.Now().UTC() } }()
 	file := filepath.Join(ws, "projects", "p", "text.ru.json")
-	os.WriteFile(file, []byte(`{"contractVersion":3,"language":"ru","entries":{"e_a":{"doc":{"v":"old","origin":"translated","from":"en","fromHash":"1"}}}}`), 0o644)
+	os.WriteFile(file, []byte(`{"contractVersion":5,"language":"ru","entries":{"e_a":{"doc":{"v":"old","origin":"translated","from":"en","fromHash":"1"}}}}`), 0o644)
 
 	if err := SetText(ws, "", "ru", "e_a", "description", "Держит B."); err != nil {
 		t.Fatal(err)
@@ -125,11 +127,11 @@ func TestAddRelationMintsIDAndChecksEnds(t *testing.T) {
 
 func TestAddRelationType(t *testing.T) {
 	ws := editWorkspace(t)
-	if err := AddRelationType(ws, "", "security", "hidden", "edge.security"); err != nil {
+	if err := AddRelationType(ws, "", "security", "hidden"); err != nil {
 		t.Fatal(err)
 	}
-	refused(t, AddRelationType(ws, "", "security", "", ""), "exists")
-	refused(t, AddRelationType(ws, "", "x", "shown", ""), "visibility")
+	refused(t, AddRelationType(ws, "", "security", ""), "exists")
+	refused(t, AddRelationType(ws, "", "x", "shown"), "visibility")
 }
 
 func TestSetRelationVisibleKeepsExceptTheSmallerSide(t *testing.T) {
@@ -153,7 +155,7 @@ func TestSetRelationVisibleKeepsExceptTheSmallerSide(t *testing.T) {
 	if ex := v["relations"].(map[string]any)["except"].([]any); len(ex) != 0 {
 		t.Fatalf("except %v", ex)
 	}
-	if len(v["nodes"].([]any)) != 1 {
+	if len(v["placements"].([]any)) != 2 {
 		t.Fatal("geometry touched")
 	}
 	refused(t, SetRelationVisible(ws, "", "v_none", "r_a_b_items_item", true), "no view")
@@ -187,19 +189,19 @@ func TestConfirmRenames(t *testing.T) {
 
 func TestPlaceEntitiesOnlyOnRequestAndNeverMoves(t *testing.T) {
 	ws := editWorkspace(t)
-	p := []Placement{{Entity: "e_b", Zone: "z_core", X: 100, Y: 100}}
+	p := []Placement{{Entity: "e_b", Parent: "e_core", X: 100, Y: 100}}
 	refused(t, PlaceEntities(ws, "", "v_main", p, false), "human")
 	refused(t, PlaceEntities(ws, "", "v_main", []Placement{{Entity: "e_a", X: 1, Y: 1}}, true), "already")
-	refused(t, PlaceEntities(ws, "", "v_main", []Placement{{Entity: "e_b", Zone: "z_none"}}, true), "no zone")
+	refused(t, PlaceEntities(ws, "", "v_main", []Placement{{Entity: "e_b", Parent: "e_none"}}, true), "no container")
 	if err := PlaceEntities(ws, "", "v_main", p, true); err != nil {
 		t.Fatal(err)
 	}
 	var v struct {
-		Nodes []map[string]any `json:"nodes"`
+		Placements []map[string]any `json:"placements"`
 	}
 	readAs(t, ws, "views/main.view.json", &v)
-	if len(v.Nodes) != 2 || v.Nodes[0]["x"] != 10.0 || v.Nodes[1]["zone"] != "z_core" {
-		t.Fatalf("nodes %v", v.Nodes)
+	if len(v.Placements) != 3 || v.Placements[1]["x"] != 10.0 || v.Placements[2]["parent"] != "e_core" {
+		t.Fatalf("placements %v", v.Placements)
 	}
 }
 

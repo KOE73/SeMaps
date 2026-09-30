@@ -1,0 +1,110 @@
+{
+  "contractVersion": 3,
+  "entities": [
+    {
+      "id": "e_editor",
+      "name": "Editor",
+      "kind": "app",
+      "origin": "authored",
+      "status": "present"
+    },
+    {
+      "id": "e_agent",
+      "name": "Coding agent",
+      "kind": "external",
+      "origin": "authored",
+      "status": "present"
+    },
+    {
+      "id": "e_http_api",
+      "name": "HTTP API",
+      "kind": "component",
+      "origin": "authored",
+      "status": "present"
+    },
+    {
+      "id": "e_mcp_server",
+      "name": "MCP server",
+      "kind": "component",
+      "origin": "authored",
+      "status": "present"
+    },
+    {
+      "id": "e_mcp_proxy",
+      "name": "semaps mcp",
+      "kind": "component",
+      "origin": "authored",
+      "status": "present"
+    },
+    {
+      "id": "e_model_service",
+      "name": "Model service",
+      "kind": "component",
+      "origin": "authored",
+      "status": "present"
+    },
+    {
+      "id": "e_model",
+      "name": "Model",
+      "kind": "component",
+      "origin": "authored",
+      "status": "present"
+    },
+    {
+      "id": "e_rules",
+      "name": "Contract rules",
+      "kind": "component",
+      "origin": "authored",
+      "status": "present"
+    },
+    {
+      "id": "e_sync",
+      "name": "Sync",
+      "kind": "component",
+      "origin": "authored",
+      "status": "present"
+    },
+    {
+      "id": "e_check",
+      "name": "Check",
+      "kind": "component",
+      "origin": "authored",
+      "status": "present"
+    },
+    {
+      "id": "e_extract_csharp",
+      "name": "C# extractor",
+      "kind": "app",
+      "origin": "authored",
+      "status": "present"
+    },
+    {
+      "id": "e_extract_ts",
+      "name": "TypeScript extractor",
+      "kind": "app",
+      "origin": "authored",
+      "status": "present"
+    },
+    {
+      "id": "e_workspace",
+      "name": "Workspace files",
+      "kind": "database",
+      "origin": "authored",
+      "status": "present"
+    },
+    {
+      "id": "e_journal",
+      "name": "Work journal",
+      "kind": "database",
+      "origin": "authored",
+      "status": "present"
+    },
+    {
+      "id": "e_source",
+      "name": "Source code",
+      "kind": "external",
+      "origin": "authored",
+      "status": "present"
+    }
+  ]
+}

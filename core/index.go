@@ -216,14 +216,12 @@ func (m *Model) overlay(p *ProjectIndex) {
 	})
 }
 
-// name reads a text entry's name: a value with provenance, or a v2 bare string.
+// name reads a text entry's name, a value with provenance (CONTRACT §7.3). A
+// bare string is the shape of contract 2: it is not read, `semaps check`
+// names it.
 func (r textRecord) name() string {
 	if v, ok := r.field("name"); ok {
 		return v.V
-	}
-	var s string
-	if raw, ok := r["name"]; ok && json.Unmarshal(raw, &s) == nil {
-		return s
 	}
 	return ""
 }

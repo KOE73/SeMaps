@@ -29,16 +29,16 @@ type Canvas struct {
 		MinHeight float64 `json:"minHeight"`
 		Radius    float64 `json:"radius"`
 	} `json:"node"`
-	Zone struct {
+	Container struct {
 		MinWidth     float64 `json:"minWidth"`
 		MinHeight    float64 `json:"minHeight"`
 		HeaderHeight float64 `json:"headerHeight"`
 		Padding      float64 `json:"padding"`
 		Radius       float64 `json:"radius"`
-	} `json:"zone"`
+	} `json:"container"`
 	Gap struct {
-		Node float64 `json:"node"`
-		Zone float64 `json:"zone"`
+		Node      float64 `json:"node"`
+		Container float64 `json:"container"`
 	} `json:"gap"`
 }
 
@@ -51,15 +51,15 @@ func ParseCanvas(data []byte) (Canvas, error) {
 	for name, v := range map[string]float64{
 		"grid": c.Grid, "node.width": c.Node.Width, "node.height": c.Node.Height,
 		"node.minWidth": c.Node.MinWidth, "node.minHeight": c.Node.MinHeight,
-		"zone.minWidth": c.Zone.MinWidth, "zone.minHeight": c.Zone.MinHeight,
+		"container.minWidth": c.Container.MinWidth, "container.minHeight": c.Container.MinHeight,
 	} {
 		if v <= 0 {
 			return Canvas{}, fmt.Errorf("%s: %s must be a positive number", CanvasFile, name)
 		}
 	}
 	for name, v := range map[string]float64{
-		"node.radius": c.Node.Radius, "zone.headerHeight": c.Zone.HeaderHeight, "zone.padding": c.Zone.Padding,
-		"zone.radius": c.Zone.Radius, "gap.node": c.Gap.Node, "gap.zone": c.Gap.Zone,
+		"node.radius": c.Node.Radius, "container.headerHeight": c.Container.HeaderHeight, "container.padding": c.Container.Padding,
+		"container.radius": c.Container.Radius, "gap.node": c.Gap.Node, "gap.container": c.Gap.Container,
 	} {
 		if v < 0 {
 			return Canvas{}, fmt.Errorf("%s: %s must not be negative", CanvasFile, name)
@@ -90,10 +90,10 @@ func (c Canvas) Describe() string {
 	var b strings.Builder
 	b.WriteString("CANVAS. Units are model units (1 unit = 1 screen pixel at zoom 1); x grows right, y grows down, the origin is arbitrary; all coordinates are absolute.\n")
 	fmt.Fprintf(&b, "Grid step %s: the editor snaps to it, this host does NOT — put positions and sizes on multiples of %s yourself.\n", g, g)
-	fmt.Fprintf(&b, "Node: %sx%s by default, minimum %sx%s. Zone: minimum %sx%s, caption strip %s high, inner padding %s.\n",
+	fmt.Fprintf(&b, "Block: %sx%s by default, minimum %sx%s. Container: minimum %sx%s, caption strip %s high, inner padding %s.\n",
 		num(c.Node.Width), num(c.Node.Height), num(c.Node.MinWidth), num(c.Node.MinHeight),
-		num(c.Zone.MinWidth), num(c.Zone.MinHeight), num(c.Zone.HeaderHeight), num(c.Zone.Padding))
-	fmt.Fprintf(&b, "Default gaps: %s between nodes, %s between zones.\n", num(c.Gap.Node), num(c.Gap.Zone))
+		num(c.Container.MinWidth), num(c.Container.MinHeight), num(c.Container.HeaderHeight), num(c.Container.Padding))
+	fmt.Fprintf(&b, "Default gaps: %s between blocks, %s between containers.\n", num(c.Gap.Node), num(c.Gap.Container))
 	return b.String()
 }
 

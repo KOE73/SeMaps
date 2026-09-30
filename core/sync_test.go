@@ -98,7 +98,7 @@ func sync(t *testing.T, ws string, f *Facts, opt SyncOptions) *SyncReport {
 // authored entity whose name a code symbol also carries, a text catalogue and
 // a view that sync must never touch.
 const (
-	adoptProject  = `{"id":"p","contractVersion":3,"sources":{"include":["src"]}}`
+	adoptProject  = `{"id":"p","contractVersion":5,"sources":{"include":["src"]}}`
 	adoptEntities = `{
   "entities": [
     {"id":"e_asm_onnx","name":"NeuroModFlowNet.ONNX","kind":"assembly","origin":"code","codeRef":"src/NeuroModFlowNet.ONNX/NeuroModFlowNet.ONNX.csproj"},
@@ -106,10 +106,10 @@ const (
     {"id":"e_guard","name":"Guard","kind":"concept","origin":"authored","status":"planned"}
   ]
 }`
-	adoptRelations = `{"contractVersion":3,"relations":[
+	adoptRelations = `{"contractVersion":5,"relations":[
     {"id":"r_hand","from":"e_guard","to":"e_x","type":"call","origin":"authored"}
   ]}`
-	adoptTypes = `{"contractVersion":3,"relationTypes":[{"id":"call","origin":"authored"},{"id":"extends","origin":"code"}]}`
+	adoptTypes = `{"contractVersion":5,"relationTypes":[{"id":"call","origin":"authored"},{"id":"extends","origin":"code"}]}`
 	adoptFacts = `{
   "language": "csharp", "root": ".",
   "edgeKinds": ["extends","implements","contains","depends","holds","uses"],
@@ -172,7 +172,7 @@ func TestReadFactsAcceptsValidOutput(t *testing.T) {
 
 func TestSyncFirstRunAdoptsHandMadeEntities(t *testing.T) {
 	ws, dir := workspace(t, adoptProject, adoptEntities, adoptRelations, adoptTypes)
-	text := `{"contractVersion":3,"language":"ru","entries":{"e_x":{"description":{"v":"x","at":"2026-09-23T00:00:00Z","origin":"authored"}}}}`
+	text := `{"contractVersion":5,"language":"ru","entries":{"e_x":{"description":{"v":"x","at":"2026-09-23T00:00:00Z","origin":"authored"}}}}`
 	viewDoc := `{"id":"v_main","project":"p","axis":"axis_layer","zones":[],"nodes":[{"entity":"e_x","zone":null,"x":1,"y":2}]}`
 	writeFile(t, filepath.Join(dir, "text.ru.json"), text)
 	writeFile(t, filepath.Join(dir, "views", "v_main.view.json"), viewDoc)
@@ -272,7 +272,7 @@ func TestSyncFirstRunAdoptsHandMadeEntities(t *testing.T) {
 // After the first run the ids are held by `symbol`: renaming the class in code
 // keeps nothing by name, and a changed name alone must not re-mint.
 func TestSyncMatchesBySymbolNotByName(t *testing.T) {
-	ws, dir := workspace(t, `{"id":"p","contractVersion":3}`, `{"entities":[
+	ws, dir := workspace(t, `{"id":"p","contractVersion":5}`, `{"entities":[
     {"id":"e_legacy_name","name":"Legacy","kind":"class","origin":"code","symbol":"A.C","codeRef":"a/Old.cs"}]}`, "", "")
 	rep := sync(t, ws, facts(t, `{"language":"csharp","root":".","symbols":[
     {"id":"A.C","kind":"type","nativeKind":"record","name":"C","namespace":"A","file":"a/C.cs"}],"edges":[]}`), SyncOptions{})
@@ -377,7 +377,7 @@ func TestSyncRenameIsOnlyACandidate(t *testing.T) {
 }
 
 func TestSyncConfirmedRenameKeepsID(t *testing.T) {
-	ws, dir := workspace(t, `{"id":"p","contractVersion":3}`, `{"entities":[
+	ws, dir := workspace(t, `{"id":"p","contractVersion":5}`, `{"entities":[
     {"id":"e_old","name":"Old","kind":"class","origin":"code","symbol":"A.Old","codeRef":"a/F.cs"}]}`, "", "")
 	next := `{"language":"csharp","root":".","symbols":[
     {"id":"A.New","kind":"type","nativeKind":"class","name":"New","namespace":"A","file":"a/F.cs"}],"edges":[]}`
@@ -394,7 +394,7 @@ func TestSyncConfirmedRenameKeepsID(t *testing.T) {
 }
 
 func TestSyncAmbiguousAdoptionHoldsBothSides(t *testing.T) {
-	ws, dir := workspace(t, `{"id":"p","contractVersion":3}`, `{"entities":[
+	ws, dir := workspace(t, `{"id":"p","contractVersion":5}`, `{"entities":[
     {"id":"e_a1","name":"A","kind":"class","namespace":"N"},
     {"id":"e_a2","name":"A","kind":"class","namespace":"N"}]}`, "", "")
 	rep := sync(t, ws, facts(t, `{"language":"csharp","root":".","symbols":[
@@ -409,7 +409,7 @@ func TestSyncAmbiguousAdoptionHoldsBothSides(t *testing.T) {
 
 func TestSyncBrokenRegistryWritesNothing(t *testing.T) {
 	entities := `{"entities":[{"id":"e_a","name":"A","kind":"class"},{"id":"e_a","name":"B","kind":"class"}]}`
-	ws, dir := workspace(t, `{"id":"p","contractVersion":3}`, entities, "", "")
+	ws, dir := workspace(t, `{"id":"p","contractVersion":5}`, entities, "", "")
 	rep := sync(t, ws, facts(t, `{"language":"csharp","root":".","symbols":[
     {"id":"C","kind":"type","nativeKind":"class","name":"C","file":"C.cs"}],"edges":[]}`), SyncOptions{})
 	if len(rep.Broken) != 1 || rep.ExitCode() != 1 {
@@ -423,7 +423,7 @@ func TestSyncBrokenRegistryWritesNothing(t *testing.T) {
 func TestSyncTypeScriptFileModuleAndClassOfOneName(t *testing.T) {
 	// A TS file module and its class share file and name; the hand entity's
 	// kind picks the class.
-	ws, dir := workspace(t, `{"id":"p","contractVersion":3}`, `{"entities":[
+	ws, dir := workspace(t, `{"id":"p","contractVersion":5}`, `{"entities":[
     {"id":"e_canvas","name":"DiagramCanvas","kind":"class","codeRef":"src/DiagramCanvas.ts"}]}`, "", "")
 	sync(t, ws, facts(t, `{"language":"typescript","root":".","symbols":[
     {"id":"src/DiagramCanvas","kind":"module","nativeKind":"file","name":"DiagramCanvas","file":"src/DiagramCanvas.ts"},
@@ -446,7 +446,7 @@ func TestSyncTypeScriptFileModuleAndClassOfOneName(t *testing.T) {
 // `IRunner<in TIn, out TOut>` for what the extractor calls `IRunner`. Both
 // rules must see through that; kinds are compared as they are.
 func TestSyncAdoptsGenericsAndModifierKinds(t *testing.T) {
-	ws, dir := workspace(t, `{"id":"p","contractVersion":3}`, `{"entities":[
+	ws, dir := workspace(t, `{"id":"p","contractVersion":5}`, `{"entities":[
     {"id":"e_runner","name":"IRunner<in TIn, out TOut>","kind":"interface","namespace":"N","codeRef":"src/IRunner.cs","origin":"code"},
     {"id":"e_conv","name":"ConverterBase<TIn>","kind":"abstract-class","namespace":"N","codeRef":"src/Old/ConverterBase.cs","origin":"code"},
     {"id":"e_nested","name":"Outer<T>","kind":"class","namespace":"N","codeRef":"src/Outer.cs","origin":"code"},
@@ -492,7 +492,7 @@ func TestSyncKindsAreNotCollapsed(t *testing.T) {
 		{"record-struct", "record-struct", true}, {"class", "abstract-class", true},
 	} {
 		nk, adopted := c.nk, c.adopted
-		ws, dir := workspace(t, `{"id":"p","contractVersion":3}`, `{"entities":[
+		ws, dir := workspace(t, `{"id":"p","contractVersion":5}`, `{"entities":[
     {"id":"e_pt","name":"Point","kind":"`+c.ek+`","namespace":"N","origin":"code"}]}`, "", "")
 		sync(t, ws, facts(t, `{"language":"csharp","root":".","symbols":[
     {"id":"N.Point","kind":"type","nativeKind":"`+nk+`","name":"Point","namespace":"N","file":"src/Point.cs"}],"edges":[]}`), SyncOptions{})
@@ -530,7 +530,7 @@ func TestBaseNameAndNormKind(t *testing.T) {
 // front: short names like `Diagnostics` repeat and a namespace and an assembly
 // often share a name.
 func TestSyncModuleIDsFromFullName(t *testing.T) {
-	ws, dir := workspace(t, `{"id":"p","contractVersion":3}`, `{"entities":[]}`, "", "")
+	ws, dir := workspace(t, `{"id":"p","contractVersion":5}`, `{"entities":[]}`, "", "")
 	sync(t, ws, facts(t, `{"language":"csharp","root":".","symbols":[
     {"id":"A.Diagnostics","kind":"module","nativeKind":"namespace","name":"Diagnostics","file":"src/A.Diagnostics/X.cs"},
     {"id":"A.Diagnostics.X","kind":"type","nativeKind":"class","name":"X","namespace":"A.Diagnostics","file":"src/A.Diagnostics/X.cs"},
@@ -553,8 +553,8 @@ func TestSyncModuleIDsFromFullName(t *testing.T) {
 }
 
 func TestSyncNeedsProjectWhenSeveral(t *testing.T) {
-	ws, _ := workspace(t, `{"id":"p","contractVersion":3}`, "", "", "")
-	writeFile(t, filepath.Join(ws, "projects", "q", "project.json"), `{"id":"q","contractVersion":3}`)
+	ws, _ := workspace(t, `{"id":"p","contractVersion":5}`, "", "", "")
+	writeFile(t, filepath.Join(ws, "projects", "q", "project.json"), `{"id":"q","contractVersion":5}`)
 	_, err := SyncWorkspace(ws, facts(t, `{"language":"go","root":".","symbols":[],"edges":[]}`), SyncOptions{})
 	var usage *UsageError
 	if !errors.As(err, &usage) {
@@ -595,7 +595,7 @@ func TestMemberRelationTypeDerivation(t *testing.T) {
 
 // Member relation ID is stable across wrapper changes (List -> IReadOnlyList).
 func TestMemberRelationIDStability(t *testing.T) {
-	ws, dir := workspace(t, `{"id":"p","contractVersion":3}`, "", "", "")
+	ws, dir := workspace(t, `{"id":"p","contractVersion":5}`, "", "", "")
 	facts1 := `{"language":"csharp","root":".","edgeKinds":["holds"],"symbols":[
     {"id":"A","kind":"type","nativeKind":"class","name":"A","file":"a.cs"},
     {"id":"B","kind":"type","nativeKind":"class","name":"B","file":"b.cs"}],
@@ -622,7 +622,7 @@ func TestMemberRelationIDStability(t *testing.T) {
 
 // Visibility is set when new relation types are created.
 func TestMemberRelationVisibility(t *testing.T) {
-	ws, dir := workspace(t, `{"id":"p","contractVersion":3}`, "", "", "")
+	ws, dir := workspace(t, `{"id":"p","contractVersion":5}`, "", "", "")
 	factSet := `{"language":"csharp","root":".","edgeKinds":["holds","uses"],"symbols":[
     {"id":"A","kind":"type","nativeKind":"class","name":"A","file":"a.cs"},
     {"id":"B","kind":"type","nativeKind":"class","name":"B","file":"b.cs"},
@@ -655,7 +655,7 @@ func TestMemberRelationVisibility(t *testing.T) {
 
 // missing marking only for edge kinds in edgeKinds.
 func TestMemberRelationMissingByEdgeKinds(t *testing.T) {
-	ws, _ := workspace(t, `{"id":"p","contractVersion":3}`, "", "", "")
+	ws, _ := workspace(t, `{"id":"p","contractVersion":5}`, "", "", "")
 
 	// First run: extract both holds and uses
 	facts1 := `{"language":"csharp","root":".","edgeKinds":["holds","uses"],"symbols":[
@@ -703,7 +703,7 @@ func TestMemberRelationMissingByEdgeKinds(t *testing.T) {
 
 // Rename candidates for member relations: same (from, to, path), different member.
 func TestMemberRelationRenameCandidate(t *testing.T) {
-	ws, _ := workspace(t, `{"id":"p","contractVersion":3}`, "", "", "")
+	ws, _ := workspace(t, `{"id":"p","contractVersion":5}`, "", "", "")
 
 	// First run: create a member relation
 	facts1 := `{"language":"csharp","root":".","edgeKinds":["holds"],"symbols":[
@@ -749,7 +749,7 @@ func TestLegacyReferencesRelationBecomesMissing(t *testing.T) {
 	ws, dir := workspace(t, adoptProject, `{"entities":[
     {"id":"e_a","name":"A","kind":"class","origin":"code","symbol":"N.A","codeRef":"src/A.cs"},
     {"id":"e_b","name":"B","kind":"class","origin":"code","symbol":"N.B","codeRef":"src/B.cs"}
-  ]}`, `{"contractVersion":3,"relations":[
+  ]}`, `{"contractVersion":5,"relations":[
     {"id":"r_a_b_references","from":"e_a","to":"e_b","type":"references","origin":"code","status":"present"}
   ]}`, "")
 
@@ -788,7 +788,7 @@ func TestSlug(t *testing.T) {
 // two relations, and a second sync of the same facts changes nothing.
 // (NeuroModFlowNet: IouTracker.options, a record's positional property.)
 func TestMemberRelationFieldAndCtorParamAreTwo(t *testing.T) {
-	ws, dir := workspace(t, `{"id":"p","contractVersion":3}`, "", "", "")
+	ws, dir := workspace(t, `{"id":"p","contractVersion":5}`, "", "", "")
 	f := `{"language":"csharp","root":".","edgeKinds":["holds","injects"],"symbols":[
     {"id":"A","kind":"type","nativeKind":"class","name":"A","file":"a.cs"},
     {"id":"B","kind":"type","nativeKind":"class","name":"B","file":"b.cs"}],
@@ -814,7 +814,7 @@ func TestMemberRelationFieldAndCtorParamAreTwo(t *testing.T) {
 // A rename in the same edit as a wrapper change (List -> IReadOnlyList) is
 // still offered as a rename: candidates are matched by family, not exact type.
 func TestMemberRelationRenameWithWrapperChange(t *testing.T) {
-	ws, _ := workspace(t, `{"id":"p","contractVersion":3}`, "", "", "")
+	ws, _ := workspace(t, `{"id":"p","contractVersion":5}`, "", "", "")
 	before := `{"language":"csharp","root":".","edgeKinds":["holds"],"symbols":[
     {"id":"A","kind":"type","nativeKind":"class","name":"A","file":"a.cs"},
     {"id":"B","kind":"type","nativeKind":"class","name":"B","file":"b.cs"}],

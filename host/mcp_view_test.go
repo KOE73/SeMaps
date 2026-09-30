@@ -23,21 +23,21 @@ func TestLayoutGuideAndCanvasBlock(t *testing.T) {
 	if res.IsError {
 		t.Fatal(text)
 	}
-	for _, want := range []string{"get_view", "render_view", "move_elements", "resize_elements", "set_zone", "add_zone", "fit_zone", "align_elements",
-		"place_entities", "create_view", "create_project", "save", "set_text", "requestedByHuman", "does not snap",
-		"Look at the sample", "Grid step 10", "180x60", "28 high", "40 between zones", "3 x 180 + 2 x 40 = 620"} {
+	for _, want := range []string{"get_view", "render_view", "move_elements", "resize_elements", "set_parent", "add_container", "fit_container", "align_elements",
+		"place_entities", "create_view", "create_project", "save", "set_text", "get_kinds", "requestedByHuman", "does not snap",
+		"Look at the sample", "Grid step 10", "180x60", "28 high", "40 between containers", "3 x 180 + 2 x 40 = 620"} {
 		if !strings.Contains(text, want) {
 			t.Errorf("layout_guide lacks %q; tail:\n%s", want, text[max(0, len(text)-1500):])
 		}
 	}
-	for _, banned := range []string{".view.json", `"zones"`, `"nodes"`, "CONTRACT", "LAYOUT.md"} {
+	for _, banned := range []string{".view.json", `"zones"`, `"nodes"`, "set_zone", "add_zone", "fit_zone", "CONTRACT", "LAYOUT.md"} {
 		if strings.Contains(text, banned) {
 			t.Errorf("layout_guide names the file format: %q", banned)
 		}
 	}
 	// get_view opens with the very same canvas block, before the data
 	_, view := call(t, cs, "get_view", map[string]any{"view": "v_main"})
-	if !strings.HasPrefix(view, "CANVAS.") || strings.Index(view, "Grid step 10") > strings.Index(view, `"zones"`) {
+	if !strings.HasPrefix(view, "CANVAS.") || strings.Index(view, "Grid step 10") > strings.Index(view, `"placements"`) {
 		t.Fatalf("get_view does not start with the canvas:\n%s", view)
 	}
 	if !strings.Contains(text, strings.SplitN(view, "\n", 2)[0]) {
@@ -324,7 +324,7 @@ func TestRenderViewArguments(t *testing.T) {
 		"nothing":   {},
 		"no view":   {"view": "v_nope"},
 		"bad rect":  {"view": "v_main", "rect": map[string]any{"x": 0, "y": 0, "width": 0, "height": 10}},
-		"two views": {"view": "v_other", "ref": "v_main#z_x"},
+		"two views": {"view": "v_other", "ref": "v_main#e_x"},
 	} {
 		args["project"] = "p"
 		if res, text := call(t, f.cs, "render_view", args); !res.IsError {

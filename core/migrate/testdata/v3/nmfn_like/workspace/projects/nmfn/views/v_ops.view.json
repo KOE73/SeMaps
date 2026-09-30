@@ -1,0 +1,26 @@
+{
+  "id": "v_ops",
+  "project": "nmfn",
+  "axis": "axis_classes",
+  "routing": "orthogonal",
+  "zones": [
+    {
+      "id": "z_onnx",
+      "container": "c_onnx",
+      "parent": null,
+      "x": 0,
+      "y": 0,
+      "width": 600,
+      "height": 300
+    }
+  ],
+  "nodes": [
+    {
+      "entity": "e_session",
+      "zone": "z_onnx",
+      "x": 40,
+      "y": 60
+    }
+  ],
+  "edges": []
+}

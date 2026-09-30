@@ -14,7 +14,7 @@ func modelOp(kind, id, view, lang, value string) Op {
 
 func TestModelJournalSaveAndOrderedBytes(t *testing.T) {
 	ws := editWorkspace(t)
-	m, err := LoadModel(ws, "p")
+	m, err := LoadModel(ws, "p", defaultKindsJSON(t))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -22,7 +22,7 @@ func TestModelJournalSaveAndOrderedBytes(t *testing.T) {
 	if _, err := m.Apply([]Op{modelOp("entity", "e_a", "", "", entity)}, "human"); err != nil {
 		t.Fatal(err)
 	}
-	m, err = LoadModel(ws, "p")
+	m, err = LoadModel(ws, "p", defaultKindsJSON(t))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -36,7 +36,7 @@ func TestModelJournalSaveAndOrderedBytes(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	want := "{\n  \"entities\": [\n    {\n      \"id\": \"e_a\",\n      \"name\": \"A edited\",\n      \"kind\": \"class\",\n      \"origin\": \"code\",\n      \"symbol\": \"N.A\"\n    },\n    {\n      \"id\": \"e_b\",\n      \"name\": \"B\",\n      \"kind\": \"class\",\n      \"origin\": \"code\",\n      \"symbol\": \"N.B\"\n    },\n    {\n      \"id\": \"e_x\",\n      \"name\": \"X\",\n      \"kind\": \"app\",\n      \"origin\": \"authored\"\n    }\n  ]\n}\n"
+	want := "{\n  \"entities\": [\n    {\n      \"id\": \"e_a\",\n      \"name\": \"A edited\",\n      \"kind\": \"class\",\n      \"origin\": \"code\",\n      \"symbol\": \"N.A\"\n    },\n    {\n      \"id\": \"e_b\",\n      \"name\": \"B\",\n      \"kind\": \"class\",\n      \"origin\": \"code\",\n      \"symbol\": \"N.B\"\n    },\n    {\n      \"id\": \"e_x\",\n      \"name\": \"X\",\n      \"kind\": \"app\",\n      \"origin\": \"authored\"\n    },\n    {\n      \"id\": \"e_core\",\n      \"name\": \"Core\",\n      \"kind\": \"group\",\n      \"origin\": \"authored\"\n    }\n  ]\n}\n"
 	if !bytes.Equal(got, []byte(want)) {
 		t.Fatalf("bytes differ from hand edit:\n%s", got)
 	}
@@ -47,12 +47,12 @@ func TestModelJournalSaveAndOrderedBytes(t *testing.T) {
 
 func TestModelAtomicAndDiscardScopes(t *testing.T) {
 	ws := editWorkspace(t)
-	m, err := LoadModel(ws, "p")
+	m, err := LoadModel(ws, "p", defaultKindsJSON(t))
 	if err != nil {
 		t.Fatal(err)
 	}
-	zone := `{"id":"z_core","container":null,"x":4,"y":0,"width":500,"height":500}`
-	valid := modelOp("zone", "z_core", "v_main", "", zone)
+	placement := `{"entity":"e_core","parent":null,"x":4,"y":0,"width":500,"height":500}`
+	valid := modelOp("placement", "e_core", "v_main", "", placement)
 	bad := modelOp("entity", "e_b", "", "", "null")
 	if _, err := m.Apply([]Op{valid, bad}, "human"); err == nil {
 		t.Fatal("accepted null registry value")
@@ -73,7 +73,7 @@ func TestModelAtomicAndDiscardScopes(t *testing.T) {
 	if len(m.Dirty().Views) != 0 || len(m.Dirty().Registry) != 1 {
 		t.Fatalf("bad view discard: %+v", m.Dirty())
 	}
-	m, err = LoadModel(ws, "p")
+	m, err = LoadModel(ws, "p", defaultKindsJSON(t))
 	if err != nil || len(m.Dirty().Registry) != 1 {
 		t.Fatalf("discard journal replay: %v", err)
 	}
@@ -101,7 +101,7 @@ func TestModelEditsStayUnsavedUntilSave(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	m, err := LoadModel(ws, "p")
+	m, err := LoadModel(ws, "p", defaultKindsJSON(t))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -129,10 +129,10 @@ func TestModelEditsStayUnsavedUntilSave(t *testing.T) {
 func TestModelKeepsLegacyEntityTextNameWhenDescriptionChanges(t *testing.T) {
 	ws := editWorkspace(t)
 	file := filepath.Join(ws, "projects", "p", "text.ru.json")
-	if err := os.WriteFile(file, []byte(`{"contractVersion":3,"language":"ru","entries":{"e_a":{"name":{"v":"A","origin":"authored"}}}}`), 0644); err != nil {
+	if err := os.WriteFile(file, []byte(`{"contractVersion":5,"language":"ru","entries":{"e_a":{"name":{"v":"A","origin":"authored"}}}}`), 0644); err != nil {
 		t.Fatal(err)
 	}
-	m, err := LoadModel(ws, "p")
+	m, err := LoadModel(ws, "p", defaultKindsJSON(t))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -155,7 +155,7 @@ func TestModelKeepsLegacyEntityTextNameWhenDescriptionChanges(t *testing.T) {
 func TestProjectManifestIsJournaledAndSavedWithRegistry(t *testing.T) {
 	ws := editWorkspace(t)
 	file := filepath.Join(ws, "projects", "p", "project.json")
-	m, err := LoadModel(ws, "p")
+	m, err := LoadModel(ws, "p", defaultKindsJSON(t))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -167,7 +167,7 @@ func TestProjectManifestIsJournaledAndSavedWithRegistry(t *testing.T) {
 	if bytes.Contains(b, []byte("Working")) {
 		t.Fatal("manifest written before Save")
 	}
-	m, err = LoadModel(ws, "p")
+	m, err = LoadModel(ws, "p", defaultKindsJSON(t))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -184,7 +184,7 @@ func TestProjectManifestIsJournaledAndSavedWithRegistry(t *testing.T) {
 }
 
 func TestCleanModelDirtySerializesEmptyLists(t *testing.T) {
-	m, err := LoadModel(editWorkspace(t), "p")
+	m, err := LoadModel(editWorkspace(t), "p", defaultKindsJSON(t))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -197,9 +197,9 @@ func TestCleanModelDirtySerializesEmptyLists(t *testing.T) {
 func TestParseRefAndResolve(t *testing.T) {
 	for in, want := range map[string]ObjectRef{
 		"v_main":                        {View: "v_main"},
-		"v_main#z_core":                 {View: "v_main", ID: "z_core"},
+		"v_main#e_core":                 {View: "v_main", ID: "e_core"},
 		"p/v_main#e_a":                  {Project: "p", View: "v_main", ID: "e_a"},
-		"/app/#v_main?highlight=z_core": {View: "v_main", ID: "z_core"},
+		"/app/#v_main?highlight=e_core": {View: "v_main", ID: "e_core"},
 	} {
 		got, err := ParseRef(in)
 		if err != nil || got != want {
@@ -211,19 +211,19 @@ func TestParseRefAndResolve(t *testing.T) {
 			t.Fatalf("ParseRef(%q) accepted", bad)
 		}
 	}
-	m, err := LoadModel(editWorkspace(t), "p")
+	m, err := LoadModel(editWorkspace(t), "p", defaultKindsJSON(t))
 	if err != nil {
 		t.Fatal(err)
 	}
-	for ref, kind := range map[string]string{"v_main": "view", "v_main#z_core": "zone", "v_main#e_a": "node"} {
+	for ref, kind := range map[string]string{"v_main": "view", "v_main#e_core": "container", "v_main#e_a": "block"} {
 		r, _ := ParseRef(ref)
 		if k, err := m.ResolveRef(r); err != nil || k != kind {
 			t.Fatalf("ResolveRef(%s) = %q, %v", ref, k, err)
 		}
 	}
-	r, _ := ParseRef("v_main#z_nope")
+	r, _ := ParseRef("v_main#e_nope")
 	_, err = m.ResolveRef(r)
-	refused(t, err, "z_nope is not on view v_main")
+	refused(t, err, "e_nope is not on view v_main")
 	r, _ = ParseRef("v_none")
 	_, err = m.ResolveRef(r)
 	refused(t, err, "no view v_none")

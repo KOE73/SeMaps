@@ -25,7 +25,7 @@ func chainSession(t *testing.T) *mcp.ClientSession {
 		}
 	}
 	files := map[string]string{
-		"project.json":        `{"id":"p"}`,
+		"project.json":        `{"id":"p","contractVersion":5}`,
 		"entities.json":       `{"entities":[` + strings.Join(entities, ",") + `]}`,
 		"relations.json":      `{"relations":[` + strings.Join(relations, ",") + `]}`,
 		"relation-types.json": `{"relationTypes":[{"id":"extends","origin":"code","visibility":"visible"}]}`,

@@ -38,7 +38,7 @@ type renderRequest struct {
 
 // renderProblem is one finding of the editor's own checks: kind is one of
 // overlap, clipped-caption, clipped-rows, line-through-box, line-crossing,
-// outside-zone.
+// outside-container.
 type renderProblem struct {
 	Kind string   `json:"kind"`
 	IDs  []string `json:"ids"`

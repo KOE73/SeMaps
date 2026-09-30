@@ -1,16 +1,24 @@
 // Package core is the language-neutral part of SeMaps: what is checked and
 // synced against a workspace, independent of the editor and of any extractor.
 //
-// Check reports, per project (contract v3):
+// Check reports, per project (contract v5):
 //
 //  1. stale translations — `fromHash` no longer matches its source
 //  2. divergences — two languages both `authored`, neither derived from the
 //     other: not translations at all
 //  3. missing text — an id used by the structure has no text
 //  4. views without an axis
-//  5. containment contradictions — one node placed in different containers
+//  5. containment contradictions — one block placed in different containers
 //     by two views declaring the *same* axis
 //  6. broken codeRef — a file that is no longer there
+//  7. the old shape — project.json of another contractVersion, a view with
+//     `zones`/`nodes`, containers.json, c_/z_ text keys, `kinds` or a zone key
+//     in a workspace file (ADR_20260927-3): the same text the loader answers with
+//  8. placements — of no entity, in a parent that is not a container placement
+//     of the view or in a loop, an override field outside CONTRACT §11.6
+//  9. entity kinds and relation types not in the dictionary («не из словаря»):
+//     not an error of the model, a list for a human to look at (CONTRACT §6)
+//  10. styles of the workspace styles.json without `forKinds` («без типа»)
 //
 // Plus two cheap ones that catch the same rot earlier: placeholder names (a
 // name equal to the id says nothing) and relation types used but not declared.
@@ -68,24 +76,10 @@ func (r textRecord) field(name string) (textValue, bool) {
 	return v, true
 }
 
-type placement struct {
-	Entity    string `json:"entity"`
-	ID        string `json:"id"`
-	Container string `json:"container"`
-	Zone      string `json:"zone"`
-}
-
-type view struct {
-	ID         string                `json:"id"`
-	Axis       string                `json:"axis"`
-	Zones      []struct{ ID string } `json:"zones"`
-	Nodes      []placement           `json:"nodes"`
-	Placements []placement           `json:"placements"`
-}
-
 type viewFile struct {
 	name string
-	view view
+	id   string
+	doc  *object
 }
 
 var (
@@ -139,9 +133,10 @@ func sortedKeys[V any](m map[string]V) []string {
 type seenPlacement struct{ container, where string }
 
 // Check walks every project under <workspace>/projects and resolves codeRef
-// against sourceRoot. A file that cannot be parsed is itself a finding, not a
-// crash: the rest of the workspace is still checked.
-func Check(workspace, sourceRoot string) []Finding {
+// against sourceRoot. defaultKinds is the tool's dictionary, which
+// <workspace>/kinds.json adds to. A file that cannot be parsed is itself a
+// finding, not a crash: the rest of the workspace is still checked.
+func Check(workspace, sourceRoot string, defaultKinds []byte) []Finding {
 	var findings []Finding
 	report := func(project, kind, msg string) {
 		findings = append(findings, Finding{project, kind, msg})
@@ -152,6 +147,12 @@ func Check(workspace, sourceRoot string) []Finding {
 	if exists(filepath.Join(workspace, "catalog.json")) {
 		report("workspace", "устарело", "catalog.json больше не читается (ADR_20260923-7): имя вида — `name` под его id в text.<lang>.json, icon/theme — в самом .view.json; затем удалите файл")
 	}
+
+	kinds, err := LoadKinds(workspace, defaultKinds)
+	if err != nil {
+		report("workspace", "не читается", err.Error())
+	}
+	checkWorkspaceFiles(workspace, kinds, report)
 
 	root := filepath.Join(workspace, "projects")
 	entries, err := os.ReadDir(root)
@@ -191,13 +192,26 @@ func Check(workspace, sourceRoot string) []Finding {
 		if !load("project.json", &manifest) {
 			continue
 		}
+		if doc, err := loadDoc(filepath.Join(dir, "project.json")); err == nil && doc != nil {
+			if err := checkContractVersion(doc); err != nil {
+				report(project, "форма контракта", err.Error())
+				continue
+			}
+		}
+		if exists(filepath.Join(dir, "containers.json")) {
+			report(project, "форма контракта", containersFileError)
+		}
 		languages := manifest.Languages
 		if len(languages) == 0 {
 			languages = []string{"ru"}
 		}
 
 		var ents struct {
-			Entities []struct{ ID, CodeRef string } `json:"entities"`
+			Entities []struct {
+				ID      string
+				Kind    string `json:"kind"`
+				CodeRef string `json:"codeRef"`
+			} `json:"entities"`
 		}
 		load("entities.json", &ents)
 		var rels struct {
@@ -205,12 +219,18 @@ func Check(workspace, sourceRoot string) []Finding {
 		}
 		load("relations.json", &rels)
 		var types struct {
-			RelationTypes []struct{ ID string } `json:"relationTypes"`
+			RelationTypes []struct {
+				ID      string
+				StyleID string `json:"styleId"`
+			} `json:"relationTypes"`
 		}
 		declared := map[string]bool{}
 		if load("relation-types.json", &types) {
 			for _, t := range types.RelationTypes {
 				declared[t.ID] = true
+				if t.StyleID != "" {
+					report(project, "форма контракта", fmt.Sprintf("relation-types.json: %s: `styleId` — стиль связи принадлежит типу: базовый стиль задаёт kinds.json, стиль называет тип в forKinds (`semaps migrate`, ADR_20260930-2)", t.ID))
+				}
 			}
 		}
 
@@ -262,12 +282,11 @@ func Check(workspace, sourceRoot string) []Finding {
 
 		// ------------------------------------------------------- 3: недостача
 		// Only what is actually authored is expected to carry text. An entity's
-		// name is canonical and lives in entities.json — not translated.
-		// Containers, views and relation types are named by a human, so
-		// silence there is a real gap.
+		// name is canonical and lives in entities.json — not translated; a
+		// container is an entity, so it is named there too (CONTRACT §8.2).
+		// Views and relation types are named by a human, so silence there is a
+		// real gap.
 		mustBeNamed := map[string]bool{}
-		// Zone id -> the keys its caption may live under, first match wins.
-		zoneNames := map[string][]string{}
 		for id := range declared {
 			mustBeNamed[id] = true
 		}
@@ -278,28 +297,21 @@ func Check(workspace, sourceRoot string) []Finding {
 				if !strings.HasSuffix(f.Name(), ViewSuffix) {
 					continue
 				}
-				var v view
-				if err := readJSON(filepath.Join(viewsDir, f.Name()), &v); err != nil {
+				doc, err := loadDoc(filepath.Join(viewsDir, f.Name()))
+				if err != nil {
 					report(project, "не читается", fmt.Sprintf("views/%s: %v", f.Name(), err))
 					continue
 				}
-				views = append(views, viewFile{f.Name(), v})
-				id := v.ID
+				id := doc.str("id")
 				if id == "" {
-					id = strings.TrimSuffix(f.Name(), ".view.json")
+					id = strings.TrimSuffix(f.Name(), ViewSuffix)
 				}
 				mustBeNamed[id] = true
-				// A zone is named under its own id; failing that, under the
-				// container `c_<x>` a zone `z_<x>` renders — the same two keys,
-				// in the same order, the editor reads (CONTRACT §8.4). A frame
-				// with no container is named like any other zone.
-				for _, z := range v.Zones {
-					keys := []string{z.ID}
-					if strings.HasPrefix(z.ID, "z_") {
-						keys = append(keys, "c_"+z.ID[2:])
-					}
-					zoneNames[z.ID] = keys
+				if old := oldViewShape(doc); old != "" {
+					report(project, "форма контракта", oldShapeError("views/"+f.Name(), old))
+					continue
 				}
+				views = append(views, viewFile{f.Name(), id, doc})
 			}
 		}
 		for _, lang := range languages {
@@ -313,17 +325,46 @@ func Check(workspace, sourceRoot string) []Finding {
 					report(project, "недостача", fmt.Sprintf("%s: нет имени в %s", key, lang))
 				}
 			}
-			for _, id := range sortedKeys(zoneNames) {
-				named := false
-				for _, key := range zoneNames[id] {
-					if record, ok := catalogues[lang][key]; ok && (record["name"] != nil || record["title"] != nil) {
-						named = true
-						break
+			for _, key := range sortedKeys(catalogues[lang]) {
+				if strings.HasPrefix(key, "c_") || strings.HasPrefix(key, "z_") {
+					report(project, "форма контракта", fmt.Sprintf("text.%s.json: %s — ключи c_/z_ упразднены, имя контейнера — name его сущности (CONTRACT §7.1)", lang, key))
+				}
+				// a bare string instead of a value with provenance is the shape of contract 2; nobody reads it
+				for _, field := range textFields {
+					if raw, ok := catalogues[lang][key][field]; ok && len(raw) > 0 && raw[0] != '{' {
+						report(project, "форма контракта", fmt.Sprintf("text.%s.json: %s.%s — строка вместо значения с происхождением, форма контракта 2, нужен %d (CONTRACT §7)", lang, key, field, ContractVersion))
 					}
 				}
-				if !named {
-					report(project, "недостача", fmt.Sprintf("%s: нет имени в %s", id, lang))
-				}
+			}
+		}
+
+		// ---------------------------------------- 9: типы не из словаря
+		entityKind := map[string]string{}
+		outside := map[string][]string{}
+		for _, e := range ents.Entities {
+			entityKind[e.ID] = e.Kind
+			if _, ok := kinds.Lookup(e.Kind); !ok && e.Kind != "" {
+				outside[e.Kind] = append(outside[e.Kind], e.ID)
+			}
+		}
+		for _, k := range sortedKeys(outside) {
+			ids := outside[k]
+			more := ""
+			if len(ids) > 3 {
+				ids, more = ids[:3], fmt.Sprintf(" и ещё %d", len(outside[k])-3)
+			}
+			report(project, "тип не из словаря", fmt.Sprintf("%q: %s%s", k, strings.Join(ids, ", "), more))
+		}
+		for _, id := range sortedKeys(declared) {
+			if _, ok := kinds.LookupRelation(id); !ok {
+				report(project, "тип связи не из словаря", fmt.Sprintf("%q объявлен в relation-types.json, но его нет в словаре (kinds.json, relationGroups)", id))
+			}
+		}
+
+		// ---------------------------------------------------- 8: размещения
+		for _, vf := range views {
+			for _, msg := range checkPlacements(vf.doc, entityKind, kinds) {
+				report(project, "размещение", fmt.Sprintf("views/%s: %s", vf.name, msg))
 			}
 		}
 
@@ -340,7 +381,7 @@ func Check(workspace, sourceRoot string) []Finding {
 
 		// -------------------------------------------------- 4 & 5: виды и оси
 		for _, vf := range views {
-			axis := vf.view.Axis
+			axis := vf.doc.str("axis")
 			if axis == "" {
 				axis = manifest.DefaultAxis
 			}
@@ -348,18 +389,8 @@ func Check(workspace, sourceRoot string) []Finding {
 				report(project, "вид без оси", fmt.Sprintf("%s: и у проекта нет defaultAxis", vf.name))
 				continue
 			}
-			nodes := vf.view.Nodes
-			if nodes == nil {
-				nodes = vf.view.Placements
-			}
-			for _, p := range nodes {
-				id, container := p.Entity, p.Container
-				if id == "" {
-					id = p.ID
-				}
-				if container == "" {
-					container = p.Zone
-				}
+			for _, p := range viewItems(vf.doc, "placements") {
+				id, container := p.str("entity"), p.str("parent")
 				if id == "" || container == "" {
 					continue
 				}
@@ -394,6 +425,119 @@ func Check(workspace, sourceRoot string) []Finding {
 		}
 	}
 	return findings
+}
+
+// checkPlacements reads the placements of a view of the current shape: each
+// places an entity of entities.json at most once, names its parent (null for
+// none), a parent is a container placement of the same view and there is no
+// loop, an override has only the fields of the table (CONTRACT §8.2, §11.6);
+// the same for the override of an edge entry of the view's own `edges`.
+func checkPlacements(doc *object, entityKind map[string]string, kinds *KindCatalog) []string {
+	var out []string
+	items := viewItems(doc, "placements")
+	byEntity := map[string]*object{}
+	for i, p := range items {
+		id := p.str("entity")
+		switch {
+		case id == "":
+			out = append(out, fmt.Sprintf("placements[%d]: нет entity", i))
+			continue
+		case byEntity[id] != nil:
+			out = append(out, fmt.Sprintf("%s размещена дважды", id))
+		}
+		byEntity[id] = p
+		if _, ok := entityKind[id]; !ok {
+			out = append(out, fmt.Sprintf("%s: нет такой сущности в entities.json", id))
+		}
+		if _, ok := p.vals["parent"]; !ok {
+			out = append(out, fmt.Sprintf("%s: нет поля parent (null — вне контейнеров)", id))
+		}
+		if err := CheckOverride(p.vals["override"]); err != nil {
+			out = append(out, fmt.Sprintf("%s: %v", id, err))
+		}
+	}
+	for _, p := range items {
+		id := p.str("entity")
+		parent := p.str("parent")
+		if id == "" || parent == "" {
+			continue
+		}
+		if byEntity[parent] == nil {
+			out = append(out, fmt.Sprintf("%s: parent %s не размещён на этом виде", id, parent))
+			continue
+		}
+		if !kinds.IsContainer(entityKind[parent]) {
+			out = append(out, fmt.Sprintf("%s: parent %s типа %q — не контейнер по словарю", id, parent, entityKind[parent]))
+			continue
+		}
+		for q, hops := parent, 0; q != "" && byEntity[q] != nil; q, hops = byEntity[q].str("parent"), hops+1 {
+			if q == id || hops > len(items) {
+				out = append(out, fmt.Sprintf("%s: вложенность по parent замыкается в цикл", id))
+				break
+			}
+		}
+	}
+	for _, e := range viewItems(doc, "edges") {
+		if err := CheckEdgeOverride(e.vals["override"]); err != nil {
+			out = append(out, fmt.Sprintf("связь %s: %v", e.str("id"), err))
+		}
+	}
+	return out
+}
+
+// checkWorkspaceFiles reads the workspace-level files the contract changed:
+// canvas.json (`zone` became `container`) and styles.json (`kinds` became
+// `forKinds`, mandatory for block, container and edge styles, ADR_20260927-7,
+// ADR_20260930-2).
+func checkWorkspaceFiles(workspace string, kinds *KindCatalog, report func(project, kind, msg string)) {
+	if doc, err := loadDoc(filepath.Join(workspace, CanvasFile)); err == nil && doc != nil {
+		gap, _ := child(doc, "gap")
+		if has(doc, "zone") || has(gap, "zone") {
+			report("workspace", "форма контракта", fmt.Sprintf("%s: `zone` — в контракте %d ключ называется `container` (`semaps migrate`)", CanvasFile, ContractVersion))
+		}
+	}
+	doc, err := loadDoc(filepath.Join(workspace, "styles.json"))
+	if err != nil {
+		report("workspace", "не читается", err.Error())
+		return
+	}
+	if doc == nil {
+		return
+	}
+	for _, s := range viewItems(doc, "styles") {
+		id, appliesTo := s.str("id"), s.str("appliesTo")
+		if has(s, "kinds") {
+			report("workspace", "форма контракта", fmt.Sprintf("styles.json: %s: `kinds` — в контракте %d поле называется `forKinds` (`semaps migrate`)", id, ContractVersion))
+		}
+		if id == "default.node" || id == "default.container" || id == "default.edge" {
+			continue
+		}
+		var forKinds []string
+		if raw, ok := s.vals["forKinds"]; ok {
+			_ = json.Unmarshal(raw, &forKinds)
+		}
+		if len(forKinds) == 0 {
+			what := "стиль без типа"
+			if appliesTo == "edge" {
+				what = "стиль связи без типа"
+			}
+			report("workspace", "без типа", fmt.Sprintf("styles.json: %s — %s: нет forKinds (ADR_20260927-7)", id, what))
+			continue
+		}
+		for _, k := range forKinds {
+			if appliesTo == "edge" {
+				if _, ok := kinds.LookupRelation(k); !ok {
+					report("workspace", "тип не из словаря", fmt.Sprintf("styles.json: %s: forKinds %q — нет такого типа связи в словаре", id, k))
+				}
+				continue
+			}
+			if _, ok := kinds.Lookup(k); !ok {
+				report("workspace", "тип не из словаря", fmt.Sprintf("styles.json: %s: forKinds %q — нет такого типа в словаре", id, k))
+			} else if isContainer := kinds.IsContainer(k); isContainer != (appliesTo == "container") {
+				report("workspace", "стиль и тип", fmt.Sprintf("styles.json: %s: appliesTo %q, а тип %q %s", id, appliesTo, k, map[bool]string{true: "контейнер", false: "не контейнер"}[isContainer]))
+			}
+		}
+	}
 }
 
 // Report prints findings grouped by kind, at most 15 per kind, and returns

@@ -14,6 +14,7 @@ import (
 	"net/url"
 	"os"
 	"path/filepath"
+	"slices"
 	"strconv"
 	"strings"
 
@@ -84,7 +85,7 @@ type relationsIn struct {
 type textIn struct {
 	Project string `json:"project,omitempty"`
 	Lang    string `json:"lang" jsonschema:"language of text.<lang>.json: ru, en..."`
-	Key     string `json:"key" jsonschema:"e_, c_, rt_, r_, v_ or z_ id"`
+	Key     string `json:"key" jsonschema:"e_, rt_, r_ or v_ id"`
 }
 
 type setTextIn struct {
@@ -99,7 +100,7 @@ type addEntityIn struct {
 	Project     string `json:"project,omitempty"`
 	ID          string `json:"id,omitempty" jsonschema:"e_<name>; default: minted from name"`
 	Name        string `json:"name" jsonschema:"canonical name, not translated (CONTRACT §3)"`
-	Kind        string `json:"kind" jsonschema:"app, service, component, external, database…"`
+	Kind        string `json:"kind" jsonschema:"a kind of get_kinds (app, service, component, external, database…); a kind outside it is allowed and flagged by check"`
 	Description string `json:"description,omitempty" jsonschema:"written as a text, like set_text"`
 	Lang        string `json:"lang,omitempty" jsonschema:"language of description; default: the project's first language"`
 }
@@ -115,7 +116,6 @@ type addTypeIn struct {
 	Project    string `json:"project,omitempty"`
 	ID         string `json:"id"`
 	Visibility string `json:"visibility,omitempty" jsonschema:"visible or hidden: the default on views"`
-	StyleID    string `json:"styleId,omitempty"`
 }
 
 type visibleIn struct {
@@ -166,7 +166,7 @@ type getGraphIn struct {
 	Follow    []string `json:"follow,omitempty" jsonschema:"neighbourhood only: directed relation names to walk (call graph_formats for the vocabulary); default: every relation but containment"`
 	Depth     any      `json:"depth,omitempty" jsonschema:"with around: a number 1-5 (default 1), or the string \"all\" to walk until no new node is reached — only when every relation in follow is an inheritance relation (extends, extended-by, implements, implemented-by)"`
 	Fanout    int      `json:"fanout,omitempty" jsonschema:"with around: at most this many neighbours per node per relation; 0 (default) = unlimited"`
-	Container string   `json:"container,omitempty" jsonschema:"a containers.json id: only nodes in it, or in a descendant of it"`
+	Container string   `json:"container,omitempty" jsonschema:"a container node (id or name; its kind is a container kind of get_kinds): only it and the nodes inside it, at any depth"`
 	// Fields is a list, not a comma string, so null/absent (the default,
 	// via+position) can be told apart from an explicit empty list (nothing
 	// extra): a plain string can't carry that distinction over JSON.
@@ -186,34 +186,51 @@ type findNodeIn struct {
 
 type getViewIn struct {
 	Project string `json:"project,omitempty"`
-	View    string `json:"view" jsonschema:"a view id, or a zone reference view#zone to read only that subtree"`
-	Lang    string `json:"lang,omitempty" jsonschema:"language of names; default ru"`
+	View    string `json:"view" jsonschema:"a view id, or a container reference view#e_x to read only that subtree"`
+}
+
+type kindsIn struct {
+	Project string `json:"project,omitempty" jsonschema:"the project whose entity kinds and relation types outside the dictionary are listed under unknown"`
+	Lang    string `json:"lang,omitempty" jsonschema:"language of names and descriptions; default ru, else any present"`
 }
 
 type geomIn struct {
 	Project          string   `json:"project,omitempty"`
-	View             string   `json:"view,omitempty" jsonschema:"view id; may be left out when elements are references view#id"`
-	Elements         []string `json:"elements" jsonschema:"zone ids or entity ids of nodes, or references view#id"`
+	View             string   `json:"view,omitempty" jsonschema:"view id; may be left out when elements are references view#e_x"`
+	Elements         []string `json:"elements" jsonschema:"entity ids of placements (blocks or containers), or references view#e_x"`
 	DX               *float64 `json:"dx,omitempty"`
 	DY               *float64 `json:"dy,omitempty"`
 	X                *float64 `json:"x,omitempty" jsonschema:"move: the top-left corner of the common box of the elements goes here"`
 	Y                *float64 `json:"y,omitempty"`
 	Width            *float64 `json:"width,omitempty"`
 	Height           *float64 `json:"height,omitempty"`
-	Zone             string   `json:"zone,omitempty" jsonschema:"set_zone: the zone to put them into; empty takes them out of any"`
 	Mode             string   `json:"mode,omitempty" jsonschema:"align: left, right, top, bottom, width or height, to the first element"`
 	RequestedByHuman bool     `json:"requestedByHuman" jsonschema:"true only when a human asked for this layout in so many words"`
 }
 
-type addZoneIn struct {
+type setParentIn struct {
+	Project          string   `json:"project,omitempty"`
+	View             string   `json:"view,omitempty" jsonschema:"view id; may be left out when elements are references view#e_x"`
+	Elements         []string `json:"elements" jsonschema:"entity ids of placements, or references view#e_x"`
+	Parent           *string  `json:"parent" jsonschema:"entity id of a container placement of the view; null takes them out of any"`
+	RequestedByHuman bool     `json:"requestedByHuman" jsonschema:"true only when a human asked for this layout in so many words"`
+}
+
+type fitContainerIn struct {
+	Project          string `json:"project,omitempty"`
+	View             string `json:"view,omitempty" jsonschema:"view id; may be left out when container is a reference view#e_x"`
+	Container        string `json:"container" jsonschema:"entity id of a container placement, or a reference view#e_x"`
+	RequestedByHuman bool   `json:"requestedByHuman" jsonschema:"true only when a human asked for this layout in so many words"`
+}
+
+type addContainerIn struct {
 	Project          string  `json:"project,omitempty"`
 	View             string  `json:"view"`
-	ID               string  `json:"id" jsonschema:"z_<name>"`
-	Parent           string  `json:"parent,omitempty"`
-	Container        string  `json:"container,omitempty" jsonschema:"a container id of containers.json; empty for a frame that asserts nothing"`
+	Entity           string  `json:"entity,omitempty" jsonschema:"an existing entity of a container kind to place; else give name and kind"`
+	Name             string  `json:"name,omitempty" jsonschema:"a new authored entity: its canonical name (the container's caption); the id is minted"`
+	Kind             string  `json:"kind,omitempty" jsonschema:"kind of the new entity: a container kind of get_kinds; default group"`
+	Parent           string  `json:"parent,omitempty" jsonschema:"entity id of the container placement it goes into; empty for none"`
 	StyleID          string  `json:"styleId,omitempty"`
-	Name             string  `json:"name,omitempty" jsonschema:"caption, written as a text under the zone id"`
-	Lang             string  `json:"lang,omitempty"`
 	X                float64 `json:"x"`
 	Y                float64 `json:"y"`
 	Width            float64 `json:"width"`
@@ -273,8 +290,9 @@ func (s *mcpServer) server() *mcp.Server {
 	mcp.AddTool(srv, read("find_entities", "Entities by name/symbol/namespace substring, kind, status."), s.findEntities)
 	mcp.AddTool(srv, read("get_relations", "Relations of an entity (or all), by direction, type, status."), s.getRelations)
 	mcp.AddTool(srv, read("get_relation_types", "The relation-type vocabulary with default visibility."), s.getRelationTypes)
+	mcp.AddTool(srv, read("get_kinds", "The dictionary (kinds.json): groups of entity kinds with names, descriptions, whether a kind is a container, its base style; groups of relation types with names, descriptions, base style; unknown lists the project's kinds and relation types outside it."), s.getKinds)
 	mcp.AddTool(srv, read("get_text", "Text entry of a key in one language."), s.getText)
-	mcp.AddTool(srv, read("get_view", "A view with geometry as a tree: zones with their nodes, absolute rectangles, visible lines, what is unsaved. A zone reference reads only its subtree. The answer starts with the canvas block: units, grid, default and minimum sizes, caption strip, padding, gaps."), s.getView)
+	mcp.AddTool(srv, read("get_view", "A view with geometry as a tree: placements, containers with what lies in them (children), absolute rectangles, visible lines, what is unsaved. A container reference view#e_x reads only its subtree. The answer starts with the canvas block: units, grid, default and minimum sizes, caption strip, padding, gaps."), s.getView)
 	mcp.AddTool(srv, read("doctor", "Extractors and runtimes found, and the model check of the workspace."), s.doctor)
 	mcp.AddTool(srv, read("sync_preview", "What sync would change, writing nothing (= semaps sync --dry-run)."), s.syncPreview)
 	s.registerGraphTools(srv, settings.Tools, settings.Description)
@@ -286,19 +304,19 @@ func (s *mcpServer) server() *mcp.Server {
 	mcp.AddTool(srv, read("render_view", viewToolDescriptions["render_view"].at(level)), s.renderView)
 
 	mcp.AddTool(srv, write("set_text", "Write one text field as authored, with at = now."), s.setText)
-	mcp.AddTool(srv, write("add_entity", "Add an authored entity: a part of the system no extractor reports (app, external, database…); the id is minted unless given."), s.addEntity)
+	mcp.AddTool(srv, write("add_entity", "Add an authored entity: a part of the system no extractor reports (a kind of get_kinds: app, external, database…); the id is minted unless given."), s.addEntity)
 	mcp.AddTool(srv, write("add_relation", "Add an authored relation; the id is minted and returned."), s.addRelation)
-	mcp.AddTool(srv, write("add_relation_type", "Add an authored relation type."), s.addRelationType)
+	mcp.AddTool(srv, write("add_relation_type", "Add an authored relation type to the project (origin, default visibility). Its name, description and style belong to the dictionary of relation types (get_kinds; the workspace kinds.json adds to it)."), s.addRelationType)
 	mcp.AddTool(srv, write("set_relation_visible", "Show or hide one relation on one view (relations.except)."), s.setRelationVisible)
 	mcp.AddTool(srv, write("confirm_rename", "Answer a sync rename candidate: entity + symbol, or relation + member."), s.confirmRename)
 	mcp.AddTool(srv, write("extract", "Run the extractors of the .semaps file; returns run ids."), s.extract)
 	mcp.AddTool(srv, write("sync", "Reconcile the registry with the code (extracts first unless run is given)."), s.sync)
 	mcp.AddTool(srv, write("place_entities", "Put entities on a view. Only when a human asked for it: requestedByHuman."), s.placeEntities)
-	mcp.AddTool(srv, write("move_elements", "Move nodes and zones by dx/dy or to x/y; a zone goes with its content. Only when a human asked: requestedByHuman."), s.moveElements)
-	mcp.AddTool(srv, write("resize_elements", "Set width/height of nodes and zones, not below the minimum nor, for a zone, below its content. requestedByHuman."), s.resizeElements)
-	mcp.AddTool(srv, write("set_zone", "Put nodes and zones into a zone, coordinates untouched. requestedByHuman."), s.setZone)
-	mcp.AddTool(srv, write("add_zone", "Add a zone with a rectangle, optional parent, container, style and caption. requestedByHuman."), s.addZone)
-	mcp.AddTool(srv, write("fit_zone", "Fit zones to their content (caption strip and padding); ancestors grow if they no longer hold it. requestedByHuman."), s.fitZone)
+	mcp.AddTool(srv, write("move_elements", "Move placements by dx/dy or to x/y; a container goes with everything inside it. Only when a human asked: requestedByHuman."), s.moveElements)
+	mcp.AddTool(srv, write("resize_elements", "Set width/height of placements, not below the minimum nor, for a container, below its content. requestedByHuman."), s.resizeElements)
+	mcp.AddTool(srv, write("set_parent", "Put placements into a container (parent: its entity id), or out of any (parent: null); coordinates untouched. requestedByHuman."), s.setParent)
+	mcp.AddTool(srv, write("add_container", "Place a container on a view: an existing entity of a container kind, or a new authored entity (name, kind: a container kind, default group), with a rectangle, optional parent and style — entity and placement in one step. requestedByHuman."), s.addContainer)
+	mcp.AddTool(srv, write("fit_container", "Fit a container to its content (caption strip and padding); ancestors grow if they no longer hold it. requestedByHuman."), s.fitContainer)
 	mcp.AddTool(srv, write("align_elements", "Align elements to the first one: left, right, top, bottom, width, height. requestedByHuman."), s.alignElements)
 	mcp.AddTool(srv, write("create_view", viewToolDescriptions["create_view"].at(level)), s.createView)
 	mcp.AddTool(srv, write("create_project", viewToolDescriptions["create_project"].at(level)), s.createProject)
@@ -492,7 +510,7 @@ func (s *mcpServer) records(project, file string) ([]record, error) {
 
 func (s *mcpServer) model(project string) (*core.Model, error) {
 	if s.models == nil {
-		m, err := core.LoadModel(s.workspace, s.pick(project))
+		m, err := core.LoadModel(s.workspace, s.pick(project), defaultKinds())
 		if err != nil {
 			return nil, err
 		}
@@ -640,6 +658,94 @@ func (s *mcpServer) getRelationTypes(_ context.Context, _ *mcp.CallToolRequest, 
 	return nil, map[string]any{"relationTypes": raws(types)}, nil
 }
 
+// kindOut and friends are the dictionary of get_kinds, its texts in one language.
+type kindOut struct {
+	ID          string `json:"id"`
+	Name        string `json:"name"`
+	Description string `json:"description,omitempty"`
+	Container   bool   `json:"container"`
+	Style       string `json:"style,omitempty"`
+}
+
+type kindGroupOut struct {
+	ID          string    `json:"id"`
+	Name        string    `json:"name"`
+	Description string    `json:"description,omitempty"`
+	Kinds       []kindOut `json:"kinds"`
+}
+
+type relationTypeOut struct {
+	ID          string `json:"id"`
+	Name        string `json:"name"`
+	Description string `json:"description,omitempty"`
+	Style       string `json:"style,omitempty"`
+}
+
+type relationGroupOut struct {
+	ID          string            `json:"id"`
+	Name        string            `json:"name"`
+	Description string            `json:"description,omitempty"`
+	Types       []relationTypeOut `json:"types"`
+}
+
+// dictionaryOut is the merged dictionary in one language: get_kinds and
+// GET /api/kinds answer with it.
+func dictionaryOut(catalog *core.KindCatalog, lang string) map[string]any {
+	groups := []kindGroupOut{}
+	for _, g := range catalog.Groups {
+		out := kindGroupOut{ID: g.ID, Name: core.Localized(g.Name, lang), Description: core.Localized(g.Description, lang), Kinds: []kindOut{}}
+		for _, k := range g.Kinds {
+			out.Kinds = append(out.Kinds, kindOut{ID: k.ID, Name: core.Localized(k.Name, lang), Description: core.Localized(k.Description, lang), Container: k.Container, Style: k.Style})
+		}
+		groups = append(groups, out)
+	}
+	relations := []relationGroupOut{}
+	for _, g := range catalog.RelationGroups {
+		out := relationGroupOut{ID: g.ID, Name: core.Localized(g.Name, lang), Description: core.Localized(g.Description, lang), Types: []relationTypeOut{}}
+		for _, t := range g.Types {
+			out.Types = append(out.Types, relationTypeOut{ID: t.ID, Name: core.Localized(t.Name, lang), Description: core.Localized(t.Description, lang), Style: t.Style})
+		}
+		relations = append(relations, out)
+	}
+	return map[string]any{"groups": groups, "relationGroups": relations}
+}
+
+// getKinds answers the merged dictionary (the tool's default and the
+// workspace's kinds.json) and what the project's entities and relation types
+// use that it lacks.
+func (s *mcpServer) getKinds(_ context.Context, _ *mcp.CallToolRequest, in kindsIn) (*mcp.CallToolResult, any, error) {
+	catalog, err := core.LoadKinds(s.workspace, defaultKinds())
+	if err != nil {
+		return nil, nil, err
+	}
+	out := dictionaryOut(catalog, orStr(in.Lang, "ru"))
+	unknownKinds, unknownTypes := []string{}, []string{}
+	ents, err := s.records(in.Project, "entities.json")
+	if err != nil && in.Project != "" {
+		return nil, nil, err
+	}
+	seen := map[string]bool{}
+	for _, e := range ents {
+		k := e.str("kind")
+		if _, ok := catalog.Lookup(k); !ok && k != "" && !seen[k] {
+			seen[k] = true
+			unknownKinds = append(unknownKinds, k)
+		}
+	}
+	types, _ := s.records(in.Project, "relation-types.json")
+	for _, t := range types {
+		id := t.str("id")
+		if _, ok := catalog.LookupRelation(id); !ok && id != "" && !seen["rt:"+id] {
+			seen["rt:"+id] = true
+			unknownTypes = append(unknownTypes, id)
+		}
+	}
+	slices.Sort(unknownKinds)
+	slices.Sort(unknownTypes)
+	out["unknown"] = map[string]any{"kinds": unknownKinds, "relationTypes": unknownTypes}
+	return nil, out, nil
+}
+
 // getGraph is get_graph (docs/plans/PLAN_20260928_host_graph-provider.md step
 // 6): the same filters as GET /api/graph/{project} (host/graph.go), reusing
 // the same core filter functions, plus a `limit` on the node count so an
@@ -702,6 +808,17 @@ func (s *mcpServer) getGraph(_ context.Context, _ *mcp.CallToolRequest, in getGr
 		around, aroundKind, notice = res.Node.ID, res.Node.Kind, res.Notice
 	}
 
+	var containerID string
+	if in.Container != "" {
+		var problem *nodeProblem
+		if containerID, problem = resolveContainer(graph, in.Container, in.Missing); problem != nil {
+			if problem.Status == 409 {
+				return nil, problem.Body, nil
+			}
+			return nil, nil, errors.New(problem.Message)
+		}
+	}
+
 	var hiddenNodes, hiddenEdges int
 	graph, hiddenNodes, hiddenEdges = core.FilterMissing(graph, in.Missing)
 
@@ -755,12 +872,8 @@ func (s *mcpServer) getGraph(_ context.Context, _ *mcp.CallToolRequest, in getGr
 	} else if in.Kinds != "" {
 		graph = core.FilterEdgeKinds(graph, splitCSV(in.Kinds))
 	}
-	if in.Container != "" {
-		defs, err := containerDefs(m)
-		if err != nil {
-			return nil, nil, err
-		}
-		if graph, err = core.FilterContainer(graph, in.Container, defs); err != nil {
+	if containerID != "" {
+		if graph, err = core.FilterContainer(graph, containerID); err != nil {
 			return nil, nil, err
 		}
 		bounded = true
@@ -856,7 +969,7 @@ func (s *mcpServer) doctor(_ context.Context, _ *mcp.CallToolRequest, _ struct{}
 	return nil, map[string]any{
 		"extractors":   b.String(),
 		"extractorsOK": code == 0,
-		"findings":     core.Check(s.workspace, s.sourceRoot),
+		"findings":     core.Check(s.workspace, s.sourceRoot, defaultKinds()),
 	}, nil
 }
 
@@ -911,7 +1024,7 @@ func (s *mcpServer) addRelationType(_ context.Context, _ *mcp.CallToolRequest, i
 	if err != nil {
 		return nil, nil, err
 	}
-	if err := m.AddRelationType(in.ID, in.Visibility, in.StyleID, "agent"); err != nil {
+	if err := m.AddRelationType(in.ID, in.Visibility, "agent"); err != nil {
 		return nil, nil, err
 	}
 	s.changed(in.Project, m)
@@ -1072,7 +1185,7 @@ func (s *mcpServer) getView(_ context.Context, _ *mcp.CallToolRequest, in getVie
 	if err != nil {
 		return nil, nil, err
 	}
-	info, err := m.GetView(in.View, in.Lang)
+	info, err := m.GetView(in.View)
 	if err != nil {
 		return nil, nil, err
 	}
@@ -1145,24 +1258,31 @@ func (s *mcpServer) resizeElements(_ context.Context, _ *mcp.CallToolRequest, in
 	return s.geomDone(m, view, in.Project, rep)
 }
 
-func (s *mcpServer) setZone(_ context.Context, _ *mcp.CallToolRequest, in geomIn) (*mcp.CallToolResult, any, error) {
+func (s *mcpServer) setParent(_ context.Context, _ *mcp.CallToolRequest, in setParentIn) (*mcp.CallToolResult, any, error) {
 	m, view, err := s.geomTarget(in.Project, in.View, in.Elements)
 	if err != nil {
 		return nil, nil, err
 	}
-	rep, err := m.SetZone(view, in.Elements, in.Zone, in.RequestedByHuman, "agent")
+	parent := ""
+	if in.Parent != nil {
+		parent = *in.Parent
+	}
+	rep, err := m.SetParent(view, in.Elements, parent, in.RequestedByHuman, "agent")
 	if err != nil {
 		return nil, nil, err
 	}
 	return s.geomDone(m, view, in.Project, rep)
 }
 
-func (s *mcpServer) fitZone(_ context.Context, _ *mcp.CallToolRequest, in geomIn) (*mcp.CallToolResult, any, error) {
-	m, view, err := s.geomTarget(in.Project, in.View, in.Elements)
+func (s *mcpServer) fitContainer(_ context.Context, _ *mcp.CallToolRequest, in fitContainerIn) (*mcp.CallToolResult, any, error) {
+	if in.Container == "" {
+		return nil, nil, errors.New("give container")
+	}
+	m, view, err := s.geomTarget(in.Project, in.View, []string{in.Container})
 	if err != nil {
 		return nil, nil, err
 	}
-	rep, err := m.FitZone(view, in.Elements, in.RequestedByHuman, "agent")
+	rep, err := m.FitContainer(view, []string{in.Container}, in.RequestedByHuman, "agent")
 	if err != nil {
 		return nil, nil, err
 	}
@@ -1181,17 +1301,26 @@ func (s *mcpServer) alignElements(_ context.Context, _ *mcp.CallToolRequest, in 
 	return s.geomDone(m, view, in.Project, rep)
 }
 
-func (s *mcpServer) addZone(_ context.Context, _ *mcp.CallToolRequest, in addZoneIn) (*mcp.CallToolResult, any, error) {
+func (s *mcpServer) addContainer(_ context.Context, _ *mcp.CallToolRequest, in addContainerIn) (*mcp.CallToolResult, any, error) {
 	m, view, err := s.geomTarget(in.Project, in.View, nil)
 	if err != nil {
 		return nil, nil, err
 	}
-	rep, err := m.AddZone(view, core.ZoneSpec{ID: in.ID, Parent: in.Parent, Container: in.Container, StyleID: in.StyleID, Name: in.Name, Lang: in.Lang,
+	id, rep, err := m.AddContainer(view, core.ContainerSpec{Entity: in.Entity, Name: in.Name, Kind: in.Kind, Parent: in.Parent, StyleID: in.StyleID,
 		Rect: core.Rect{X: in.X, Y: in.Y, Width: in.Width, Height: in.Height}}, in.RequestedByHuman, "agent")
 	if err != nil {
 		return nil, nil, err
 	}
-	return s.geomDone(m, view, in.Project, rep)
+	res, out, err := s.geomDone(m, view, in.Project, rep)
+	if o, ok := out.(map[string]any); ok {
+		o["entity"] = id
+	}
+	if res != nil && len(res.Content) > 0 {
+		if tc, ok := res.Content[0].(*mcp.TextContent); ok {
+			tc.Text = fmt.Sprintf("container %s placed. %s", id, tc.Text)
+		}
+	}
+	return res, out, err
 }
 
 func orInt(n, def int) int {

@@ -45,7 +45,16 @@ export interface GraphNode {
   extractor?: string;
   entity?: string;
   status?: string;
+  /**
+   * The one container the host resolved for the node: the node that `contains` it
+   * and whose kind is a container kind (ADR_20260930_contract_graph-containers-from-contains).
+   * At most one item; empty when there is none or it is ambiguous — nothing is guessed.
+   */
   containers?: string[];
+  /** This node is itself a container: its kind is a container kind of kinds.json. */
+  container?: boolean;
+  /** The containers the node lies in, outermost first: `containers` and then that container's own, up. Computed by the filter store. */
+  containerPath?: string[];
   presence: Presence;
   /** The base kind of `nativeKind` (`class` for `abstract-class`) and its modifiers (`abstract`), parsed once by `fetchGraph`. */
   symbolKind?: string;
@@ -116,10 +125,14 @@ export async function fetchGraph(project: string, missing = false): Promise<Grap
   return graph;
 }
 
-/** `GET /api/graph/{project}/groups`: containers' nesting and, per axis, the zone each entity sits in (docs/API.md §5). */
+/**
+ * `GET /api/graph/{project}/groups`: the containers of the graph with their nesting (`contains` between
+ * container nodes; ids are graph node ids) and, per axis, the container placement each entity sits in
+ * on the views of that axis (ids are entity ids) (docs/API.md §5).
+ */
 export interface GroupsResponse {
-  containers: { id: string; parent?: string }[];
-  axes: { axis: string; zones: { id: string; container?: string; parent?: string }[]; of: Record<string, string> }[];
+  containers: { id: string; name?: string; parent?: string }[];
+  axes: { axis: string; containers: { id: string; name?: string; parent?: string }[]; of: Record<string, string> }[];
 }
 
 export async function fetchGroups(project: string): Promise<GroupsResponse> {

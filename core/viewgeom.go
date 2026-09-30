@@ -5,10 +5,11 @@ import (
 	"math"
 )
 
-// The numbers of the canvas (grid, node and zone sizes, caption strip, padding)
-// are not written here: they come from canvas.json as a Canvas (canvas.go), the
-// one place they are defined; the editor reads the same file. The host does not
-// snap to the grid — that is the editor's habit (the MCP tool `layout_guide` says so).
+// The numbers of the canvas (grid, block and container sizes, caption strip,
+// padding) are not written here: they come from canvas.json as a Canvas
+// (canvas.go), the one place they are defined; the editor reads the same file.
+// The host does not snap to the grid — that is the editor's habit (the MCP tool
+// `layout_guide` says so).
 
 // Rect is a box in the absolute model coordinates of a view.
 type Rect struct {
@@ -45,13 +46,11 @@ func (o *object) numOr(key string, def float64) float64 {
 	return def
 }
 
-// zoneRect and nodeRect read the box of an object; a node without a size has the default one.
-func zoneRect(o *object, cv Canvas) Rect {
-	return Rect{o.numOr("x", 0), o.numOr("y", 0), o.numOr("width", cv.Zone.MinWidth), o.numOr("height", cv.Zone.MinHeight)}
-}
-
-func nodeRect(o *object, cv Canvas) Rect {
+// placementRect reads the box of a placement; one without a size has the
+// default size of its sort — a container's minimum or a block's default.
+func placementRect(o *object, container bool, cv Canvas) Rect {
+	if container {
+		return Rect{o.numOr("x", 0), o.numOr("y", 0), o.numOr("width", cv.Container.MinWidth), o.numOr("height", cv.Container.MinHeight)}
+	}
 	return Rect{o.numOr("x", 0), o.numOr("y", 0), o.numOr("width", cv.Node.Width), o.numOr("height", cv.Node.Height)}
 }
-
-func nodeZone(o *object) string { return orDefault(o.str("zone"), o.str("container")) }

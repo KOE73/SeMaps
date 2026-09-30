@@ -260,7 +260,7 @@ func (s *runStore) syncRunModel(model *core.Model, info *runInfo, opt core.SyncO
 }
 
 func (s *runStore) syncRun(workspace string, info *runInfo, opt core.SyncOptions) (*core.SyncReport, error) {
-	m, err := core.LoadModel(workspace, info.Project)
+	m, err := core.LoadModel(workspace, info.Project, defaultKinds())
 	if err != nil {
 		return nil, err
 	}

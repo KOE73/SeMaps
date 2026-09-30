@@ -89,7 +89,7 @@ func CreateProject(workspace string, p NewProject) error {
 	if p.Subtitle != "" {
 		o.set("subtitle", p.Subtitle)
 	}
-	o.set("contractVersion", 3)
+	o.set("contractVersion", ContractVersion)
 	if p.DefaultAxis != "" {
 		o.set("defaultAxis", p.DefaultAxis)
 	}
@@ -140,8 +140,7 @@ func CreateView(workspace, project string, v NewView) error {
 		o.set("theme", v.Theme)
 	}
 	// No `edges` key: a view without one shows the project's relations (CONTRACT §8.5).
-	o.set("zones", []any{})
-	o.set("nodes", []any{})
+	o.set("placements", []any{})
 	if err := createOnly(filepath.Join(dir, "views", v.ID+ViewSuffix), o); err != nil {
 		return err
 	}

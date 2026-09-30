@@ -28,7 +28,7 @@ func TestLoadCanvasWorkspaceWins(t *testing.T) {
 	}
 	ws := t.TempDir()
 	c, err := LoadCanvas(ws, def)
-	if err != nil || c.Grid != 10 || c.Zone.HeaderHeight != 28 || c.Gap.Zone != 40 {
+	if err != nil || c.Grid != 10 || c.Container.HeaderHeight != 28 || c.Gap.Container != 40 {
 		t.Fatalf("default: %+v %v", c, err)
 	}
 	over := strings.Replace(string(def), `"grid":10`, `"grid":20`, 1)
@@ -48,7 +48,7 @@ func TestLoadCanvasWorkspaceWins(t *testing.T) {
 
 func TestCanvasDescribe(t *testing.T) {
 	text := testCanvas(t).Describe()
-	for _, want := range []string{"1 unit = 1 screen pixel", "y grows down", "Grid step 10", "does NOT", "180x60", "100x40", "160x100", "28 high", "padding 16", "40 between nodes", "40 between zones"} {
+	for _, want := range []string{"1 unit = 1 screen pixel", "y grows down", "Grid step 10", "does NOT", "180x60", "100x40", "160x100", "28 high", "padding 16", "40 between blocks", "40 between containers"} {
 		if !strings.Contains(text, want) {
 			t.Errorf("no %q in:\n%s", want, text)
 		}
@@ -56,11 +56,11 @@ func TestCanvasDescribe(t *testing.T) {
 }
 
 func TestModelWithoutCanvasRefusesGeometry(t *testing.T) {
-	m, err := LoadModel(editWorkspace(t), "p")
+	m, err := LoadModel(editWorkspace(t), "p", defaultKindsJSON(t))
 	if err != nil {
 		t.Fatal(err)
 	}
-	if _, err := m.GetView("v_main", "ru"); err == nil || !strings.Contains(err.Error(), "no canvas") {
+	if _, err := m.GetView("v_main"); err == nil || !strings.Contains(err.Error(), "no canvas") {
 		t.Fatalf("get: %v", err)
 	}
 }

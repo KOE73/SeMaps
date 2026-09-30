@@ -24,7 +24,7 @@ func graphFixture(t *testing.T, withRun bool) (*graphService, *modelService) {
 	ws := t.TempDir()
 	dir := filepath.Join(ws, "projects", "p")
 	for file, body := range map[string]string{
-		"project.json":   `{"id":"p"}`,
+		"project.json":   `{"id":"p","contractVersion":5}`,
 		"entities.json":  `{"entities":[{"id":"e_a","name":"A","kind":"class","origin":"code","status":"present","codeRef":"A.cs","symbol":"A"}]}`,
 		"relations.json": `{"relations":[]}`,
 	} {
@@ -351,31 +351,127 @@ func TestGraphEndpointFieldsUnknownName(t *testing.T) {
 	}
 }
 
-// TestGraphEndpointContainerGrandchild: container=c_onnx must include a node
-// resolved into a more specific descendant container (fix 2).
-func TestGraphEndpointContainerGrandchild(t *testing.T) {
-	gs, models := graphFixture(t, true)
-	m, err := models.get("p")
+// containerFixture: a project with a group entity (a container of no code)
+// that `contains` type A, and a run whose facts hold a namespace that contains
+// A.Inner's type B and a type C outside every container.
+func containerFixture(t *testing.T) *httptest.Server {
+	t.Helper()
+	ws := t.TempDir()
+	dir := filepath.Join(ws, "projects", "p")
+	for file, body := range map[string]string{
+		"project.json": `{"id":"p","contractVersion":5,"defaultAxis":"axis_a"}`,
+		"entities.json": `{"entities":[
+			{"id":"e_grp","name":"Frontend","kind":"group","origin":"authored","status":"present"},
+			{"id":"e_a","name":"A","kind":"class","origin":"code","status":"present","codeRef":"A.cs","symbol":"A"}]}`,
+		"relations.json":      `{"relations":[{"id":"r_grp_a_contains","from":"e_grp","to":"e_a","type":"contains","origin":"authored"}]}`,
+		"relation-types.json": `{"relationTypes":[{"id":"contains","origin":"code"}]}`,
+		"views/v.view.json": `{"id":"v","project":"p","axis":"axis_b","placements":[
+			{"entity":"e_grp","parent":null,"x":0,"y":0,"width":300,"height":300},
+			{"entity":"e_a","parent":"e_grp","x":20,"y":50}]}`,
+	} {
+		p := filepath.Join(dir, file)
+		if err := os.MkdirAll(filepath.Dir(p), 0o755); err != nil {
+			t.Fatal(err)
+		}
+		if err := os.WriteFile(p, []byte(body), 0o644); err != nil {
+			t.Fatal(err)
+		}
+	}
+	models, err := newModelService(ws)
 	if err != nil {
 		t.Fatal(err)
 	}
-	containersJSON := `{"containers":[
-		{"id":"c_onnx"},
-		{"id":"c_onnx_core","parent":"c_onnx","match":{"path":["A.cs"]}}
-	]}`
-	if err := os.WriteFile(filepath.Join(m.ProjectDir(), "containers.json"), []byte(containersJSON), 0o644); err != nil {
+	semapsFile := filepath.Join(ws, "test.semaps")
+	proj := project{File: semapsFile, Extractors: []extractorConf{{ID: "csharp", Language: "csharp", Project: "p"}}}
+	gs := newGraphService(proj, models, nil)
+	store := newRunStore(semapsFile)
+	info := &runInfo{ID: "20260101-000000-csharp", Extractor: "csharp", Project: "p", Language: "csharp", State: "done", Finished: time.Now()}
+	if err := os.MkdirAll(filepath.Join(store.dir, info.ID), 0o755); err != nil {
 		t.Fatal(err)
 	}
-	srv := graphServer(gs)
+	facts := core.Facts{Language: "csharp", Root: ".", Symbols: []core.Symbol{
+		{ID: "A", Kind: "type", NativeKind: "class", Name: "A", File: "A.cs"},
+		{ID: "C", Kind: "type", NativeKind: "class", Name: "C", File: "C.cs"},
+		{ID: "Ns", Kind: "module", NativeKind: "namespace", Name: "Ns", File: "Ns.cs"},
+		{ID: "Ns.Inner", Kind: "module", NativeKind: "namespace", Name: "Inner", File: "Ns.cs"},
+		{ID: "Ns.Inner.B", Kind: "type", NativeKind: "class", Name: "B", File: "B.cs"},
+	}, Edges: []core.Edge{
+		{From: "Ns", To: "Ns.Inner", Kind: "contains"},
+		{From: "Ns.Inner", To: "Ns.Inner.B", Kind: "contains"},
+	}}
+	b, _ := json.Marshal(facts)
+	if err := os.WriteFile(store.path(info.ID, "facts.json"), b, 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if err := store.save(info); err != nil {
+		t.Fatal(err)
+	}
+	return graphServer(gs)
+}
+
+func nodeIDs(body map[string]any) []string {
+	var ids []string
+	for _, n := range body["nodes"].([]any) {
+		ids = append(ids, n.(map[string]any)["id"].(string))
+	}
+	return ids
+}
+
+// container=<id or name> keeps the container and everything inside it at any
+// depth; membership is `contains`, whoever wrote it (ADR_20260930).
+func TestGraphEndpointContainer(t *testing.T) {
+	srv := containerFixture(t)
 	defer srv.Close()
 
-	res, body := getGraphJSON(t, srv.URL+"/api/graph/p?container=c_onnx")
+	res, body := getGraphJSON(t, srv.URL+"/api/graph/p?container=csharp:Ns&level=all")
 	if res.StatusCode != http.StatusOK {
 		t.Fatalf("expected 200, got %d: %+v", res.StatusCode, body)
 	}
-	nodes, _ := body["nodes"].([]any)
-	if len(nodes) == 0 {
-		t.Fatalf("expected nodes resolved into the descendant c_onnx_core to show up under c_onnx, got %+v", body)
+	if got := strings.Join(nodeIDs(body), ","); got != "csharp:Ns,csharp:Ns.Inner,csharp:Ns.Inner.B" {
+		t.Fatalf("Ns and what lies in it at any depth, got %s", got)
+	}
+	// by name; and a group entity — a container without a symbol — holds A
+	res, body = getGraphJSON(t, srv.URL+"/api/graph/p?container=Frontend&level=all")
+	if res.StatusCode != http.StatusOK {
+		t.Fatalf("expected 200, got %d: %+v", res.StatusCode, body)
+	}
+	if got := strings.Join(nodeIDs(body), ","); got != "csharp:A,e_grp" {
+		t.Fatalf("the group and A, got %s", got)
+	}
+	// a node that is no container is refused, and says so
+	if res, _ := getGraphJSON(t, srv.URL+"/api/graph/p?container=csharp:C"); res.StatusCode != http.StatusBadRequest {
+		t.Fatalf("a class is no container: %d", res.StatusCode)
+	}
+	if res, _ := getGraphJSON(t, srv.URL+"/api/graph/p?container=Nowhere"); res.StatusCode != http.StatusNotFound {
+		t.Fatalf("an unknown name: %d", res.StatusCode)
+	}
+}
+
+// /groups: the containers of the graph with their nesting, and per axis the
+// container placement each entity sits in.
+func TestGraphGroupsEndpoint(t *testing.T) {
+	srv := containerFixture(t)
+	defer srv.Close()
+	res, body := getGraphJSON(t, srv.URL+"/api/graph/p/groups")
+	if res.StatusCode != http.StatusOK {
+		t.Fatalf("expected 200, got %d", res.StatusCode)
+	}
+	parent := map[string]string{}
+	for _, c := range body["containers"].([]any) {
+		m := c.(map[string]any)
+		p, _ := m["parent"].(string)
+		parent[m["id"].(string)] = p
+	}
+	if len(parent) != 3 || parent["csharp:Ns.Inner"] != "csharp:Ns" || parent["csharp:Ns"] != "" || parent["e_grp"] != "" {
+		t.Fatalf("containers = %v", parent)
+	}
+	axes := body["axes"].([]any)
+	if len(axes) != 1 {
+		t.Fatalf("axes = %+v", axes)
+	}
+	a := axes[0].(map[string]any)
+	if a["axis"] != "axis_b" || a["of"].(map[string]any)["e_a"] != "e_grp" || len(a["containers"].([]any)) != 1 {
+		t.Fatalf("axis = %+v", a)
 	}
 }
 
@@ -388,7 +484,7 @@ func TestGraphEndpointMissingDefaultVsInclude(t *testing.T) {
 	ws := t.TempDir()
 	dir := filepath.Join(ws, "projects", "p")
 	files := map[string]string{
-		"project.json": `{"id":"p"}`,
+		"project.json": `{"id":"p","contractVersion":5}`,
 		"entities.json": `{"entities":[
 			{"id":"e_a","name":"A","kind":"class","origin":"code","status":"present","codeRef":"A.cs","symbol":"A"},
 			{"id":"e_gone","name":"Gone","kind":"class","origin":"code","status":"missing"}
@@ -476,7 +572,7 @@ func liftFixture(t *testing.T) *graphService {
 	ws := t.TempDir()
 	dir := filepath.Join(ws, "projects", "p")
 	for file, body := range map[string]string{
-		"project.json":   `{"id":"p"}`,
+		"project.json":   `{"id":"p","contractVersion":5}`,
 		"entities.json":  `{"entities":[]}`,
 		"relations.json": `{"relations":[]}`,
 	} {

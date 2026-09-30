@@ -1,11 +1,11 @@
 import type Graph from "graphology";
 import { graphFilterConfig } from "./filterConfig.js";
-import { communityGroups, dirOf, innermostContainer } from "./layouts.js";
+import { communityGroups, containerOf, dirOf } from "./layouts.js";
 import type { GraphNode, GroupsResponse } from "./types.js";
 import type { GroupBy } from "./viewSettings.js";
 
-/** The group of a node no view of the axis puts in a zone (drawn together, apart from the zones). */
-export const OUTSIDE_ZONES = "\u0000outside";
+/** The group of a node no view of the axis puts in a container (drawn together, apart from the containers). */
+export const OUTSIDE_CONTAINERS = "\u0000outside";
 
 export interface GroupingContext {
   nodeOf(id: string): GraphNode | undefined;
@@ -29,7 +29,7 @@ export function folderDepth(nodes: readonly GraphNode[]): number {
   return Math.max(1, ...nodes.map((n) => dirOf(n.file).split("/").filter(Boolean).length));
 }
 
-/** Nesting of containers.json by `parent`: the longest chain. */
+/** Nesting of the graph's containers (`contains` between container nodes, served as `parent`): the longest chain. */
 export function containerDepth(groups: GroupsResponse | undefined): number {
   if (!groups) return 1;
   const parent = new Map(groups.containers.map((c) => [c.id, c.parent]));
@@ -69,10 +69,10 @@ export function groupNodes(by: GroupBy, sub: Graph, ctx: GroupingContext): Map<s
     case "folder":
       return each((n) => segments(dirOf(n.file), /\//, ctx.depth));
     case "containers": {
-      // The innermost container of the node by the declared nesting, then up its parent chain to the wanted level.
+      // The container the host resolved for the node, then up its parent chain to the wanted level.
       const parent = new Map((ctx.groups?.containers ?? []).map((c) => [c.id, c.parent]));
       return each((n) => {
-        const own = innermostContainer(n, parent);
+        const own = containerOf(n);
         if (!own) return "";
         const path = [own];
         for (let p = parent.get(own); p && !path.includes(p); p = parent.get(p)) path.unshift(p);
@@ -80,9 +80,9 @@ export function groupNodes(by: GroupBy, sub: Graph, ctx: GroupingContext): Map<s
       });
     }
     case "axis": {
-      // The zone a node's entity sits in on the views of the axis; not placed there: outside the frames.
+      // The container a node's entity sits in on the views of the axis; not placed there: outside the frames.
       const axis = ctx.groups?.axes.find((a) => a.axis === ctx.axis) ?? ctx.groups?.axes[0];
-      return each((n) => (n.entity ? axis?.of[n.entity] : undefined) ?? OUTSIDE_ZONES);
+      return each((n) => (n.entity ? axis?.of[n.entity] : undefined) ?? OUTSIDE_CONTAINERS);
     }
     case "community":
       return communityGroups(sub);

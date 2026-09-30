@@ -1,0 +1,181 @@
+{
+  "contractVersion": 3,
+  "language": "ru",
+  "entries": {
+    "v_overview": {
+      "name": {
+        "v": "Общая архитектура",
+        "at": "2026-09-26T08:49:15Z",
+        "origin": "authored"
+      }
+    },
+    "e_editor": {
+      "description": {
+        "v": "Браузерный редактор схем (TypeScript): холст, виды, стили. Модель читает и пишет только через хост.",
+        "at": "2026-09-26T09:39:30Z",
+        "origin": "authored"
+      }
+    },
+    "e_agent": {
+      "description": {
+        "v": "Агент (Claude Code и др.): читает карту перед работой и записывает, что построил, — через MCP-инструменты.",
+        "at": "2026-09-26T09:39:30Z",
+        "origin": "authored"
+      }
+    },
+    "e_http_api": {
+      "description": {
+        "v": "/api/workspace, /api/model/*, /api/projects — вход редактора. Запись только с ключом хоста.",
+        "at": "2026-09-26T09:39:30Z",
+        "origin": "authored"
+      }
+    },
+    "e_mcp_server": {
+      "description": {
+        "v": "/mcp (Streamable HTTP) в том же процессе: инструменты агента поверх той же модели.",
+        "at": "2026-09-26T09:39:30Z",
+        "origin": "authored"
+      }
+    },
+    "e_mcp_proxy": {
+      "description": {
+        "v": "stdio-прокси из .mcp.json к /mcp хоста; нет хоста — поднимает его в фоне.",
+        "at": "2026-09-26T09:39:30Z",
+        "origin": "authored"
+      }
+    },
+    "e_model_service": {
+      "description": {
+        "v": "Одна рабочая модель на проект для всех клиентов: создание проектов и видов, живой каталог, события SSE.",
+        "at": "2026-09-26T09:39:30Z",
+        "origin": "authored"
+      }
+    },
+    "e_model": {
+      "description": {
+        "v": "Рабочее состояние проекта: пакеты операций, журнал, несохранённое, Save и Discard.",
+        "at": "2026-09-26T09:39:30Z",
+        "origin": "authored"
+      }
+    },
+    "e_rules": {
+      "description": {
+        "v": "Проверка каждого пакета в Apply для всех писателей: редактора, агента, сверки (ADR_20260926).",
+        "at": "2026-09-26T09:39:30Z",
+        "origin": "authored"
+      }
+    },
+    "e_sync": {
+      "description": {
+        "v": "Сверка реестра с фактами экстракторов: новые, пропавшие, переименованные сущности и связи.",
+        "at": "2026-09-26T09:39:30Z",
+        "origin": "authored"
+      }
+    },
+    "e_check": {
+      "description": {
+        "v": "semaps check: протухшие тексты, битые codeRef, виды без оси.",
+        "at": "2026-09-26T09:39:30Z",
+        "origin": "authored"
+      }
+    },
+    "e_extract_csharp": {
+      "description": {
+        "v": "Roslyn: факты о типах и членских связях C#-проектов.",
+        "at": "2026-09-26T09:39:30Z",
+        "origin": "authored"
+      }
+    },
+    "e_extract_ts": {
+      "description": {
+        "v": "TypeScript compiler API: факты о типах и связях TS-кода.",
+        "at": "2026-09-26T09:39:30Z",
+        "origin": "authored"
+      }
+    },
+    "e_workspace": {
+      "description": {
+        "v": "Файлы контракта v3: project.json, entities, relations, texts, views. Это и идёт в git.",
+        "at": "2026-09-26T09:39:30Z",
+        "origin": "authored"
+      }
+    },
+    "e_journal": {
+      "description": {
+        "v": ".semaps/work/*.jsonl: принятые, но не сохранённые пакеты; переживают перезапуск хоста.",
+        "at": "2026-09-26T09:39:30Z",
+        "origin": "authored"
+      }
+    },
+    "e_source": {
+      "description": {
+        "v": "Код проекта-потребителя: вход экстракторов и цель codeRef.",
+        "at": "2026-09-26T09:39:30Z",
+        "origin": "authored"
+      }
+    },
+    "rt_calls": {
+      "name": {
+        "v": "вызывает",
+        "at": "2026-09-26T09:39:53Z",
+        "origin": "authored"
+      }
+    },
+    "rt_runs": {
+      "name": {
+        "v": "запускает",
+        "at": "2026-09-26T09:39:53Z",
+        "origin": "authored"
+      }
+    },
+    "rt_reads": {
+      "name": {
+        "v": "читает",
+        "at": "2026-09-26T09:39:53Z",
+        "origin": "authored"
+      }
+    },
+    "rt_writes": {
+      "name": {
+        "v": "пишет",
+        "at": "2026-09-26T09:39:53Z",
+        "origin": "authored"
+      }
+    },
+    "z_clients": {
+      "name": {
+        "v": "Клиенты",
+        "at": "2026-09-26T09:39:53Z",
+        "origin": "authored"
+      }
+    },
+    "z_host": {
+      "name": {
+        "v": "Хост semaps.exe (host/)",
+        "at": "2026-09-26T09:39:53Z",
+        "origin": "authored"
+      }
+    },
+    "z_core": {
+      "name": {
+        "v": "Ядро (core/)",
+        "at": "2026-09-26T09:39:53Z",
+        "origin": "authored"
+      }
+    },
+    "z_storage": {
+      "name": {
+        "v": "Хранение",
+        "at": "2026-09-26T09:39:53Z",
+        "origin": "authored"
+      }
+    },
+    "z_extractors": {
+      "name": {
+        "v": "Экстракторы (extractors/)",
+        "at": "2026-09-26T09:39:53Z",
+        "origin": "authored"
+      }
+    }
+  }
+}

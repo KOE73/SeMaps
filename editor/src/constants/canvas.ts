@@ -35,12 +35,13 @@ export async function loadCanvas(base: string): Promise<void> {
   try {
     const response = await fetch(`${base}canvas.json`);
     if (!response.ok) return;
-    const got = (await response.json()) as Partial<CanvasNumbers>;
+    // contract v5 names the container's numbers `container`; this module still calls them `zone` until the editor's own step
+    const got = (await response.json()) as { grid?: number; node?: Partial<CanvasNumbers["node"]>; container?: Partial<CanvasNumbers["zone"]>; gap?: { node?: number; container?: number } };
     current = {
       grid: got.grid ?? current.grid,
       node: { ...current.node, ...got.node },
-      zone: { ...current.zone, ...got.zone },
-      gap: { ...current.gap, ...got.gap },
+      zone: { ...current.zone, ...got.container },
+      gap: { node: got.gap?.node ?? current.gap.node, zone: got.gap?.container ?? current.gap.zone },
     };
   } catch {
     /* no host: keep the fallback */

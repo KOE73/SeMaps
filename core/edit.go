@@ -31,17 +31,21 @@ func ProjectDir(workspace, project string) (string, error) {
 var now = func() time.Time { return time.Now().UTC() }
 var TextFields = []string{"name", "title", "description", "doc", "fromLabel", "toLabel"}
 
+// Placement is an entity to put on a view; Parent is the entity of a container
+// placement of that view, or empty for none.
 type Placement struct {
 	Entity string  `json:"entity"`
-	Zone   string  `json:"zone,omitempty"`
+	Parent string  `json:"parent,omitempty"`
 	X      float64 `json:"x"`
 	Y      float64 `json:"y"`
 	Width  float64 `json:"width,omitempty"`
 	Height float64 `json:"height,omitempty"`
 }
 
+// The helpers below load the model without the tool's default dictionary: only
+// <workspace>/kinds.json, when there is one, says which kinds are containers.
 func editAndSave(workspace, project string, edit func(*Model) error) error {
-	m, err := LoadModel(workspace, project)
+	m, err := LoadModel(workspace, project, nil)
 	if err != nil {
 		return err
 	}
@@ -55,7 +59,7 @@ func SetText(workspace, project, lang, key, field, value string) error {
 	return editAndSave(workspace, project, func(m *Model) error { return m.SetText(lang, key, field, value, "agent") })
 }
 func AddRelation(workspace, project, from, to, relType string) (string, error) {
-	m, err := LoadModel(workspace, project)
+	m, err := LoadModel(workspace, project, nil)
 	if err != nil {
 		return "", err
 	}
@@ -65,8 +69,8 @@ func AddRelation(workspace, project, from, to, relType string) (string, error) {
 	}
 	return id, m.Save()
 }
-func AddRelationType(workspace, project, id, visibility, styleID string) error {
-	return editAndSave(workspace, project, func(m *Model) error { return m.AddRelationType(id, visibility, styleID, "agent") })
+func AddRelationType(workspace, project, id, visibility string) error {
+	return editAndSave(workspace, project, func(m *Model) error { return m.AddRelationType(id, visibility, "agent") })
 }
 func SetRelationVisible(workspace, project, viewID, relationID string, visible bool) error {
 	return editAndSave(workspace, project, func(m *Model) error { return m.SetRelationVisible(viewID, relationID, visible, "agent") })
@@ -137,7 +141,7 @@ func findByID(items []*object, id string) *object {
 func freshList(key string) func() *object {
 	return func() *object {
 		o := newObject()
-		o.set("contractVersion", 3)
+		o.set("contractVersion", ContractVersion)
 		o.set(key, []any{})
 		return o
 	}

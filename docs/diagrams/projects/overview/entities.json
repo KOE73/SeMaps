@@ -1,5 +1,5 @@
 {
-  "contractVersion": 3,
+  "contractVersion": 5,
   "entities": [
     {
       "id": "e_editor",
@@ -103,6 +103,41 @@
       "id": "e_source",
       "name": "Source code",
       "kind": "external",
+      "origin": "authored",
+      "status": "present"
+    },
+    {
+      "id": "e_clients",
+      "name": "Клиенты",
+      "kind": "group",
+      "origin": "authored",
+      "status": "present"
+    },
+    {
+      "id": "e_host",
+      "name": "Хост semaps.exe (host/)",
+      "kind": "group",
+      "origin": "authored",
+      "status": "present"
+    },
+    {
+      "id": "e_core",
+      "name": "Ядро (core/)",
+      "kind": "group",
+      "origin": "authored",
+      "status": "present"
+    },
+    {
+      "id": "e_storage",
+      "name": "Хранение",
+      "kind": "group",
+      "origin": "authored",
+      "status": "present"
+    },
+    {
+      "id": "e_extractors",
+      "name": "Экстракторы (extractors/)",
+      "kind": "group",
       "origin": "authored",
       "status": "present"
     }

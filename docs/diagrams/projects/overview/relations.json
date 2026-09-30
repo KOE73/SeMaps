@@ -1,5 +1,5 @@
 {
-  "contractVersion": 3,
+  "contractVersion": 5,
   "relations": [
     {
       "id": "r_editor_http_api_calls",

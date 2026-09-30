@@ -43,6 +43,18 @@ var bundled embed.FS
 // canvas.json is read by the host (canvas.go).
 var overridable = []string{"styles.json", "templates.json", "content/", "canvas.json", "graph-filters.json"}
 
+// kinds.json is not among them: the workspace dictionary adds to the default
+// instead of replacing it (CONTRACT §6), so /kinds.json is the workspace file
+// or 404, and the editor merges it over the default it bundles. The host's own
+// readers (the model, semaps check, MCP get_kinds) take the default from here.
+func defaultKinds() []byte {
+	b, err := bundled.ReadFile("defaults/" + core.KindsFile)
+	if err != nil {
+		panic("the embedded default kinds.json is missing: " + err.Error())
+	}
+	return b
+}
+
 // findProjectFile walks up from dir to the first directory with a .semaps
 // file. Two of them in one directory is an error, not a silent pick. Only
 // files count: the .semaps/ folder beside the project file (MCP logs) matches
@@ -211,8 +223,11 @@ func main() {
 	extractMode := len(os.Args) > 1 && os.Args[1] == "extract"
 	// `semaps mcp`: MCP server over stdio (ADR_20260924-5).
 	mcpMode := len(os.Args) > 1 && os.Args[1] == "mcp"
+	// `semaps migrate file.semaps`: rewrites a workspace of an older contract
+	// to the current one in place (ADR_20260927-3, docs/ADOPTING.md).
+	migrateMode := len(os.Args) > 1 && os.Args[1] == "migrate"
 	toolMode := doctorMode || extractMode
-	if checkMode || syncMode || toolMode || mcpMode {
+	if checkMode || syncMode || toolMode || mcpMode || migrateMode {
 		os.Args = append(os.Args[:1], os.Args[2:]...)
 	}
 	// `semaps install`: copy to a stable folder, PATH, *.semaps association.
@@ -243,6 +258,9 @@ func main() {
 	if mcpMode {
 		flag.StringVar(&sync.project, "project", "", "Project id under projects/ (default: the only one there is)")
 	}
+	if migrateMode {
+		flag.BoolVar(&sync.dryRun, "dry-run", false, "Report only, write nothing")
+	}
 	if syncMode {
 		flag.StringVar(&sync.facts, "facts", "", "Extractor facts (EXTRACTOR.md §2); `-` reads stdin. Default: run the extractors of the .semaps file")
 		flag.StringVar(&sync.run, "run", "", "Use the facts of this run (`semaps extract` prints its id) instead of extracting again")
@@ -251,7 +269,7 @@ func main() {
 		flag.BoolVar(&sync.noRenames, "no-renames", false, "Treat rename candidates as one entity gone and one new")
 	}
 	flag.Usage = func() {
-		fmt.Fprintln(os.Stderr, "usage: semaps [flags] [dir | file.semaps]\n       semaps check [flags] [dir | file.semaps]\n       semaps sync [--extractor <id>] [--run <id> | --facts <file.json>] [flags] [dir | file.semaps]\n       semaps extract [--extractor <id>] [dir | file.semaps]\n       semaps doctor [dir | file.semaps]\n       semaps mcp [--project <id>] [dir | file.semaps]\n\nWith no arguments, finds a *.semaps project file upward from the current directory.\n`check` reports stale texts, views without an axis, broken codeRef and the like;\nexit code 1 when anything is found.\n`sync` reconciles entities.json and relations.json with extractor facts; without\n--facts it runs the extractors listed in the .semaps file. `extract` only runs them;\n`doctor` shows which extractors and runtimes are found;\n`mcp` serves the registry as MCP tools on stdio (docs/API.md §6). Flags go\nbefore the project argument. `semaps sync --help` lists its flags.")
+		fmt.Fprintln(os.Stderr, "usage: semaps [flags] [dir | file.semaps]\n       semaps check [flags] [dir | file.semaps]\n       semaps migrate [--dry-run] [dir | file.semaps]\n       semaps sync [--extractor <id>] [--run <id> | --facts <file.json>] [flags] [dir | file.semaps]\n       semaps extract [--extractor <id>] [dir | file.semaps]\n       semaps doctor [dir | file.semaps]\n       semaps mcp [--project <id>] [dir | file.semaps]\n\nWith no arguments, finds a *.semaps project file upward from the current directory.\n`check` reports stale texts, views without an axis, broken codeRef and the like;\nexit code 1 when anything is found.\n`sync` reconciles entities.json and relations.json with extractor facts; without\n--facts it runs the extractors listed in the .semaps file. `extract` only runs them;\n`doctor` shows which extractors and runtimes are found;\n`migrate` rewrites the workspace of a project of an older contract to the current one, in place,\nand prints what it did and what a human must decide (idempotent; --dry-run writes nothing);\n`mcp` serves the registry as MCP tools on stdio (docs/API.md §6). Flags go\nbefore the project argument. `semaps sync --help` lists its flags.")
 		flag.PrintDefaults()
 	}
 	flag.Parse()
@@ -287,7 +305,7 @@ func main() {
 		if file == "" {
 			// A downloaded exe started by a double click lands here: nothing
 			// to open, not installed. Offer the install instead of vanishing.
-			if flag.NArg() == 0 && !checkMode && !syncMode && !toolMode && !installed() {
+			if flag.NArg() == 0 && !checkMode && !syncMode && !toolMode && !migrateMode && !installed() {
 				offerInstall()
 				return
 			}
@@ -328,7 +346,11 @@ func main() {
 
 	if checkMode {
 		fmt.Printf("  workspace:   %s\n  source root: %s\n\n", absWorkspace, absRoot)
-		os.Exit(core.Report(os.Stdout, core.Check(absWorkspace, absRoot)))
+		os.Exit(core.Report(os.Stdout, core.Check(absWorkspace, absRoot, defaultKinds())))
+	}
+	if migrateMode {
+		fmt.Printf("  workspace:   %s\n\n", absWorkspace)
+		os.Exit(runMigrate(os.Stdout, absWorkspace, sync.dryRun))
 	}
 	if doctorMode {
 		os.Exit(runDoctor(os.Stdout, proj))
@@ -342,7 +364,7 @@ func main() {
 	}
 	if syncMode {
 		fmt.Printf("  workspace:   %s\n\n", absWorkspace)
-		opt := core.SyncOptions{Project: sync.project, DryRun: sync.dryRun, NoRenames: sync.noRenames}
+		opt := core.SyncOptions{Project: sync.project, DryRun: sync.dryRun, NoRenames: sync.noRenames, DefaultKinds: defaultKinds()}
 		if sync.facts != "" {
 			os.Exit(runSync(absWorkspace, sync.facts, opt))
 		}

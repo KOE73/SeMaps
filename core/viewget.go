@@ -3,7 +3,6 @@ package core
 import (
 	"encoding/json"
 	"slices"
-	"strings"
 )
 
 type ViewHead struct {
@@ -17,47 +16,68 @@ type ViewHead struct {
 	Scope         string `json:"scope,omitempty"`
 }
 
-type NodeInfo struct {
-	Entity string `json:"entity"`
-	Name   string `json:"name,omitempty"`
-	Kind   string `json:"kind,omitempty"`
-	Zone   string `json:"zone,omitempty"`
+// PlacementInfo is one placement as a human sees it: the entity's name and
+// kind, whether it is a container, an absolute rectangle; a container carries
+// what lies in it.
+type PlacementInfo struct {
+	Entity    string  `json:"entity"`
+	Name      string  `json:"name,omitempty"`
+	Kind      string  `json:"kind,omitempty"`
+	Container bool    `json:"container"`
+	Parent    *string `json:"parent"`
 	Rect
-	StyleID  string `json:"styleId,omitempty"`
-	Template string `json:"template,omitempty"`
+	StyleID   string           `json:"styleId,omitempty"`
+	Override  json.RawMessage  `json:"override,omitempty"`
+	Template  string           `json:"template,omitempty"`
+	Collapsed bool             `json:"collapsed,omitempty"`
+	Children  []*PlacementInfo `json:"children,omitempty"`
 }
 
-type ZoneInfo struct {
-	ID        string `json:"id"`
-	Name      string `json:"name,omitempty"`
-	Container string `json:"container,omitempty"`
-	Parent    string `json:"parent,omitempty"`
-	Rect
-	StyleID   string      `json:"styleId,omitempty"`
-	Collapsed bool        `json:"collapsed,omitempty"`
-	Zones     []*ZoneInfo `json:"zones"`
-	Nodes     []NodeInfo  `json:"nodes"`
+// MarshalJSON: a container always has children (an empty list when it holds
+// nothing); a block has none.
+func (p PlacementInfo) MarshalJSON() ([]byte, error) {
+	type plain PlacementInfo
+	children := p.Children
+	if p.Container && children == nil {
+		children = []*PlacementInfo{}
+	}
+	if !p.Container {
+		return json.Marshal(struct {
+			plain
+			Children []*PlacementInfo `json:"children,omitempty"`
+		}{plain(p), nil})
+	}
+	return json.Marshal(struct {
+		plain
+		Children []*PlacementInfo `json:"children"`
+	}{plain(p), children})
 }
 
+// EdgeInfo is a line of a view. StyleID, Override and Routing are what the
+// view's own `edges` entry says (CONTRACT §8.5, §11.6); the registry-driven
+// lines carry none.
 type EdgeInfo struct {
-	ID   string `json:"id"`
-	From string `json:"from"`
-	To   string `json:"to"`
-	Type string `json:"type"`
+	ID       string          `json:"id"`
+	From     string          `json:"from"`
+	To       string          `json:"to"`
+	Type     string          `json:"type"`
+	StyleID  string          `json:"styleId,omitempty"`
+	Override json.RawMessage `json:"override,omitempty"`
+	Routing  string          `json:"routing,omitempty"`
 }
 
 type ViewInfo struct {
-	View    ViewHead    `json:"view"`
-	Zones   []*ZoneInfo `json:"zones"`
-	Nodes   []NodeInfo  `json:"nodes"`
-	Edges   []EdgeInfo  `json:"edges"`
-	Unsaved []Ref       `json:"unsaved"`
+	View       ViewHead         `json:"view"`
+	Placements []*PlacementInfo `json:"placements"`
+	Edges      []EdgeInfo       `json:"edges"`
+	Unsaved    []Ref            `json:"unsaved"`
 }
 
-// GetView reads a view the way a human sees it: zones nest, nodes sit in zones,
-// coordinates are absolute. ref is a view, or a zone of it (`v_ops#z_a`): then
-// only that zone's subtree and the lines touching it come back.
-func (m *Model) GetView(ref, lang string) (ViewInfo, error) {
+// GetView reads a view the way a human sees it: placements nest in their
+// containers, coordinates are absolute. ref is a view, or a container of it
+// (`v_ops#e_a`): then only that container's subtree and the lines touching it
+// come back.
+func (m *Model) GetView(ref string) (ViewInfo, error) {
 	r, err := ParseRef(ref)
 	if err != nil {
 		return ViewInfo{}, err
@@ -70,88 +90,77 @@ func (m *Model) GetView(ref, lang string) (ViewInfo, error) {
 	if err != nil {
 		return ViewInfo{}, err
 	}
-	if kind == "node" {
-		return ViewInfo{}, refuse("%s is a node; pass a view or a zone", ref)
+	if kind == "block" {
+		return ViewInfo{}, refuse("%s is not a container; pass a view or a container", ref)
 	}
 	doc, err := m.view(r.View)
 	if err != nil {
 		return ViewInfo{}, err
-	}
-	if lang == "" {
-		lang = "ru"
-	}
-	name := func(keys ...string) string {
-		for _, k := range keys {
-			e, err := m.text(lang, k)
-			if err != nil {
-				continue
-			}
-			if v, ok := e.vals["name"]; ok {
-				o := newObject()
-				if json.Unmarshal(v, o) == nil && o.str("v") != "" {
-					return o.str("v")
-				}
-			}
-		}
-		return ""
 	}
 	ents := map[string]*object{}
 	for _, e := range m.records("entity") {
 		ents[e.str("id")] = e
 	}
 
-	zoneObjs := viewItems(doc, "zones")
-	parents := zoneParents(zoneObjs, cv)
-	zones := map[string]*ZoneInfo{}
-	var order []*ZoneInfo
-	for _, z := range zoneObjs {
-		info := &ZoneInfo{ID: z.str("id"), Container: z.str("container"), Parent: parents[z.str("id")], Rect: zoneRect(z, cv),
-			StyleID: z.str("styleId"), Zones: []*ZoneInfo{}, Nodes: []NodeInfo{}}
-		if raw, ok := z.vals["collapsed"]; ok {
+	items := viewItems(doc, "placements")
+	byID := map[string]*PlacementInfo{}
+	var order []*PlacementInfo
+	placed := map[string]bool{}
+	for _, p := range items {
+		id := p.str("entity")
+		info := &PlacementInfo{Entity: id, StyleID: p.str("styleId"), Template: p.str("template")}
+		if e := ents[id]; e != nil {
+			info.Name, info.Kind = e.str("name"), e.str("kind")
+		}
+		info.Container = m.kinds.IsContainer(info.Kind)
+		info.Rect = placementRect(p, info.Container, cv)
+		if raw, ok := p.vals["override"]; ok && string(raw) != "null" {
+			info.Override = append(json.RawMessage(nil), raw...)
+		}
+		if raw, ok := p.vals["collapsed"]; ok {
 			_ = json.Unmarshal(raw, &info.Collapsed)
 		}
-		keys := []string{info.ID}
-		if info.Container != "" {
-			keys = append(keys, info.Container)
-		} else if tail, ok := strings.CutPrefix(info.ID, "z_"); ok {
-			keys = append(keys, "c_"+tail)
+		if parent := p.str("parent"); parent != "" {
+			info.Parent = &parent
 		}
-		info.Name = name(keys...)
-		zones[info.ID] = info
+		byID[id] = info
 		order = append(order, info)
+		placed[id] = true
 	}
-	var top []*ZoneInfo
-	for _, z := range order {
-		if p := zones[z.Parent]; p != nil && z.Parent != z.ID {
-			p.Zones = append(p.Zones, z)
-		} else {
-			top = append(top, z)
+	// nest by parent; a parent that is not a container placement of this view,
+	// or a loop, leaves the placement at the top
+	var top []*PlacementInfo
+	reached := map[string]bool{}
+	for _, p := range order {
+		if p.Parent == nil || byID[*p.Parent] == nil || !byID[*p.Parent].Container || *p.Parent == p.Entity {
+			top = append(top, p)
 		}
 	}
-	loose := []NodeInfo{}
-	placed := map[string]bool{}
-	for _, key := range []string{"nodes", "placements"} {
-		for _, n := range viewItems(doc, key) {
-			id := nodeID(n)
-			info := NodeInfo{Entity: id, Zone: nodeZone(n), Rect: nodeRect(n, cv), StyleID: n.str("styleId"), Template: n.str("template")}
-			if e := ents[id]; e != nil {
-				info.Name, info.Kind = e.str("name"), e.str("kind")
-			}
-			placed[id] = true
-			if z := zones[info.Zone]; z != nil {
-				z.Nodes = append(z.Nodes, info)
-			} else {
-				info.Zone = ""
-				loose = append(loose, info)
+	var walk func(p *PlacementInfo)
+	walk = func(p *PlacementInfo) {
+		reached[p.Entity] = true
+		for _, c := range order {
+			if c.Parent != nil && *c.Parent == p.Entity && p.Container && !reached[c.Entity] && c != p {
+				p.Children = append(p.Children, c)
+				walk(c)
 			}
 		}
+	}
+	for _, p := range top {
+		walk(p)
+	}
+	for _, p := range order {
+		if !reached[p.Entity] {
+			top = append(top, p)
+			walk(p)
+		}
+	}
+	if top == nil {
+		top = []*PlacementInfo{}
 	}
 
 	out := ViewInfo{View: ViewHead{ID: r.View, Project: m.project, Axis: doc.str("axis"), Routing: doc.str("routing")},
-		Zones: top, Nodes: loose, Edges: []EdgeInfo{}, Unsaved: append([]Ref{}, m.Dirty().Views[r.View]...)}
-	if top == nil {
-		out.Zones = []*ZoneInfo{}
-	}
+		Placements: top, Edges: []EdgeInfo{}, Unsaved: append([]Ref{}, m.Dirty().Views[r.View]...)}
 	if out.View.Axis == "" {
 		var manifest struct {
 			DefaultAxis string `json:"defaultAxis"`
@@ -164,21 +173,19 @@ func (m *Model) GetView(ref, lang string) (ViewInfo, error) {
 	}
 
 	inScope := func(string) bool { return true }
-	if kind == "zone" {
-		root := zones[r.ID]
+	if kind == "container" {
+		root := byID[r.ID]
 		out.View.Scope = ref
-		out.Zones, out.Nodes = []*ZoneInfo{root}, []NodeInfo{}
+		out.Placements = []*PlacementInfo{root}
 		inside := map[string]bool{}
-		var walk func(z *ZoneInfo)
-		walk = func(z *ZoneInfo) {
-			for _, n := range z.Nodes {
-				inside[n.Entity] = true
-			}
-			for _, c := range z.Zones {
-				walk(c)
+		var mark func(p *PlacementInfo)
+		mark = func(p *PlacementInfo) {
+			inside[p.Entity] = true
+			for _, c := range p.Children {
+				mark(c)
 			}
 		}
-		walk(root)
+		mark(root)
 		inScope = func(entity string) bool { return inside[entity] }
 	}
 	for _, e := range m.visibleEdges(doc, placed) {
@@ -196,7 +203,11 @@ func (m *Model) visibleEdges(doc *object, placed map[string]bool) []EdgeInfo {
 	var out []EdgeInfo
 	if _, ok := doc.vals["edges"]; ok {
 		for _, e := range viewItems(doc, "edges") {
-			out = append(out, EdgeInfo{e.str("id"), e.str("from"), e.str("to"), e.str("type")})
+			info := EdgeInfo{ID: e.str("id"), From: e.str("from"), To: e.str("to"), Type: e.str("type"), StyleID: e.str("styleId"), Routing: e.str("routing")}
+			if raw, ok := e.vals["override"]; ok && string(raw) != "null" {
+				info.Override = append(json.RawMessage(nil), raw...)
+			}
+			out = append(out, info)
 		}
 		return out
 	}
@@ -224,7 +235,7 @@ func (m *Model) visibleEdges(doc *object, placed map[string]bool) []EdgeInfo {
 			d = t.str("visibility")
 		}
 		if (d == "visible") != slices.Contains(except, r.str("id")) {
-			out = append(out, EdgeInfo{r.str("id"), from, to, relationType(r)})
+			out = append(out, EdgeInfo{ID: r.str("id"), From: from, To: to, Type: relationType(r)})
 		}
 	}
 	return out

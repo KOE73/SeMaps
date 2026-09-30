@@ -37,18 +37,18 @@ var viewToolDescriptions = map[string]toolDescriptions{
 			"(look at the sample, decide, apply in steps, check, say what is unsaved and give the link), when `requestedByHuman` is needed, and the numbers of the canvas " +
 			"(units, grid, default and minimum sizes, caption strip, padding, gaps). Call it once before moving, resizing or placing anything. No parameters; it does not depend on the project.",
 		Full: "layout_guide returns a Markdown guide for working on a view: how to look at one (`get_view`, `render_view`), what each geometry tool does " +
-			"(`move_elements`, `resize_elements`, `set_zone`, `add_zone`, `fit_zone`, `align_elements`, `place_entities`, `create_view`, `create_project`, `save`, `discard`, `set_text`, `add_entity`), " +
+			"(`move_elements`, `resize_elements`, `set_parent`, `add_container`, `fit_container`, `align_elements`, `place_entities`, `create_view`, `create_project`, `save`, `discard`, `set_text`, `add_entity`, `get_kinds`), " +
 			"the workflow (look at the sample, decide, apply in steps, check with `get_view` or `render_view`, say what is unsaved and give the link), when `requestedByHuman` is needed, " +
 			"that the host does not snap to the grid, and the numbers of the canvas (units, grid, default and minimum sizes, caption strip, padding, gaps) — the same block that heads every `get_view` answer. " +
 			"Call it once before moving, resizing or placing anything. No parameters; it does not depend on the project.",
 	},
 	"render_view": {
-		Brief: "A PNG of a view, a zone or a rectangle from the editor open on it, plus the problems the editor finds (overlaps, clipped captions, lines through boxes). Needs the view open in an editor.",
-		Standard: "render_view asks the editor that has the project open to draw a view, a zone (`ref` like `v_main#z_core`) or a rectangle (`rect`: x, y, width, height in model units) and returns the picture with a list of problems: " +
-			"overlaps, clipped captions and rows, lines through boxes, crossing lines, nodes outside their zone. It shows the editor's current, unsaved state. " +
+		Brief: "A PNG of a view, a container or a rectangle from the editor open on it, plus the problems the editor finds (overlaps, clipped captions, lines through boxes). Needs the view open in an editor.",
+		Standard: "render_view asks the editor that has the project open to draw a view, a container (`ref` like `v_main#e_core`) or a rectangle (`rect`: x, y, width, height in model units) and returns the picture with a list of problems: " +
+			"overlaps, clipped captions and rows, lines through boxes, crossing lines, blocks outside their container. It shows the editor's current, unsaved state. " +
 			"`scale` (0.25 to 4, default 1) and `maxSize` (pixels of the longer side, default 1600, at most 4096) bound the picture. Without an editor open on the project it fails and says which link to open.",
-		Full: "render_view asks the editor that has the project open to draw a view, a zone (`ref` like `v_main#z_core`) or a rectangle (`rect`: x, y, width, height in model units) and returns the picture with a list of problems: " +
-			"overlap, clipped-caption, clipped-rows, line-through-box, line-crossing, outside-zone — each with the ids involved. The problems come from the editor's real router and text measurement, so they match what the human sees. " +
+		Full: "render_view asks the editor that has the project open to draw a view, a container (`ref` like `v_main#e_core`) or a rectangle (`rect`: x, y, width, height in model units) and returns the picture with a list of problems: " +
+			"overlap, clipped-caption, clipped-rows, line-through-box, line-crossing, outside-container — each with the ids involved. The problems come from the editor's real router and text measurement, so they match what the human sees. " +
 			"It shows the editor's current, unsaved state, including your own unsaved changes. `view` is the view id (or give `ref`); `scale` (0.25 to 4, default 1) and `maxSize` (pixels of the longer side, default 1600, at most 4096) bound the picture. " +
 			"The answer states the model rectangle that was drawn. Without an editor open on the project it fails and says which link to open; if the editor does not answer within 20 seconds it fails too — check that the view is open.",
 	},
@@ -96,12 +96,13 @@ yours; the human reviews and saves.
 
 ## Seeing
 
-- ` + "`get_view`" + ` — the view as data: zones nested, nodes with absolute rectangles, visible lines, what is unsaved.
-  A zone reference (` + "`v_main#z_core`" + `) reads only that subtree. Every answer starts with the canvas block below.
-- ` + "`render_view`" + ` — a picture (PNG) of the view, a zone or a rectangle from the editor open on it, and a list of problems
-  (overlaps, clipped captions, lines through boxes, crossing lines, nodes outside their zone). It needs the view open in an
+- ` + "`get_view`" + ` — the view as data: placements, containers with what lies in them (children), absolute rectangles, visible lines, what is unsaved.
+  A container reference (` + "`v_main#e_core`" + `) reads only that subtree. Every answer starts with the canvas block below.
+- ` + "`get_kinds`" + ` — the dictionary: which kinds exist, which of them are containers (a placement of an entity of such a kind is a frame that holds other placements).
+- ` + "`render_view`" + ` — a picture (PNG) of the view, a container or a rectangle from the editor open on it, and a list of problems
+  (overlaps, clipped captions, lines through boxes, crossing lines, blocks outside their container). It needs the view open in an
   editor and shows the editor's current, unsaved state. Look at it after each group of steps.
-- The human points at objects with references: ` + "`<view>#<id>`" + ` (` + "`v_ops#z_undistort`" + ` for a zone, ` + "`v_ops#e_op_crop`" + ` for a node),
+- The human points at objects with references: ` + "`<view>#<id>`" + ` (` + "`v_ops#e_undistort`" + ` for a container, ` + "`v_ops#e_op_crop`" + ` for a block),
   ` + "`<project>/<view>#<id>`" + ` when the workspace has several projects; several are joined by commas. Every tool takes them wherever it
   takes an object of a view. A view opens in the editor at ` + "`/app/#<view>?highlight=<id>`" + `.
 
@@ -110,8 +111,8 @@ yours; the human reviews and saves.
 `)
 	b.WriteString(c.Describe())
 	fmt.Fprintf(&b, `
-Membership is explicit: a node is in a zone because it was put there (`+"`set_zone`"+`), not because it happens to lie inside its rectangle.
-A node inside a zone still has absolute coordinates. Sizes do not follow content: text is not wrapped, a caption longer than its box runs
+Membership is explicit: a block is in a container because it was put there (`+"`set_parent`"+`, the `+"`parent`"+` of its placement), not because it happens to lie inside its rectangle.
+A block inside a container still has absolute coordinates. A container is an entity of a container kind (`+"`get_kinds`"+`); `+"`add_container`"+` makes the entity and its frame in one step. Sizes do not follow content: text is not wrapped, a caption longer than its box runs
 past the edge, and the rows of a box that lists members simply continue past its bottom if the box is short (roughly 55 + 15 per row + 3 per
 section high) — give such boxes room. Lines are not stored: they are routed from the boxes on every repaint; orthogonal lines keep 8 units off
 boxes and settle 16 to 24 units apart, so a gap between two boxes narrower than about 16 is not a corridor for a line. A box straight above another
@@ -121,20 +122,20 @@ blocks the straight line from the lower one.
 
 | To… | Use |
 |---|---|
-| shift things; a zone goes with everything in it | `+"`move_elements`"+` (dx/dy, or x/y for the top-left corner of the common box) |
-| change a size (never under the minimum, and a zone never under its content) | `+"`resize_elements`"+` |
-| put nodes or zones into a zone, coordinates untouched | `+"`set_zone`"+` (empty zone takes them out) |
-| add a zone: rectangle, optional parent, container, style, caption | `+"`add_zone`"+` |
-| make a zone as tight as its content (caption strip and padding), ancestors grow | `+"`fit_zone`"+` |
+| shift things; a container goes with everything in it | `+"`move_elements`"+` (dx/dy, or x/y for the top-left corner of the common box) |
+| change a size (never under the minimum, and a container never under its content) | `+"`resize_elements`"+` |
+| put blocks or containers into a container, coordinates untouched | `+"`set_parent`"+` (parent null takes them out) |
+| add a container: an entity of a container kind (existing, or new: name and kind, default group) with a rectangle, optional parent, style | `+"`add_container`"+` |
+| make a container as tight as its content (caption strip and padding), ancestors grow | `+"`fit_container`"+` |
 | line elements up on the first one: left, right, top, bottom, width, height | `+"`align_elements`"+` |
 | put entities on a view | `+"`place_entities`"+` |
 | an entity no extractor reports (an app, an external system, a database), so that it can be placed | `+"`add_entity`"+`, then `+"`place_entities`"+` |
-| caption a zone or a view (a text under its id, field name), in every language of the project | `+"`set_text`"+` |
+| caption a view (a text under its id, field name), in every language of the project; a container is captioned by the name of its entity | `+"`set_text`"+` |
 | a new view or project — only when a human explicitly asked | `+"`create_view`"+`, `+"`create_project`"+` |
 | write what is unsaved / drop it — only when a human explicitly asked | `+"`save`"+`, `+"`discard`"+` |
 
 Each step is one batch: it applies whole or not at all. Geometry you were not asked about stays as it is. There is no tool that lays things out
-"like another zone": which node stands for which is your judgement; the tools give you eyes (get_view, render_view) and precise hands.
+"like another container": which block stands for which is your judgement; the tools give you eyes (get_view, render_view) and precise hands.
 
 ## requestedByHuman
 
@@ -145,13 +146,13 @@ pass only when a person asked for exactly this. Without such a request do not wr
 
 The editor snaps the human's own moves to the grid step (%s); this host does not — a coordinate or size you give is written as given.
 Put positions and sizes on multiples of %s yourself, and leave the default gaps between what you place: a row of three default nodes is
-3 x %g + 2 x %g = %g wide before any zone padding.
+3 x %g + 2 x %g = %g wide before any container padding.
 
 ## Workflow
 
-1. Look at the sample: `+"`get_view`"+` (and `+"`render_view`"+`) on the reference and on the target — zones, nodes, rectangles.
-2. Decide which node stands for which and work out the moves and sizes yourself; say the plan to the person.
-3. Apply it in steps (`+"`move_elements`"+`, `+"`resize_elements`"+`, `+"`set_zone`"+`, `+"`fit_zone`"+`), fewest steps first.
+1. Look at the sample: `+"`get_view`"+` (and `+"`render_view`"+`) on the reference and on the target — containers, blocks, rectangles.
+2. Decide which block stands for which and work out the moves and sizes yourself; say the plan to the person.
+3. Apply it in steps (`+"`move_elements`"+`, `+"`resize_elements`"+`, `+"`set_parent`"+`, `+"`fit_container`"+`), fewest steps first.
 4. Check after each group: `+"`get_view`"+` for numbers, `+"`render_view`"+` for what a human sees and for problems; fix what it lists.
 5. Say what is unsaved — "done, not saved, please check" — and give the link from the last tool answer. Save only if the person asked.
 `, g, g, c.Node.Width, c.Gap.Node, 3*c.Node.Width+2*c.Gap.Node)
@@ -163,7 +164,7 @@ Put positions and sizes on multiples of %s yourself, and leave the default gaps 
 type renderViewIn struct {
 	Project string     `json:"project,omitempty"`
 	View    string     `json:"view,omitempty" jsonschema:"view id; may be left out when ref is given"`
-	Ref     string     `json:"ref,omitempty" jsonschema:"a view reference view#zone (a zone reference draws that zone)"`
+	Ref     string     `json:"ref,omitempty" jsonschema:"a view reference view#e_x (a container reference draws that container)"`
 	Rect    *core.Rect `json:"rect,omitempty" jsonschema:"rectangle to draw in model units: x, y, width, height"`
 	Scale   float64    `json:"scale,omitempty" jsonschema:"0.25 to 4; default 1"`
 	MaxSize int        `json:"maxSize,omitempty" jsonschema:"pixels of the longer side; default 1600, at most 4096"`
@@ -206,7 +207,7 @@ func (s *mcpServer) renderView(_ context.Context, _ *mcp.CallToolRequest, in ren
 	if in.View != "" && in.Ref != "" && in.View != r.View {
 		return nil, nil, fmt.Errorf("view %s and ref %s name different views", in.View, in.Ref)
 	}
-	info, err := m.GetView(target, "")
+	info, err := m.GetView(target)
 	if err != nil {
 		return nil, nil, err
 	}
@@ -246,32 +247,23 @@ func (s *mcpServer) renderView(_ context.Context, _ *mcp.CallToolRequest, in ren
 	}}, nil, nil
 }
 
-// viewBounds is the box around every zone and node of what get_view returned.
+// viewBounds is the box around every placement of what get_view returned.
 func viewBounds(v core.ViewInfo) core.Rect {
 	var box core.Rect
 	found := false
-	add := func(r core.Rect) {
+	var walk func(p *core.PlacementInfo)
+	walk = func(p *core.PlacementInfo) {
 		if found {
-			box = box.Union(r)
+			box = box.Union(p.Rect)
 		} else {
-			box, found = r, true
+			box, found = p.Rect, true
 		}
-	}
-	var walk func(z *core.ZoneInfo)
-	walk = func(z *core.ZoneInfo) {
-		add(z.Rect)
-		for _, n := range z.Nodes {
-			add(n.Rect)
-		}
-		for _, c := range z.Zones {
+		for _, c := range p.Children {
 			walk(c)
 		}
 	}
-	for _, z := range v.Zones {
-		walk(z)
-	}
-	for _, n := range v.Nodes {
-		add(n.Rect)
+	for _, p := range v.Placements {
+		walk(p)
 	}
 	if !found {
 		return core.Rect{}

@@ -46,7 +46,13 @@ type GraphNode struct {
 	Extractor   string         `json:"extractor,omitempty"`
 	Entity      string         `json:"entity,omitempty"`
 	Status      string         `json:"status,omitempty"`
-	Containers  []string       `json:"containers,omitempty"`
+	// Containers is the node's container: the one node that `contains` it and
+	// whose kind is a container kind of the dictionary (CONTRACT §6,
+	// ADR_20260930). At most one item; none when there is no container or it
+	// is ambiguous. A list, so a reader keeps one shape for "which containers".
+	Containers []string `json:"containers,omitempty"`
+	// Container: this node is itself a container (its kind is a container kind).
+	Container bool `json:"container,omitempty"`
 	// Presence: "both" (symbol and entity), "code" (symbol only), "model"
 	// (entity only).
 	Presence string `json:"presence"`
@@ -136,16 +142,6 @@ func BuildGraph(sources []FactsSource, model *Model) (*Graph, error) {
 	if err != nil {
 		return nil, err
 	}
-	containers, err := LoadContainers(model.ProjectDir())
-	if err != nil {
-		return nil, err
-	}
-	var defs []Container
-	overrides := map[string]string{}
-	if containers != nil {
-		defs, overrides = containers.List, containers.Overrides
-	}
-
 	// entity by symbol: first entity claiming a symbol wins (CONTRACT §3's
 	// invariant says this map has at most one entry per symbol among
 	// non-authored entities; a broken registry is not this function's job to
@@ -163,10 +159,9 @@ func BuildGraph(sources []FactsSource, model *Model) (*Graph, error) {
 	}
 
 	nodes := []GraphNode{}
-	subjects := make([]ContainerSubject, 0, len(entities))
-	nodeIndexBySubject := map[string]int{} // subject id -> index in nodes
-	entityNodeKey := map[string]string{}   // entity id -> node key
-	consumed := map[*object]bool{}         // entities joined to a symbol
+	entityKind := map[string]string{}    // node key -> the kind its entity has, or would have (CONTRACT §3)
+	entityNodeKey := map[string]string{} // entity id -> node key
+	consumed := map[*object]bool{}       // entities joined to a symbol
 
 	// -------------------------------------------------- code and both nodes
 	symbolNodeKey := map[[2]string]string{} // (extractor, symbol id) -> node key
@@ -184,18 +179,16 @@ func BuildGraph(sources []FactsSource, model *Model) (*Graph, error) {
 					n.Dynamic[i] = GraphDynamicMark{Kind: m.Kind, Line: m.Line}
 				}
 			}
-			subjectID := key
+			entityKind[key] = s.NativeKind // what sync writes as the entity's kind (ADR_20260923-9)
 			if e := entityBySymbol[s.ID]; e != nil && !consumed[e] {
 				consumed[e] = true
 				n.Entity, n.Status, n.Presence = e.str("id"), e.str("status"), "both"
 				entityNodeKey[e.str("id")] = key
-				subjectID = e.str("id") // so overrides (keyed by entity id) apply
+				entityKind[key] = e.str("kind")
 			} else {
 				n.Presence = "code"
 			}
 			nodes = append(nodes, n)
-			nodeIndexBySubject[subjectID] = len(nodes) - 1
-			subjects = append(subjects, ContainerSubject{ID: subjectID, Name: n.Name, File: n.File})
 			symbolNodeKey[[2]string{src.Extractor, s.ID}] = key
 		}
 	}
@@ -206,6 +199,7 @@ func BuildGraph(sources []FactsSource, model *Model) (*Graph, error) {
 			continue
 		}
 		id, name, file := e.str("id"), e.str("name"), codeRefFile(e.str("codeRef"))
+		entityKind[id] = e.str("kind")
 		n := GraphNode{ID: id, Kind: e.str("kind"), Name: name, Status: e.str("status"), Presence: "model"}
 		if ns := e.str("namespace"); ns != "" {
 			n.Namespace = ns
@@ -215,14 +209,6 @@ func BuildGraph(sources []FactsSource, model *Model) (*Graph, error) {
 		}
 		entityNodeKey[id] = id
 		nodes = append(nodes, n)
-		nodeIndexBySubject[id] = len(nodes) - 1
-		subjects = append(subjects, ContainerSubject{ID: id, Name: name, File: file})
-	}
-
-	// ------------------------------------------------------------ containers
-	resolved := ResolveContainers(defs, overrides, subjects)
-	for subjectID, idx := range nodeIndexBySubject {
-		nodes[idx].Containers = resolved[subjectID]
 	}
 
 	sort.Slice(nodes, func(i, j int) bool { return nodes[i].ID < nodes[j].ID })
@@ -293,6 +279,7 @@ func BuildGraph(sources []FactsSource, model *Model) (*Graph, error) {
 	sort.Slice(edges, func(i, j int) bool { return compareGraphEdges(edges[i], edges[j]) < 0 })
 
 	attachAssemblies(nodes, edges)
+	assignContainers(nodes, edges, entityKind, model.Kinds())
 
 	return &Graph{Nodes: nodes, Edges: edges}, nil
 }

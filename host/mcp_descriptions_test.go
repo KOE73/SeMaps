@@ -260,7 +260,7 @@ func narrowFixtureSession(t *testing.T, tools string) *mcp.ClientSession {
 	ws := t.TempDir()
 	dir := filepath.Join(ws, "projects", "p")
 	files := map[string]string{
-		"project.json":        `{"id":"p"}`,
+		"project.json":        `{"id":"p","contractVersion":5}`,
 		"entities.json":       `{"entities":[{"id":"e_a","name":"A","kind":"class","origin":"code","symbol":"N.A"},{"id":"e_b","name":"B","kind":"interface","origin":"code","symbol":"N.B"}]}`,
 		"relations.json":      `{"relations":[{"id":"r_a_b_implements","from":"e_a","to":"e_b","type":"implements","origin":"code","status":"present"}]}`,
 		"relation-types.json": `{"relationTypes":[{"id":"implements","origin":"code","visibility":"visible"}]}`,

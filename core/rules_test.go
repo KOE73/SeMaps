@@ -16,15 +16,19 @@ func TestApplyChecksContractForEveryWriter(t *testing.T) {
 		{"relation to nothing", "no entity e_ghost", []Op{modelOp("relation", "r_x", "", "", `{"id":"r_x","from":"e_a","to":"e_ghost","type":"call"}`)}},
 		{"relation of unknown type", "no relation type", []Op{modelOp("relation", "r_x", "", "", `{"id":"r_x","from":"e_a","to":"e_b","type":"nope"}`)}},
 		{"empty text", "empty text", []Op{modelOp("text", "e_a", "", "ru", `{"description":{"v":"","origin":"authored","at":"2026-09-26T00:00:00Z"}}`)}},
-		{"bare text", "a value {v, origin, at}", []Op{modelOp("text", "z_core", "", "ru", `{"name":"Ядро"}`)}},
-		{"zone without z_", "starts with z_", []Op{modelOp("zone", "zone_1", "v_main", "", `{"id":"zone_1","x":0,"y":0,"width":200,"height":100}`)}},
-		{"zone into a node", "is not a zone", []Op{modelOp("zone", "z_in", "v_main", "", `{"id":"z_in","parent":"e_a","x":0,"y":0,"width":200,"height":100}`)}},
-		{"zone into itself", "cannot go into itself", []Op{modelOp("zone", "z_core", "v_main", "", `{"id":"z_core","parent":"z_core","x":0,"y":0,"width":500,"height":500}`)}},
-		{"node of no entity", "no entity e_ghost", []Op{modelOp("node", "e_ghost", "v_main", "", `{"entity":"e_ghost","x":0,"y":0}`)}},
-		{"node in no zone", "no zone z_ghost", []Op{modelOp("node", "e_b", "v_main", "", `{"entity":"e_b","zone":"z_ghost","x":0,"y":0}`)}},
+		{"bare text", "a value {v, origin, at}", []Op{modelOp("text", "rt_call", "", "ru", `{"name":"Вызов"}`)}},
+		{"text of a zone", "expected a prefix e_, rt_, r_ or v_", []Op{modelOp("text", "z_core", "", "ru", `{"name":{"v":"Ядро","origin":"authored","at":"2026-09-26T00:00:00Z"}}`)}},
+		{"zone op", "unknown operation kind", []Op{modelOp("zone", "z_in", "v_main", "", `{"id":"z_in","x":0,"y":0,"width":200,"height":100}`)}},
+		{"node op", "unknown operation kind", []Op{modelOp("node", "e_b", "v_main", "", `{"entity":"e_b","x":0,"y":0}`)}},
+		{"parent into a block", "is not a container", []Op{modelOp("placement", "e_b", "v_main", "", `{"entity":"e_b","parent":"e_a","x":0,"y":0}`)}},
+		{"placement into itself", "cannot go into itself", []Op{modelOp("placement", "e_core", "v_main", "", `{"entity":"e_core","parent":"e_core","x":0,"y":0,"width":500,"height":500}`)}},
+		{"placement of no entity", "no entity e_ghost", []Op{modelOp("placement", "e_ghost", "v_main", "", `{"entity":"e_ghost","parent":null,"x":0,"y":0}`)}},
+		{"placement in no container", "no container e_ghost", []Op{modelOp("placement", "e_b", "v_main", "", `{"entity":"e_b","parent":"e_ghost","x":0,"y":0}`)}},
+		{"placement without parent", "parent is required", []Op{modelOp("placement", "e_b", "v_main", "", `{"entity":"e_b","x":0,"y":0}`)}},
+		{"override outside the table", "cannot be overridden", []Op{modelOp("placement", "e_b", "v_main", "", `{"entity":"e_b","parent":null,"override":{"radius":4}}`)}},
 	}
 	for _, c := range refused {
-		m, err := LoadModel(editWorkspace(t), "p")
+		m, err := LoadModel(editWorkspace(t), "p", defaultKindsJSON(t))
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -39,29 +43,35 @@ func TestApplyChecksContractForEveryWriter(t *testing.T) {
 }
 
 func TestApplyChecksTheWholeBatchAndOnlyWhatChanged(t *testing.T) {
-	m, err := LoadModel(editWorkspace(t), "p")
+	m, err := LoadModel(editWorkspace(t), "p", defaultKindsJSON(t))
 	if err != nil {
 		t.Fatal(err)
 	}
 	// order inside a batch does not matter: the relation comes before its type,
-	// the node before its entity
+	// the placement before its entity
 	ok := []Op{
 		modelOp("relation", "r_a_n_uses", "", "", `{"id":"r_a_n_uses","from":"e_a","to":"e_n","type":"uses","origin":"code"}`),
-		modelOp("node", "e_n", "v_main", "", `{"entity":"e_n","zone":"z_core","x":0,"y":0}`),
+		modelOp("placement", "e_n", "v_main", "", `{"entity":"e_n","parent":"e_core","x":0,"y":0}`),
 		modelOp("entity", "e_n", "", "", `{"id":"e_n","name":"N","kind":"class","origin":"code"}`),
 		modelOp("relationType", "uses", "", "", `{"id":"uses","origin":"code","visibility":"hidden"}`),
 	}
 	if _, err := m.Apply(ok, "sync"); err != nil {
 		t.Fatal(err)
 	}
-	// legacy data that breaks a rule does not block editing it elsewhere
-	legacy := modelOp("zone", "zone_old", "v_main", "", `{"id":"zone_old","x":0,"y":0,"width":200,"height":100}`)
+	// data already there that breaks a rule does not block editing it elsewhere:
+	// a placement whose override is out of the table, put in by a journal replay
+	legacy := modelOp("placement", "e_x", "v_main", "", `{"entity":"e_x","parent":null,"x":0,"y":0,"override":{"radius":3}}`)
 	if err := m.applyUnchecked(legacy); err != nil {
 		t.Fatal(err)
 	}
-	moved := modelOp("zone", "zone_old", "v_main", "", `{"id":"zone_old","x":40,"y":0,"width":200,"height":100}`)
+	moved := modelOp("placement", "e_x", "v_main", "", `{"entity":"e_x","parent":null,"x":40,"y":0,"override":{"radius":3}}`)
 	if _, err := m.Apply([]Op{moved}, "human"); err != nil {
-		t.Fatalf("moving a legacy zone: %v", err)
+		t.Fatalf("moving a placement with a legacy override: %v", err)
+	}
+	// but a change to the override itself is checked
+	worse := modelOp("placement", "e_x", "v_main", "", `{"entity":"e_x","parent":null,"x":40,"y":0,"override":{"radius":9}}`)
+	if _, err := m.Apply([]Op{worse}, "human"); err == nil {
+		t.Fatal("a changed override outside the table was accepted")
 	}
 }
 

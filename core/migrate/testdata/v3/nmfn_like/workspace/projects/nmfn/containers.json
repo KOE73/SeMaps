@@ -1,0 +1,45 @@
+{
+  "contractVersion": 3,
+  "containers": [
+    {
+      "id": "c_onnx",
+      "parent": null,
+      "axis": "axis_assembly",
+      "match": {
+        "path": [
+          "src/NeuroModFlowNet.ONNX/"
+        ]
+      }
+    },
+    {
+      "id": "c_graph",
+      "parent": null,
+      "axis": "axis_assembly",
+      "match": {
+        "path": [
+          "src/NeuroModFlowNet.ONNX.Graph/"
+        ]
+      }
+    },
+    {
+      "id": "c_onnx_core",
+      "parent": "c_onnx",
+      "axis": "axis_classes",
+      "match": {
+        "name": [
+          "OnnxModel",
+          "OnnxSession"
+        ]
+      }
+    },
+    {
+      "id": "c_orphan",
+      "parent": null
+    }
+  ],
+  "overrides": {
+    "e_tracker": "c_graph",
+    "e_ghost": "c_graph",
+    "e_session": "c_missing"
+  }
+}

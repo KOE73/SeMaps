@@ -57,7 +57,8 @@ export interface FilterAvailable {
   edgeKinds: string[];
   symbolKinds: string[];
   visibility: string[];
-  containers: string[];
+  /** The container nodes of the graph (kind is a container kind): id and name. */
+  containers: { id: string; name: string }[];
   /** How many edges / nodes of each value the data has now (a value not there has none). */
   counts: Record<FilterGroup, Record<string, number>>;
 }
@@ -78,8 +79,23 @@ export function nodeVisible(n: GraphNode, f: Readonly<FilterState>): boolean {
   const symbol = symbolKindOf(n);
   if (symbol && !f.symbolKinds.has(symbol)) return false;
   if (n.visibility && !f.visibility.has(n.visibility)) return false;
-  if (f.container && !(n.containers ?? []).includes(f.container)) return false;
+  // the container itself and everything inside it, at any depth (as the host's `container` filter)
+  if (f.container && n.id !== f.container && !(n.containerPath ?? n.containers ?? []).includes(f.container)) return false;
   return true;
+}
+
+/**
+ * Sets `containerPath` of every node: the containers it lies in, outermost first — the container the
+ * host resolved for it (`containers`, at most one) and then that container's own, up. Containers are
+ * nodes of the graph too; a loop ends the walk (ADR_20260930_contract_graph-containers-from-contains).
+ */
+function assignContainerPaths(nodes: readonly GraphNode[]): void {
+  const byId = new Map(nodes.map((n) => [n.id, n]));
+  for (const n of nodes) {
+    const path: string[] = [];
+    for (let c = n.containers?.[0]; c !== undefined && c !== n.id && !path.includes(c); c = byId.get(c)?.containers?.[0]) path.unshift(c);
+    n.containerPath = path;
+  }
 }
 
 function emptyState(): FilterState {
@@ -116,6 +132,7 @@ export class FilterStore {
   /** Takes over what the data now offers, keeping earlier choices (a graph
    * re-created for the same project, a live diff). */
   sync(nodes: readonly GraphNode[], edges: readonly { kind: string }[]): void {
+    assignContainerPaths(nodes);
     const counts = {
       edgeKinds: tally(edges.map((e) => e.kind)),
       symbolKinds: tally(nodes.map(symbolKindOf)),
@@ -126,7 +143,7 @@ export class FilterStore {
       edgeKinds: Object.keys(counts.edgeKinds),
       symbolKinds: distinct(nodes.map(symbolKindOf)),
       visibility: distinct(nodes.map((n) => n.visibility)),
-      containers: distinct(nodes.flatMap((n) => n.containers ?? [])),
+      containers: nodes.filter((n) => n.container).map((n) => ({ id: n.id, name: n.name ?? n.id })),
       counts,
     };
     const merge = (selected: Set<string>, was: readonly string[], now: readonly string[], defaults?: readonly string[]) => {
@@ -136,7 +153,7 @@ export class FilterStore {
     this.current.edgeKinds = merge(this.current.edgeKinds, this.known.edgeKinds, next.edgeKinds, defaultEdgeKinds());
     this.current.symbolKinds = merge(this.current.symbolKinds, this.known.symbolKinds, next.symbolKinds, defaultSymbolKinds());
     this.current.visibility = merge(this.current.visibility, this.known.visibility, next.visibility);
-    if (this.current.container && !next.containers.includes(this.current.container)) this.current.container = "";
+    if (this.current.container && !next.containers.some((c) => c.id === this.current.container)) this.current.container = "";
     this.known = next;
     this.offered = next;
     this.emit();
@@ -302,7 +319,7 @@ export class FiltersView {
 
     const containerSelect = el("select", {}) as HTMLSelectElement;
     containerSelect.appendChild(el("option", { value: "", text: t.graphAnyContainer }));
-    for (const c of a.containers) containerSelect.appendChild(el("option", { value: c, text: c }));
+    for (const c of a.containers) containerSelect.appendChild(el("option", { value: c.id, text: c.name }));
     containerSelect.value = s.container;
     containerSelect.addEventListener("change", () => this.store.setContainer(containerSelect.value));
 

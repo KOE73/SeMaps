@@ -21,7 +21,7 @@ import {
   seedCircle,
 } from "./layouts.js";
 import { filterStore, nodeVisible } from "./filters.js";
-import { OUTSIDE_ZONES, containerDepth, folderDepth, groupNodes, namespaceDepth } from "./grouping.js";
+import { OUTSIDE_CONTAINERS, containerDepth, folderDepth, groupNodes, namespaceDepth } from "./grouping.js";
 import { type FocusMode, type GroupBy, type LevelGroup, type ViewState, viewSettings } from "./viewSettings.js";
 import type { GroupsResponse } from "./types.js";
 import { type GraphPanel, statsLine } from "./panel.js";
@@ -404,7 +404,7 @@ export class GraphEngine {
     });
     setGroupColorSource((n) => {
       const key = map.get(n.id);
-      return key === undefined || key === "" ? "—" : key === OUTSIDE_ZONES ? t.graphGroupOutside : key;
+      return key === undefined || key === "" ? "—" : key === OUTSIDE_CONTAINERS ? t.graphGroupOutside : key;
     });
     resetPalette();
   }
@@ -416,7 +416,7 @@ export class GraphEngine {
     if (this.booted) this.ui.nodes.refresh();
   }
 
-  /** The containers' nesting and the zones per axis (`/groups`), which «группировать по» needs. */
+  /** The containers' nesting and the container placements per axis (`/groups`), which «группировать по» needs. */
   setGroupData(groups: GroupsResponse | undefined): void {
     this.groupData = groups;
     this.publishViewInfo();

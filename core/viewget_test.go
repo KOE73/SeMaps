@@ -3,36 +3,40 @@ package core
 import "testing"
 
 func TestGetViewTreeAndEdgeVisibility(t *testing.T) {
-	m, err := LoadModel(editWorkspace(t), "p")
+	m, err := LoadModel(editWorkspace(t), "p", defaultKindsJSON(t))
 	if err != nil {
 		t.Fatal(err)
 	}
 	cv := testCanvas(t)
 	m.SetCanvas(cv)
 	ops := []Op{
-		modelOp("zone", "z_in", "v_main", "", `{"id":"z_in","container":null,"parent":"z_core","x":20,"y":40,"width":300,"height":200}`),
-		modelOp("node", "e_b", "v_main", "", `{"entity":"e_b","zone":"z_in","x":40,"y":80}`),
-		modelOp("text", "z_core", "", "ru", `{"name":{"v":"Ядро","at":"2026-09-25T00:00:00Z","origin":"authored"}}`),
+		modelOp("entity", "e_in", "", "", `{"id":"e_in","name":"Inner","kind":"group","origin":"authored"}`),
+		modelOp("placement", "e_in", "v_main", "", `{"entity":"e_in","parent":"e_core","x":20,"y":40,"width":300,"height":200,"override":{"fill":"#ffffff","border":{"color":"#000000"}}}`),
+		modelOp("placement", "e_b", "v_main", "", `{"entity":"e_b","parent":"e_in","x":40,"y":80}`),
 	}
 	if _, err := m.Apply(ops, "human"); err != nil {
 		t.Fatal(err)
 	}
-	got, err := m.GetView("v_main", "ru")
+	got, err := m.GetView("v_main")
 	if err != nil {
 		t.Fatal(err)
 	}
-	if len(got.Zones) != 1 || got.Zones[0].ID != "z_core" || got.Zones[0].Name != "Ядро" {
-		t.Fatalf("top zones = %+v", got.Zones)
+	if len(got.Placements) != 2 || got.Placements[0].Entity != "e_core" || got.Placements[0].Name != "Core" || !got.Placements[0].Container {
+		t.Fatalf("top placements = %+v", got.Placements)
 	}
-	inner := got.Zones[0].Zones
-	if len(inner) != 1 || inner[0].ID != "z_in" || len(inner[0].Nodes) != 1 || inner[0].Nodes[0].Entity != "e_b" {
+	inner := got.Placements[0].Children
+	if len(inner) != 1 || inner[0].Entity != "e_in" || !inner[0].Container || len(inner[0].Children) != 1 || inner[0].Children[0].Entity != "e_b" {
 		t.Fatalf("nesting = %+v", inner)
 	}
-	if n := inner[0].Nodes[0]; n.Width != cv.Node.Width || n.Height != cv.Node.Height || n.Name != "B" || n.Kind != "class" {
-		t.Fatalf("node = %+v", n)
+	if string(inner[0].Override) != `{"fill":"#ffffff","border":{"color":"#000000"}}` {
+		t.Fatalf("override = %s", inner[0].Override)
 	}
-	if len(got.Nodes) != 1 || got.Nodes[0].Entity != "e_a" || got.Nodes[0].Zone != "" {
-		t.Fatalf("loose nodes = %+v", got.Nodes)
+	if n := inner[0].Children[0]; n.Width != cv.Node.Width || n.Height != cv.Node.Height || n.Name != "B" || n.Kind != "class" || n.Container {
+		t.Fatalf("block = %+v", n)
+	}
+	loose := got.Placements[1]
+	if loose.Entity != "e_a" || loose.Parent != nil || loose.Container {
+		t.Fatalf("loose block = %+v", loose)
 	}
 	if len(got.Unsaved) == 0 {
 		t.Fatalf("unsaved = %+v", got.Unsaved)
@@ -45,22 +49,25 @@ func TestGetViewTreeAndEdgeVisibility(t *testing.T) {
 	if err := m.SetRelationVisible("v_main", "r_a_b_items_item", false, "human"); err != nil {
 		t.Fatal(err)
 	}
-	if got, _ = m.GetView("v_main", "ru"); len(got.Edges) != 0 {
+	if got, _ = m.GetView("v_main"); len(got.Edges) != 0 {
 		t.Fatalf("except ignored: %+v", got.Edges)
 	}
-	// a zone reference limits the answer to its subtree
-	sub, err := m.GetView("v_main#z_in", "ru")
-	if err != nil || len(sub.Zones) != 1 || sub.Zones[0].ID != "z_in" || len(sub.Nodes) != 0 || sub.View.Scope != "v_main#z_in" {
+	// a container reference limits the answer to its subtree
+	sub, err := m.GetView("v_main#e_in")
+	if err != nil || len(sub.Placements) != 1 || sub.Placements[0].Entity != "e_in" || sub.View.Scope != "v_main#e_in" {
 		t.Fatalf("subtree = %+v, %v", sub, err)
 	}
-	if _, err := m.GetView("v_main#e_a", "ru"); err == nil {
-		t.Fatal("a node is not a scope")
+	if _, err := m.GetView("v_main#e_a"); err == nil {
+		t.Fatal("a block is not a scope")
 	}
-	// the view's own edges list replaces the registry
-	if _, err := m.Apply([]Op{modelOp("view", "v_main", "v_main", "", `{"id":"v_main","edges":[{"id":"r_x","from":"e_a","to":"e_b","type":"call"}]}`)}, "human"); err != nil {
+	// the view's own edges list replaces the registry and may carry an override
+	if _, err := m.Apply([]Op{modelOp("view", "v_main", "v_main", "", `{"id":"v_main","edges":[{"id":"r_x","from":"e_a","to":"e_b","type":"call","override":{"line":{"color":"#ff0000","dash":"4,4"}}}]}`)}, "human"); err != nil {
 		t.Fatal(err)
 	}
-	if got, _ = m.GetView("v_main", "ru"); len(got.Edges) != 1 || got.Edges[0].ID != "r_x" {
+	if got, _ = m.GetView("v_main"); len(got.Edges) != 1 || got.Edges[0].ID != "r_x" || string(got.Edges[0].Override) != `{"line":{"color":"#ff0000","dash":"4,4"}}` {
 		t.Fatalf("own edges = %+v", got.Edges)
 	}
+	// an edge override outside the table is refused
+	_, err = m.Apply([]Op{modelOp("view", "v_main", "v_main", "", `{"id":"v_main","edges":[{"id":"r_x","from":"e_a","to":"e_b","type":"call","override":{"fill":"#ff0000"}}]}`)}, "human")
+	refused(t, err, `"fill" cannot be overridden on an edge`)
 }

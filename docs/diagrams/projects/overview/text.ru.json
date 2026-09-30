@@ -1,5 +1,5 @@
 {
-  "contractVersion": 3,
+  "contractVersion": 5,
   "language": "ru",
   "entries": {
     "v_overview": {
@@ -138,41 +138,6 @@
     "rt_writes": {
       "name": {
         "v": "пишет",
-        "at": "2026-09-26T09:39:53Z",
-        "origin": "authored"
-      }
-    },
-    "z_clients": {
-      "name": {
-        "v": "Клиенты",
-        "at": "2026-09-26T09:39:53Z",
-        "origin": "authored"
-      }
-    },
-    "z_host": {
-      "name": {
-        "v": "Хост semaps.exe (host/)",
-        "at": "2026-09-26T09:39:53Z",
-        "origin": "authored"
-      }
-    },
-    "z_core": {
-      "name": {
-        "v": "Ядро (core/)",
-        "at": "2026-09-26T09:39:53Z",
-        "origin": "authored"
-      }
-    },
-    "z_storage": {
-      "name": {
-        "v": "Хранение",
-        "at": "2026-09-26T09:39:53Z",
-        "origin": "authored"
-      }
-    },
-    "z_extractors": {
-      "name": {
-        "v": "Экстракторы (extractors/)",
         "at": "2026-09-26T09:39:53Z",
         "origin": "authored"
       }

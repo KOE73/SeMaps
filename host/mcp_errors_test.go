@@ -23,7 +23,7 @@ func TestArgumentErrorListsAcceptedParameters(t *testing.T) {
 	if !strings.Contains(text, "unexpected additional properties") {
 		t.Fatalf("the SDK's own message is gone: %s", text)
 	}
-	if !strings.Contains(text, "get_view accepts: view (required), lang, project") {
+	if !strings.Contains(text, "get_view accepts: view (required), project") {
 		t.Fatalf("no list of accepted parameters: %s", text)
 	}
 

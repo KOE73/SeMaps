@@ -7,8 +7,8 @@ import (
 
 func graphModel(t *testing.T, entities, relations string) *Model {
 	t.Helper()
-	ws, _ := workspace(t, `{"id":"p"}`, entities, relations, "")
-	m, err := LoadModel(ws, "p")
+	ws, _ := workspace(t, `{"id":"p","contractVersion":5}`, entities, relations, "")
+	m, err := LoadModel(ws, "p", defaultKindsJSON(t))
 	if err != nil {
 		t.Fatalf("LoadModel: %v", err)
 	}

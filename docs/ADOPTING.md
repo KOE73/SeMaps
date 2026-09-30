@@ -100,8 +100,8 @@ line). `graph_formats` documents every macro with worked examples — read that 
 rather than guessing the grammar.
 
 To point an agent at an object of a view, copy its reference in the editor («🔗» in Properties, or
-«Копировать ссылку» in the block/zone menu): `v_ops#z_undistort`. A request that names the
-reference — «сделай остальные зоны в `v_ops#z_transform` как `v_ops#z_undistort`» — is what
+«Копировать ссылку» in the block/container menu): `v_ops#e_undistort`. A request that names the
+reference — «сделай остальные контейнеры в `v_ops#e_transform` как `v_ops#e_undistort`» — is what
 the view tools work from (the MCP tool `layout_guide` explains how; the tools are in API.md §6).
 Save before such a task, so that what the agent changes is only what it was asked to change.
 
@@ -137,17 +137,21 @@ When working with the registry files directly (not recommended for agents; usefu
    `project.json` is a project, every `views/*.view.json` in it is a view. Do **not** create
    `catalog.json` — it is no longer read, and `semaps check` reports it as `устарело`.
 3. **Model project** `<workspace>/projects/<id>/`:
-   - `project.json`: `id` = folder name, `title`, `contractVersion: 3`, `defaultAxis`,
+   - `project.json`: `id` = folder name, `title`, `contractVersion: 5`, `defaultAxis`,
      `languages`, `sources.include`; optional `subtitle`, `icon`, `theme`, `order` for the catalogue.
-   - `entities.json`: `e_` ids, `kind`, `origin: code` for anything read from the code, and `codeRef`
-     relative to `source_root`. With an extractor for the language, let `semaps sync` write it
-     (see below) instead.
-   - `relations.json` + `relation-types.json`: every `type` used must be in the dictionary.
+   - `entities.json`: `e_` ids, `kind` (a kind of the dictionary — MCP `get_kinds`; the project's
+     own kinds go into `<workspace>/kinds.json`, which adds to the tool's dictionary), `origin: code`
+     for anything read from the code, and `codeRef` relative to `source_root`. With an extractor for
+     the language, let `semaps sync` write it (see below) instead. A container (a subsystem, a
+     layer, a group) is an entity of a container kind, not a separate file.
+   - `relations.json` + `relation-types.json`: every `type` used must be declared in
+     `relation-types.json`; its name, description and style belong to the dictionary
+     (`relationGroups` of `kinds.json`).
      For a derived relation, the id is `r_<from>_<to>_<type>` without the `e_` prefix.
    - `text.<lang>.json`: descriptions for `e_`, names for `rt_`/`v_`. Every value is
-     `{ "v", "at", "origin" }`, and `at` is UTC ISO-8601 with `Z`.
+     `{ "v", "at", "origin" }` — never a bare string — and `at` is UTC ISO-8601 with `Z`.
    - `views/<id>.view.json`: `id` (starts with `v_`), `project`, `axis`, and **empty**
-     `zones`/`nodes`; optional `icon`, `theme`, `order`. The view's catalogue title is `name` under
+     `placements`; optional `icon`, `theme`, `order`. The view's catalogue title is `name` under
      its id in `text.<lang>.json` — without it the catalogue shows the bare id.
 
    The human can also create and rename projects and views in the editor (**Вставка → Проекты и
@@ -355,6 +359,43 @@ file of the project (`views/…`, `project.json`, `entities.json`, `relations.js
 `relation-types.json`, every `text.<lang>.json`) returned 200. A 404 on a view that
 `/api/workspace` listed means two servers share the port (see the port trap).
 
+## Moving a workspace to the current contract: `semaps migrate`
+
+The loader reads only the current shape (contract 5). A workspace written for contract 3 — a
+`project.json` below 5, views with `zones`/`nodes`, a `containers.json`, `c_`/`z_` text keys,
+`kinds` in `styles.json`, `zone` in `canvas.json` — is refused with an error that names the file
+and the field, and `semaps check` says the same. The way out is one command, run from the
+consuming repo:
+
+```
+semaps migrate --dry-run <name>.semaps   # what would be done; writes nothing, exit 1 when there is something
+semaps migrate <name>.semaps             # rewrites the workspace files in place
+```
+
+It rewrites **in place**, all or nothing (every new content is computed first), and is idempotent:
+run again, it reports «Уже контракт v5». Commit the result as one change, apart from other work.
+What it does:
+
+- a **zone** of a view becomes an authored **entity of kind `group`** (the name from the
+  `z_`/`c_` text, else from the id), and the view's `zones` and `nodes` become one `placements`
+  array with `parent`; the text keys `z_`/`c_` are removed (a name in another language is listed:
+  an entity's name is not translated);
+- `styleId` `zone.<colour>`/`container.<colour>[.dashed]` becomes an `override` with the colours of the
+  old style definition (the workspace's, else the tool's old built-in one); other `styleId`s stay;
+- an entry of `containers.json` becomes a `group` entity, its `parent` a `contains` relation, and
+  the file is removed. Its `match` rules, `axis` and `theme` are **not converted** — they are
+  printed in the report;
+- `styles.json` of the workspace: `kinds` → `forKinds`, container styles get `appliesTo: container`,
+  `default.zone` → `default.container`; styles that have no `forKinds` are kept and listed as «без
+  типа» (a type is never invented — assign one, or delete the style); `canvas.json`: `zone` →
+  `container`; a `styleId` on a relation type is dropped and named;
+- `contractVersion` goes to 5 in every file that has one.
+
+The report ends with «Решает человек»: the `match` rules to turn into `contains` relations (or drop),
+names lost in other languages, styles without a type. Then run `semaps check`: entity kinds and relation
+types outside the dictionary are listed («не из словаря»); add the project's own to
+`<workspace>/kinds.json`. Do not edit `contractVersion` by hand instead of migrating.
+
 ## Traps
 
 - **Old workspace with `catalog.json`.** Move each entry: `title` → `name` under the view's id in
@@ -363,8 +404,8 @@ file of the project (`views/…`, `project.json`, `entities.json`, `relations.js
 - **No `*.semaps`, no server.** The host no longer looks for a workspace by itself; the project file
   is required (or `--workspace`).
 
-- **Geometry only on request.** Unasked, an agent never writes `x/y/width/height`, zones or
-  nodes (CONTRACT §8.2, §9.6): create the view empty and let the human place the nodes. When the
+- **Geometry only on request.** Unasked, an agent never writes `x/y/width/height`, containers or
+  placements (CONTRACT §8.2, §9.6): create the view empty and let the human place the blocks. When the
   human explicitly asks for help with a view ("spread these subclasses into frames by meaning"),
   do what was asked and nothing more. An agent works on the canvas **only through MCP**, never by
   editing view files: the MCP tool `layout_guide` explains how a view works — canvas numbers, each

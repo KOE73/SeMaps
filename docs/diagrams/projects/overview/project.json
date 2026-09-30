@@ -1,7 +1,7 @@
 {
   "id": "overview",
   "title": "SeMaps — общая архитектура",
-  "contractVersion": 3,
+  "contractVersion": 5,
   "defaultAxis": "axis_subsystem",
   "languages": [
     "ru"

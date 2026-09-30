@@ -110,11 +110,11 @@ func hostModelFixture(t *testing.T) (*modelService, *httptest.Server) {
 	ws := t.TempDir()
 	dir := filepath.Join(ws, "projects", "p")
 	for file, body := range map[string]string{
-		"project.json":         `{"id":"p","languages":["ru"]}`,
+		"project.json":         `{"id":"p","contractVersion":5,"languages":["ru"]}`,
 		"entities.json":        `{"entities":[{"id":"e_a","name":"A","kind":"class"}]}`,
 		"relations.json":       `{"relations":[]}`,
 		"relation-types.json":  `{"relationTypes":[]}`,
-		"views/main.view.json": `{"id":"v_main","project":"p","axis":"axis_test","zones":[],"nodes":[{"entity":"e_a","zone":null,"x":1,"y":2}]}`,
+		"views/main.view.json": `{"id":"v_main","project":"p","axis":"axis_test","placements":[{"entity":"e_a","parent":null,"x":1,"y":2}]}`,
 	} {
 		p := filepath.Join(dir, filepath.FromSlash(file))
 		if err := os.MkdirAll(filepath.Dir(p), 0755); err != nil {
@@ -208,6 +208,58 @@ func TestModelAPIAuthSnapshotSaveDiscardAndRules(t *testing.T) {
 	b, _ = os.ReadFile(file)
 	if !bytes.Contains(b, []byte("Edited")) {
 		t.Fatal("save did not write file")
+	}
+}
+
+// GET /api/kinds is the dictionary: the default with the workspace kinds.json
+// added; without lang every text in all its languages.
+func TestModelAPIKinds(t *testing.T) {
+	s, srv := hostModelFixture(t)
+	defer srv.Close()
+	if err := os.WriteFile(filepath.Join(s.workspace, "kinds.json"), []byte(`{"relationGroups":[{"id":"mine","name":{"en":"Mine"},"types":[{"id":"feeds","name":{"en":"feeds"}}]}]}`), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	res := modelRequest(t, srv.Client(), srv.URL+"/api/kinds", "", "GET", "")
+	defer res.Body.Close()
+	var full struct {
+		Groups []struct {
+			Kinds []struct {
+				ID        string
+				Container bool
+				Name      map[string]string
+			}
+		}
+		RelationGroups []struct{ Types []struct{ ID string } }
+	}
+	if err := json.NewDecoder(res.Body).Decode(&full); err != nil || res.StatusCode != 200 {
+		t.Fatalf("kinds: %d %v", res.StatusCode, err)
+	}
+	seen := map[string]bool{}
+	for _, g := range full.Groups {
+		for _, k := range g.Kinds {
+			seen[k.ID] = true
+			if k.ID == "class" && (k.Container || k.Name["ru"] == "" || k.Name["en"] == "") {
+				t.Errorf("class: %+v", k)
+			}
+		}
+	}
+	if !seen["class"] || !seen["namespace"] {
+		t.Errorf("default kinds missing: %v", seen)
+	}
+	types := map[string]bool{}
+	for _, g := range full.RelationGroups {
+		for _, ty := range g.Types {
+			types[ty.ID] = true
+		}
+	}
+	if !types["extends"] || !types["feeds"] {
+		t.Errorf("relation types: default and workspace expected, got %v", types)
+	}
+	res2 := modelRequest(t, srv.Client(), srv.URL+"/api/kinds?lang=en", "", "GET", "")
+	defer res2.Body.Close()
+	body, _ := io.ReadAll(res2.Body)
+	if !strings.Contains(string(body), `"name":"Class"`) {
+		t.Errorf("lang=en: %.200s", body)
 	}
 }
 

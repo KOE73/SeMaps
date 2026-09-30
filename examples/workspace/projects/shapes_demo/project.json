@@ -7,6 +7,6 @@
     "ru"
   ],
   "icon": "flask",
-  "contractVersion": 3,
+  "contractVersion": 5,
   "defaultAxis": "axis_subsystem"
 }

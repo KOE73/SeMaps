@@ -27,24 +27,14 @@ function dirOf(file: string | undefined): string {
 }
 
 /**
- * The one container of a node that is innermost by the nesting containers.json
- * declares (`parent`, served with the graph as `/groups`): the container of the
- * node's own that no other container of the node's own nests inside. When there
- * is no single such container — several unrelated ones, or the data gives no
- * nesting between them — the node has none: nothing is guessed.
+ * The container of a node, as the host resolved it from the `contains` relations
+ * between the graph's nodes: the innermost container that contains it, or none
+ * (`containers` is empty) when there is no container or two unrelated ones
+ * contain it. The editor takes it as it comes; nothing is guessed here
+ * (ADR_20260930_contract_graph-containers-from-contains).
  */
-export function innermostContainer(n: GraphNode, parentOf: ReadonlyMap<string, string | undefined>): string {
-  const own = new Set(n.containers ?? []);
-  const ancestorsOfOthers = new Set<string>();
-  for (const c of own) {
-    const seen = new Set([c]);
-    for (let p = parentOf.get(c); p && !seen.has(p); p = parentOf.get(p)) {
-      seen.add(p);
-      ancestorsOfOthers.add(p);
-    }
-  }
-  const leaves = [...own].filter((c) => !ancestorsOfOthers.has(c));
-  return leaves.length === 1 ? leaves[0]! : "";
+export function containerOf(n: GraphNode): string {
+  return n.containers?.length === 1 ? n.containers[0]! : "";
 }
 
 /** Runs Louvain on the current graph and returns node id -> community id. */

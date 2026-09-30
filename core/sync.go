@@ -5,7 +5,7 @@ package core
 // docs/EXTRACTOR.md §5; why they are what they are:
 // ADR_20260923-9_core_sync-symbol-mapping-and-containment.
 //
-// Sync never writes texts, views or containers, never touches an `authored`
+// Sync never writes texts or views, never touches an `authored`
 // record, never deletes and never changes an id it has handed out.
 
 import (
@@ -33,6 +33,9 @@ type SyncOptions struct {
 	// NoRenames treats every rename candidate as what it literally is — one
 	// entity gone and one new — instead of holding both for a human decision.
 	NoRenames bool
+	// DefaultKinds is the tool's dictionary, for SyncWorkspace's load
+	// (LoadModel); sync itself never reads it.
+	DefaultKinds []byte
 }
 
 // UsageError is a mistake in how sync was called, not in the data.
@@ -664,7 +667,7 @@ func Sync(model *Model, facts *Facts, opt SyncOptions) (*SyncReport, error) {
 // SyncWorkspace is the non-host CLI path: load, reconcile, and save. Hosts use
 // Sync on their already loaded model and leave Save to the human.
 func SyncWorkspace(workspace string, facts *Facts, opt SyncOptions) (*SyncReport, error) {
-	m, err := LoadModel(workspace, opt.Project)
+	m, err := LoadModel(workspace, opt.Project, opt.DefaultKinds)
 	if err != nil {
 		return nil, err
 	}

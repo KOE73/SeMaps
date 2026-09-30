@@ -28,7 +28,7 @@ func manyEntitiesSession(t *testing.T, n int) *mcp.ClientSession {
 	}
 	b.WriteString(`]}`)
 	files := map[string]string{
-		"project.json":        `{"id":"p"}`,
+		"project.json":        `{"id":"p","contractVersion":5}`,
 		"entities.json":       b.String(),
 		"relations.json":      `{"relations":[]}`,
 		"relation-types.json": `{"relationTypes":[]}`,
@@ -156,7 +156,7 @@ func TestMCPGetGraphMissingDefaultVsInclude(t *testing.T) {
 	ws := t.TempDir()
 	dir := filepath.Join(ws, "projects", "p")
 	files := map[string]string{
-		"project.json": `{"id":"p"}`,
+		"project.json": `{"id":"p","contractVersion":5}`,
 		"entities.json": `{"entities":[
 			{"id":"e_a","name":"A","kind":"class","origin":"authored","status":"present"},
 			{"id":"e_gone","name":"Gone","kind":"class","origin":"authored","status":"missing"}

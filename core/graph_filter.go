@@ -246,64 +246,6 @@ func LiftNoneHint(full, walked *Graph, focusID string, follow []Relation) string
 	return ""
 }
 
-// FilterContainer keeps only nodes whose resolved containers include `id`
-// itself or a descendant of it (by `parent`, containers.json), and edges
-// between two kept nodes. `containers` is the full containers.json list, not
-// just the set of known ids: descendants can only be found by walking
-// `parent`. An id absent from it is a typo, not an empty container, so
-// callers turn that into 404. A node's own Containers list is left as
-// resolved — this only widens which containers count as a match, it never
-// adds ancestors to a node.
-//
-// A cycle in `parent` cannot make this loop forever: the descendant walk
-// tracks visited ids, exactly like Neighborhood's frontier walk.
-func FilterContainer(g *Graph, id string, containers []Container) (*Graph, error) {
-	known := map[string]bool{}
-	children := map[string][]string{}
-	for _, c := range containers {
-		known[c.ID] = true
-		if c.Parent != "" {
-			children[c.Parent] = append(children[c.Parent], c.ID)
-		}
-	}
-	if !known[id] {
-		return nil, fmt.Errorf("no such container: %q", id)
-	}
-	inSubtree := map[string]bool{id: true}
-	frontier := []string{id}
-	for len(frontier) > 0 {
-		var next []string
-		for _, cur := range frontier {
-			for _, child := range children[cur] {
-				if !inSubtree[child] {
-					inSubtree[child] = true
-					next = append(next, child)
-				}
-			}
-		}
-		frontier = next
-	}
-
-	nodes := make([]GraphNode, 0)
-	keep := map[string]bool{}
-	for _, n := range g.Nodes {
-		for _, c := range n.Containers {
-			if inSubtree[c] {
-				nodes = append(nodes, n)
-				keep[n.ID] = true
-				break
-			}
-		}
-	}
-	edges := make([]GraphEdge, 0)
-	for _, e := range g.Edges {
-		if keep[e.From] && keep[e.To] {
-			edges = append(edges, e)
-		}
-	}
-	return &Graph{Nodes: nodes, Edges: edges}, nil
-}
-
 // FilterMissing drops model-only nodes whose entity has status "missing",
 // and model-only edges whose relation has status "missing" — old relations
 // and entities the registry has kept from before, which most callers do not

@@ -363,6 +363,18 @@ func (g *graphService) serve(w http.ResponseWriter, r *http.Request) {
 		around, aroundKind, notice = res.Node.ID, res.Node.Kind, res.Notice
 	}
 
+	var containerID string
+	if q := r.URL.Query().Get("container"); q != "" {
+		var problem *nodeProblem
+		containerID, problem = resolveContainer(graph, q, missing)
+		if problem != nil {
+			w.Header().Set("Content-Type", "application/json; charset=utf-8")
+			w.WriteHeader(problem.Status)
+			writeJSON(w, problem.Body)
+			return
+		}
+	}
+
 	graph, hiddenNodes, hiddenEdges := core.FilterMissing(graph, missing)
 
 	levelParam := r.URL.Query().Get("level")
@@ -431,13 +443,8 @@ func (g *graphService) serve(w http.ResponseWriter, r *http.Request) {
 		graph = core.FilterEdgeKinds(graph, kinds)
 	}
 
-	if container := r.URL.Query().Get("container"); container != "" {
-		defs, err := containerDefs(m)
-		if err != nil {
-			modelError(w, err)
-			return
-		}
-		graph, err = core.FilterContainer(graph, container, defs)
+	if containerID != "" {
+		graph, err = core.FilterContainer(graph, containerID)
 		if err != nil {
 			http.Error(w, err.Error(), http.StatusNotFound)
 			return
@@ -486,15 +493,21 @@ func (g *graphService) serve(w http.ResponseWriter, r *http.Request) {
 // serveFind: GET /api/graph/{project}/find?q=&limit= — part 2's plain
 // substring search over names and ids, so a caller unsure of the exact
 // `around` spelling gets candidates instead of guessing.
-// serveGroups answers the graph mode's «группировать по»: containers' nesting and,
-// per axis, the zone of the project's views each entity sits in. Read-only.
+// serveGroups answers the graph mode's «группировать по»: the containers of the
+// graph and their nesting (`contains` between container nodes) and, per axis,
+// the container placement of the project's views each entity sits in. Read-only.
 func (g *graphService) serveGroups(w http.ResponseWriter, r *http.Request) {
 	m, err := g.models.get(r.PathValue("project"))
 	if err != nil {
 		modelError(w, err)
 		return
 	}
-	data, err := m.Groups()
+	graph, _, err := g.build(r.PathValue("project"))
+	if err != nil {
+		modelError(w, err)
+		return
+	}
+	data, err := m.Groups(graph)
 	if err != nil {
 		modelError(w, err)
 		return
@@ -581,17 +594,37 @@ func parseFanout(s string) (int, error) {
 	return n, nil
 }
 
-// containerDefs is the full containers.json list, as core.FilterContainer
-// needs it to find descendants by `parent` — not just which ids exist.
-func containerDefs(m *core.Model) ([]core.Container, error) {
-	containers, err := core.LoadContainers(m.ProjectDir())
-	if err != nil {
-		return nil, err
+// nodeProblem is why a node parameter did not resolve, in the shape the
+// endpoint answers with: ambiguous names (409) list the candidates, a name
+// that matches nothing (404) lists the nearest ones, a container that is none
+// (400) says so.
+type nodeProblem struct {
+	Status  int
+	Body    map[string]any
+	Message string
+}
+
+// resolveContainer resolves the `container` parameter — a node id or a name,
+// as `around` is — against the graph as built, before `missing` hides anything.
+// The node must be a container: a node whose kind is a container kind of the
+// dictionary (ADR_20260930_contract_graph-containers-from-contains).
+func resolveContainer(graph *core.Graph, query string, missing bool) (string, *nodeProblem) {
+	res := core.ResolveNode(graph, query)
+	switch {
+	case len(res.Candidates) > 0:
+		return "", &nodeProblem{http.StatusConflict, map[string]any{"error": "ambiguous", "asked": query, "candidates": res.Candidates},
+			fmt.Sprintf("container %q is ambiguous: %d candidates", query, len(res.Candidates))}
+	case res.Node == nil:
+		return "", &nodeProblem{http.StatusNotFound, map[string]any{"error": "no such node", "asked": query, "suggestions": res.Suggestions},
+			fmt.Sprintf("no such container: %q (nearest: %s)", query, strings.Join(res.Suggestions, ", "))}
+	case res.MissingHidden && !missing:
+		msg := fmt.Sprintf("node %q is hidden as missing; pass missing=1 to include it", res.Node.ID)
+		return "", &nodeProblem{http.StatusNotFound, map[string]any{"error": msg}, msg}
+	case !res.Node.Container:
+		msg := fmt.Sprintf("%s is not a container: its kind is not a container kind of kinds.json (get_kinds)", res.Node.ID)
+		return "", &nodeProblem{http.StatusBadRequest, map[string]any{"error": msg}, msg}
 	}
-	if containers == nil {
-		return nil, nil
-	}
-	return containers.List, nil
+	return res.Node.ID, nil
 }
 
 // parseBoolParam: the `missing` query/tool parameter. Absent, "0" and

@@ -1,0 +1,8 @@
+{
+  "contractVersion": 3,
+  "relationTypes": [
+    { "id": "call", "origin": "authored" },
+    { "id": "data-flow", "origin": "authored" },
+    { "id": "storage", "origin": "authored" }
+  ]
+}

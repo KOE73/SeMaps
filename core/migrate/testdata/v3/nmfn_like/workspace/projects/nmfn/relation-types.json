@@ -1,0 +1,24 @@
+{
+  "contractVersion": 3,
+  "relationTypes": [
+    {
+      "id": "implements",
+      "origin": "code"
+    },
+    {
+      "id": "depends",
+      "origin": "code",
+      "visibility": "visible"
+    },
+    {
+      "id": "holds.one",
+      "origin": "code",
+      "visibility": "visible"
+    },
+    {
+      "id": "injects",
+      "origin": "code",
+      "visibility": "hidden"
+    }
+  ]
+}

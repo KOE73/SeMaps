@@ -10,9 +10,9 @@ import (
 func filterFixtureGraph() *Graph {
 	return &Graph{
 		Nodes: []GraphNode{
-			{ID: "csharp:A", Kind: "type", Containers: []string{"c_app"}},
-			{ID: "csharp:A.Run", Kind: "function", Containers: []string{"c_app"}},
-			{ID: "csharp:B", Kind: "type", Containers: []string{"c_lib"}, File: "src/B.cs", Line: 3, Entity: "e_b"},
+			{ID: "csharp:A", Kind: "type"},
+			{ID: "csharp:A.Run", Kind: "function"},
+			{ID: "csharp:B", Kind: "type", File: "src/B.cs", Line: 3, Entity: "e_b"},
 		},
 		Edges: []GraphEdge{
 			{From: "csharp:A", To: "csharp:A.Run", Kind: "holds", Via: &Via{Member: "Run"}},
@@ -240,87 +240,80 @@ func TestWalkFanout(t *testing.T) {
 	}
 }
 
-func TestFilterContainer(t *testing.T) {
-	g := filterFixtureGraph()
-	defs := []Container{{ID: "c_app"}, {ID: "c_lib"}}
-	out, err := FilterContainer(g, "c_app", defs)
-	if err != nil {
-		t.Fatalf("FilterContainer: %v", err)
-	}
-	if len(out.Nodes) != 2 {
-		t.Fatalf("expected the 2 c_app nodes, got %+v", out.Nodes)
-	}
-	if len(out.Edges) != 1 {
-		t.Fatalf("expected the edge between the two kept nodes, got %+v", out.Edges)
-	}
-}
-
-func TestFilterContainerUnknown(t *testing.T) {
-	defs := []Container{{ID: "c_app"}}
-	if _, err := FilterContainer(filterFixtureGraph(), "c_typo", defs); err == nil {
-		t.Fatal("expected an error for an unknown container id")
-	}
-}
-
-// TestFilterContainerIncludesGrandchild: a node resolved into the most
-// specific (grandchild) container must still show up under its grandparent
-// container, since containment by longest-prefix resolution otherwise hides
-// everything but the leaf container (the bug this fix addresses).
-func TestFilterContainerIncludesGrandchild(t *testing.T) {
-	g := &Graph{
+func containerFixtureGraph() *Graph {
+	return &Graph{
 		Nodes: []GraphNode{
-			{ID: "n1", Containers: []string{"c_onnx_core"}},
-			{ID: "n2", Containers: []string{"c_other"}},
+			{ID: "x:App", Kind: "module", Container: true},
+			{ID: "x:App.Core", Kind: "module", Container: true, Containers: []string{"x:App"}},
+			{ID: "x:Lib", Kind: "module", Container: true},
+			{ID: "x:A", Kind: "type", Containers: []string{"x:App.Core"}},
+			{ID: "x:B", Kind: "type", Containers: []string{"x:Lib"}},
+			{ID: "x:C", Kind: "type", Containers: []string{"x:App"}},
+			{ID: "x:Loose", Kind: "type"},
 		},
-		Edges: []GraphEdge{{From: "n1", To: "n2", Kind: "uses"}},
-	}
-	defs := []Container{
-		{ID: "c_onnx"},
-		{ID: "c_onnx_core", Parent: "c_onnx"},
-		{ID: "c_onnx_core_leaf", Parent: "c_onnx_core"},
-		{ID: "c_other"},
-	}
-	out, err := FilterContainer(g, "c_onnx", defs)
-	if err != nil {
-		t.Fatalf("FilterContainer: %v", err)
-	}
-	if len(out.Nodes) != 1 || out.Nodes[0].ID != "n1" {
-		t.Fatalf("expected n1 kept via its grandparent container, got %+v", out.Nodes)
-	}
-	// the node's own Containers list stays as resolved, not widened with ancestors.
-	if len(out.Nodes[0].Containers) != 1 || out.Nodes[0].Containers[0] != "c_onnx_core" {
-		t.Fatalf("Containers must stay as resolved, got %+v", out.Nodes[0].Containers)
-	}
-	if len(out.Edges) != 0 {
-		t.Fatalf("n2 is outside c_onnx, so the edge must not survive: %+v", out.Edges)
+		Edges: []GraphEdge{
+			{From: "x:App", To: "x:App.Core", Kind: "contains"},
+			{From: "x:App.Core", To: "x:A", Kind: "contains"},
+			{From: "x:A", To: "x:B", Kind: "uses"},
+			{From: "x:C", To: "x:A", Kind: "uses"},
+		},
 	}
 }
 
-// TestFilterContainerParentCycle: a cycle in `parent` must not hang the
-// descendant walk.
-func TestFilterContainerParentCycle(t *testing.T) {
-	g := &Graph{Nodes: []GraphNode{{ID: "n1", Containers: []string{"c_b"}}}}
-	defs := []Container{
-		{ID: "c_a", Parent: "c_b"},
-		{ID: "c_b", Parent: "c_a"}, // cycle
+// The container itself and everything inside it, at any depth, and the edges
+// between two kept nodes.
+func TestFilterContainer(t *testing.T) {
+	out, err := FilterContainer(containerFixtureGraph(), "x:App")
+	if err != nil {
+		t.Fatalf("FilterContainer: %v", err)
 	}
+	var ids []string
+	for _, n := range out.Nodes {
+		ids = append(ids, n.ID)
+	}
+	if strings.Join(ids, ",") != "x:App,x:App.Core,x:A,x:C" {
+		t.Fatalf("expected App and everything inside it, got %v", ids)
+	}
+	if len(out.Edges) != 3 { // both contains and C uses A; A uses B leaves
+		t.Fatalf("expected the edges between kept nodes, got %+v", out.Edges)
+	}
+	// the node's own Containers list stays as it is, not widened with ancestors
+	for _, n := range out.Nodes {
+		if n.ID == "x:A" && (len(n.Containers) != 1 || n.Containers[0] != "x:App.Core") {
+			t.Fatalf("Containers must stay as built, got %+v", n.Containers)
+		}
+	}
+}
+
+func TestFilterContainerRefusals(t *testing.T) {
+	if _, err := FilterContainer(containerFixtureGraph(), "x:Nope"); err == nil || !strings.Contains(err.Error(), "no such container") {
+		t.Fatalf("an unknown id: %v", err)
+	}
+	if _, err := FilterContainer(containerFixtureGraph(), "x:A"); err == nil || !strings.Contains(err.Error(), "is not a container") {
+		t.Fatalf("a node that is no container: %v", err)
+	}
+}
+
+// A cycle in the containment must not hang the walk.
+func TestFilterContainerCycle(t *testing.T) {
+	g := &Graph{Nodes: []GraphNode{
+		{ID: "a", Container: true, Containers: []string{"b"}},
+		{ID: "b", Container: true, Containers: []string{"a"}},
+	}}
 	done := make(chan struct{})
 	var out *Graph
 	var err error
 	go func() {
-		out, err = FilterContainer(g, "c_a", defs)
+		out, err = FilterContainer(g, "a")
 		close(done)
 	}()
 	select {
 	case <-done:
 	case <-time.After(2 * time.Second):
-		t.Fatal("FilterContainer hung on a parent cycle")
+		t.Fatal("FilterContainer hung on a cycle")
 	}
-	if err != nil {
-		t.Fatalf("FilterContainer: %v", err)
-	}
-	if len(out.Nodes) != 1 {
-		t.Fatalf("expected n1 kept (c_b is c_a's descendant despite the cycle), got %+v", out.Nodes)
+	if err != nil || len(out.Nodes) != 2 {
+		t.Fatalf("got %+v, %v", out, err)
 	}
 }
 

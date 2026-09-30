@@ -57,6 +57,10 @@ type Model struct {
 	journal    [][]Op
 	dirty      DirtySummary
 	canvas     Canvas // given by the host (SetCanvas); geometry needs it
+	// kinds is the merged dictionary (CONTRACT §6); defaultKinds the tool's
+	// default it was merged from, kept for Discard's reload.
+	kinds        *KindCatalog
+	defaultKinds []byte
 }
 
 var modelRegistries = map[string]struct{ file, key string }{
@@ -65,8 +69,10 @@ var modelRegistries = map[string]struct{ file, key string }{
 	"relationType": {"relation-types.json", "relationTypes"},
 }
 
-func LoadModel(workspace, project string) (*Model, error) {
-	m, err := LoadModelWithoutJournal(workspace, project)
+// LoadModel loads a project with its work journal. defaultKinds is the tool's
+// dictionary (host/defaults/kinds.json); <workspace>/kinds.json adds to it.
+func LoadModel(workspace, project string, defaultKinds []byte) (*Model, error) {
+	m, err := LoadModelWithoutJournal(workspace, project, defaultKinds)
 	if err != nil {
 		return nil, err
 	}
@@ -105,7 +111,7 @@ func cloneObject(o *object) *object {
 }
 
 func (m *Model) copy() *Model {
-	c := &Model{workspace: m.workspace, project: m.project, dir: m.dir, manifest: cloneObject(m.manifest), canvas: m.canvas,
+	c := &Model{workspace: m.workspace, project: m.project, dir: m.dir, manifest: cloneObject(m.manifest), canvas: m.canvas, kinds: m.kinds, defaultKinds: m.defaultKinds,
 		registries: map[string]*registry{}, texts: map[string]*object{}, views: map[string]*modelView{}, loaded: map[string]bool{},
 		journal: append([][]Op(nil), m.journal...), dirty: DirtySummary{Registry: append([]Ref(nil), m.dirty.Registry...), Views: map[string][]Ref{}}}
 	for k, r := range m.registries {
@@ -140,6 +146,9 @@ func (m *Model) loadView(id string) (*modelView, error) {
 	if err != nil {
 		return nil, err
 	}
+	if old := oldViewShape(doc); old != "" {
+		return nil, refuse("%s", oldShapeError("views/"+filepath.Base(file), old))
+	}
 	v := &modelView{file: file, doc: doc}
 	m.views[id] = v
 	return v, nil
@@ -158,7 +167,7 @@ func (m *Model) loadText(lang string) (*object, error) {
 	}
 	if o == nil {
 		o = newObject()
-		o.set("contractVersion", 3)
+		o.set("contractVersion", ContractVersion)
 		o.set("language", lang)
 		o.set("entries", newObject())
 	}
@@ -287,6 +296,14 @@ func (m *Model) applyOne(op Op) error {
 		if o.str("id") != m.project {
 			return refuse("project id differs from folder; use structural rename")
 		}
+		// contractVersion is the loader's, not the editor's: kept when left out
+		if _, ok := o.vals["contractVersion"]; !ok {
+			if cv, ok := m.manifest.vals["contractVersion"]; ok {
+				o.set("contractVersion", cv)
+			}
+		} else if err := checkContractVersion(o); err != nil {
+			return err
+		}
 		m.manifest = orderedReplacement(m.manifest, o)
 		return nil
 	}
@@ -327,9 +344,9 @@ func (m *Model) applyOne(op Op) error {
 			if r.str("origin") == "code" {
 				return refuse("relation %s comes from code: it has no texts, its label is drawn from `via` (CONTRACT §4)", op.ID)
 			}
-		case strings.HasPrefix(op.ID, "c_"), strings.HasPrefix(op.ID, "rt_"), strings.HasPrefix(op.ID, "v_"), strings.HasPrefix(op.ID, "z_"):
+		case strings.HasPrefix(op.ID, "rt_"), strings.HasPrefix(op.ID, "v_"):
 		default:
-			return refuse("key %q: expected a prefix e_, c_, rt_, r_, v_ or z_ (CONTRACT §7.1)", op.ID)
+			return refuse("key %q: expected a prefix e_, rt_, r_ or v_ (CONTRACT §7.1)", op.ID)
 		}
 		doc, err := m.loadText(op.Lang)
 		if err != nil {
@@ -380,9 +397,9 @@ func (m *Model) applyOne(op Op) error {
 		if n.str("id") != op.View {
 			return refuse("view id differs from operation id")
 		}
-		for _, key := range []string{"zones", "nodes", "placements"} {
+		for _, key := range []string{"placements", "zones", "nodes"} {
 			if _, ok := n.vals[key]; ok {
-				return refuse("view properties cannot replace geometry")
+				return refuse("view properties cannot carry `%s`: placements change one by one, op kind placement", key)
 			}
 		}
 		for _, key := range n.keys {
@@ -394,24 +411,13 @@ func (m *Model) applyOne(op Op) error {
 		}
 		return nil
 	}
-	key := map[string]string{"zone": "zones", "node": "nodes"}[op.Kind]
-	if key == "" {
+	if op.Kind != "placement" {
 		return refuse("unknown operation kind %q", op.Kind)
 	}
-	if op.Kind == "node" {
-		if _, ok := v.doc.vals["placements"]; ok {
-			key = "placements"
-		}
-	}
-	var items []*object
-	if raw := v.doc.vals[key]; len(raw) > 0 && string(raw) != "null" {
-		if err := json.Unmarshal(raw, &items); err != nil {
-			return err
-		}
-	}
+	items := viewItems(v.doc, "placements")
 	index := -1
 	for i, item := range items {
-		if item.str("id") == op.ID || (op.Kind == "node" && item.str("entity") == op.ID) {
+		if item.str("entity") == op.ID {
 			index = i
 			break
 		}
@@ -425,12 +431,8 @@ func (m *Model) applyOne(op Op) error {
 		if err := json.Unmarshal(op.Value, o); err != nil {
 			return err
 		}
-		id := o.str("id")
-		if op.Kind == "node" {
-			id = orDefault(o.str("entity"), id)
-		}
-		if id != op.ID {
-			return refuse("%s id differs from operation id", op.Kind)
+		if o.str("entity") != op.ID {
+			return refuse("placement entity differs from operation id")
 		}
 		if index >= 0 {
 			items[index] = orderedReplacement(items[index], o)
@@ -441,7 +443,7 @@ func (m *Model) applyOne(op Op) error {
 	if items == nil {
 		items = []*object{}
 	}
-	v.doc.set(key, items)
+	v.doc.set("placements", items)
 	return nil
 }
 
@@ -510,7 +512,7 @@ func (m *Model) Discard(scope, view string) error {
 	if scope == "view" && view == "" {
 		return refuse("view id is empty")
 	}
-	fresh, err := LoadModelWithoutJournal(m.workspace, m.project)
+	fresh, err := LoadModelWithoutJournal(m.workspace, m.project, m.defaultKinds)
 	if err != nil {
 		return err
 	}
@@ -547,18 +549,29 @@ func (m *Model) Discard(scope, view string) error {
 	return nil
 }
 
-func LoadModelWithoutJournal(workspace, project string) (*Model, error) {
+func LoadModelWithoutJournal(workspace, project string, defaultKinds []byte) (*Model, error) {
 	id, err := pickProject(workspace, project)
 	if err != nil {
 		return nil, err
 	}
-	m := &Model{workspace: workspace, project: id, dir: filepath.Join(workspace, "projects", id), registries: map[string]*registry{}, texts: map[string]*object{}, views: map[string]*modelView{}, loaded: map[string]bool{}, dirty: DirtySummary{Views: map[string][]Ref{}}}
+	kinds, err := LoadKinds(workspace, defaultKinds)
+	if err != nil {
+		return nil, err
+	}
+	m := &Model{workspace: workspace, project: id, dir: filepath.Join(workspace, "projects", id), registries: map[string]*registry{}, texts: map[string]*object{}, views: map[string]*modelView{}, loaded: map[string]bool{}, dirty: DirtySummary{Views: map[string][]Ref{}},
+		kinds: kinds, defaultKinds: defaultKinds}
 	m.manifest, err = loadDoc(filepath.Join(m.dir, "project.json"))
 	if err != nil {
 		return nil, err
 	}
 	if m.manifest == nil {
 		return nil, refuse("no project manifest %s", id)
+	}
+	if err := checkContractVersion(m.manifest); err != nil {
+		return nil, err
+	}
+	if exists(filepath.Join(m.dir, "containers.json")) {
+		return nil, refuse("%s", containersFileError)
 	}
 	for kind, spec := range modelRegistries {
 		r, err := loadRegistry(m.dir, spec.file, spec.key, freshList(spec.key))
@@ -569,3 +582,25 @@ func LoadModelWithoutJournal(workspace, project string) (*Model, error) {
 	}
 	return m, nil
 }
+
+// checkContractVersion refuses a project.json of any other contract version,
+// naming the file, the field and the version (ADR_20260927-3).
+func checkContractVersion(manifest *object) error {
+	var v struct {
+		ContractVersion *int `json:"contractVersion"`
+	}
+	raw, _ := manifest.MarshalJSON()
+	if err := json.Unmarshal(raw, &v); err != nil {
+		return refuse("project.json: contractVersion: %v", err)
+	}
+	if v.ContractVersion == nil {
+		return refuse("project.json: contractVersion is missing — нужен %d (`semaps migrate`, ADR_20260927-3)", ContractVersion)
+	}
+	if *v.ContractVersion != ContractVersion {
+		return refuse("project.json: contractVersion %d — форма контракта %d, нужен %d (`semaps migrate`, ADR_20260927-3)", *v.ContractVersion, *v.ContractVersion, ContractVersion)
+	}
+	return nil
+}
+
+// Kinds is the merged dictionary of the workspace.
+func (m *Model) Kinds() *KindCatalog { return m.kinds }
