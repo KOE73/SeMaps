@@ -90,6 +90,7 @@ export interface UiDictionary {
     readonly routingDebug: { readonly title: string; readonly desc: string };
     readonly toggleNeighbourhood: { readonly title: string; readonly desc: string };
     readonly toggleCatalog: { readonly title: string; readonly desc: string };
+    readonly toggleChanges: { readonly title: string; readonly desc: string };
     readonly resetLayout: { readonly title: string; readonly desc: string };
     readonly portsSet: { readonly title: string; readonly desc: string };
     readonly alignLeft: { readonly title: string; readonly desc: string };
@@ -129,6 +130,20 @@ export interface UiDictionary {
       readonly hintDragContainer: string;
       readonly hintDragBlock: string;
       readonly hintCollapseContainer: string;
+      readonly showChanges: string;
+    };
+    readonly changes: {
+      readonly title: string;
+      readonly allOf: string;
+      readonly onlyView: string;
+      readonly showAll: string;
+      readonly none: string;
+      readonly noView: string;
+      readonly registry: string;
+      readonly you: string;
+      readonly agent: string;
+      readonly sync: string;
+      readonly kinds: Readonly<Record<"placement" | "view" | "entity" | "relation" | "relationType" | "text" | "project", string>>;
     };
     readonly properties: {
       readonly title: string;

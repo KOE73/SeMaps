@@ -10,6 +10,7 @@ import {
   StylesPanel,
   TemplatesPanel,
   CatalogPanel,
+  ChangesPanel,
   BasePanel,
   NeighbourhoodPanel,
 } from "../panels/index.js";
@@ -56,6 +57,20 @@ export class DockviewHost {
       this.setupDefaultLayout();
     }
 
+    // A layout saved before «Изменения» existed gets the tab beside the catalog.
+    const catalog = this.dockview.getPanel("catalog");
+    if (catalog && !this.dockview.getPanel("changes")) {
+      this.dockview.addPanel({
+        id: "changes",
+        component: "changes",
+        title: i18n.d.panels.changes.title,
+        position: { direction: "within", referencePanel: catalog },
+        inactive: true,
+        minimumWidth: 100,
+        minimumHeight: 80,
+      });
+    }
+
     // 5. Persist layout changes
     this.dockview.onDidLayoutChange(() => {
       this.layoutService.saveLayout();
@@ -83,6 +98,7 @@ export class DockviewHost {
     const titles: Record<string, string> = {
       diagram: i18n.d.panels.diagram.title,
       catalog: i18n.d.panels.catalog.title,
+      changes: i18n.d.panels.changes.title,
       properties: i18n.d.panels.properties.title,
       relations: i18n.d.panels.relations.title,
       filters: i18n.d.panels.filters.title,
@@ -115,6 +131,14 @@ export class DockviewHost {
       minWidth: 100,
       minHeight: 80,
       createRenderer: () => new CatalogPanel(this.editor),
+    });
+
+    this.panelService.register({
+      id: "changes",
+      get title() { return i18n.d.panels.changes.title; },
+      minWidth: 100,
+      minHeight: 80,
+      createRenderer: () => new ChangesPanel(this.editor),
     });
 
     this.panelService.register({
@@ -187,8 +211,8 @@ export class DockviewHost {
     });
     diagram.group.locked = "no-drop-target";
 
-    // 2. Left Sidebar: Catalog
-    this.dockview.addPanel({
+    // 2. Left Sidebar: Catalog, and the unsaved changes beside it
+    const catalog = this.dockview.addPanel({
       id: "catalog",
       component: "catalog",
       title: "Каталог схем",
@@ -197,6 +221,15 @@ export class DockviewHost {
         referencePanel: diagram,
       },
       initialWidth: 240,
+      minimumWidth: 100,
+      minimumHeight: 80,
+    });
+    this.dockview.addPanel({
+      id: "changes",
+      component: "changes",
+      title: i18n.d.panels.changes.title,
+      position: { direction: "within", referencePanel: catalog },
+      inactive: true,
       minimumWidth: 100,
       minimumHeight: 80,
     });

@@ -135,6 +135,8 @@ export class CatalogPanel implements IContentRenderer {
             (dirty?.views[view.id]?.length ?? 0)>0 ? el("span",{class:"catalog-dirty",title:`Несохранено: ${authors(dirty!.views[view.id]!)}`},[iconEl("circleDot")]) : null,
           ],
         ),
+        view.error ? null : el("button", { class: "btn-icon catalog-edit catalog-eye", title: t.showChanges,
+          on: { click: () => this.editor.showChanges(view) } }, [iconEl("eye")]),
         view.error ? null : editBtn(t.editView, () => openEditViewDialog(this.editor, view)),
       ]),
     );

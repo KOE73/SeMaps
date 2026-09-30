@@ -97,6 +97,22 @@ export class PanelService implements IPanelService {
       return;
     }
 
+    // The unsaved changes open as a tab beside the catalog, else on its side of the diagram.
+    if (id === "changes") {
+      const catalog = this.dockview.getPanel("catalog");
+      this.dockview.addPanel({
+        id: desc.id,
+        component: desc.id,
+        title: desc.title,
+        position: catalog ? { direction: "within", referencePanel: catalog }
+          : diagram ? { direction: "left", referencePanel: diagram } : undefined,
+        initialWidth: 240,
+        minimumWidth: desc.minWidth ?? 100,
+        minimumHeight: desc.minHeight ?? 80,
+      });
+      return;
+    }
+
     const group = this.ids.groups?.find((g) => g.ids.includes(id));
     if (group) {
       const mate = group.ids.map((pid) => this.dockview.getPanel(pid)).find((p) => p !== undefined);

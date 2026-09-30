@@ -35,6 +35,7 @@ import {
   exportDrawio,
   HttpProjectStore,
   HostModelStore,
+  type ChangedRef,
   type DirtySummary,
   type ModelEvent,
   HttpStyleStore,
@@ -340,6 +341,39 @@ export class DiagramEditor implements InspectorHost, StylePanelHost, DiagramEdit
   }
 
   dirtyForProject(project: string): DirtySummary | undefined { return this.modelDirty.get(project); }
+
+  /** The view the «Изменения» panel is narrowed to; null — the whole project. */
+  changesFilter: string | null = null;
+  /** Asks the workbench to show the «Изменения» panel. */
+  readonly changesEvents = new Emitter<{ show: null }>();
+
+  showChanges(view: ViewEntry | null): void {
+    this.changesFilter = view?.id ?? null;
+    if (view && this.currentView?.file !== view.file) void this.loadView(view);
+    this.changesEvents.emit("show", null);
+    this.workspaceEvents.emit("change", null);
+  }
+
+  describeChange(project: string, ref: ChangedRef): string {
+    return this.store instanceof HostModelStore ? this.store.describe(project, ref, this.dataLang) : ref.id;
+  }
+
+  /**
+   * Open the view a change lives on and put the object in the middle, selected.
+   * A change with no place on a view (a relation type, the project) says so.
+   */
+  async revealChange(ref: ChangedRef): Promise<void> {
+    const views = this.workspace.projects.flatMap((p) => p.views);
+    const target = ref.kind === "text" && ref.id.startsWith("v_") ? ref.id : ref.view;
+    const view = target ? views.find((v) => v.id === target && this.projectOf(v)?.id === (this.currentView && this.projectOf(this.currentView)?.id)) : undefined;
+    if (view && this.currentView?.file !== view.file) await this.loadView(view);
+    if (ref.kind === "view" || (ref.kind === "text" && ref.id.startsWith("v_"))) { this.canvas.fit(); return; }
+    if (ref.kind === "project" || ref.kind === "relationType" || ref.id.startsWith("rt_")) {
+      this.notify("У этого изменения нет места на схеме: оно в реестре проекта.");
+      return;
+    }
+    if (!this.canvas.reveal(ref.id)) this.notify(`«${ref.id}» нет на открытой схеме.`);
+  }
 
   /** Open a view, asking first if the current one has unsaved changes. */
   openView(view: ViewEntry, pos?: { clientX: number; clientY: number }): void {
@@ -1583,22 +1617,11 @@ export class DiagramEditor implements InspectorHost, StylePanelHost, DiagramEdit
    */
   async save(): Promise<void> {
     this.flushFieldEdit();
+    // No question before saving: what is unsaved is always in the «Изменения» panel (ADR_20260926-2).
     if (this.store instanceof HostModelStore && this.currentView) {
-      try {
-        this.queueModelSync();
-        const project=this.projectOf(this.currentView)?.id;
-        if(project){
-          const summary=await this.store.dirty(project);
-          this.modelDirty.set(project,summary);
-          const agentRegistry=summary.registry.filter((r)=>r.author==="agent" || r.author==="sync").length;
-          const agentViews=Object.values(summary.views).flat().filter((r)=>r.author==="agent" || r.author==="sync").length;
-          if(agentRegistry+agentViews>0){
-            const humanRegistry=summary.registry.length-agentRegistry;
-            const views=Object.entries(summary.views).map(([id,refs])=>`${id}: вы ${refs.filter((r)=>r.author==="human").length}, агент ${refs.filter((r)=>r.author!=="human").length}`).join("\n");
-            if(!window.confirm(`Сохранить всё в проекте ${project}?\nРеестр: вы ${humanRegistry}, агент ${agentRegistry}.\nВиды:\n${views}`)) return;
-          }
-        }
-      }catch(err){this.notify(`Не удалось получить сводку сохранения: ${(err as Error).message}`);return}
+      const project=this.projectOf(this.currentView)?.id;
+      try { if(project) this.modelDirty.set(project,await this.store.dirty(project)); }
+      catch(err){this.notify(`Не удалось получить состояние проекта: ${(err as Error).message}`);return}
     }
     const problems: string[] = [];
     let stylesSaved = false;
@@ -1642,6 +1665,8 @@ export class DiagramEditor implements InspectorHost, StylePanelHost, DiagramEdit
     }
 
     this.syncSaveButton();
+    // The «Изменения» panel and the catalog show what is still unsaved.
+    this.workspaceEvents.emit("change", null);
 
     if (problems.length === 0) {
       this.flashSaved();

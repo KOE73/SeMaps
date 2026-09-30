@@ -132,6 +132,32 @@ export class HostModelStore extends HttpProjectStore {
     }
   }
 
+  /** A human name for a changed object, from the working snapshot; its id when there is none. */
+  describe(project: string, ref: ChangedRef, lang: string): string {
+    const snapshot = this.snapshots.get(project);
+    const text = (id: string): string | undefined => {
+      const name = snapshot?.texts[lang]?.entries?.[id]?.name as { v?: string } | string | undefined;
+      return typeof name === "string" ? name : name?.v;
+    };
+    const record = (file: string, key: string, id: string): Record<string, unknown> | undefined =>
+      ((snapshot?.registry[file] as Record<string, Array<Record<string, unknown>>> | undefined)?.[key] ?? [])
+        .find((r) => r.id === id);
+    // An entity's name is not translated: it lives in entities.json (CONTRACT.md §7.1).
+    const entity = (id: string): string => (record("entities.json", "entities", id)?.name as string | undefined) ?? id;
+    const relation = (id: string): string => {
+      const r = record("relations.json", "relations", id);
+      if (!r) return id;
+      const type = String(r.type ?? r.relation ?? "");
+      return `${entity(String(r.from))} → ${entity(String(r.to))} · ${text(`rt_${type}`) ?? type}`;
+    };
+    const id = ref.id;
+    if (ref.kind === "project") return snapshot?.project.title ?? id;
+    if (ref.kind === "relationType") return text(`rt_${id}`) ?? id;
+    if (id.startsWith("r_")) return relation(id);
+    if (id.startsWith("e_") || ref.kind === "entity" || ref.kind === "placement") return entity(id);
+    return text(id) ?? id;
+  }
+
   async dirty(project: string): Promise<DirtySummary> {
     await this.pending;
     return (await (await this.request(`/api/model/${encodeURIComponent(project)}/save`)).json()) as DirtySummary;

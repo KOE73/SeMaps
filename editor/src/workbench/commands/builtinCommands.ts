@@ -478,6 +478,17 @@ export function createBuiltinCommands(): CommandDefinition[] {
       execute: (ctx) => ctx.panels.toggle("catalog"),
     },
     {
+      id: "panel.changes.toggle",
+      get title() { return i18n.d.panels.changes.title; },
+      get description() { return i18n.d.commands.toggleChanges.desc; },
+      icon: icons.checks,
+      category: "Panels",
+      shortcut: "Alt+8",
+      keyTip: "P8",
+      isChecked: (ctx) => ctx.panels.isVisible("changes"),
+      execute: (ctx) => ctx.panels.toggle("changes"),
+    },
+    {
       id: "panel.base.toggle",
       get title() { return i18n.d.panels.base.title; },
       get description() { return i18n.d.commands.toggleBase.desc; },

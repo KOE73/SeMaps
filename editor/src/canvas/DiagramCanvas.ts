@@ -708,6 +708,32 @@ export class DiagramCanvas {
     });
   }
 
+  /**
+   * Select an object and bring it to the middle of the viewport: an element
+   * by itself, a line by its two ends. False when it is not on this view.
+   */
+  reveal(id: string): boolean {
+    const doc = this.doc;
+    if (doc === null) return false;
+    const edge = doc.edge(id);
+    const relation = doc.relations.find((r) => r.id === id);
+    const ids = doc.element(id) !== undefined ? [id]
+      : edge !== undefined ? [edge.from, edge.to]
+      : relation !== undefined ? [relation.from, relation.to] : [];
+    const ctx = this.context();
+    let bounds: Rect | null = null;
+    for (const eid of ids) {
+      const el = doc.element(eid);
+      if (el === undefined || ctx.isHidden(el)) continue;
+      const r = this.rendererFor(el).visibleRect(el, ctx);
+      bounds = bounds === null ? r : unionRect(bounds, r);
+    }
+    if (bounds === null) return false;
+    this.select(id);
+    this.viewport.centerOn(bounds, { width: this.host.clientWidth, height: this.host.clientHeight });
+    return true;
+  }
+
   zoomTo(zoom: number): void {
     this.viewport.zoomTo(zoom);
   }
