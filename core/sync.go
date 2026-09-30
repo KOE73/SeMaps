@@ -204,7 +204,9 @@ func Sync(model *Model, facts *Facts, opt SyncOptions) (*SyncReport, error) {
 	symbols := map[string]Symbol{}
 	var order []string // symbol ids, in the facts' own (sorted) order
 	for _, s := range facts.Symbols {
-		if included(s.File, manifest.Sources.Include) {
+		// An external symbol has no file to filter by (ADR_20260927-4); it
+		// stays whatever sources.include says.
+		if s.NativeKind == ExternalKind || included(s.File, manifest.Sources.Include) {
 			symbols[s.ID] = s
 			order = append(order, s.ID)
 		}
@@ -327,7 +329,9 @@ func Sync(model *Model, facts *Facts, opt SyncOptions) (*SyncReport, error) {
 		if s.Namespace != "" {
 			e.set("namespace", s.Namespace)
 		}
-		e.set("codeRef", s.File)
+		if s.File != "" { // an external symbol has no file (ADR_20260927-4)
+			e.set("codeRef", s.File)
+		}
 		e.set("symbol", s.ID)
 		if len(s.Members) > 0 {
 			e.vals["members"] = s.Members
@@ -414,7 +418,7 @@ func Sync(model *Model, facts *Facts, opt SyncOptions) (*SyncReport, error) {
 			r.set("origin", "code")
 			r.set("status", "present")
 			r.set("via", edge.Via)
-			r.set("evidence", []map[string]string{{"codeRef": fromSym.File, "symbol": fromSym.ID}})
+			r.set("evidence", evidenceOf(fromSym))
 			rels.items = append(rels.items, r)
 			rels.dirty = true
 			confirmed[len(rels.items)-1] = true
@@ -455,7 +459,7 @@ func Sync(model *Model, facts *Facts, opt SyncOptions) (*SyncReport, error) {
 			r.set("type", edge.Kind)
 			r.set("origin", "code")
 			r.set("status", "present")
-			r.set("evidence", []map[string]string{{"codeRef": fromSym.File, "symbol": fromSym.ID}})
+			r.set("evidence", evidenceOf(fromSym))
 			rels.items = append(rels.items, r)
 			rels.dirty = true
 			confirmed[len(rels.items)-1] = true
@@ -876,7 +880,11 @@ func updateEntity(e *object, s Symbol) string {
 		changes = append(changes, "namespace")
 	}
 	if e.str("codeRef") != s.File {
-		e.set("codeRef", s.File)
+		if s.File == "" {
+			e.del("codeRef")
+		} else {
+			e.set("codeRef", s.File)
+		}
 		changes = append(changes, "codeRef")
 	}
 	if len(s.Members) > 0 {
@@ -939,6 +947,15 @@ func included(file string, include []string) bool {
 		}
 	}
 	return false
+}
+
+// evidenceOf is the basis of a relation written from the symbol `from`. An
+// external symbol has no file, so only its symbol id is the basis.
+func evidenceOf(from Symbol) []map[string]string {
+	if from.File == "" {
+		return []map[string]string{{"symbol": from.ID}}
+	}
+	return []map[string]string{{"codeRef": from.File, "symbol": from.ID}}
 }
 
 func codeRefFile(ref string) string {

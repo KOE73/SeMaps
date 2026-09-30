@@ -812,83 +812,159 @@
       "line": 101,
       "endLine": 103,
       "visibility": "exported"
+    },
+    {
+      "id": "mapping",
+      "kind": "module",
+      "nativeKind": "file",
+      "name": "mapping",
+      "namespace": "",
+      "file": "mapping.ts"
+    },
+    {
+      "id": "mapping#Readable",
+      "kind": "interface",
+      "nativeKind": "interface",
+      "name": "Readable",
+      "namespace": "",
+      "file": "mapping.ts",
+      "line": 2,
+      "endLine": 4,
+      "visibility": "exported",
+      "members": [
+        {
+          "kind": "method",
+          "name": "read",
+          "type": "() => string"
+        }
+      ],
+      "memberLines": {
+        "read": 3
+      }
+    },
+    {
+      "id": "mapping#Stream",
+      "kind": "interface",
+      "nativeKind": "interface",
+      "name": "Stream",
+      "namespace": "",
+      "file": "mapping.ts",
+      "line": 7,
+      "endLine": 9,
+      "visibility": "exported",
+      "members": [
+        {
+          "kind": "method",
+          "name": "close",
+          "type": "() => void"
+        }
+      ],
+      "memberLines": {
+        "close": 8
+      }
+    },
+    {
+      "id": "mapping#defaultStream",
+      "kind": "value",
+      "nativeKind": "const",
+      "name": "defaultStream",
+      "namespace": "",
+      "file": "mapping.ts",
+      "line": 12,
+      "endLine": 12,
+      "visibility": "exported"
     }
   ],
   "edges": [
     {
       "from": "a",
       "to": "a#Base",
-      "kind": "contains"
+      "kind": "contains",
+      "native": "file"
     },
     {
       "from": "a",
       "to": "a#Box",
-      "kind": "contains"
+      "kind": "contains",
+      "native": "file"
     },
     {
       "from": "a",
       "to": "a#Color",
-      "kind": "contains"
+      "kind": "contains",
+      "native": "file"
     },
     {
       "from": "a",
       "to": "a#Greeter",
-      "kind": "contains"
+      "kind": "contains",
+      "native": "file"
     },
     {
       "from": "a",
       "to": "a#Hidden",
-      "kind": "contains"
+      "kind": "contains",
+      "native": "file"
     },
     {
       "from": "a",
       "to": "a#Pair",
-      "kind": "contains"
+      "kind": "contains",
+      "native": "file"
     },
     {
       "from": "a",
       "to": "a#Registry",
-      "kind": "contains"
+      "kind": "contains",
+      "native": "file"
     },
     {
       "from": "a",
       "to": "a#VERSION",
-      "kind": "contains"
+      "kind": "contains",
+      "native": "file"
     },
     {
       "from": "a",
       "to": "a#Widget",
-      "kind": "contains"
+      "kind": "contains",
+      "native": "file"
     },
     {
       "from": "a",
       "to": "a#build",
-      "kind": "contains"
+      "kind": "contains",
+      "native": "file"
     },
     {
       "from": "a",
       "to": "a#helper",
-      "kind": "contains"
+      "kind": "contains",
+      "native": "file"
     },
     {
       "from": "a",
       "to": "a#makeWidget",
-      "kind": "contains"
+      "kind": "contains",
+      "native": "file"
     },
     {
       "from": "a#Registry",
       "to": "a#Registry.Entry",
-      "kind": "contains"
+      "kind": "contains",
+      "native": "namespace"
     },
     {
       "from": "a#Registry",
       "to": "a#Registry.Store",
-      "kind": "contains"
+      "kind": "contains",
+      "native": "namespace"
     },
     {
       "from": "a#Registry.Entry",
       "to": "a#Box",
       "kind": "holds",
+      "native": "property",
       "via": {
         "member": "box",
         "memberKind": "property",
@@ -901,6 +977,7 @@
       "from": "a#Registry.Store",
       "to": "a#Registry.Entry",
       "kind": "holds",
+      "native": "field",
       "via": {
         "member": "items",
         "memberKind": "field",
@@ -920,18 +997,21 @@
       "from": "a#Widget",
       "to": "a#Base",
       "kind": "extends",
+      "native": "class",
       "line": 14
     },
     {
       "from": "a#Widget",
       "to": "a#Greeter",
       "kind": "implements",
+      "native": "implements",
       "line": 14
     },
     {
       "from": "a#build",
       "to": "a#Widget",
       "kind": "uses",
+      "native": "return",
       "via": {
         "member": "build",
         "memberKind": "return",
@@ -944,6 +1024,7 @@
       "from": "a#helper",
       "to": "a#Box",
       "kind": "uses",
+      "native": "return",
       "via": {
         "member": "helper",
         "memberKind": "return",
@@ -956,6 +1037,7 @@
       "from": "a#helper",
       "to": "a#Box",
       "kind": "uses",
+      "native": "parameter",
       "via": {
         "member": "x",
         "memberKind": "parameter",
@@ -968,6 +1050,7 @@
       "from": "a#makeWidget",
       "to": "a#Widget",
       "kind": "uses",
+      "native": "return",
       "via": {
         "member": "makeWidget",
         "memberKind": "return",
@@ -979,12 +1062,14 @@
     {
       "from": "b",
       "to": "b#Consumer",
-      "kind": "contains"
+      "kind": "contains",
+      "native": "file"
     },
     {
       "from": "b#Consumer",
       "to": "a#Widget",
       "kind": "holds",
+      "native": "field",
       "via": {
         "member": "widget",
         "memberKind": "field",
@@ -999,117 +1084,140 @@
     {
       "from": "comprehensive",
       "to": "comprehensive#Async",
-      "kind": "contains"
+      "kind": "contains",
+      "native": "file"
     },
     {
       "from": "comprehensive",
       "to": "comprehensive#Box",
-      "kind": "contains"
+      "kind": "contains",
+      "native": "file"
     },
     {
       "from": "comprehensive",
       "to": "comprehensive#Collections",
-      "kind": "contains"
+      "kind": "contains",
+      "native": "file"
     },
     {
       "from": "comprehensive",
       "to": "comprehensive#Constructor",
-      "kind": "contains"
+      "kind": "contains",
+      "native": "file"
     },
     {
       "from": "comprehensive",
       "to": "comprehensive#Container",
-      "kind": "contains"
+      "kind": "contains",
+      "native": "file"
     },
     {
       "from": "comprehensive",
       "to": "comprehensive#ContainerBox",
-      "kind": "contains"
+      "kind": "contains",
+      "native": "file"
     },
     {
       "from": "comprehensive",
       "to": "comprehensive#Generic",
-      "kind": "contains"
+      "kind": "contains",
+      "native": "file"
     },
     {
       "from": "comprehensive",
       "to": "comprehensive#IReadable",
-      "kind": "contains"
+      "kind": "contains",
+      "native": "file"
     },
     {
       "from": "comprehensive",
       "to": "comprehensive#Indexed",
-      "kind": "contains"
+      "kind": "contains",
+      "native": "file"
     },
     {
       "from": "comprehensive",
       "to": "comprehensive#Item",
-      "kind": "contains"
+      "kind": "contains",
+      "native": "file"
     },
     {
       "from": "comprehensive",
       "to": "comprehensive#ItemAlias",
-      "kind": "contains"
+      "kind": "contains",
+      "native": "file"
     },
     {
       "from": "comprehensive",
       "to": "comprehensive#ItemArray",
-      "kind": "contains"
+      "kind": "contains",
+      "native": "file"
     },
     {
       "from": "comprehensive",
       "to": "comprehensive#Maps",
-      "kind": "contains"
+      "kind": "contains",
+      "native": "file"
     },
     {
       "from": "comprehensive",
       "to": "comprehensive#Methods",
-      "kind": "contains"
+      "kind": "contains",
+      "native": "file"
     },
     {
       "from": "comprehensive",
       "to": "comprehensive#Optional",
-      "kind": "contains"
+      "kind": "contains",
+      "native": "file"
     },
     {
       "from": "comprehensive",
       "to": "comprehensive#ParameterProperty",
-      "kind": "contains"
+      "kind": "contains",
+      "native": "file"
     },
     {
       "from": "comprehensive",
       "to": "comprehensive#Records",
-      "kind": "contains"
+      "kind": "contains",
+      "native": "file"
     },
     {
       "from": "comprehensive",
       "to": "comprehensive#Sets",
-      "kind": "contains"
+      "kind": "contains",
+      "native": "file"
     },
     {
       "from": "comprehensive",
       "to": "comprehensive#Tuples",
-      "kind": "contains"
+      "kind": "contains",
+      "native": "file"
     },
     {
       "from": "comprehensive",
       "to": "comprehensive#Union",
-      "kind": "contains"
+      "kind": "contains",
+      "native": "file"
     },
     {
       "from": "comprehensive",
       "to": "comprehensive#Widget",
-      "kind": "contains"
+      "kind": "contains",
+      "native": "file"
     },
     {
       "from": "comprehensive",
       "to": "comprehensive#process",
-      "kind": "contains"
+      "kind": "contains",
+      "native": "file"
     },
     {
       "from": "comprehensive#Async",
       "to": "comprehensive#Container",
       "kind": "holds",
+      "native": "field",
       "via": {
         "member": "awaited",
         "memberKind": "field",
@@ -1127,6 +1235,7 @@
       "from": "comprehensive#Async",
       "to": "comprehensive#Item",
       "kind": "holds",
+      "native": "field",
       "via": {
         "member": "pending",
         "memberKind": "field",
@@ -1143,6 +1252,7 @@
       "from": "comprehensive#Collections",
       "to": "comprehensive#Item",
       "kind": "holds",
+      "native": "field",
       "via": {
         "member": "mutableArray",
         "memberKind": "field",
@@ -1159,6 +1269,7 @@
       "from": "comprehensive#Collections",
       "to": "comprehensive#Item",
       "kind": "holds",
+      "native": "field",
       "via": {
         "member": "readonlyArrayBuiltin",
         "memberKind": "field",
@@ -1175,6 +1286,7 @@
       "from": "comprehensive#Collections",
       "to": "comprehensive#Item",
       "kind": "holds",
+      "native": "field",
       "via": {
         "member": "readonlyArrayType",
         "memberKind": "field",
@@ -1191,6 +1303,7 @@
       "from": "comprehensive#Constructor",
       "to": "comprehensive#Container",
       "kind": "uses",
+      "native": "constructor",
       "via": {
         "member": "container",
         "memberKind": "constructor",
@@ -1203,6 +1316,7 @@
       "from": "comprehensive#Constructor",
       "to": "comprehensive#Item",
       "kind": "uses",
+      "native": "constructor",
       "via": {
         "member": "item",
         "memberKind": "constructor",
@@ -1215,6 +1329,7 @@
       "from": "comprehensive#ContainerBox",
       "to": "comprehensive#Box",
       "kind": "uses",
+      "native": "alias",
       "via": {
         "member": "ContainerBox",
         "memberKind": "self",
@@ -1227,6 +1342,7 @@
       "from": "comprehensive#ContainerBox",
       "to": "comprehensive#Container",
       "kind": "uses",
+      "native": "alias",
       "via": {
         "member": "ContainerBox",
         "memberKind": "self",
@@ -1242,6 +1358,7 @@
       "from": "comprehensive#Generic",
       "to": "comprehensive#Box",
       "kind": "holds",
+      "native": "field",
       "via": {
         "member": "boxed",
         "memberKind": "field",
@@ -1254,6 +1371,7 @@
       "from": "comprehensive#Generic",
       "to": "comprehensive#Box",
       "kind": "holds",
+      "native": "field",
       "via": {
         "member": "boxedMultiple",
         "memberKind": "field",
@@ -1266,6 +1384,7 @@
       "from": "comprehensive#Generic",
       "to": "comprehensive#Item",
       "kind": "holds",
+      "native": "field",
       "via": {
         "member": "boxedMultiple",
         "memberKind": "field",
@@ -1281,6 +1400,7 @@
       "from": "comprehensive#Generic",
       "to": "comprehensive#Widget",
       "kind": "holds",
+      "native": "field",
       "via": {
         "member": "boxed",
         "memberKind": "field",
@@ -1296,6 +1416,7 @@
       "from": "comprehensive#Generic",
       "to": "comprehensive#Widget",
       "kind": "holds",
+      "native": "field",
       "via": {
         "member": "boxedMultiple",
         "memberKind": "field",
@@ -1311,6 +1432,7 @@
       "from": "comprehensive#IReadable",
       "to": "comprehensive#Container",
       "kind": "holds",
+      "native": "property",
       "via": {
         "member": "container",
         "memberKind": "property",
@@ -1323,6 +1445,7 @@
       "from": "comprehensive#IReadable",
       "to": "comprehensive#Item",
       "kind": "holds",
+      "native": "property",
       "via": {
         "member": "item",
         "memberKind": "property",
@@ -1335,6 +1458,7 @@
       "from": "comprehensive#IReadable",
       "to": "comprehensive#Item",
       "kind": "holds",
+      "native": "property",
       "via": {
         "member": "items",
         "memberKind": "property",
@@ -1351,6 +1475,7 @@
       "from": "comprehensive#IReadable",
       "to": "comprehensive#Item",
       "kind": "holds",
+      "native": "property",
       "via": {
         "member": "itemsByKey",
         "memberKind": "property",
@@ -1367,6 +1492,7 @@
       "from": "comprehensive#ItemAlias",
       "to": "comprehensive#Item",
       "kind": "uses",
+      "native": "alias",
       "via": {
         "member": "ItemAlias",
         "memberKind": "self",
@@ -1379,6 +1505,7 @@
       "from": "comprehensive#ItemArray",
       "to": "comprehensive#Item",
       "kind": "uses",
+      "native": "alias",
       "via": {
         "member": "ItemArray",
         "memberKind": "self",
@@ -1395,6 +1522,7 @@
       "from": "comprehensive#Maps",
       "to": "comprehensive#Container",
       "kind": "holds",
+      "native": "field",
       "via": {
         "member": "byWidget",
         "memberKind": "field",
@@ -1411,6 +1539,7 @@
       "from": "comprehensive#Maps",
       "to": "comprehensive#Item",
       "kind": "holds",
+      "native": "field",
       "via": {
         "member": "byId",
         "memberKind": "field",
@@ -1427,6 +1556,7 @@
       "from": "comprehensive#Maps",
       "to": "comprehensive#Item",
       "kind": "holds",
+      "native": "field",
       "via": {
         "member": "readonlyMap",
         "memberKind": "field",
@@ -1443,6 +1573,7 @@
       "from": "comprehensive#Maps",
       "to": "comprehensive#Widget",
       "kind": "holds",
+      "native": "field",
       "via": {
         "member": "byWidget",
         "memberKind": "field",
@@ -1459,6 +1590,7 @@
       "from": "comprehensive#Methods",
       "to": "comprehensive#Box",
       "kind": "uses",
+      "native": "return",
       "via": {
         "member": "getBox",
         "memberKind": "return",
@@ -1471,6 +1603,7 @@
       "from": "comprehensive#Methods",
       "to": "comprehensive#Container",
       "kind": "uses",
+      "native": "return",
       "via": {
         "member": "processItems",
         "memberKind": "return",
@@ -1483,6 +1616,7 @@
       "from": "comprehensive#Methods",
       "to": "comprehensive#Item",
       "kind": "uses",
+      "native": "return",
       "via": {
         "member": "getItem",
         "memberKind": "return",
@@ -1495,6 +1629,7 @@
       "from": "comprehensive#Methods",
       "to": "comprehensive#Item",
       "kind": "uses",
+      "native": "parameter",
       "via": {
         "member": "items",
         "memberKind": "parameter",
@@ -1511,6 +1646,7 @@
       "from": "comprehensive#Methods",
       "to": "comprehensive#Widget",
       "kind": "uses",
+      "native": "return",
       "via": {
         "member": "getBox",
         "memberKind": "return",
@@ -1526,6 +1662,7 @@
       "from": "comprehensive#Methods",
       "to": "comprehensive#Widget",
       "kind": "uses",
+      "native": "parameter",
       "via": {
         "member": "widget",
         "memberKind": "parameter",
@@ -1538,6 +1675,7 @@
       "from": "comprehensive#Optional",
       "to": "comprehensive#Container",
       "kind": "holds",
+      "native": "field",
       "via": {
         "member": "nullableField",
         "memberKind": "field",
@@ -1550,6 +1688,7 @@
       "from": "comprehensive#Optional",
       "to": "comprehensive#Item",
       "kind": "holds",
+      "native": "field",
       "via": {
         "member": "optionalField",
         "memberKind": "field",
@@ -1562,6 +1701,7 @@
       "from": "comprehensive#Optional",
       "to": "comprehensive#Widget",
       "kind": "holds",
+      "native": "field",
       "via": {
         "member": "nullableField2",
         "memberKind": "field",
@@ -1574,6 +1714,7 @@
       "from": "comprehensive#ParameterProperty",
       "to": "comprehensive#Container",
       "kind": "holds",
+      "native": "parameterProperty",
       "via": {
         "member": "container",
         "memberKind": "field",
@@ -1589,6 +1730,7 @@
       "from": "comprehensive#ParameterProperty",
       "to": "comprehensive#Container",
       "kind": "uses",
+      "native": "constructor",
       "via": {
         "member": "container",
         "memberKind": "constructor",
@@ -1601,6 +1743,7 @@
       "from": "comprehensive#ParameterProperty",
       "to": "comprehensive#Item",
       "kind": "holds",
+      "native": "parameterProperty",
       "via": {
         "member": "item",
         "memberKind": "field",
@@ -1617,6 +1760,7 @@
       "from": "comprehensive#ParameterProperty",
       "to": "comprehensive#Item",
       "kind": "uses",
+      "native": "constructor",
       "via": {
         "member": "item",
         "memberKind": "constructor",
@@ -1629,6 +1773,7 @@
       "from": "comprehensive#ParameterProperty",
       "to": "comprehensive#Widget",
       "kind": "holds",
+      "native": "parameterProperty",
       "via": {
         "member": "widget",
         "memberKind": "field",
@@ -1644,6 +1789,7 @@
       "from": "comprehensive#ParameterProperty",
       "to": "comprehensive#Widget",
       "kind": "uses",
+      "native": "constructor",
       "via": {
         "member": "widget",
         "memberKind": "constructor",
@@ -1656,6 +1802,7 @@
       "from": "comprehensive#Records",
       "to": "comprehensive#Container",
       "kind": "holds",
+      "native": "field",
       "via": {
         "member": "readonlyRecord",
         "memberKind": "field",
@@ -1673,6 +1820,7 @@
       "from": "comprehensive#Records",
       "to": "comprehensive#Item",
       "kind": "holds",
+      "native": "field",
       "via": {
         "member": "itemsByKey",
         "memberKind": "field",
@@ -1689,6 +1837,7 @@
       "from": "comprehensive#Sets",
       "to": "comprehensive#Item",
       "kind": "holds",
+      "native": "field",
       "via": {
         "member": "items",
         "memberKind": "field",
@@ -1705,6 +1854,7 @@
       "from": "comprehensive#Sets",
       "to": "comprehensive#Item",
       "kind": "holds",
+      "native": "field",
       "via": {
         "member": "readonlyItems",
         "memberKind": "field",
@@ -1721,6 +1871,7 @@
       "from": "comprehensive#Tuples",
       "to": "comprehensive#Container",
       "kind": "holds",
+      "native": "field",
       "via": {
         "member": "namedTuple",
         "memberKind": "field",
@@ -1736,6 +1887,7 @@
       "from": "comprehensive#Tuples",
       "to": "comprehensive#Container",
       "kind": "holds",
+      "native": "field",
       "via": {
         "member": "pair",
         "memberKind": "field",
@@ -1751,6 +1903,7 @@
       "from": "comprehensive#Tuples",
       "to": "comprehensive#Container",
       "kind": "holds",
+      "native": "field",
       "via": {
         "member": "triple",
         "memberKind": "field",
@@ -1766,6 +1919,7 @@
       "from": "comprehensive#Tuples",
       "to": "comprehensive#Item",
       "kind": "holds",
+      "native": "field",
       "via": {
         "member": "namedTuple",
         "memberKind": "field",
@@ -1781,6 +1935,7 @@
       "from": "comprehensive#Tuples",
       "to": "comprehensive#Item",
       "kind": "holds",
+      "native": "field",
       "via": {
         "member": "pair",
         "memberKind": "field",
@@ -1796,6 +1951,7 @@
       "from": "comprehensive#Tuples",
       "to": "comprehensive#Item",
       "kind": "holds",
+      "native": "field",
       "via": {
         "member": "triple",
         "memberKind": "field",
@@ -1811,6 +1967,7 @@
       "from": "comprehensive#Tuples",
       "to": "comprehensive#Widget",
       "kind": "holds",
+      "native": "field",
       "via": {
         "member": "triple",
         "memberKind": "field",
@@ -1826,6 +1983,7 @@
       "from": "comprehensive#Union",
       "to": "comprehensive#Container",
       "kind": "holds",
+      "native": "field",
       "via": {
         "member": "either",
         "memberKind": "field",
@@ -1838,6 +1996,7 @@
       "from": "comprehensive#Union",
       "to": "comprehensive#Container",
       "kind": "holds",
+      "native": "field",
       "via": {
         "member": "multiple",
         "memberKind": "field",
@@ -1850,6 +2009,7 @@
       "from": "comprehensive#Union",
       "to": "comprehensive#Item",
       "kind": "holds",
+      "native": "field",
       "via": {
         "member": "either",
         "memberKind": "field",
@@ -1862,6 +2022,7 @@
       "from": "comprehensive#Union",
       "to": "comprehensive#Item",
       "kind": "holds",
+      "native": "field",
       "via": {
         "member": "multiple",
         "memberKind": "field",
@@ -1874,6 +2035,7 @@
       "from": "comprehensive#Union",
       "to": "comprehensive#Widget",
       "kind": "holds",
+      "native": "field",
       "via": {
         "member": "multiple",
         "memberKind": "field",
@@ -1886,6 +2048,7 @@
       "from": "comprehensive#process",
       "to": "comprehensive#Box",
       "kind": "uses",
+      "native": "return",
       "via": {
         "member": "process",
         "memberKind": "return",
@@ -1893,6 +2056,43 @@
         "cardinality": "one"
       },
       "line": 101
+    },
+    {
+      "from": "mapping",
+      "to": "mapping#Readable",
+      "kind": "contains",
+      "native": "file"
+    },
+    {
+      "from": "mapping",
+      "to": "mapping#Stream",
+      "kind": "contains",
+      "native": "file"
+    },
+    {
+      "from": "mapping",
+      "to": "mapping#defaultStream",
+      "kind": "contains",
+      "native": "file"
+    },
+    {
+      "from": "mapping#Stream",
+      "to": "mapping#Readable",
+      "kind": "extends",
+      "native": "interface",
+      "line": 7
+    },
+    {
+      "from": "mapping#defaultStream",
+      "to": "mapping#Stream",
+      "kind": "uses",
+      "native": "annotation",
+      "via": {
+        "memberKind": "self",
+        "text": "Stream",
+        "cardinality": "one"
+      },
+      "line": 12
     }
   ]
 }

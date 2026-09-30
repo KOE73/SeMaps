@@ -139,7 +139,7 @@ workspace (нет даже `projects/`) законен. Файл `catalog.json` 
 | `origin` | нет | `code` \| `authored`. v2-шное `manual` переименовано в `authored` |
 | `status` | нет | `present` \| `missing` \| `planned`. Записи не удаляются: ушедшая сущность сохраняет `id` для ссылок |
 | `namespace` | нет | пространство имён / пакет из кода |
-| `codeRef` | нет | путь от корня репозитория |
+| `codeRef` | нет | путь от корня репозитория. У сущности от внешнего символа (`io.Writer`, [`ADR_20260927-4`](adr/ADR_20260927-4_contract_external-symbols.md)) его нет: файла нет, и кнопки кода нет; остаётся `symbol` |
 | `symbol` | нет | `id` символа в фактах извлекателя ([`EXTRACTOR.md`](EXTRACTOR.md) §2.1, форма — [`ADR_20260923-5`](adr/ADR_20260923-5_extractors_symbol-ids.md)). Ключ, по которому `semaps sync` узнаёт сущность на следующем прогоне; ставит его сверка. Человек правит его в одном случае — подтверждая переименование в коде (EXTRACTOR §5). У `authored` не бывает. [`ADR_20260923-9`](adr/ADR_20260923-9_core_sync-symbol-mapping-and-containment.md) |
 | `members` | нет | члены типа, для директивы `@Members` шаблона содержимого (§11.2) |
 
@@ -207,7 +207,7 @@ workspace (нет даже `projects/`) законен. Файл `catalog.json` 
 | `origin` | нет | `code` \| `authored` |
 | `status` | нет | `present` \| `missing` |
 | `via` | нет | подпись членской связи: `member`, `memberKind`, `modifiers`, `text`, `path`, `cardinality`, `mutability`, `deferred` (все необязательны); есть только у членских связей (`kind` в фактах — `holds`, `uses`, `injects`) |
-| `evidence` | нет | `[{ codeRef, symbol?, line? }]` — проверяемое основание связи |
+| `evidence` | нет | `[{ codeRef, symbol?, line? }]` — проверяемое основание связи. `native` ребра фактов (как язык выразил связь) в реестр не пишется: он для показа и фильтров, тип связи по нему не выводится ([`ADR_20260930-3`](adr/ADR_20260930-3_contract_fact-kinds-and-derived-relation-types.md)) |
 
 Порождённые сверкой типы из органических рёбер: `extends`, `implements`, `contains`
 (вложенность: сборка / пространство имён / файл содержит тип, тип — вложенный тип),

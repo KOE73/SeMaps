@@ -608,14 +608,127 @@ func (x *extractor) implementsEdges() {
 	}
 }
 
-// external reports --implements names. EXTRACTOR.md §2.2 prints edges only
-// between symbols of the output, and a symbol needs a `file` under root; an
-// external interface has neither, so no edge is printed (docs/extractors/go.md).
+// external handles --implements names (docs/extractors/go.md, "Внешние
+// интерфейсы"). A name already in the output is computed like any interface.
+// Otherwise it is resolved per load group — through the transitive imports of
+// the group's packages, or the universe for `error` — and every non-interface
+// defined type of that group is tested against it. The external symbol is
+// printed only when at least one implements edge targets it; an unresolvable
+// name is a stderr warning.
 func (x *extractor) external(stderr io.Writer) {
+	groups := map[int][]*types.Package{}
+	var order []int
+	for _, pd := range x.pkgDecl {
+		if _, ok := groups[pd.group]; !ok {
+			order = append(order, pd.group)
+		}
+		groups[pd.group] = append(groups[pd.group], pd.pkg.Types)
+	}
+	sort.Ints(order)
 	for _, name := range x.o.implements {
 		if x.ids[name] {
-			continue // it is in the output: computed like any other interface
+			continue
 		}
-		fmt.Fprintf(stderr, "--implements %s: outside the output; the facts contract has no symbol for it, no edges printed\n", name)
+		var sym *Symbol
+		var edges []Edge
+		resolved := false
+		for _, g := range order {
+			obj := lookupExternal(groups[g], name)
+			if obj == nil {
+				continue
+			}
+			n, ok := obj.Type().(*types.Named)
+			if !ok || n.TypeParams().Len() > 0 {
+				continue
+			}
+			it, ok := n.Underlying().(*types.Interface)
+			if !ok || !it.IsMethodSet() || it.NumMethods() == 0 {
+				continue
+			}
+			resolved = true
+			if sym == nil {
+				sym = externalSymbol(name, obj, it)
+			}
+			for _, td := range x.typeDecl {
+				tn, ok := td.obj.Type().(*types.Named)
+				if td.group != g || td.obj.IsAlias() || !ok || tn.TypeParams().Len() > 0 || types.IsInterface(tn) {
+					continue
+				}
+				switch {
+				case types.Implements(tn, it):
+					edges = append(edges, Edge{From: td.id, To: name, Kind: "implements", Native: "methodset"})
+				case types.Implements(types.NewPointer(tn), it):
+					edges = append(edges, Edge{From: td.id, To: name, Kind: "implements", Native: "methodset.ptr"})
+				}
+			}
+		}
+		if !resolved {
+			fmt.Fprintf(stderr, "--implements %s: not resolved to a non-empty, non-generic interface in the loaded packages; skipped\n", name)
+			continue
+		}
+		if len(edges) == 0 {
+			continue // nothing implements it: no symbol, no noise
+		}
+		x.add(*sym)
+		for _, e := range edges {
+			x.addEdge(e)
+		}
 	}
+}
+
+// lookupExternal finds `<importpath>.<Name>` among pkgs and their transitive
+// imports, or the predeclared `error`.
+func lookupExternal(pkgs []*types.Package, name string) types.Object {
+	if name == "error" {
+		return types.Universe.Lookup("error")
+	}
+	dot := strings.LastIndex(name, ".")
+	if dot <= 0 || dot == len(name)-1 || strings.LastIndex(name, "/") > dot {
+		return nil
+	}
+	path, local := name[:dot], name[dot+1:]
+	seen := map[*types.Package]bool{}
+	var walk func(p *types.Package) types.Object
+	walk = func(p *types.Package) types.Object {
+		if p == nil || seen[p] {
+			return nil
+		}
+		seen[p] = true
+		if p.Path() == path {
+			if o, ok := p.Scope().Lookup(local).(*types.TypeName); ok && o.Exported() {
+				return o
+			}
+			return nil
+		}
+		for _, imp := range p.Imports() {
+			if o := walk(imp); o != nil {
+				return o
+			}
+		}
+		return nil
+	}
+	for _, p := range pkgs {
+		if o := walk(p); o != nil {
+			return o
+		}
+	}
+	return nil
+}
+
+// externalSymbol: no file, line or visibility; members are the interface's
+// full method set (cheap, and it shows what implementing means).
+func externalSymbol(id string, obj types.Object, it *types.Interface) *Symbol {
+	s := &Symbol{ID: id, Kind: "interface", NativeKind: "external", Name: obj.Name()}
+	if obj.Pkg() != nil {
+		s.Namespace = obj.Pkg().Path()
+	}
+	q := qualifier(obj.Pkg())
+	ms := []Member{}
+	for i := 0; i < it.NumMethods(); i++ {
+		f := it.Method(i)
+		ms = append(ms, Member{Kind: "method", Name: f.Name(), Type: types.TypeString(f.Type(), q), Visibility: visibility(f.Name())})
+	}
+	sort.SliceStable(ms, func(i, j int) bool { return ms[i].Name < ms[j].Name })
+	s.Members = &ms
+	return s
 }

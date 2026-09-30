@@ -338,7 +338,7 @@ the file through the YAML tree: comments and key order survive.
 | `workspace` | `docs/diagrams` | served at `/`; the only place `/api/save` writes to |
 | `source_root` | `.` | what `codeRef` and `/api/source*` resolve against |
 | `port` | `8777` | if busy, the next free port is taken |
-| `extractors` | — | list; each: `id` (lowercase, digits, `-`), `language`, `project` (model project under `projects/`), `root` (default `.`), `include`, `exclude`, `edges` (optional list: `holds`, `uses`, `injects`, `calls` — `calls` prints methods and the `calls`/`constructs`/`overrides` edges of `ADR_20260928-4`, dynamic data of the live graph only, never synced), `watch` (default `false`: the host watches this entry's sources and reruns it on a change, `docs/plans/PLAN_20260928-4_host_watch-sources.md`), `command` (replaces the found extractor; written by hand only) |
+| `extractors` | — | list; each: `id` (lowercase, digits, `-`), `language`, `project` (model project under `projects/`), `root` (default `.`), `include`, `exclude`, `edges` (optional list: `holds`, `uses`, `injects`, `calls` — `calls` prints methods and the `calls`/`constructs`/`overrides` edges of `ADR_20260928-4`, dynamic data of the live graph only, never synced), `implements` (optional list of full names of external interfaces, Go only: passed as `--implements`, `ADR_20260927-4`; written by hand, not settable through the setup API), `watch` (default `false`: the host watches this entry's sources and reruns it on a change, `docs/plans/PLAN_20260928-4_host_watch-sources.md`), `command` (replaces the found extractor; written by hand only) |
 | `mcp` | — | see below |
 
 `mcp` (`PLAN_20260928-7` step 1) is the settings that shape the MCP tools; every key is optional:

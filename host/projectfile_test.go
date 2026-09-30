@@ -109,6 +109,38 @@ func TestLoadProjectWithEdges(t *testing.T) {
 	}
 }
 
+// `implements:` lists the external interfaces a Go entry reports (ADR_20260927
+// §5); the host passes them as one comma-separated --implements, and Go is a
+// shipped language.
+func TestLoadProjectWithImplements(t *testing.T) {
+	file := writeProject(t, `extractors:
+  - id: core
+    language: go
+    project: core
+    edges: [holds]
+    implements: [io.Writer, error]
+`)
+	p, err := loadProject(file)
+	if err != nil {
+		t.Fatal(err)
+	}
+	e := p.Extractors[0]
+	if len(e.Implements) != 2 || e.Implements[0] != "io.Writer" || e.Implements[1] != "error" {
+		t.Fatalf("implements: %v", e.Implements)
+	}
+	args := strings.Join(extractorArgs(extractorTool{argv: []string{"semaps-extract-go"}}, e, "/p"), " ")
+	if !strings.Contains(args, "--edges holds") || !strings.HasSuffix(args, "--implements io.Writer,error") {
+		t.Errorf("args: %s", args)
+	}
+	known := false
+	for _, l := range knownLanguages {
+		known = known || l == "go"
+	}
+	if !known {
+		t.Errorf("go is not among the shipped languages: %v", knownLanguages)
+	}
+}
+
 func TestPatchExtractorWithEdges(t *testing.T) {
 	file := writeProject(t, `extractors:
   - id: backend

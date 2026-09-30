@@ -5,11 +5,23 @@
     "contains",
     "depends",
     "extends",
-    "holds",
-    "implements",
-    "uses"
+    "implements"
   ],
   "symbols": [
+    {
+      "id": "error",
+      "kind": "interface",
+      "nativeKind": "external",
+      "name": "error",
+      "members": [
+        {
+          "kind": "method",
+          "name": "Error",
+          "type": "func() string",
+          "visibility": "exported"
+        }
+      ]
+    },
     {
       "id": "example.com/sample/model",
       "kind": "module",
@@ -582,6 +594,21 @@
           "visibility": "exported"
         }
       ]
+    },
+    {
+      "id": "io.Writer",
+      "kind": "interface",
+      "nativeKind": "external",
+      "name": "Writer",
+      "namespace": "io",
+      "members": [
+        {
+          "kind": "method",
+          "name": "Write",
+          "type": "func(p []byte) (n int, err error)",
+          "visibility": "exported"
+        }
+      ]
     }
   ],
   "edges": [
@@ -661,343 +688,6 @@
       "kind": "contains"
     },
     {
-      "from": "example.com/sample/model.Admin",
-      "to": "example.com/sample/model.User",
-      "kind": "holds",
-      "native": "underlying",
-      "via": {
-        "member": "Admin",
-        "memberKind": "self",
-        "modifiers": [
-          "public"
-        ],
-        "text": "User",
-        "cardinality": "one"
-      }
-    },
-    {
-      "from": "example.com/sample/model.Batch",
-      "to": "example.com/sample/model.Item",
-      "kind": "holds",
-      "native": "underlying",
-      "via": {
-        "member": "Batch",
-        "memberKind": "self",
-        "modifiers": [
-          "public"
-        ],
-        "text": "[]Item",
-        "path": [
-          "item"
-        ],
-        "cardinality": "many"
-      }
-    },
-    {
-      "from": "example.com/sample/model.Default",
-      "to": "example.com/sample/model.Item",
-      "kind": "uses",
-      "via": {
-        "member": "Default",
-        "memberKind": "self",
-        "text": "Item",
-        "cardinality": "one"
-      }
-    },
-    {
-      "from": "example.com/sample/model.HandlerFunc",
-      "to": "example.com/sample/model.Item",
-      "kind": "uses",
-      "native": "signature",
-      "via": {
-        "member": "HandlerFunc",
-        "memberKind": "self",
-        "text": "func(in Item) Status",
-        "path": [
-          "arg:0"
-        ],
-        "cardinality": "one"
-      }
-    },
-    {
-      "from": "example.com/sample/model.HandlerFunc",
-      "to": "example.com/sample/model.Status",
-      "kind": "uses",
-      "native": "signature",
-      "via": {
-        "member": "HandlerFunc",
-        "memberKind": "self",
-        "text": "func(in Item) Status",
-        "path": [
-          "result"
-        ],
-        "cardinality": "one"
-      }
-    },
-    {
-      "from": "example.com/sample/model.ItemAlias",
-      "to": "example.com/sample/model.Item",
-      "kind": "uses",
-      "native": "alias",
-      "via": {
-        "member": "ItemAlias",
-        "memberKind": "self",
-        "text": "Item",
-        "cardinality": "one"
-      }
-    },
-    {
-      "from": "example.com/sample/model.StatusDone",
-      "to": "example.com/sample/model.Status",
-      "kind": "uses",
-      "via": {
-        "member": "StatusDone",
-        "memberKind": "self",
-        "text": "Status",
-        "cardinality": "one"
-      }
-    },
-    {
-      "from": "example.com/sample/model.StatusNew",
-      "to": "example.com/sample/model.Status",
-      "kind": "uses",
-      "via": {
-        "member": "StatusNew",
-        "memberKind": "self",
-        "text": "Status",
-        "cardinality": "one"
-      }
-    },
-    {
-      "from": "example.com/sample/model.User",
-      "to": "example.com/sample/model.Base",
-      "kind": "holds",
-      "native": "embed",
-      "via": {
-        "member": "Base",
-        "memberKind": "field",
-        "modifiers": [
-          "public"
-        ],
-        "text": "Base",
-        "cardinality": "one"
-      }
-    },
-    {
-      "from": "example.com/sample/model.User",
-      "to": "example.com/sample/model.Event",
-      "kind": "holds",
-      "native": "field",
-      "via": {
-        "member": "Events",
-        "memberKind": "field",
-        "modifiers": [
-          "public"
-        ],
-        "text": "chan Event",
-        "path": [
-          "item"
-        ],
-        "cardinality": "many",
-        "deferred": true
-      }
-    },
-    {
-      "from": "example.com/sample/model.User",
-      "to": "example.com/sample/model.Item",
-      "kind": "holds",
-      "native": "field",
-      "via": {
-        "member": "ByID",
-        "memberKind": "field",
-        "modifiers": [
-          "public"
-        ],
-        "text": "map[string]*Item",
-        "path": [
-          "value"
-        ],
-        "cardinality": "keyed"
-      }
-    },
-    {
-      "from": "example.com/sample/model.User",
-      "to": "example.com/sample/model.Item",
-      "kind": "holds",
-      "native": "field",
-      "via": {
-        "member": "Details",
-        "memberKind": "field",
-        "modifiers": [
-          "public"
-        ],
-        "text": "struct{Last Item}",
-        "path": [
-          "field:Last"
-        ],
-        "cardinality": "one"
-      }
-    },
-    {
-      "from": "example.com/sample/model.User",
-      "to": "example.com/sample/model.Item",
-      "kind": "holds",
-      "native": "field",
-      "via": {
-        "member": "Fixed",
-        "memberKind": "field",
-        "modifiers": [
-          "public"
-        ],
-        "text": "[2]Item",
-        "path": [
-          "item"
-        ],
-        "cardinality": "many"
-      }
-    },
-    {
-      "from": "example.com/sample/model.User",
-      "to": "example.com/sample/model.Item",
-      "kind": "holds",
-      "native": "field",
-      "via": {
-        "member": "Items",
-        "memberKind": "field",
-        "modifiers": [
-          "public"
-        ],
-        "text": "[]Item",
-        "path": [
-          "item"
-        ],
-        "cardinality": "many"
-      }
-    },
-    {
-      "from": "example.com/sample/model.User",
-      "to": "example.com/sample/model.Item",
-      "kind": "holds",
-      "native": "field",
-      "via": {
-        "member": "Nested",
-        "memberKind": "field",
-        "modifiers": [
-          "public"
-        ],
-        "text": "map[Key][]Item",
-        "path": [
-          "value",
-          "item"
-        ],
-        "cardinality": "keyed"
-      }
-    },
-    {
-      "from": "example.com/sample/model.User",
-      "to": "example.com/sample/model.Item",
-      "kind": "holds",
-      "native": "field",
-      "via": {
-        "member": "Next",
-        "memberKind": "field",
-        "modifiers": [
-          "public"
-        ],
-        "text": "func() (Item, error)",
-        "path": [
-          "result:0"
-        ],
-        "cardinality": "one",
-        "deferred": true
-      }
-    },
-    {
-      "from": "example.com/sample/model.User",
-      "to": "example.com/sample/model.Item",
-      "kind": "holds",
-      "native": "field",
-      "via": {
-        "member": "OnDone",
-        "memberKind": "field",
-        "modifiers": [
-          "public"
-        ],
-        "text": "func(Item) error",
-        "path": [
-          "arg:0"
-        ],
-        "cardinality": "one",
-        "deferred": true
-      }
-    },
-    {
-      "from": "example.com/sample/model.User",
-      "to": "example.com/sample/model.Item",
-      "kind": "holds",
-      "native": "field",
-      "via": {
-        "member": "Owner",
-        "memberKind": "field",
-        "modifiers": [
-          "public"
-        ],
-        "text": "*Item",
-        "cardinality": "one"
-      }
-    },
-    {
-      "from": "example.com/sample/model.User",
-      "to": "example.com/sample/model.Key",
-      "kind": "holds",
-      "native": "field",
-      "via": {
-        "member": "ByKey",
-        "memberKind": "field",
-        "modifiers": [
-          "public"
-        ],
-        "text": "map[Key]int",
-        "path": [
-          "key"
-        ],
-        "cardinality": "keyed"
-      }
-    },
-    {
-      "from": "example.com/sample/model.User",
-      "to": "example.com/sample/model.Key",
-      "kind": "holds",
-      "native": "field",
-      "via": {
-        "member": "Nested",
-        "memberKind": "field",
-        "modifiers": [
-          "public"
-        ],
-        "text": "map[Key][]Item",
-        "path": [
-          "key"
-        ],
-        "cardinality": "keyed"
-      }
-    },
-    {
-      "from": "example.com/sample/model.User",
-      "to": "example.com/sample/model.Status",
-      "kind": "holds",
-      "native": "field",
-      "via": {
-        "member": "status",
-        "memberKind": "field",
-        "modifiers": [
-          "private"
-        ],
-        "text": "Status",
-        "cardinality": "one"
-      }
-    },
-    {
       "from": "example.com/sample/store",
       "to": "example.com/sample/model",
       "kind": "depends"
@@ -1053,77 +743,10 @@
       "kind": "contains"
     },
     {
-      "from": "example.com/sample/store.MemStore",
-      "to": "example.com/sample/model.Box",
-      "kind": "holds",
-      "native": "field",
-      "via": {
-        "member": "boxed",
-        "memberKind": "field",
-        "modifiers": [
-          "private"
-        ],
-        "text": "model.Box[model.Item]",
-        "cardinality": "one"
-      }
-    },
-    {
-      "from": "example.com/sample/store.MemStore",
-      "to": "example.com/sample/model.Item",
-      "kind": "holds",
-      "native": "field",
-      "via": {
-        "member": "boxed",
-        "memberKind": "field",
-        "modifiers": [
-          "private"
-        ],
-        "text": "model.Box[model.Item]",
-        "path": [
-          "arg:0"
-        ],
-        "cardinality": "one"
-      }
-    },
-    {
-      "from": "example.com/sample/store.MemStore",
-      "to": "example.com/sample/model.Item",
-      "kind": "holds",
-      "native": "field",
-      "via": {
-        "member": "items",
-        "memberKind": "field",
-        "modifiers": [
-          "private"
-        ],
-        "text": "[]model.Item",
-        "path": [
-          "item"
-        ],
-        "cardinality": "many"
-      }
-    },
-    {
-      "from": "example.com/sample/store.MemStore",
-      "to": "example.com/sample/model.Item",
-      "kind": "uses",
-      "via": {
-        "member": "Read",
-        "memberKind": "return",
-        "text": "model.Item",
-        "cardinality": "one"
-      }
-    },
-    {
-      "from": "example.com/sample/store.MemStore",
-      "to": "example.com/sample/model.Item",
-      "kind": "uses",
-      "via": {
-        "member": "Write.item",
-        "memberKind": "parameter",
-        "text": "model.Item",
-        "cardinality": "one"
-      }
+      "from": "example.com/sample/store.Log",
+      "to": "io.Writer",
+      "kind": "implements",
+      "native": "methodset.ptr"
     },
     {
       "from": "example.com/sample/store.MemStore",
@@ -1150,43 +773,10 @@
       "native": "methodset.ptr"
     },
     {
-      "from": "example.com/sample/store.NewMemStore",
-      "to": "example.com/sample/model.Item",
-      "kind": "uses",
-      "via": {
-        "member": "extra",
-        "memberKind": "parameter",
-        "text": "...model.Item",
-        "path": [
-          "item"
-        ],
-        "cardinality": "many"
-      }
-    },
-    {
-      "from": "example.com/sample/store.NewMemStore",
-      "to": "example.com/sample/model.Item",
-      "kind": "uses",
-      "via": {
-        "member": "seed",
-        "memberKind": "parameter",
-        "text": "[]model.Item",
-        "path": [
-          "item"
-        ],
-        "cardinality": "many"
-      }
-    },
-    {
-      "from": "example.com/sample/store.NewMemStore",
-      "to": "example.com/sample/store.MemStore",
-      "kind": "uses",
-      "via": {
-        "member": "NewMemStore",
-        "memberKind": "return",
-        "text": "*MemStore",
-        "cardinality": "one"
-      }
+      "from": "example.com/sample/store.NotFound",
+      "to": "error",
+      "kind": "implements",
+      "native": "methodset"
     },
     {
       "from": "example.com/sample/store.ReadWriter",
@@ -1205,39 +795,6 @@
       "to": "example.com/sample/store.Reader",
       "kind": "extends",
       "native": "underlying"
-    },
-    {
-      "from": "example.com/sample/store.Split",
-      "to": "example.com/sample/model.Batch",
-      "kind": "uses",
-      "via": {
-        "member": "Split.#0",
-        "memberKind": "return",
-        "text": "model.Batch",
-        "cardinality": "one"
-      }
-    },
-    {
-      "from": "example.com/sample/store.Split",
-      "to": "example.com/sample/model.Status",
-      "kind": "uses",
-      "via": {
-        "member": "Split.#1",
-        "memberKind": "return",
-        "text": "model.Status",
-        "cardinality": "one"
-      }
-    },
-    {
-      "from": "example.com/sample/store.Split",
-      "to": "example.com/sample/model.User",
-      "kind": "uses",
-      "via": {
-        "member": "u",
-        "memberKind": "parameter",
-        "text": "model.User",
-        "cardinality": "one"
-      }
     }
   ]
 }

@@ -296,7 +296,7 @@ internal sealed class FactsExtractor(string rootArgument, string rootFullPath, P
 
             foreach (var typeId in entry.TopLevelTypes)
             {
-                edges.Add(new EdgeWithVia { From = asmId, To = typeId, Kind = "contains" });
+                edges.Add(new EdgeWithVia { From = asmId, To = typeId, Kind = "contains", Native = "assembly" });
             }
 
             foreach (var targetId in entry.ReferencedAssemblies)
@@ -315,14 +315,14 @@ internal sealed class FactsExtractor(string rootArgument, string rootFullPath, P
             if (symbol.ContainingType is null && !symbol.ContainingNamespace.IsGlobalNamespace)
             {
                 var nsId = SymbolIds.NamespaceId(symbol.ContainingNamespace);
-                edges.Add(new EdgeWithVia { From = nsId, To = id, Kind = "contains" });
+                edges.Add(new EdgeWithVia { From = nsId, To = id, Kind = "contains", Native = "namespace" });
             }
             else if (symbol.ContainingType is not null)
             {
                 var outerId = SymbolIds.TypeId(symbol.ContainingType);
                 if (outputIds.Contains(outerId))
                 {
-                    edges.Add(new EdgeWithVia { From = outerId, To = id, Kind = "contains" });
+                    edges.Add(new EdgeWithVia { From = outerId, To = id, Kind = "contains", Native = "nested" });
                 }
             }
         }
@@ -421,6 +421,10 @@ internal sealed class FactsExtractor(string rootArgument, string rootFullPath, P
                 From = e.From,
                 To = e.To,
                 Kind = e.Kind,
+                // holds/uses: the member construct (field, property, event, parameter, return,
+                // constructor) is what C# used. The method layer (calls, constructs, overrides,
+                // contains/implements with a method end) carries no native.
+                Native = e.Native ?? (e.Kind is "holds" or "uses" ? e.Via?.MemberKind : null),
                 Via = e.Via,
                 Line = e.Line,
                 File = e.File,
@@ -647,7 +651,7 @@ internal sealed class FactsExtractor(string rootArgument, string rootFullPath, P
             var baseId = SymbolIds.TypeId(baseType);
             if (outputIds.Contains(baseId) && baseId != id)
             {
-                edges.Add(new EdgeWithVia { From = id, To = baseId, Kind = "extends", Line = line, File = file });
+                edges.Add(new EdgeWithVia { From = id, To = baseId, Kind = "extends", Native = "class", Line = line, File = file });
             }
         }
 
@@ -656,7 +660,10 @@ internal sealed class FactsExtractor(string rootArgument, string rootFullPath, P
             var ifaceId = SymbolIds.TypeId(iface);
             if (outputIds.Contains(ifaceId) && ifaceId != id)
             {
-                edges.Add(new EdgeWithVia { From = id, To = ifaceId, Kind = "implements", Line = line, File = file });
+                // interface IA : IB extends the contract; class/struct : IA implements it.
+                edges.Add(symbol.TypeKind == TypeKind.Interface
+                    ? new EdgeWithVia { From = id, To = ifaceId, Kind = "extends", Native = "interface", Line = line, File = file }
+                    : new EdgeWithVia { From = id, To = ifaceId, Kind = "implements", Native = "interface", Line = line, File = file });
             }
         }
     }

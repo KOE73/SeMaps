@@ -27,7 +27,9 @@
     "id": { "type": "string", "pattern": "^\\S+$" },
     "symbol": {
       "type": "object",
-      "required": ["id", "kind", "nativeKind", "name", "file"],
+      "required": ["id", "kind", "nativeKind", "name"],
+      "if": { "properties": { "nativeKind": { "not": { "const": "external" } } } },
+      "then": { "required": ["file"] },
       "additionalProperties": false,
       "properties": {
         "id": { "$ref": "#/$defs/id" },
@@ -98,7 +100,8 @@
       "properties": {
         "from": { "$ref": "#/$defs/id" },
         "to": { "$ref": "#/$defs/id" },
-        "kind": { "enum": ["extends", "implements", "contains", "depends", "holds", "uses", "calls", "constructs", "overrides"] },
+        "kind": { "enum": ["extends", "implements", "contains", "depends", "holds", "uses", "calls", "constructs", "overrides"], "description": "extends..uses: the closed architectural vocabulary of edges that reach the registry (ADR_20260927, ADR_20260930-3); calls, constructs, overrides: fact kinds of the live graph only, never in the registry" },
+        "native": { "type": "string", "minLength": 1, "description": "how the language expressed the edge: embed, methodset, field, property, interface… (docs/extractors/<lang>.md); not compared by sync" },
         "via": { "$ref": "#/$defs/via" },
         "line": { "type": "integer", "minimum": 1, "description": "where the edge comes from: the member for holds/uses, the base list for extends/implements, the first call site for calls. Not for contains and depends" },
         "file": { "type": "string", "pattern": "^[^\\\\]+$", "description": "only when it differs from the file of the `from` symbol" },

@@ -804,92 +804,110 @@
     {
       "from": "CallsSample.App",
       "to": "CallsSample.App.Animal",
-      "kind": "contains"
+      "kind": "contains",
+      "native": "namespace"
     },
     {
       "from": "CallsSample.App",
       "to": "CallsSample.App.BlindSpots",
-      "kind": "contains"
+      "kind": "contains",
+      "native": "namespace"
     },
     {
       "from": "CallsSample.App",
       "to": "CallsSample.App.Calculator",
-      "kind": "contains"
+      "kind": "contains",
+      "native": "namespace"
     },
     {
       "from": "CallsSample.App",
       "to": "CallsSample.App.ChainCtor",
-      "kind": "contains"
+      "kind": "contains",
+      "native": "namespace"
     },
     {
       "from": "CallsSample.App",
       "to": "CallsSample.App.Circle",
-      "kind": "contains"
+      "kind": "contains",
+      "native": "namespace"
     },
     {
       "from": "CallsSample.App",
       "to": "CallsSample.App.Dog",
-      "kind": "contains"
+      "kind": "contains",
+      "native": "namespace"
     },
     {
       "from": "CallsSample.App",
       "to": "CallsSample.App.Factory",
-      "kind": "contains"
+      "kind": "contains",
+      "native": "namespace"
     },
     {
       "from": "CallsSample.App",
       "to": "CallsSample.App.IShape",
-      "kind": "contains"
+      "kind": "contains",
+      "native": "namespace"
     },
     {
       "from": "CallsSample.App",
       "to": "CallsSample.App.LambdaHost",
-      "kind": "contains"
+      "kind": "contains",
+      "native": "namespace"
     },
     {
       "from": "CallsSample.App",
       "to": "CallsSample.App.LocalFnHost",
-      "kind": "contains"
+      "kind": "contains",
+      "native": "namespace"
     },
     {
       "from": "CallsSample.App",
       "to": "CallsSample.App.MutualA",
-      "kind": "contains"
+      "kind": "contains",
+      "native": "namespace"
     },
     {
       "from": "CallsSample.App",
       "to": "CallsSample.App.MutualB",
-      "kind": "contains"
+      "kind": "contains",
+      "native": "namespace"
     },
     {
       "from": "CallsSample.App",
       "to": "CallsSample.App.PropertyHost",
-      "kind": "contains"
+      "kind": "contains",
+      "native": "namespace"
     },
     {
       "from": "CallsSample.App",
       "to": "CallsSample.App.Puppy",
-      "kind": "contains"
+      "kind": "contains",
+      "native": "namespace"
     },
     {
       "from": "CallsSample.App",
       "to": "CallsSample.App.Recursive",
-      "kind": "contains"
+      "kind": "contains",
+      "native": "namespace"
     },
     {
       "from": "CallsSample.App",
       "to": "CallsSample.App.Robot",
-      "kind": "contains"
+      "kind": "contains",
+      "native": "namespace"
     },
     {
       "from": "CallsSample.App",
       "to": "CallsSample.App.ShapeUser",
-      "kind": "contains"
+      "kind": "contains",
+      "native": "namespace"
     },
     {
       "from": "CallsSample.App",
       "to": "CallsSample.App.Square",
-      "kind": "contains"
+      "kind": "contains",
+      "native": "namespace"
     },
     {
       "from": "CallsSample.App.Animal",
@@ -1002,6 +1020,7 @@
       "from": "CallsSample.App.Circle",
       "to": "CallsSample.App.IShape",
       "kind": "implements",
+      "native": "interface",
       "line": 8
     },
     {
@@ -1013,6 +1032,7 @@
       "from": "CallsSample.App.Dog",
       "to": "CallsSample.App.Animal",
       "kind": "extends",
+      "native": "class",
       "line": 10
     },
     {
@@ -1168,6 +1188,7 @@
       "from": "CallsSample.App.Puppy",
       "to": "CallsSample.App.Dog",
       "kind": "extends",
+      "native": "class",
       "line": 16
     },
     {
@@ -1211,6 +1232,7 @@
       "from": "CallsSample.App.Robot",
       "to": "CallsSample.App.IShape",
       "kind": "implements",
+      "native": "interface",
       "line": 24
     },
     {
@@ -1248,6 +1270,7 @@
       "from": "CallsSample.App.Square",
       "to": "CallsSample.App.IShape",
       "kind": "implements",
+      "native": "interface",
       "line": 15
     },
     {
@@ -1268,92 +1291,110 @@
     {
       "from": "[CallsSample.App]",
       "to": "CallsSample.App.Animal",
-      "kind": "contains"
+      "kind": "contains",
+      "native": "assembly"
     },
     {
       "from": "[CallsSample.App]",
       "to": "CallsSample.App.BlindSpots",
-      "kind": "contains"
+      "kind": "contains",
+      "native": "assembly"
     },
     {
       "from": "[CallsSample.App]",
       "to": "CallsSample.App.Calculator",
-      "kind": "contains"
+      "kind": "contains",
+      "native": "assembly"
     },
     {
       "from": "[CallsSample.App]",
       "to": "CallsSample.App.ChainCtor",
-      "kind": "contains"
+      "kind": "contains",
+      "native": "assembly"
     },
     {
       "from": "[CallsSample.App]",
       "to": "CallsSample.App.Circle",
-      "kind": "contains"
+      "kind": "contains",
+      "native": "assembly"
     },
     {
       "from": "[CallsSample.App]",
       "to": "CallsSample.App.Dog",
-      "kind": "contains"
+      "kind": "contains",
+      "native": "assembly"
     },
     {
       "from": "[CallsSample.App]",
       "to": "CallsSample.App.Factory",
-      "kind": "contains"
+      "kind": "contains",
+      "native": "assembly"
     },
     {
       "from": "[CallsSample.App]",
       "to": "CallsSample.App.IShape",
-      "kind": "contains"
+      "kind": "contains",
+      "native": "assembly"
     },
     {
       "from": "[CallsSample.App]",
       "to": "CallsSample.App.LambdaHost",
-      "kind": "contains"
+      "kind": "contains",
+      "native": "assembly"
     },
     {
       "from": "[CallsSample.App]",
       "to": "CallsSample.App.LocalFnHost",
-      "kind": "contains"
+      "kind": "contains",
+      "native": "assembly"
     },
     {
       "from": "[CallsSample.App]",
       "to": "CallsSample.App.MutualA",
-      "kind": "contains"
+      "kind": "contains",
+      "native": "assembly"
     },
     {
       "from": "[CallsSample.App]",
       "to": "CallsSample.App.MutualB",
-      "kind": "contains"
+      "kind": "contains",
+      "native": "assembly"
     },
     {
       "from": "[CallsSample.App]",
       "to": "CallsSample.App.PropertyHost",
-      "kind": "contains"
+      "kind": "contains",
+      "native": "assembly"
     },
     {
       "from": "[CallsSample.App]",
       "to": "CallsSample.App.Puppy",
-      "kind": "contains"
+      "kind": "contains",
+      "native": "assembly"
     },
     {
       "from": "[CallsSample.App]",
       "to": "CallsSample.App.Recursive",
-      "kind": "contains"
+      "kind": "contains",
+      "native": "assembly"
     },
     {
       "from": "[CallsSample.App]",
       "to": "CallsSample.App.Robot",
-      "kind": "contains"
+      "kind": "contains",
+      "native": "assembly"
     },
     {
       "from": "[CallsSample.App]",
       "to": "CallsSample.App.ShapeUser",
-      "kind": "contains"
+      "kind": "contains",
+      "native": "assembly"
     },
     {
       "from": "[CallsSample.App]",
       "to": "CallsSample.App.Square",
-      "kind": "contains"
+      "kind": "contains",
+      "native": "assembly"
     }
   ]
 }

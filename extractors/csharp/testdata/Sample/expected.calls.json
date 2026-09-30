@@ -446,6 +446,18 @@
       "visibility": "public"
     },
     {
+      "id": "Sample.Core.IReadStore",
+      "kind": "interface",
+      "nativeKind": "interface",
+      "name": "IReadStore",
+      "namespace": "Sample.Core",
+      "file": "Sample.Core/Contracts.cs",
+      "line": 4,
+      "endLine": 6,
+      "visibility": "public",
+      "members": []
+    },
+    {
       "id": "Sample.Core.IRepository",
       "kind": "interface",
       "nativeKind": "interface",
@@ -502,6 +514,18 @@
       "line": 9,
       "endLine": 9,
       "visibility": "public"
+    },
+    {
+      "id": "Sample.Core.IWriteStore",
+      "kind": "interface",
+      "nativeKind": "interface",
+      "name": "IWriteStore",
+      "namespace": "Sample.Core",
+      "file": "Sample.Core/Contracts.cs",
+      "line": 8,
+      "endLine": 10,
+      "visibility": "public",
+      "members": []
     },
     {
       "id": "Sample.Core.Logger",
@@ -785,7 +809,8 @@
     {
       "from": "Sample.App",
       "to": "Sample.App.AdvancedRepetitionGuard",
-      "kind": "contains"
+      "kind": "contains",
+      "native": "namespace"
     },
     {
       "from": "Sample.App.AdvancedRepetitionGuard",
@@ -806,12 +831,14 @@
       "from": "Sample.App.AdvancedRepetitionGuard",
       "to": "Sample.Core.Guards.RepetitionGuard",
       "kind": "extends",
+      "native": "class",
       "line": 6
     },
     {
       "from": "Sample.App.AdvancedRepetitionGuard",
       "to": "Sample.Core.IRepository",
       "kind": "implements",
+      "native": "interface",
       "line": 6
     },
     {
@@ -839,52 +866,74 @@
     {
       "from": "Sample.Core",
       "to": "Sample.Core.Container",
-      "kind": "contains"
+      "kind": "contains",
+      "native": "namespace"
     },
     {
       "from": "Sample.Core",
       "to": "Sample.Core.Features",
-      "kind": "contains"
+      "kind": "contains",
+      "native": "namespace"
+    },
+    {
+      "from": "Sample.Core",
+      "to": "Sample.Core.IReadStore",
+      "kind": "contains",
+      "native": "namespace"
     },
     {
       "from": "Sample.Core",
       "to": "Sample.Core.IRepository",
-      "kind": "contains"
+      "kind": "contains",
+      "native": "namespace"
+    },
+    {
+      "from": "Sample.Core",
+      "to": "Sample.Core.IWriteStore",
+      "kind": "contains",
+      "native": "namespace"
     },
     {
       "from": "Sample.Core",
       "to": "Sample.Core.Logger",
-      "kind": "contains"
+      "kind": "contains",
+      "native": "namespace"
     },
     {
       "from": "Sample.Core",
       "to": "Sample.Core.Notify",
-      "kind": "contains"
+      "kind": "contains",
+      "native": "namespace"
     },
     {
       "from": "Sample.Core",
       "to": "Sample.Core.Point",
-      "kind": "contains"
+      "kind": "contains",
+      "native": "namespace"
     },
     {
       "from": "Sample.Core",
       "to": "Sample.Core.Repo`1",
-      "kind": "contains"
+      "kind": "contains",
+      "native": "namespace"
     },
     {
       "from": "Sample.Core",
       "to": "Sample.Core.Status",
-      "kind": "contains"
+      "kind": "contains",
+      "native": "namespace"
     },
     {
       "from": "Sample.Core.Container",
       "to": "Sample.Core.Container+Inner",
-      "kind": "contains"
+      "kind": "contains",
+      "native": "nested"
     },
     {
       "from": "Sample.Core.Container",
       "to": "Sample.Core.Container+Secret",
-      "kind": "contains"
+      "kind": "contains",
+      "native": "nested"
     },
     {
       "from": "Sample.Core.Container",
@@ -970,7 +1019,8 @@
     {
       "from": "Sample.Core.Guards",
       "to": "Sample.Core.Guards.RepetitionGuard",
-      "kind": "contains"
+      "kind": "contains",
+      "native": "namespace"
     },
     {
       "from": "Sample.Core.Guards.RepetitionGuard",
@@ -991,6 +1041,13 @@
       "from": "Sample.Core.IRepository",
       "to": "Sample.Core.IRepository.Snapshot()",
       "kind": "contains"
+    },
+    {
+      "from": "Sample.Core.IWriteStore",
+      "to": "Sample.Core.IReadStore",
+      "kind": "extends",
+      "native": "interface",
+      "line": 8
     },
     {
       "from": "Sample.Core.Logger",
@@ -1040,17 +1097,20 @@
     {
       "from": "Sample.Shared",
       "to": "Sample.Shared.BuildInfo",
-      "kind": "contains"
+      "kind": "contains",
+      "native": "namespace"
     },
     {
       "from": "[Sample.App]",
       "to": "Sample.App.AdvancedRepetitionGuard",
-      "kind": "contains"
+      "kind": "contains",
+      "native": "assembly"
     },
     {
       "from": "[Sample.App]",
       "to": "Sample.Shared.BuildInfo",
-      "kind": "contains"
+      "kind": "contains",
+      "native": "assembly"
     },
     {
       "from": "[Sample.App]",
@@ -1060,52 +1120,74 @@
     {
       "from": "[Sample.Core]",
       "to": "Sample.Core.Container",
-      "kind": "contains"
+      "kind": "contains",
+      "native": "assembly"
     },
     {
       "from": "[Sample.Core]",
       "to": "Sample.Core.Features",
-      "kind": "contains"
+      "kind": "contains",
+      "native": "assembly"
     },
     {
       "from": "[Sample.Core]",
       "to": "Sample.Core.Guards.RepetitionGuard",
-      "kind": "contains"
+      "kind": "contains",
+      "native": "assembly"
+    },
+    {
+      "from": "[Sample.Core]",
+      "to": "Sample.Core.IReadStore",
+      "kind": "contains",
+      "native": "assembly"
     },
     {
       "from": "[Sample.Core]",
       "to": "Sample.Core.IRepository",
-      "kind": "contains"
+      "kind": "contains",
+      "native": "assembly"
+    },
+    {
+      "from": "[Sample.Core]",
+      "to": "Sample.Core.IWriteStore",
+      "kind": "contains",
+      "native": "assembly"
     },
     {
       "from": "[Sample.Core]",
       "to": "Sample.Core.Logger",
-      "kind": "contains"
+      "kind": "contains",
+      "native": "assembly"
     },
     {
       "from": "[Sample.Core]",
       "to": "Sample.Core.Notify",
-      "kind": "contains"
+      "kind": "contains",
+      "native": "assembly"
     },
     {
       "from": "[Sample.Core]",
       "to": "Sample.Core.Point",
-      "kind": "contains"
+      "kind": "contains",
+      "native": "assembly"
     },
     {
       "from": "[Sample.Core]",
       "to": "Sample.Core.Repo`1",
-      "kind": "contains"
+      "kind": "contains",
+      "native": "assembly"
     },
     {
       "from": "[Sample.Core]",
       "to": "Sample.Core.Status",
-      "kind": "contains"
+      "kind": "contains",
+      "native": "assembly"
     },
     {
       "from": "[Sample.Core]",
       "to": "Sample.Shared.BuildInfo",
-      "kind": "contains"
+      "kind": "contains",
+      "native": "assembly"
     }
   ]
 }

@@ -113,6 +113,10 @@ type extractorConf struct {
 	Include  []string `yaml:"include,omitempty"`
 	Exclude  []string `yaml:"exclude,omitempty"`
 	Edges    []string `yaml:"edges,omitempty"` // optional edge kinds: holds, uses, injects, calls
+	// Implements lists interfaces outside the read code whose implementations
+	// to report, by full name (`io.Reader`, `error`); only extractors that take
+	// --implements (Go) accept it (ADR_20260927 §5).
+	Implements []string `yaml:"implements,omitempty"`
 	// Watch: the host watches this entry's sources and reruns it on a
 	// change, without a person or an agent asking (PLAN_20260928-4). Default
 	// off; never touches sync or the model (ADR_20260928 §4).

@@ -33,6 +33,11 @@ semaps-extract-<lang> [--root <dir>] [--include <path>]... [--exclude <glob>]...
   вывод — байт в байт как раньше: символов `method` и рёбер `calls`/`constructs`/`overrides` нет.
   У `.semaps` заглушка записи экстрактора — `edges: [holds, injects]`; на странице
   «Экстракторы» хост показывает чекбоксы.
+- `--implements <name>,...` — только у извлекателей, которым язык даёт неявную реализацию
+  (Go): полные имена внешних интерфейсов, к которым считать `implements`. Значение берётся из
+  записи извлекателя в `.semaps` (`implements: [io.Writer, error]`); печатается внешний символ
+  ([`ADR_20260927-4`](adr/ADR_20260927-4_contract_external-symbols.md), §2.1). Остальным языкам флаг
+  неизвестен: запись с `implements:` для них — ошибка запуска (код `2`).
 
 Выход:
 
@@ -69,7 +74,7 @@ stdout — **только** JSON. Диагностика, прогресс, пр
     }
   ],
   "edges": [
-    { "from": "Acme.Agent.Guards.RepetitionGuard", "to": "Acme.Llm.ILlmMiddleware", "kind": "implements", "line": 12 }
+    { "from": "Acme.Agent.Guards.RepetitionGuard", "to": "Acme.Llm.ILlmMiddleware", "kind": "implements", "native": "interface", "line": 12 }
   ]
 }
 ```
@@ -83,7 +88,7 @@ stdout — **только** JSON. Диагностика, прогресс, пр
 | `nativeKind` | да | как это называет сам язык: `class`, `struct`, `record`, `enum`, `trait`, `protocol`, `package`… Свободная строка. У `kind: method` — ровно одно из `method`, `constructor`, `property`, `indexer`, `operator`, `accessor` ([`ADR_20260928-4`](adr/ADR_20260928-4_extractors_methods-and-calls.md) §1) |
 | `name` | да | короткое имя, как в коде |
 | `namespace` | нет | пространство имён / пакет / модуль-владелец; пусто, если у языка его нет |
-| `file` | да | путь относительно `root`, прямые слэши |
+| `file` | да, кроме `external` | путь относительно `root`, прямые слэши. Внешний символ (`nativeKind: external`) — конец ребра вне прочитанного кода (`io.Writer`), печатается только по явному списку записи извлекателя и только если на него есть ребро; у него нет `file`, `line`, `visibility`, и сверка не фильтрует его по `sources.include` ([`ADR_20260927-4`](adr/ADR_20260927-4_contract_external-symbols.md)) |
 | `line` | нет | строка объявления, с 1 |
 | `endLine` | нет | последняя строка объявления, которое называют `file`/`line` |
 | `spans` | нет | массив `{file, line, endLine}` — все объявления символа; печатается, только если их больше одного (C# `partial`, слияние объявлений TypeScript). `file` и `line` символа при этом остаются первым объявлением, как и без `spans`. Отсортирован по `(file, line)` |
@@ -108,14 +113,16 @@ stdout — **только** JSON. Диагностика, прогресс, пр
 | Поле | Обяз. | Что |
 |---|---|---|
 | `from`, `to` | да | `id` символов из этого же вывода. Ребро на символ вне вывода (библиотека, не попавший в `--include` код) **не печатается** |
-| `kind` | да | ровно одно из `extends`, `implements`, `contains`, `depends`, `holds`, `uses`, `calls`, `constructs`, `overrides` |
+| `kind` | да | ровно одно из `extends`, `implements`, `contains`, `depends`, `holds`, `uses` (закрытый архитектурный словарь, [`ADR_20260927`](adr/ADR_20260927_contract_closed-relation-vocabulary.md); доходит до реестра) и `calls`, `constructs`, `overrides` (только живой граф, в реестр не доходят: [`ADR_20260930-3`](adr/ADR_20260930-3_contract_fact-kinds-and-derived-relation-types.md)) |
+| `native` | нет | как язык выразил связь, свободная строка словами языка: `embed`, `methodset`, `class`, `interface`, `field`, `property`, `parameter`… Сопоставление «конструкция → `kind`/`native`» — нормативная таблица в [`docs/extractors/<lang>.md`](extractors/), каждая строка покрыта тестом. Нет `native` — у языка один очевидный способ. Для показа и фильтров; сверка его не сравнивает и тип связи по нему не выводит. У `calls`, `constructs`, `overrides` и рёбер `contains`/`implements` с методом на конце `native` нет |
 | `via` | нет | подпись членской связи из кода (§2.2a); не для `calls`/`constructs`/`overrides` |
 | `line` | нет | строка, откуда ребро: член — для `holds`/`uses`, список базовых типов — для `extends`/`implements`, первое место вызова — для `calls`. Не печатается для `contains` и `depends` |
 | `file` | нет | только если отличается от `file` символа `from` |
 | `lines` | нет | только для `calls` и `constructs`: все места вызова (создания) этой цели из этого метода, по возрастанию; `line` — первая из них ([`ADR_20260928-4`](adr/ADR_20260928-4_extractors_methods-and-calls.md) §3) |
 
-- `extends` — наследование реализации (базовый класс, встраивание по смыслу наследования).
-- `implements` — реализация интерфейса / трейта / протокола.
+- `extends` — подтип или расширение контракта: базовый класс; интерфейс, расширяющий интерфейс.
+  Встраивание (Go `struct{ Base }`) — не `extends`: подстановки нет, это `holds` с `native: embed`.
+- `implements` — реализация интерфейса / трейта / протокола (явная или по набору методов).
 - `contains` — вложенность: модуль содержит тип, тип содержит вложенный тип. Тип
   может лежать в нескольких модулях разом (C#: пространство имён и сборка; файл,
   подключённый в два проекта, — в обеих сборках).
@@ -131,7 +138,9 @@ stdout — **только** JSON. Диагностика, прогресс, пр
   `contains` — тот же вид, что у типов, но тип → метод: принадлежность метода типу.
 Вида ребра `injects` нет: параметр конструктора — ребро `uses` с `via.memberKind: constructor`.
 `injects` бывает только значением `--edges` и `edgeKinds` (покрытие этих рёбер) и типом
-связи, который собирает сверка (§5).
+связи, который собирает сверка (§5): тип связи реестра — не вид ребра, он остаётся отдельным
+типом со своей записью в словаре, стилем и видимостью, как и `holds.*`
+([`ADR_20260930-3`](adr/ADR_20260930-3_contract_fact-kinds-and-derived-relation-types.md)).
 
 Рёбра `calls`, `constructs`, `overrides` и `contains`/`implements` с методом на конце
 печатаются только с `--edges calls` ([`ADR_20260928-4`](adr/ADR_20260928-4_extractors_methods-and-calls.md) §5).
@@ -274,7 +283,8 @@ semaps sync --facts <file.json | -> [--project <id>] [--dry-run] [--no-renames] 
 
 Корни — как у `semaps check`. Сверяется один проект: `--project`, а если проект в
 workspace один — он. В сверку попадают символы, чей `file` лежит под
-`project.json → sources.include` (нет `include` — все).
+`project.json → sources.include` (нет `include` — все); внешний символ (`nativeKind: external`)
+без `file` — всегда ([`ADR_20260927-4`](adr/ADR_20260927-4_contract_external-symbols.md)).
 
 **Ключ членской связи.** Ребро `holds` / `uses` опознаётся по
 `(from, to, семейство, via.member, via.path)`, где семейство — `holds` (все `holds.*`),
@@ -301,6 +311,12 @@ workspace один — он. В сверку попадают символы, ч
 Признак без значения тип не расширяет: `Vec<T>` даёт `holds.many`. `deferred`,
 ключ/значение, `optional` внутри `keyed` живут в `via` и подписи, тип не множат.
 
+**`native` тип связи не меняет и сверкой не сравнивается** (§2.2): тип выводится из `kind` ребра
+и `via`, и смена `native` между прогонами — не изменение. Тип меняет только сам `kind`, а его для
+конструкции языка назначает нормативная таблица `docs/extractors/<lang>.md` (например, C#
+`interface IA : IB` — `extends`, а не `implements`). Виды `calls`, `constructs`, `overrides` типа
+связи не дают вовсе (ниже). Почему так: [`ADR_20260930-3`](adr/ADR_20260930-3_contract_fact-kinds-and-derived-relation-types.md).
+
 Сверка ставит `visibility` типу при его заведении (механизм [`CONTRACT.md`](CONTRACT.md) §5/§8.5):
 
 - видимы: `extends`, `implements`, `contains`, `depends`, `holds.*` публичные;
@@ -317,7 +333,7 @@ workspace один — он. В сверку попадают символы, ч
 
 | Событие | Реакция сверки |
 |---|---|
-| символ есть в фактах, нет в реестре | новая запись: id `e_` + slug (нижний регистр, всякая серия не-букв и не-цифр → один `_`) короткого имени, а у `module` — `nativeKind` и всего `id` символа (`e_namespace_acme_agent_guards`, `e_assembly_acme_agent`); коллизия — `_2`, `_3`; выдаётся **один раз**. `kind` = `nativeKind`, `origin: code`, `status: present`, `namespace`, `codeRef` = `file`, `symbol` = `id`, `members` |
+| символ есть в фактах, нет в реестре | новая запись: id `e_` + slug (нижний регистр, всякая серия не-букв и не-цифр → один `_`) короткого имени, а у `module` — `nativeKind` и всего `id` символа (`e_namespace_acme_agent_guards`, `e_assembly_acme_agent`); коллизия — `_2`, `_3`; выдаётся **один раз**. `kind` = `nativeKind`, `origin: code`, `status: present`, `namespace`, `codeRef` = `file` (у внешнего символа `codeRef` нет: файла нет, кнопки кода нет), `symbol` = `id`, `members` |
 | есть и там, и там | обновить `namespace`, `codeRef`, `members` (если факты их дают); `missing` → `present`; `id`, `name`, `kind` не трогать |
 | запись без `symbol`, не `authored`, первый прогон | усыновление (ниже): запись получает `symbol` и `origin: code`, id остаётся |
 | есть в реестре, нет в фактах | `"status": "missing"`, не удалять |
@@ -339,7 +355,8 @@ workspace один — он. В сверку попадают символы, ч
 
 Связь реестра: тип выводится из `kind` и `via` (ниже по разделу); членская связь
 получает `id` по её ключу (ниже); `origin: code`, `status: present`,
-`evidence: [{ codeRef: <file from>, symbol: <id from> }]`.
+`evidence: [{ codeRef: <file from>, symbol: <id from> }]` (если `from` — внешний символ, без
+`codeRef`).
 
 Рёбра `extends`, `implements`, `contains`, `depends` пишутся связями своего типа.
 Рёбра `holds`, `uses` — по одному на вхождение класса в тип члена.

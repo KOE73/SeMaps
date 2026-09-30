@@ -1,7 +1,11 @@
 // Package store imports model (depends) and covers the interface rows.
 package store
 
-import "example.com/sample/model"
+import (
+	"io"
+
+	"example.com/sample/model"
+)
 
 // Reader is satisfied by MemStore's value method set.
 type Reader interface {
@@ -52,3 +56,23 @@ func NewMemStore(seed []model.Item, extra ...model.Item) *MemStore {
 func Split(u model.User) (model.Batch, model.Status) { return nil, 0 }
 
 func init() {}
+
+// Log implements io.Writer through *Log (external: methodset.ptr).
+type Log struct {
+	lines []string
+}
+
+// Write has a pointer receiver.
+func (l *Log) Write(p []byte) (int, error) {
+	l.lines = append(l.lines, string(p))
+	return len(p), nil
+}
+
+// Flush takes an io.Writer, which puts io among the loaded imports.
+func (l *Log) Flush(w io.Writer) error { return nil }
+
+// NotFound implements the predeclared error (external: methodset).
+type NotFound struct{}
+
+// Error has a value receiver.
+func (NotFound) Error() string { return "not found" }

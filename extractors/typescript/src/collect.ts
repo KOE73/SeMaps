@@ -313,6 +313,7 @@ export function collectFacts(
     kind: EdgeKind,
     via?: ViaRecord,
     location?: { line: number; file?: string },
+    native?: string,
   ): void => {
     if (from === to) return;
     const key = `${from}\u0000${to}\u0000${kind}\u0000${via?.member ?? ""}\u0000${JSON.stringify(via?.path ?? [])}`;
@@ -320,6 +321,7 @@ export function collectFacts(
       from,
       to,
       kind,
+      ...(native ? { native } : {}),
       ...(via ? { via } : {}),
       ...(location ? { line: location.line, ...(location.file ? { file: location.file } : {}) } : {}),
     });
@@ -556,7 +558,7 @@ export function collectFacts(
           if (!symbol) continue;
           const resolved = resolveAlias(checker, symbol);
           const targetId = validIds.get(resolved);
-          if (targetId) addEdge(entry.id, targetId, edgeKind, undefined, { line: heritageLine });
+          if (targetId) addEdge(entry.id, targetId, edgeKind, undefined, { line: heritageLine }, edgeKind === "extends" ? "class" : "implements");
         }
       }
 
@@ -594,7 +596,7 @@ export function collectFacts(
                         ...(tp.mutability ? { mutability: tp.mutability } : {}),
                         ...(tp.deferred ? { deferred: true } : {}),
                       };
-                      addEdge(entry.id, targetId, "holds", via, { line: ctorLine });
+                      addEdge(entry.id, targetId, "holds", via, { line: ctorLine }, "parameterProperty");
                     }
 
                     // Always emit uses edge for constructor
@@ -731,7 +733,7 @@ export function collectFacts(
           if (!symbol) continue;
           const resolved = resolveAlias(checker, symbol);
           const targetId = validIds.get(resolved);
-          if (targetId) addEdge(entry.id, targetId, "extends", undefined, { line: heritageLine });
+          if (targetId) addEdge(entry.id, targetId, "extends", undefined, { line: heritageLine }, "interface");
         }
       }
       for (const member of ifaceDecl.members) {
@@ -854,7 +856,7 @@ export function collectFacts(
                 ...(tp.mutability ? { mutability: tp.mutability } : {}),
                 ...(tp.deferred ? { deferred: true } : {}),
               };
-              addEdge(entry.id, targetId, "uses", via, { line: aliasLine });
+              addEdge(entry.id, targetId, "uses", via, { line: aliasLine }, "alias");
             }
           }
         }
@@ -922,7 +924,7 @@ export function collectFacts(
                 ...(tp.mutability ? { mutability: tp.mutability } : {}),
                 ...(tp.deferred ? { deferred: true } : {}),
               };
-              addEdge(entry.id, targetId, "uses", via, { line: valueLine });
+              addEdge(entry.id, targetId, "uses", via, { line: valueLine }, "annotation");
             }
           }
         }
@@ -937,5 +939,19 @@ export function collectFacts(
     }
   }
 
-  return { symbols, edges: Array.from(edgeMap.values()) };
+  // native defaults (typescript.md, "Сопоставление рёбер"): contains says what the container is
+  // (file or namespace); holds/uses say which member carried the type.
+  const nativeKindById = new Map(symbols.map((s) => [s.id, s.nativeKind]));
+  const edges = Array.from(edgeMap.values()).map((e): EdgeRecord => {
+    if (e.native) return e;
+    let native: string | undefined;
+    if (e.kind === "contains") native = nativeKindById.get(e.from);
+    else if (e.kind === "holds" || e.kind === "uses") native = e.via?.memberKind;
+    if (!native) return e;
+    // Keep the wire order: from, to, kind, native, via, line, file.
+    const { from, to, kind, via, line, file } = e;
+    return { from, to, kind, native, ...(via ? { via } : {}), ...(line !== undefined ? { line } : {}), ...(file ? { file } : {}) };
+  });
+
+  return { symbols, edges };
 }

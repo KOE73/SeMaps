@@ -22,7 +22,7 @@ type Symbol struct {
 	NativeKind string    `json:"nativeKind"`
 	Name       string    `json:"name"`
 	Namespace  string    `json:"namespace,omitempty"`
-	File       string    `json:"file"`
+	File       string    `json:"file,omitempty"` // empty only for nativeKind external
 	Line       int       `json:"line,omitempty"`
 	Visibility string    `json:"visibility,omitempty"`
 	Members    *[]Member `json:"members,omitempty"` // nil: not given; empty: given and empty

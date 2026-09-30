@@ -180,11 +180,12 @@ model project:
 ```yaml
 extractors:
   - id: backend
-    language: csharp          # or typescript
+    language: csharp          # or typescript, go
     project: core             # a folder under <workspace>/projects/
     root: .
     include: [src]
     edges: [holds, injects]   # optional: which member-relation edge kinds to extract
+    implements: [io.Writer]   # optional, Go only: external interfaces to report implementations of
     watch: true                # optional, default false: rerun this extractor when its sources change
 ```
 
@@ -222,7 +223,7 @@ report, write. `semaps extract` only runs the extractors and prints each run's i
 
 - `doctor` says what is missing: an extractor (install SeMaps again with `install.cmd` in the SeMaps root or take
   the archive from Releases; `install.cmd` kills every running `semaps.exe`, this session's MCP
-  server included — restart the session after it) or a runtime (.NET SDK for C#, Node 24+ for TypeScript). Do not work
+  server included — restart the session after it) or a runtime (.NET SDK for C#, Node 24+ for TypeScript, the Go toolchain for Go). Do not work
   around it — tell the human.
 - Flags go **before** the project argument. `--facts <file>` still takes facts made by hand
   (`--facts -` reads stdin); keep such files out of the workspace and out of git.

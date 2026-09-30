@@ -77,7 +77,12 @@ type Edge struct {
 	From string `json:"from"`
 	To   string `json:"to"`
 	Kind string `json:"kind"`
-	Via  *Via   `json:"via,omitempty"` // signature of member relation
+	// Native is how the language expressed the edge (embed, methodset, field,
+	// interface…; docs/extractors/<lang>.md). Display and filters only: sync
+	// does not compare it and it never changes the relation type it derives
+	// (ADR_20260927 §3, ADR_20260930-3).
+	Native string `json:"native,omitempty"`
+	Via    *Via   `json:"via,omitempty"` // signature of member relation
 	// Line and File say where the edge comes from: the member for
 	// holds/uses, the base list for extends/implements. Not for contains
 	// and depends. File is set only when it differs from the `from`
@@ -104,7 +109,15 @@ type Via struct {
 	Deferred    bool     `json:"deferred,omitempty"`    // true if the object comes later
 }
 
+// ExternalKind is the nativeKind of a symbol outside the read code that an
+// edge still needs as its end — `io.Reader` a Go type implements. It has no
+// file and is not filtered by sources.include (ADR_20260927-4).
+const ExternalKind = "external"
+
 // SymbolKinds and EdgeKinds are the closed vocabularies of EXTRACTOR.md §2.2–2.3.
+// EdgeKinds: extends..uses are the closed vocabulary of edges that reach the
+// registry (ADR_20260927); calls, constructs, overrides are fact kinds of the
+// live graph only and never reach it (ADR_20260930-3).
 var (
 	SymbolKinds = []string{"type", "interface", "function", "module", "value", "method"}
 	EdgeKinds   = []string{"extends", "implements", "contains", "depends", "holds", "uses", "calls", "constructs", "overrides"}
@@ -216,6 +229,11 @@ func (f *Facts) problems() []string {
 			bad("%s: name is empty", where)
 		}
 		switch {
+		case s.NativeKind == ExternalKind:
+			// A method's nativeKind is checked above: it is never `external`.
+			if s.File != "" {
+				bad("%s: an external symbol has no file", where)
+			}
 		case s.File == "":
 			bad("%s: file is empty", where)
 		case strings.Contains(s.File, `\`):

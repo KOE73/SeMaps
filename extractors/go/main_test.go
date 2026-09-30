@@ -204,3 +204,75 @@ func TestPathFilter(t *testing.T) {
 		}
 	}
 }
+
+var externalArgs = []string{"--root", "testdata/sample", "--implements", "io.Writer,error,io.Reader,fmt.Stringer"}
+
+// TestExternal: --implements prints an external symbol (no file, line,
+// visibility) for a listed, resolvable interface that some output type
+// implements; io.Reader (resolvable, unimplemented) and fmt.Stringer
+// (not among the loaded imports) print nothing, the latter with a warning.
+func TestExternal(t *testing.T) {
+	var out, errb bytes.Buffer
+	if code := run(externalArgs, &out, &errb); code != 0 {
+		t.Fatalf("exit %d: %s", code, errb.String())
+	}
+	path := filepath.Join("testdata", "external.json")
+	if *update {
+		if err := os.WriteFile(path, out.Bytes(), 0o644); err != nil {
+			t.Fatal(err)
+		}
+	}
+	want, err := os.ReadFile(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !bytes.Equal(out.Bytes(), bytes.ReplaceAll(want, []byte("\r\n"), []byte("\n"))) {
+		t.Fatalf("output differs from %s; rerun with -update and review the diff", path)
+	}
+	if w := errb.String(); !strings.Contains(w, "fmt.Stringer") || strings.Contains(w, "io.Reader") || strings.Contains(w, "io.Writer") {
+		t.Errorf("stderr = %q", w)
+	}
+	var facts Facts
+	if err := json.Unmarshal(out.Bytes(), &facts); err != nil {
+		t.Fatal(err)
+	}
+	syms := map[string]Symbol{}
+	for _, s := range facts.Symbols {
+		syms[s.ID] = s
+	}
+	for id, want := range map[string]Symbol{
+		"io.Writer": {ID: "io.Writer", Kind: "interface", NativeKind: "external", Name: "Writer", Namespace: "io"},
+		"error":     {ID: "error", Kind: "interface", NativeKind: "external", Name: "error"},
+	} {
+		s, ok := syms[id]
+		if !ok {
+			t.Errorf("no symbol %s", id)
+			continue
+		}
+		s.Members = nil
+		if s != want {
+			t.Errorf("symbol %s = %+v, want %+v", id, s, want)
+		}
+	}
+	for _, id := range []string{"io.Reader", "fmt.Stringer"} {
+		if _, ok := syms[id]; ok {
+			t.Errorf("unexpected symbol %s", id)
+		}
+	}
+	edges := map[[3]string]bool{}
+	for _, e := range facts.Edges {
+		edges[[3]string{e.From, e.To, e.Native}] = e.Kind == "implements"
+	}
+	for _, e := range [][3]string{
+		{sample + "store.Log", "io.Writer", "methodset.ptr"},
+		{sample + "store.NotFound", "error", "methodset"},
+	} {
+		if !edges[e] {
+			t.Errorf("no implements edge %v", e)
+		}
+	}
+	// Without the flag nothing external appears.
+	if s := string(runSample(t, sampleArgs...)); strings.Contains(s, `"external"`) {
+		t.Error("external symbol without --implements")
+	}
+}

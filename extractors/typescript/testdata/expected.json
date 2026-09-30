@@ -810,205 +810,330 @@
       "line": 101,
       "endLine": 103,
       "visibility": "exported"
+    },
+    {
+      "id": "mapping",
+      "kind": "module",
+      "nativeKind": "file",
+      "name": "mapping",
+      "namespace": "",
+      "file": "mapping.ts"
+    },
+    {
+      "id": "mapping#Readable",
+      "kind": "interface",
+      "nativeKind": "interface",
+      "name": "Readable",
+      "namespace": "",
+      "file": "mapping.ts",
+      "line": 2,
+      "endLine": 4,
+      "visibility": "exported",
+      "members": [
+        {
+          "kind": "method",
+          "name": "read",
+          "type": "() => string"
+        }
+      ],
+      "memberLines": {
+        "read": 3
+      }
+    },
+    {
+      "id": "mapping#Stream",
+      "kind": "interface",
+      "nativeKind": "interface",
+      "name": "Stream",
+      "namespace": "",
+      "file": "mapping.ts",
+      "line": 7,
+      "endLine": 9,
+      "visibility": "exported",
+      "members": [
+        {
+          "kind": "method",
+          "name": "close",
+          "type": "() => void"
+        }
+      ],
+      "memberLines": {
+        "close": 8
+      }
+    },
+    {
+      "id": "mapping#defaultStream",
+      "kind": "value",
+      "nativeKind": "const",
+      "name": "defaultStream",
+      "namespace": "",
+      "file": "mapping.ts",
+      "line": 12,
+      "endLine": 12,
+      "visibility": "exported"
     }
   ],
   "edges": [
     {
       "from": "a",
       "to": "a#Base",
-      "kind": "contains"
+      "kind": "contains",
+      "native": "file"
     },
     {
       "from": "a",
       "to": "a#Box",
-      "kind": "contains"
+      "kind": "contains",
+      "native": "file"
     },
     {
       "from": "a",
       "to": "a#Color",
-      "kind": "contains"
+      "kind": "contains",
+      "native": "file"
     },
     {
       "from": "a",
       "to": "a#Greeter",
-      "kind": "contains"
+      "kind": "contains",
+      "native": "file"
     },
     {
       "from": "a",
       "to": "a#Hidden",
-      "kind": "contains"
+      "kind": "contains",
+      "native": "file"
     },
     {
       "from": "a",
       "to": "a#Pair",
-      "kind": "contains"
+      "kind": "contains",
+      "native": "file"
     },
     {
       "from": "a",
       "to": "a#Registry",
-      "kind": "contains"
+      "kind": "contains",
+      "native": "file"
     },
     {
       "from": "a",
       "to": "a#VERSION",
-      "kind": "contains"
+      "kind": "contains",
+      "native": "file"
     },
     {
       "from": "a",
       "to": "a#Widget",
-      "kind": "contains"
+      "kind": "contains",
+      "native": "file"
     },
     {
       "from": "a",
       "to": "a#build",
-      "kind": "contains"
+      "kind": "contains",
+      "native": "file"
     },
     {
       "from": "a",
       "to": "a#helper",
-      "kind": "contains"
+      "kind": "contains",
+      "native": "file"
     },
     {
       "from": "a",
       "to": "a#makeWidget",
-      "kind": "contains"
+      "kind": "contains",
+      "native": "file"
     },
     {
       "from": "a#Registry",
       "to": "a#Registry.Entry",
-      "kind": "contains"
+      "kind": "contains",
+      "native": "namespace"
     },
     {
       "from": "a#Registry",
       "to": "a#Registry.Store",
-      "kind": "contains"
+      "kind": "contains",
+      "native": "namespace"
     },
     {
       "from": "a#Widget",
       "to": "a#Base",
       "kind": "extends",
+      "native": "class",
       "line": 14
     },
     {
       "from": "a#Widget",
       "to": "a#Greeter",
       "kind": "implements",
+      "native": "implements",
       "line": 14
     },
     {
       "from": "b",
       "to": "b#Consumer",
-      "kind": "contains"
+      "kind": "contains",
+      "native": "file"
     },
     {
       "from": "comprehensive",
       "to": "comprehensive#Async",
-      "kind": "contains"
+      "kind": "contains",
+      "native": "file"
     },
     {
       "from": "comprehensive",
       "to": "comprehensive#Box",
-      "kind": "contains"
+      "kind": "contains",
+      "native": "file"
     },
     {
       "from": "comprehensive",
       "to": "comprehensive#Collections",
-      "kind": "contains"
+      "kind": "contains",
+      "native": "file"
     },
     {
       "from": "comprehensive",
       "to": "comprehensive#Constructor",
-      "kind": "contains"
+      "kind": "contains",
+      "native": "file"
     },
     {
       "from": "comprehensive",
       "to": "comprehensive#Container",
-      "kind": "contains"
+      "kind": "contains",
+      "native": "file"
     },
     {
       "from": "comprehensive",
       "to": "comprehensive#ContainerBox",
-      "kind": "contains"
+      "kind": "contains",
+      "native": "file"
     },
     {
       "from": "comprehensive",
       "to": "comprehensive#Generic",
-      "kind": "contains"
+      "kind": "contains",
+      "native": "file"
     },
     {
       "from": "comprehensive",
       "to": "comprehensive#IReadable",
-      "kind": "contains"
+      "kind": "contains",
+      "native": "file"
     },
     {
       "from": "comprehensive",
       "to": "comprehensive#Indexed",
-      "kind": "contains"
+      "kind": "contains",
+      "native": "file"
     },
     {
       "from": "comprehensive",
       "to": "comprehensive#Item",
-      "kind": "contains"
+      "kind": "contains",
+      "native": "file"
     },
     {
       "from": "comprehensive",
       "to": "comprehensive#ItemAlias",
-      "kind": "contains"
+      "kind": "contains",
+      "native": "file"
     },
     {
       "from": "comprehensive",
       "to": "comprehensive#ItemArray",
-      "kind": "contains"
+      "kind": "contains",
+      "native": "file"
     },
     {
       "from": "comprehensive",
       "to": "comprehensive#Maps",
-      "kind": "contains"
+      "kind": "contains",
+      "native": "file"
     },
     {
       "from": "comprehensive",
       "to": "comprehensive#Methods",
-      "kind": "contains"
+      "kind": "contains",
+      "native": "file"
     },
     {
       "from": "comprehensive",
       "to": "comprehensive#Optional",
-      "kind": "contains"
+      "kind": "contains",
+      "native": "file"
     },
     {
       "from": "comprehensive",
       "to": "comprehensive#ParameterProperty",
-      "kind": "contains"
+      "kind": "contains",
+      "native": "file"
     },
     {
       "from": "comprehensive",
       "to": "comprehensive#Records",
-      "kind": "contains"
+      "kind": "contains",
+      "native": "file"
     },
     {
       "from": "comprehensive",
       "to": "comprehensive#Sets",
-      "kind": "contains"
+      "kind": "contains",
+      "native": "file"
     },
     {
       "from": "comprehensive",
       "to": "comprehensive#Tuples",
-      "kind": "contains"
+      "kind": "contains",
+      "native": "file"
     },
     {
       "from": "comprehensive",
       "to": "comprehensive#Union",
-      "kind": "contains"
+      "kind": "contains",
+      "native": "file"
     },
     {
       "from": "comprehensive",
       "to": "comprehensive#Widget",
-      "kind": "contains"
+      "kind": "contains",
+      "native": "file"
     },
     {
       "from": "comprehensive",
       "to": "comprehensive#process",
-      "kind": "contains"
+      "kind": "contains",
+      "native": "file"
+    },
+    {
+      "from": "mapping",
+      "to": "mapping#Readable",
+      "kind": "contains",
+      "native": "file"
+    },
+    {
+      "from": "mapping",
+      "to": "mapping#Stream",
+      "kind": "contains",
+      "native": "file"
+    },
+    {
+      "from": "mapping",
+      "to": "mapping#defaultStream",
+      "kind": "contains",
+      "native": "file"
+    },
+    {
+      "from": "mapping#Stream",
+      "to": "mapping#Readable",
+      "kind": "extends",
+      "native": "interface",
+      "line": 7
     }
   ]
 }

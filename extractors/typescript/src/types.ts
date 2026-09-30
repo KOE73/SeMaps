@@ -51,6 +51,8 @@ export interface EdgeRecord {
   from: string;
   to: string;
   kind: EdgeKind;
+  /** How TypeScript expressed the edge (docs/extractors/typescript.md, "Сопоставление рёбер"). */
+  native?: string;
   via?: ViaRecord;
   /** Where the edge comes from: the member for holds/uses, the heritage
    * clause for extends/implements. Not for contains/depends. `file` only

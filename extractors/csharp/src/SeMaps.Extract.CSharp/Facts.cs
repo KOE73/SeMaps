@@ -60,6 +60,7 @@ internal sealed class EdgeFact
     [JsonPropertyName("from")] public string From { get; set; } = "";
     [JsonPropertyName("to")] public string To { get; set; } = "";
     [JsonPropertyName("kind")] public string Kind { get; set; } = "";
+    [JsonPropertyName("native")] public string? Native { get; set; }
     [JsonPropertyName("via")] public ViaFact? Via { get; set; }
     [JsonPropertyName("line")] public int? Line { get; set; }
     [JsonPropertyName("file")] public string? File { get; set; }

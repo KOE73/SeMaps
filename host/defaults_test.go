@@ -144,7 +144,8 @@ func TestDefaultKindsCoverWhatExtractorsPrint(t *testing.T) {
 		"abstract-class", "static-class", "sealed-class", "abstract-record", "sealed-record", "readonly-struct", "ref-struct",
 		"func", "map", "slice", "array", "chan", "pointer", "alias", "int", "string", "bool", "float64",
 		"function", "method", "constructor", "const", "var", "constant", "variable",
-		"type-alias", "trait", "union", "impl", "static", "protocol", "object", "data class", "sealed class", "fun"} {
+		"type-alias", "trait", "union", "impl", "static", "protocol", "object", "data class", "sealed class", "fun",
+		"external"} {
 		if _, ok := catalog.Lookup(k); !ok {
 			t.Errorf("an extractor prints nativeKind %q, the dictionary lacks it", k)
 		}

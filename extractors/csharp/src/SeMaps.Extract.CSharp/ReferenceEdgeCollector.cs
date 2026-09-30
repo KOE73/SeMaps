@@ -523,6 +523,9 @@ internal sealed class EdgeWithVia
     public required string From { get; set; }
     public required string To { get; set; }
     public required string Kind { get; set; }
+    // How C# expressed the edge (docs/extractors/csharp.md, "Сопоставление рёбер"). Not part of
+    // identity: it is determined by kind, the ends and via.
+    public string? Native { get; set; }
     public ViaFact? Via { get; set; }
     // Where the edge comes from: not part of identity (EXTRACTOR.md §3), so
     // they are excluded from Equals/GetHashCode below.
