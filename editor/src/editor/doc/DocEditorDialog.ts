@@ -3,6 +3,7 @@ import { layoutFreeKey } from "../../util/keys.js";
 import { i18n } from "../../workbench/i18n/I18nService.js";
 import { renderMarkdown } from "./MarkdownRenderer.js";
 import { isContainer } from "../../model/types.js";
+import { KindCatalog } from "../../model/KindCatalog.js";
 import { iconEl, iconSvg, type IconName } from "../../ui/icons.js";
 
 /** A toolbar label that is a Tabler icon (the label is set as HTML). */
@@ -256,7 +257,7 @@ export class DocEditorDialog {
   }
 
   /**
-   * Open the editor for a given entity, zone, or edge.
+   * Open the editor for a given entity, container, or edge.
    */
   open(targetId: string, kind?: DocTargetKind, preferredLang?: string): void {
     this.currentTargetId = targetId;
@@ -330,7 +331,7 @@ export class DocEditorDialog {
       const el = doc.element(this.currentTargetId);
       if (el) {
         titleText = el.label || el.id;
-        kindText = el.type || (isContainer(el) ? "ZONE" : "NODE");
+        kindText = KindCatalog.active.name(el.type, i18n.currentLanguage) || (isContainer(el) ? "CONTAINER" : "NODE");
       }
     }
 

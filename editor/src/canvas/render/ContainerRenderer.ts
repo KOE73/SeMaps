@@ -186,7 +186,7 @@ export class ContainerRenderer implements ElementRenderer {
   }
 
   cornerInset(_side: Side, style?: ResolvedBlockStyle): number {
-    return (style?.radius ?? canvas().zone.radius) + DIAGRAM_CONFIG.ports.extraCornerGap;
+    return (style?.radius ?? canvas().container.radius) + DIAGRAM_CONFIG.ports.extraCornerGap;
   }
 }
 

@@ -9,14 +9,14 @@ import { renderMarkdown } from "../editor/doc/MarkdownRenderer.js";
 import { SourceCodeService } from "../editor/code/SourceCodeService.js";
 import { DIAGRAM_CONFIG } from "../constants/diagram-constants.js";
 import { canvas } from "../constants/canvas.js";
-import { DEFAULT_STYLE_IDS } from "../model/StyleLibrary.js";
+import { KindCatalog } from "../model/KindCatalog.js";
 import { i18n } from "../workbench/i18n/I18nService.js";
 import { iconSvg } from "../ui/icons.js";
 
 const minSize = () => {
   const c = canvas();
   return {
-    zone: { width: c.zone.minWidth, height: c.zone.minHeight },
+    container: { width: c.container.minWidth, height: c.container.minHeight },
     node: { width: c.node.minWidth, height: c.node.minHeight },
   };
 };
@@ -487,10 +487,11 @@ export class InteractionController {
       const el = doc.element(hit.elementId);
       if (el) {
         const text = doc.getText(el.id, lang);
-        const name = text?.name || text?.title || el.label || el.id;
+        // An entity's name is not translated: it is the entity's, not the text catalogue's (CONTRACT.md §7.1).
+        const name = el.label || el.id;
         const desc = text?.description || (typeof el.metadata?.description === "string" ? el.metadata.description : "");
         const codeRef = typeof el.metadata?.codeRef === "string" ? el.metadata.codeRef : "";
-        const kind = el.type || (isContainer(el) ? "Zone" : DEFAULT_STYLE_IDS.node);
+        const kind = KindCatalog.active.name(el.type, i18n.currentLanguage);
 
         let content = `<div class="semaps-tooltip-header">
           <span>${escapeHtml(name)}</span>
@@ -863,7 +864,7 @@ export class InteractionController {
     );
     const step = this.canvas.gridStep;
     const min = gesture.single !== null && isContainer(gesture.single)
-      ? minSize().zone
+      ? minSize().container
       : minSize().node;
 
     const next = resizeRect(gesture.bounds, gesture.dir, raw.x, raw.y, min, step);

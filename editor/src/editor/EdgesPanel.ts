@@ -1,7 +1,7 @@
 import type { DiagramEdge, DiagramElement } from "../model/types.js";
 import { el, replaceChildren } from "../util/dom.js";
-import { select } from "./fields.js";
 import { SearchableSelect, type SearchableOption } from "./SearchableSelect.js";
+import { edgeVariantSelect, relationTypeSelect } from "./kindSelects.js";
 import { resolveElementRelations, type ResolvedRelation } from "../model/relations-resolver.js";
 import { cardinalityToLabel } from "../model/viaLabel.js";
 import type { DiagramEditor } from "./DiagramEditor.js";
@@ -60,40 +60,16 @@ export class EdgesPanel {
     const fromEl = doc.element(edge.from);
     const toEl = doc.element(edge.to);
 
-    const typeSelect = select(
-      [
-        ["call", i18n.d.panels.relations.callType],
-        ["implements", i18n.d.panels.relations.implementsType],
-        ["composes", i18n.d.panels.relations.composesType],
-        ["extends", i18n.d.panels.relations.extendsType],
-        ["event", i18n.d.panels.relations.eventType],
-        ["storage", i18n.d.panels.relations.storageType],
-        ["relates", i18n.d.panels.relations.relatesType],
-      ],
-      edge.type,
-      (newType) => {
-        edge.type = newType;
-        (this.host as any).commit("edit-edge-type");
-        this.host.canvas.render();
-      },
-    );
+    // The type is the dictionary's, by group; changing it drops the explicit
+    // style (ADR_20260930-2). A type read from code stays the code's.
+    const relation = doc.relations.find((r) => r.id === edge.id);
+    const typeSelect = edge.origin === "code" || relation?.origin === "code"
+      ? el("div", { class: "readonly-box", text: edge.type, title: i18n.d.panels.properties.edgeTypeFromCode })
+      : relationTypeSelect(edge.type, (newType) => this.host.applyRelationTypeAndStyle([edge.id], newType, null));
 
-    const edgeStyles = this.host.canvas.styles.list("edge").map((s) => ({
-      value: s.id,
-      label: s.name || s.id,
-      subtitle: s.id,
-    }));
-
-    const styleSelect = new SearchableSelect({
-      options: [["", i18n.d.panels.properties.styleDefault], ...edgeStyles.map((s) => [s.value, s.label] as [string, string])],
-      value: edge.styleId ?? "",
-      searchPlaceholder: i18n.d.panels.properties.styleFilterPlaceholder,
-      onChange: (val) => {
-        edge.styleId = val || undefined;
-        (this.host as any).commit("edit-edge-style");
-        this.host.canvas.render();
-      },
-    });
+    // Only the variants of that type, and only when it has more than one.
+    const styleSelect = edgeVariantSelect(this.host.styles, edge.type, edge.styleId, (styleId) =>
+      this.host.applyRelationTypeAndStyle([edge.id], edge.type, styleId));
 
     const labelInput = el("input", {
       type: "text",
@@ -171,10 +147,12 @@ export class EdgesPanel {
           el("span", { class: "field-label", text: i18n.d.panels.properties.edgeTypeTitle }),
           typeSelect,
         ]),
-        el("label", { class: "field" }, [
-          el("span", { class: "field-label", text: i18n.d.panels.properties.styleTitle }),
-          styleSelect.root,
-        ]),
+        styleSelect === null
+          ? null
+          : el("label", { class: "field" }, [
+              el("span", { class: "field-label", text: i18n.d.panels.properties.styleTitle }),
+              styleSelect,
+            ]),
         el("label", { class: "field" }, [
           el("span", { class: "field-label", text: i18n.d.panels.properties.edgeLabelTitle }),
           labelInput,
@@ -404,40 +382,35 @@ export class EdgesPanel {
     );
 
     if (isEditing) {
-      const typeSel = select(
-        [
-          ["call", "Вызов (call)"],
-          ["implements", "Реализует (implements)"],
-          ["composes", "Компонует (composes)"],
-          ["extends", "Расширяет (extends)"],
-          ["event", "Событие (event)"],
-          ["storage", "Хранилище (storage)"],
-          ["relates", "Связан (relates)"],
-        ],
-        item.type,
-        () => undefined,
-      );
-
-      const edgeStyles = this.host.canvas.styles.list("edge").map((s) => ({
-        value: s.id,
-        label: s.name || s.id,
-        subtitle: s.id,
-      }));
-
-      const styleSel = new SearchableSelect({
-        options: [["", "По умолчанию (по типу)"], ...edgeStyles.map((s) => [s.value, s.label] as [string, string])],
-        value: item.styleId ?? "",
-        searchPlaceholder: "Поиск стиля связи…",
-        onChange: () => undefined,
-      });
+      // The type and its style are chosen together (ADR_20260930-2): the style
+      // offered is one of the chosen type's, and changing the type drops it.
+      const fromCode = item.raw?.origin === "code" || item.edge?.origin === "code";
+      let pendingType = item.type;
+      let pendingStyle: string | null = item.styleId ?? null;
+      const styleHost = el("div");
+      const paintStyle = (): void => {
+        const variants = edgeVariantSelect(this.host.styles, pendingType, pendingStyle ?? undefined, (styleId) => {
+          pendingStyle = styleId;
+        });
+        replaceChildren(styleHost, variants);
+      };
+      const typeSel = fromCode
+        ? el("div", { class: "readonly-box", text: item.type, title: i18n.d.panels.properties.edgeTypeFromCode })
+        : relationTypeSelect(pendingType, (next) => {
+            pendingType = next;
+            pendingStyle = null;
+            paintStyle();
+          });
+      paintStyle();
 
       const lblInput = el("input", { type: "text", value: item.label, placeholder: "Подпись связи…" });
 
       const editBox = el("div", {
         attrs: { style: "display: flex; flex-direction: column; gap: calc(6px * var(--ui-space)); padding: calc(8px * var(--ui-space)); margin-top: calc(2px * var(--ui-space)); margin-bottom: calc(4px * var(--ui-space)); background: var(--panel); border: 1px solid var(--line); border-radius: 6px;" },
       }, [
-        el("div", { class: "grid-2" }, [typeSel, styleSel.root]),
-        lblInput,
+        el("div", { class: "grid-2" }, [typeSel, styleHost]),
+        // A relation from code carries no text (ADR_20260831 §2.13): nothing to label.
+        fromCode ? null : lblInput,
         el("div", { attrs: { style: "display: flex; gap: calc(6px * var(--ui-space)); justify-content: flex-end;" } }, [
           el("button", {
             class: "btn btn-small",
@@ -454,24 +427,18 @@ export class EdgesPanel {
             text: "Сохранить",
             on: {
               click: () => {
-                item.type = typeSel.value;
-                item.label = lblInput.value;
-                const pickedStyle = (styleSel as any).currentValue;
-                item.styleId = pickedStyle || undefined;
-
-                if (item.edge) {
-                  item.edge.type = item.type;
-                  item.edge.label = item.label;
-                  item.edge.styleId = item.styleId;
-                }
-                if (item.raw) {
-                  item.raw.type = item.type;
-                  item.raw.relation = item.type;
-                  item.raw.label = item.label;
-                  item.raw.styleId = item.styleId;
+                const label = lblInput.value;
+                if (label !== item.label) {
+                  // The text of a relation is the text catalogue's, under its own id.
+                  doc.setText(item.id, { name: label, description: label }, this.host.dataLang || "ru");
+                  if (item.edge) item.edge.label = label;
+                  if (item.raw) item.raw.label = label;
                 }
                 this.editingId = null;
-                (this.host as any).commit("update-relation");
+                // Type and style through the one mechanism; it commits, or, when only the label
+                // changed, the commit below makes it one undo step of its own.
+                this.host.applyRelationTypeAndStyle([item.id], pendingType, pendingStyle);
+                if (label !== item.label) (this.host as any).commit("update-relation-label");
                 this.render();
               },
             },
@@ -511,43 +478,32 @@ export class EdgesPanel {
       },
     });
 
-    const typeSelect = select(
-      [
-        ["call", i18n.d.panels.relations.callType],
-        ["implements", i18n.d.panels.relations.implementsType],
-        ["composes", i18n.d.panels.relations.composesType],
-        ["extends", i18n.d.panels.relations.extendsType],
-        ["event", i18n.d.panels.relations.eventType],
-        ["storage", i18n.d.panels.relations.storageType],
-        ["relates", i18n.d.panels.relations.relatesType],
-      ],
-      "call",
-      () => undefined,
-    );
-
-    const edgeStyles = this.host.canvas.styles.list("edge").map((s) => ({
-      value: s.id,
-      label: s.name || s.id,
-      subtitle: s.id,
-    }));
-
-    let selectedStyle = "";
-    const styleSelect = new SearchableSelect({
-      options: [["", i18n.d.panels.properties.styleDefault], ...edgeStyles.map((s) => [s.value, s.label] as [string, string])],
-      value: "",
-      searchPlaceholder: i18n.d.panels.properties.styleFilterPlaceholder,
-      placeholder: i18n.d.panels.properties.styleDefault,
-      onChange: (val) => {
-        selectedStyle = val;
-      },
-    });
+    // No type is chosen for the person: the dictionary's, by group, and «Связать» waits for one.
+    let selectedType = "";
+    let selectedStyle: string | null = null;
+    const styleHost = el("div");
+    const paintStyle = (): void => {
+      replaceChildren(
+        styleHost,
+        selectedType === ""
+          ? null
+          : edgeVariantSelect(this.host.styles, selectedType, selectedStyle ?? undefined, (styleId) => {
+              selectedStyle = styleId;
+            }),
+      );
+    };
+    const typeSelect = relationTypeSelect("", (next) => {
+      selectedType = next;
+      selectedStyle = null;
+      paintStyle();
+    }, i18n.d.panels.relations.chooseType);
 
     const labelInput = el("input", { type: "text", placeholder: i18n.d.panels.relations.labelPlaceholder });
 
     return el("div", { class: "panel", attrs: { style: "flex-direction: column; align-items: stretch; gap: calc(6px * var(--ui-space)); margin-top: calc(8px * var(--ui-space));" } }, [
       el("div", { class: "field-label accent", text: i18n.d.panels.relations.addNewHeader }),
       targetSelect.root,
-      el("div", { class: "grid-2" }, [typeSelect, styleSelect.root]),
+      el("div", { class: "grid-2" }, [typeSelect, styleHost]),
       el("div", { class: "field-row gap" }, [
         labelInput,
         el("button", {
@@ -555,15 +511,15 @@ export class EdgesPanel {
           text: i18n.d.panels.relations.connectBtn,
           on: {
             click: () => {
-              if (!selectedTarget) return;
+              if (!selectedTarget || selectedType === "") return;
               const edgeId = `edge_${Date.now()}`;
               doc.addEdge({
                 id: edgeId,
                 from: element.id,
                 to: selectedTarget,
-                type: typeSelect.value,
+                type: selectedType,
                 label: labelInput.value,
-                styleId: selectedStyle || undefined,
+                ...(selectedStyle === null ? {} : { styleId: selectedStyle }),
               });
               (this.host as any).commit("add-edge");
               this.render();

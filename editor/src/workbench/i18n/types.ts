@@ -70,7 +70,7 @@ export interface UiDictionary {
   };
   readonly commands: {
     readonly createNode: { readonly title: string; readonly desc: string };
-    readonly createZone: { readonly title: string; readonly desc: string };
+    readonly createContainer: { readonly title: string; readonly desc: string };
     readonly deleteSelection: { readonly title: string; readonly desc: string };
     readonly undo: { readonly title: string; readonly desc: string };
     readonly redo: { readonly title: string; readonly desc: string };
@@ -91,9 +91,6 @@ export interface UiDictionary {
     readonly toggleNeighbourhood: { readonly title: string; readonly desc: string };
     readonly toggleCatalog: { readonly title: string; readonly desc: string };
     readonly resetLayout: { readonly title: string; readonly desc: string };
-    readonly openJson: { readonly title: string; readonly desc: string };
-    readonly copyJson: { readonly title: string; readonly desc: string };
-    readonly applyJson: { readonly title: string; readonly desc: string };
     readonly portsSet: { readonly title: string; readonly desc: string };
     readonly alignLeft: { readonly title: string; readonly desc: string };
     readonly alignRight: { readonly title: string; readonly desc: string };
@@ -123,16 +120,15 @@ export interface UiDictionary {
     readonly catalog: {
       readonly title: string;
       readonly projectCatalog: string;
-      readonly customSection: string;
       readonly empty: string;
       readonly noViews: string;
       readonly addProject: string;
       readonly addView: string;
       readonly editProject: string;
       readonly editView: string;
-      readonly hintDragZone: string;
+      readonly hintDragContainer: string;
       readonly hintDragBlock: string;
-      readonly hintCollapseZone: string;
+      readonly hintCollapseContainer: string;
     };
     readonly properties: {
       readonly title: string;
@@ -140,15 +136,36 @@ export interface UiDictionary {
       readonly multiSelected: string;
       readonly labelTitle: string;
       readonly typeTitle: string;
+      readonly kindFromCode: string;
+      readonly kindHint: string;
+      readonly kindNotInCatalog: string;
+      readonly nameFromCode: string;
       readonly parentTitle: string;
-      readonly isZone: string;
-      readonly outsideZones: string;
+      readonly outsideContainers: string;
+      readonly itemBlock: string;
+      readonly itemContainer: string;
+      readonly overrideTitle: string;
+      readonly overrideHint: string;
+      readonly overrideReset: string;
+      /** Labels of the fields in `model/override.ts` (both tables), keyed by the field's dotted path. */
+      readonly overrideFields: Readonly<Record<string, string>>;
+      readonly overrideDashPlaceholder: string;
+      readonly overrideIconPick: string;
       readonly nestedCount: string;
       readonly collapse: string;
       readonly expand: string;
       readonly styleTitle: string;
       readonly styleExplicit: string;
       readonly styleByType: string;
+      /** Tooltip of the mark on a type's base style among its variants. */
+      readonly styleBaseTitle: string;
+      /** The mark itself, after the style's name: «Класс (базовый)». */
+      readonly styleBaseMark: string;
+      /** Said once when a code kind blocked some of the selection: `{names}`. */
+      readonly kindFromCodeSkipped: string;
+      readonly highlightPaletteTitle: string;
+      readonly highlightPaletteReset: string;
+      readonly highlightPaletteResetTitle: string;
       readonly styleDefault: string;
       readonly styleEmptyLib: string;
       readonly styleNotFound: string;
@@ -171,6 +188,10 @@ export interface UiDictionary {
       readonly edgeToLabelPlaceholder: string;
       readonly edgeCodeOriginNotice: string;
       readonly edgeTypeTitle: string;
+      readonly edgeTypeFromCode: string;
+      readonly edgeTypeHint: string;
+      readonly edgeOverrideHint: string;
+      readonly edgeGhostStyleHint: string;
       readonly edgeDisplayOnCanvas: string;
       readonly edgeEnabled: string;
       readonly edgeGhost: string;
@@ -186,6 +207,7 @@ export interface UiDictionary {
       readonly countSummary: string;
       readonly addNewHeader: string;
       readonly chooseTarget: string;
+      readonly chooseType: string;
       readonly connectBtn: string;
       readonly labelPlaceholder: string;
       readonly fromLabelPlaceholder: string;
@@ -193,13 +215,6 @@ export interface UiDictionary {
       readonly onScheme: string;
       readonly ghost: string;
       readonly deleteTooltip: string;
-      readonly callType: string;
-      readonly implementsType: string;
-      readonly composesType: string;
-      readonly extendsType: string;
-      readonly eventType: string;
-      readonly storageType: string;
-      readonly relatesType: string;
     };
     readonly filters: {
       readonly title: string;
@@ -207,6 +222,8 @@ export interface UiDictionary {
       readonly perspectivesHeader: string;
       readonly tagsHeader: string;
       readonly connectionsHeader: string;
+      /** The switch of the «structure» edge family: the styles that say `family: structure`. */
+      readonly structureEdges: string;
       readonly defaultView: string;
       readonly allTags: string;
       readonly unassignedTags: string;
@@ -215,6 +232,23 @@ export interface UiDictionary {
       readonly title: string;
       readonly addStyle: string;
       readonly addStyleTitle: string;
+      /** `{kind}` — the type the new style is created for. */
+      readonly addStyleForKind: string;
+      /** A style belongs to a type: with none selected in the tree there is nothing to create it for. */
+      readonly addStyleNeedsKind: string;
+      readonly noKind: string;
+      readonly noKindTitle: string;
+      readonly fallbackStyles: string;
+      readonly fallbackStylesTitle: string;
+      /** `{kind}` — the tree's type the style is applied with. */
+      readonly applyTooltip: string;
+      readonly applyNoSelection: string;
+      readonly applyWrongTarget: string;
+      readonly applyNoKind: string;
+      readonly kindsOutsideCatalog: string;
+      readonly kindNoStyles: string;
+      readonly baseStyleTitle: string;
+      readonly totalCount: string;
       readonly blocksTab: string;
       readonly edgesTab: string;
       readonly filterPlaceholder: string;
@@ -237,6 +271,16 @@ export interface UiDictionary {
       readonly descriptionPlaceholder: string;
       readonly tagsField: string;
       readonly tagsPlaceholder: string;
+      readonly kindsField: string;
+      readonly kindsPlaceholder: string;
+      readonly kindsHint: string;
+      readonly kindsHintEdge: string;
+      /** A style of a block, container or edge has no type: it belongs to nothing. */
+      readonly kindsRequired: string;
+      /** `{kinds}` — types named in `forKinds` that the catalog does not know. */
+      readonly kindsNotInCatalog: string;
+      /** `{kinds}` — types of the other sort (a block style naming a container kind, or the other way round). */
+      readonly kindsWrongSort: string;
       readonly basedOnField: string;
       readonly noneInherit: string;
       readonly fillSection: string;
@@ -322,7 +366,6 @@ export interface UiDictionary {
     readonly zoomIn: string;
     readonly zoomOut: string;
     readonly fit: string;
-    readonly dropHint: string;
   };
   readonly workspaceDialogs: {
     readonly newProjectTitle: string;
@@ -362,8 +405,6 @@ export interface UiDictionary {
     readonly template: string;
     readonly templateFromStyle: string;
     readonly style: string;
-    readonly styleDefault: string;
-    readonly styleByType: string;
     readonly describe: string;
     readonly code: string;
     readonly properties: string;

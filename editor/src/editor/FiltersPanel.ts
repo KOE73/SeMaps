@@ -176,7 +176,7 @@ export class FiltersPanel {
             },
           },
         }),
-        el("span", {}, [iconEl("link"), ` ${i18n.d.panels.relations.implementsType}, ${i18n.d.panels.relations.extendsType}, ${i18n.d.panels.relations.composesType}`]),
+        el("span", {}, [iconEl("link"), ` ${i18n.d.panels.filters.structureEdges}`]),
       ]),
     ]);
     sections.push(relationsSection);

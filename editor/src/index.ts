@@ -37,9 +37,8 @@ export type {
 export type {
   WireDocument,
   WireEdge,
-  WireNode,
+  WirePlacement,
   WireView,
-  WireZone,
 } from "./model/wire-types.js";
 
 // Looks. An element no longer carries colours of its own, so anything that

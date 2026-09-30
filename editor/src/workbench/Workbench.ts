@@ -200,6 +200,7 @@ export class Workbench {
   private bindEvents(): void {
     // Right click: a box's family and look, a line's shape and style, the view's line shape.
     const panels = this.dockviewHost.panelService;
+    this.editor.panelOpener = (id) => panels.open(id);
     const menuHost: MenuHost = {
       openPanel: (id) => panels.open(id),
       openStyleEditor: (styleId) => {

@@ -62,7 +62,7 @@ export function resolveElementRelations(
         const existing = [...map.values()].find(
           (k) =>
             k.id === rel.id ||
-            (k.from === canvasFrom && k.to === canvasTo && k.type === (rel.type || rel.relation)),
+            (k.from === canvasFrom && k.to === canvasTo && k.type === rel.type),
         );
 
         if (!existing) {
@@ -76,9 +76,8 @@ export function resolveElementRelations(
             id: relId,
             from: canvasFrom,
             to: canvasTo,
-            type: rel.type || rel.relation || "relates",
+            type: rel.type,
             label,
-            styleId: rel.styleId,
             visible: false,
             raw: rel,
           });

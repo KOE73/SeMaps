@@ -30,6 +30,10 @@ export class RelationsPanel implements IContentRenderer {
       this.edgesPanel.render();
     });
 
+    editor.canvas.events.on("inspect", () => {
+      this.edgesPanel.render();
+    });
+
     editor.canvas.events.on("collapse", () => {
       this.edgesPanel.render();
     });

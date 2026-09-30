@@ -89,7 +89,8 @@ export class HostModelStore extends HttpProjectStore {
       const snapshot = this.snapshots.get(project);
       if (!before || !view || !snapshot) return;
       const entities = (snapshot.registry["entities.json"] as EntityCatalog)?.entities ?? [];
-      const ops = diffModel(before, copy, view, entities, snapshot.texts);
+      const relations = (snapshot.registry["relations.json"] as RelationCatalog)?.relations ?? [];
+      const ops = diffModel(before, copy, view, entities, snapshot.texts, relations);
       if (!ops.length) return;
       const response = await this.request(`/api/model/${encodeURIComponent(project)}/ops`, {
         method: "POST", body: JSON.stringify({ client: this.client, ops }),
@@ -106,14 +107,13 @@ export class HostModelStore extends HttpProjectStore {
     const snapshot = this.snapshots.get(this.projectOf(file))!;
     const view = this.views.get(file)!;
     for (const op of ops) {
-      if (op.kind === "node" || op.kind === "zone") {
-        const key = op.kind === "zone" ? "zones" : (view.placements ? "placements" : "nodes");
-        const list = (view[key] ?? []) as unknown as Array<Record<string, unknown>>;
-        const index = list.findIndex((item) => item.id === op.id || item.entity === op.id);
+      if (op.kind === "placement") {
+        const list = (view.placements ?? []) as unknown as Array<Record<string, unknown>>;
+        const index = list.findIndex((item) => item.entity === op.id);
         if (op.value === null) { if (index >= 0) list.splice(index, 1); }
         else if (index >= 0) list[index] = op.value;
         else list.push(op.value);
-        (view as unknown as Record<string, unknown>)[key] = list;
+        view.placements = list as unknown as ViewDocument["placements"];
       } else if (op.kind === "view" && op.value) {
         Object.assign(view, op.value);
       } else if (op.kind === "text" && op.value) {
@@ -123,7 +123,7 @@ export class HostModelStore extends HttpProjectStore {
       } else if (op.value && ["entity", "relation", "relationType"].includes(op.kind)) {
         const [fileName, key] = op.kind === "entity" ? ["entities.json", "entities"] :
           op.kind === "relation" ? ["relations.json", "relations"] : ["relation-types.json", "relationTypes"];
-        const doc = snapshot.registry[fileName] as Record<string, Array<Record<string, unknown>>>;
+        const doc = (snapshot.registry[fileName] ??= {}) as Record<string, Array<Record<string, unknown>>>;
         const list = doc[key] ??= [];
         const index = list.findIndex((item) => item.id === op.id);
         if (index >= 0) list[index] = op.value;

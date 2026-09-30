@@ -1,46 +1,53 @@
 import type { Rect } from "../geometry/types.js";
 import type { RoutingMode } from "./style-types.js";
 import type { EntityEntry, WireMetadata, RelationVia } from "./wire-types.js";
+import type { PlacementOverride } from "./override.js";
 
 /**
  * The in-memory model: one element shape, one containment tree.
  *
- * On the wire, zones and nodes are two flat arrays whose shapes are nearly
- * identical and whose nesting is implied by geometry. In memory they are one
- * kind of thing in a real tree, because every consumer above this layer —
- * rendering, interaction, export — wants a parent and children, not a guess.
+ * On the wire a view is one flat array of placements, each naming the container
+ * it lies in (CONTRACT.md §8.2). In memory they form a real tree, because every
+ * consumer above this layer — rendering, interaction, export — wants a parent
+ * and children.
  */
 
+/**
+ * `zone` — a container placement (its entity's kind has `container: true` in
+ * the kinds catalog), drawn as a frame; `node` — a block. Internal names: the
+ * user-facing word is «контейнер».
+ */
 export type ElementKind = "zone" | "node";
 
 export interface DiagramElement {
   readonly id: string;
   /**
-   * Whether this element came from `zones` or `nodes` on the wire, and which
-   * array it goes back to on save. It also selects a default renderer, and it
-   * is what `views` still discriminates on (highlightZones vs highlightNodes).
+   * Container or block, decided by the entity's kind when the view is loaded.
+   * It selects the renderer and the style family (`appliesTo: container` /
+   * `block`).
    */
   readonly kind: ElementKind;
-  /** Free-form type string. Selects a renderer and a style; never an enum. */
+  /** The entity's `kind` (CONTRACT.md §3). Selects a base style; never an enum. */
   type: string;
-  /** Unified caption: `zone.name` or `node.label` on the wire. */
+  /** The entity's `name`. */
   label: string;
   semanticId?: string;
   tags: string[];
   metadata: WireMetadata;
   /**
-   * Pin this element to one named style, overriding the match by `type`.
+   * Another style of the element's own kind, in place of the kind's base style.
    *
    * Absent is the normal case and the one to prefer: an element that says only
-   * what it *is* keeps looking right when the look changes. This field is for
-   * the exception — one box that must stand out, or a zone whose colour carries
-   * meaning that no type expresses.
-   *
-   * There is deliberately no per-element colour: the old inline `style` on
-   * zones is migrated into named styles on load (see `wire.ts`), because a
-   * hundred one-off palettes is exactly the state this replaced.
+   * what it *is* keeps looking right when the look changes. The base style is
+   * never written here — choosing it removes the field — and changing the kind
+   * removes it too (ADR_20260927-7).
    */
   styleId?: string;
+  /**
+   * Partial style of this one placement, laid over its style when drawn
+   * (CONTRACT.md §11.6). Only the fields of `OVERRIDE_FIELDS` exist here.
+   */
+  override?: PlacementOverride;
 
   /** Absolute model coordinates. Contract v1 stores these directly. */
   x: number;
@@ -63,19 +70,6 @@ export interface DiagramElement {
    * does not model survive a load/save round trip untouched.
    */
   readonly raw?: Record<string, unknown>;
-
-  /**
-   * How this element's parentage arrived, so that saving an untouched model
-   * reproduces the file byte for byte. A node whose containment was inferred
-   * from geometry must not silently gain a `zone` field just because it was
-   * opened — that would rewrite files nobody edited.
-   */
-  origin?: {
-    /** Whether the wire object carried a `zone` key at all. */
-    readonly zoneDeclared: boolean;
-    /** Parent resolved at load time; a change from it means a real edit. */
-    readonly parentId: string | null;
-  };
 }
 
 export interface DiagramEdge {
@@ -91,8 +85,18 @@ export interface DiagramEdge {
   fromLabel?: string;
   toLabel?: string;
   type: string;
-  /** Pin to one named style; otherwise the style named after `type` wins. */
+  /**
+   * Another style of the relation's own type, in place of the type's base
+   * style. Never the base style itself; changing the type removes it
+   * (ADR_20260930-2).
+   */
   styleId?: string;
+  /**
+   * Colour, width and dash of this one edge on this view (CONTRACT.md §11.6):
+   * only the fields of `EDGE_OVERRIDE_FIELDS`. Lives in the view's own `edges`
+   * list, so setting one puts the view's edges there.
+   */
+  override?: PlacementOverride;
   /**
    * Where this edge came from. A `code` edge carries no text at all — see
    * `WireEdge.origin` — so the editor must not offer to edit `label`,

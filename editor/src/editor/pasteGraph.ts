@@ -7,8 +7,8 @@ import { blockFor, boxMetrics, drawRelations } from "./placeEntity.js";
 
 const MAX_EXTENT = GRAPH_TUNING.pasteMaxExtent;
 /** Read at use time: canvas.json is loaded after this module is evaluated. */
-const containerPad = (): number => canvas().zone.padding;
-const containerHeader = (): number => canvas().zone.headerHeight;
+const containerPad = (): number => canvas().container.padding;
+const containerHeader = (): number => canvas().container.headerHeight;
 
 export interface PasteResult {
   /** Element ids put on the view. */

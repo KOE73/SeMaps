@@ -1,21 +1,13 @@
 import type { IContentRenderer, GroupPanelPartInitParameters } from "dockview-core";
 import type { DiagramEditorFacade } from "../commands/types.js";
 import { el } from "../../util/dom.js";
-import { iconEl } from "../../ui/icons.js";
 
 export class CanvasPanel implements IContentRenderer {
   readonly element: HTMLElement;
   private readonly zoomReadout: HTMLElement;
-  private readonly dropHint: HTMLElement;
 
   constructor(private readonly editor: DiagramEditorFacade) {
     this.zoomReadout = el("span", { class: "zoom-readout", text: "100%" });
-    this.dropHint = el("div", { class: "drop-hint", attrs: { hidden: "true" } }, [
-      el("div", { class: "drop-hint-card" }, [
-        el("p", { attrs: { style: "margin: 0 0 calc(4px * var(--ui-space))" } }, [iconEl("inbox", "ui-icon-lg")]),
-        el("p", { attrs: { style: "margin: 0; font-weight: 600" }, text: "Перетащите сюда JSON-файл схемы" }),
-      ]),
-    ]);
 
     const zoomBar = el("div", { class: "zoom-bar" }, [
       el("button", { text: "+", title: "Приблизить", on: { click: () => editor.canvas.zoomBy(1.2) } }),
@@ -28,14 +20,11 @@ export class CanvasPanel implements IContentRenderer {
     this.element = el("div", { class: "canvas-area", attrs: { style: "width: 100%; height: 100%; position: relative; overflow: hidden;" } }, [
       editor.canvas.hostElement,
       zoomBar,
-      this.dropHint,
     ]);
 
     editor.canvas.events.on("viewport", (state) => {
       this.zoomReadout.textContent = `${Math.round(state.zoom * 100)}%`;
     });
-
-    this.bindDrop();
 
     const ro = new ResizeObserver(() => {
       this.editor.canvas.render();
@@ -53,22 +42,5 @@ export class CanvasPanel implements IContentRenderer {
 
   layout(_width: number, _height: number): void {
     this.editor.canvas.render();
-  }
-
-  private bindDrop(): void {
-    window.addEventListener("dragover", (e) => {
-      e.preventDefault();
-      if (!e.dataTransfer?.types.includes("application/semaps-entity")) {
-        this.dropHint.hidden = false;
-      }
-    });
-
-    window.addEventListener("dragleave", (e) => {
-      if (e.relatedTarget === null) this.dropHint.hidden = true;
-    });
-
-    window.addEventListener("drop", () => {
-      this.dropHint.hidden = true;
-    });
   }
 }

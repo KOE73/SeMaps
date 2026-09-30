@@ -58,16 +58,6 @@ export function createBuiltinCommands(): CommandDefinition[] {
       isEnabled: (ctx) => ctx.editor.currentView !== null,
       execute: (ctx) => ctx.editor.discardRegistry(),
     },
-    {
-      id: "file.code.toggle",
-      get title() { return i18n.d.commands.openJson.title; },
-      get description() { return i18n.d.commands.openJson.desc; },
-      icon: icons.fileCode,
-      category: "File",
-      keyTip: "J",
-      isEnabled: (ctx) => ctx.document !== null,
-      execute: (ctx) => ctx.io.toggleJsonModal(),
-    },
 
     // ----------------------------------------------------------------- Edit
     {
@@ -153,15 +143,15 @@ export function createBuiltinCommands(): CommandDefinition[] {
       execute: (ctx) => ctx.editor.createNode(),
     },
     {
-      id: "diagram.zone.add",
-      get title() { return i18n.d.commands.createZone.title; },
-      get description() { return i18n.d.commands.createZone.desc; },
+      id: "diagram.container.add",
+      get title() { return i18n.d.commands.createContainer.title; },
+      get description() { return i18n.d.commands.createContainer.desc; },
       icon: icons.box,
       category: "Diagram",
       shortcut: "Ctrl+Shift+Z",
       keyTip: "Z",
       isEnabled: (ctx) => ctx.document !== null,
-      execute: (ctx) => ctx.editor.createZone(),
+      execute: (ctx) => ctx.editor.createContainer(),
     },
     {
       id: "diagram.align.left",

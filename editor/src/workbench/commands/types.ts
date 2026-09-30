@@ -86,9 +86,6 @@ export interface DiagramIoService {
   discardCurrentView(): Promise<void>;
   discardRegistry(): Promise<void>;
   exportDrawio(): void;
-  toggleJsonModal(): void;
-  copyJson(): Promise<void>;
-  applyJson(): void;
 }
 
 export interface DiagramEditorFacade {
@@ -101,7 +98,7 @@ export interface DiagramEditorFacade {
   dataLang: string;
 
   createNode(): void;
-  createZone(): void;
+  createContainer(): void;
   deleteSelection(): void;
   /** Paste nodes copied from the graph mode (system clipboard, else the last copy). */
   pasteGraph(): Promise<void>;
@@ -112,9 +109,6 @@ export interface DiagramEditorFacade {
   discardRegistry(): Promise<void>;
   exportDrawio(): void;
   toggleSidebar(): void;
-  toggleJsonModal(): void;
-  copyJson(): Promise<void>;
-  applyJson(): void;
   applyToggle(name: string, on: boolean): void;
   applyPortAssigner(mode: string): void;
   applyStrokeScaling(mode: string): void;

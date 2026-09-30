@@ -12,6 +12,14 @@ import type {
   WireText,
 } from "./style-types.js";
 import type { DiagramEdge, DiagramElement } from "./types.js";
+import { KindCatalog } from "./KindCatalog.js";
+import {
+  applyOverride,
+  EDGE_OVERRIDE_FIELDS,
+  OVERRIDE_FIELDS,
+  overrideKey,
+  type PlacementOverride,
+} from "./override.js";
 
 /**
  * The style library: the single answer to "what does this thing look like".
@@ -170,7 +178,7 @@ export const FALLBACK_EDGE: ResolvedEdgeStyle = {
  */
 export const DEFAULT_STYLE_IDS = {
   node: "default.node",
-  zone: "default.zone",
+  container: "default.container",
   edge: "default.edge",
 } as const;
 
@@ -250,63 +258,168 @@ export class StyleLibrary {
   /**
    * A style's tags, with `basedOn` already walked.
    *
-   * Tags are the domain axis, not the colour axis — a subdomain gets a style
-   * (`zone.llm`), and the style's tags are what say *which* subdomain that is.
-   * They inherit through the same chain as everything else: `zone.llm.dashed`
-   * is still tagged `llm` without repeating it, exactly like it inherits
-   * `zone.llm`'s fill without repeating that.
+   * Tags are the domain axis, not the colour axis. They inherit through the
+   * same chain as everything else: a style based on one tagged `llm` is still
+   * tagged `llm` without repeating it, exactly like it inherits its fill.
    */
   tagsOf(id: string | null): readonly string[] {
     if (id === null) return [];
     return this.flatten(id).tags ?? [];
   }
 
+  /** A style with its `basedOn` chain walked: every field it ends up with, still sparse. */
+  effective(id: string): WireStyle {
+    return this.flatten(id);
+  }
+
+  // ------------------------------------------------- style belongs to a type
+
+  /**
+   * The types a style belongs to: its own `forKinds`, never inherited through
+   * `basedOn` (CONTRACT.md §11.5, ADR_20260927-7, ADR_20260930-2). Entity kinds
+   * for a block or container style, relation types for an edge style. Empty —
+   * a style of no type.
+   */
+  forKindsOf(id: string): readonly string[] {
+    return this.byId.get(id)?.forKinds ?? [];
+  }
+
+  /** What a style is for: `block` when the file does not say. */
+  targetOf(id: string): StyleTarget {
+    return this.byId.get(id)?.appliesTo ?? "block";
+  }
+
+  /** `appliesTo` of the styles a kind's placements wear: `container` for a container kind. */
+  static targetOfKind(kind: string): StyleTarget {
+    return KindCatalog.active.isContainer(kind) ? "container" : "block";
+  }
+
+  /** `appliesTo` of the styles an element wears. */
+  static targetOfElement(el: Pick<DiagramElement, "kind">): StyleTarget {
+    return el.kind === "zone" ? "container" : "block";
+  }
+
+  /** Whether a style is one of the three fallbacks, worn by a type that has no style; offered to no type. */
+  static isFallback(id: string): boolean {
+    return id === DEFAULT_STYLE_IDS.node || id === DEFAULT_STYLE_IDS.container || id === DEFAULT_STYLE_IDS.edge;
+  }
+
+  /**
+   * Whether a style belongs to `key` — an entity kind or, for `target: "edge"`,
+   * a relation type: its `appliesTo` is `target` and its own `forKinds` names
+   * `key` (CONTRACT.md §11.5).
+   */
+  fits(id: string, key: string, target: StyleTarget): boolean {
+    return this.byId.has(id) && this.targetOf(id) === target && this.forKindsOf(id).includes(key);
+  }
+
+  /**
+   * A style that belongs to no type — no `forKinds` of its own and not a
+   * fallback. Never offered in a picker; the Styles panel lists it under
+   * «Без типа» until it is given a type.
+   */
+  isKindless(id: string): boolean {
+    return this.byId.has(id) && this.forKindsOf(id).length === 0 && !StyleLibrary.isFallback(id);
+  }
+
+  /**
+   * The type's base style: the one the kinds catalog names, else the style
+   * whose id is the type, else the fallback of the sort (§11.5). Never written
+   * as an explicit `styleId`. `null` — not even the fallback exists.
+   *
+   * A candidate of another sort (an edge style named like a block kind) is not
+   * taken: `security` the entity kind and `security` the relation type are two
+   * things.
+   */
+  baseStyleOf(key: string, target: StyleTarget): string | null {
+    const catalog = KindCatalog.active;
+    const named = target === "edge" ? catalog.relationBaseStyle(key) : catalog.baseStyle(key);
+    if (named !== undefined && this.byId.has(named) && this.targetOf(named) === target) return named;
+    if (this.byId.has(key) && this.targetOf(key) === target) return key;
+    const fallback = target === "edge" ? DEFAULT_STYLE_IDS.edge : target === "container" ? DEFAULT_STYLE_IDS.container : DEFAULT_STYLE_IDS.node;
+    return this.byId.has(fallback) ? fallback : null;
+  }
+
+  /**
+   * The styles a placement of `key` may wear, base first, then the type's other
+   * styles in file order. What every picker offers — and only this. A type
+   * whose base is only the fallback has no styles of its own to offer.
+   */
+  stylesOf(key: string, target: StyleTarget): StyleListEntry[] {
+    const base = this.baseStyleOf(key, target);
+    const out: StyleListEntry[] = [];
+    if (base !== null && !StyleLibrary.isFallback(base)) {
+      const style = this.byId.get(base)!;
+      out.push({ style, id: base, name: style.name ?? base, appliesTo: target });
+    }
+    for (const entry of this.list(target)) {
+      if (entry.id !== base && this.forKindsOf(entry.id).includes(key)) out.push(entry);
+    }
+    return out;
+  }
+
   // ------------------------------------------------------------- resolution
 
   /**
-   * Which style an element wears.
+   * Which style an element wears (CONTRACT.md §11.5).
    *
-   * `styleId` first, then a style named after the element's `type`, then the
-   * per-kind default. So the generator expresses meaning by writing a type it
-   * already knows (`record`, `interface`) and never has to know about colours,
-   * while a human can still pin one particular box to one particular style.
+   * The placement's `styleId` first, then the kind's base style — the one the
+   * kinds catalog names, else the style whose id is the kind — then
+   * `default.node` / `default.container`. So a kind says what it looks like
+   * once, while a human can still pin one particular box to another style of
+   * the same kind.
    */
-  blockStyleIdFor(el: DiagramElement): string | null {
+  blockStyleIdFor(el: Pick<DiagramElement, "kind" | "type" | "styleId">): string | null {
     if (el.styleId !== undefined && this.byId.has(el.styleId)) return el.styleId;
-    if (this.byId.has(el.type)) return el.type;
-    const fallbackId = DEFAULT_STYLE_IDS[el.kind];
-    return this.byId.has(fallbackId) ? fallbackId : null;
+    return this.baseStyleOf(el.type, StyleLibrary.targetOfElement(el));
   }
 
-  edgeStyleIdFor(edge: DiagramEdge): string | null {
+  /**
+   * The same cascade for a line: the edge entry's `styleId`, the relation
+   * type's base style, the style whose id is the type, `default.edge`.
+   */
+  edgeStyleIdFor(edge: Pick<DiagramEdge, "type" | "styleId">): string | null {
     if (edge.styleId !== undefined && this.byId.has(edge.styleId)) return edge.styleId;
-    if (this.byId.has(edge.type)) return edge.type;
-    return this.byId.has(DEFAULT_STYLE_IDS.edge) ? DEFAULT_STYLE_IDS.edge : null;
+    return this.baseStyleOf(edge.type, "edge");
   }
 
+  /** The look an element is drawn with: its style, with its `override` on top (§11.6). */
   blockStyle(el: DiagramElement): ResolvedBlockStyle {
-    return this.resolveBlock(this.blockStyleIdFor(el));
+    return this.resolveBlock(this.blockStyleIdFor(el), el.override);
   }
 
+  /** The look a line is drawn with: its style, with its entry's `override` on top (§11.6). */
   edgeStyle(edge: DiagramEdge): ResolvedEdgeStyle {
-    return this.resolveEdge(this.edgeStyleIdFor(edge));
+    return this.resolveEdge(this.edgeStyleIdFor(edge), edge.override);
   }
 
-  resolveBlock(id: string | null): ResolvedBlockStyle {
-    if (id === null) return FALLBACK_BLOCK;
-    const cached = this.blockCache.get(id);
+  resolveBlock(id: string | null, override?: PlacementOverride): ResolvedBlockStyle {
+    const key = `${id ?? ""}|${overrideKey(OVERRIDE_FIELDS, override)}`;
+    const cached = this.blockCache.get(key);
     if (cached !== undefined) return cached;
-    const resolved = buildBlock(id, this.flatten(id));
-    this.blockCache.set(id, resolved);
+    const resolved =
+      id === null && override === undefined
+        ? FALLBACK_BLOCK
+        : buildBlock(
+            id ?? FALLBACK_BLOCK.id,
+            applyOverride(OVERRIDE_FIELDS, id === null ? { id: FALLBACK_BLOCK.id } : this.flatten(id), override),
+          );
+    this.blockCache.set(key, resolved);
     return resolved;
   }
 
-  resolveEdge(id: string | null): ResolvedEdgeStyle {
-    if (id === null) return FALLBACK_EDGE;
-    const cached = this.edgeCache.get(id);
+  resolveEdge(id: string | null, override?: PlacementOverride): ResolvedEdgeStyle {
+    const key = `${id ?? ""}|${overrideKey(EDGE_OVERRIDE_FIELDS, override)}`;
+    const cached = this.edgeCache.get(key);
     if (cached !== undefined) return cached;
-    const resolved = buildEdge(id, this.flatten(id));
-    this.edgeCache.set(id, resolved);
+    const resolved =
+      id === null && override === undefined
+        ? FALLBACK_EDGE
+        : buildEdge(
+            id ?? FALLBACK_EDGE.id,
+            applyOverride(EDGE_OVERRIDE_FIELDS, id === null ? { id: FALLBACK_EDGE.id } : this.flatten(id), override),
+          );
+    this.edgeCache.set(key, resolved);
     return resolved;
   }
 
@@ -330,6 +443,11 @@ export class StyleLibrary {
     // Furthest ancestor first, so nearer overrides land on top.
     let out: WireStyle = { id };
     for (const style of chain.reverse()) out = mergeStyle(out, style);
+    // `forKinds` is what the style is *for*, not how it looks: never inherited
+    // (ADR_20260927-7) — «Компонент» drawn like a class is not a class style.
+    const own = this.byId.get(id)?.forKinds;
+    if (own === undefined) delete out.forKinds;
+    else out.forKinds = own;
     return out;
   }
 
@@ -423,6 +541,7 @@ function matches(style: WireStyle, needle: string): boolean {
     String(style.name ?? ""),
     String(style.description ?? ""),
     ...(style.tags ?? []).map((t) => String(t ?? "")),
+    ...(style.forKinds ?? []).map((k) => String(k ?? "")),
   ]
     .join(" ")
     .toLowerCase();

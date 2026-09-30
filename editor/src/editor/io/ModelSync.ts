@@ -1,8 +1,13 @@
-import type { WireDocument, WireNode, WireZone, ViewDocument } from "../../model/wire-types.js";
-import { DEFAULT_STYLE_IDS } from "../../model/StyleLibrary.js";
+import type { WireDocument, WirePlacement, ViewDocument } from "../../model/wire-types.js";
+import { EDGE_OVERRIDE_FIELDS, OVERRIDE_FIELDS, serializeOverride } from "../../model/override.js";
 
+/**
+ * One operation of the host's working model (docs/API.md). A placement is
+ * named by its entity: `{kind: "placement", view, id: <entity id>, value}`,
+ * `value` the whole placement or null to take it off the view.
+ */
 export interface ModelOp {
-  kind: "entity" | "relation" | "relationType" | "text" | "view" | "zone" | "node";
+  kind: "entity" | "relation" | "relationType" | "text" | "view" | "placement";
   id: string;
   view?: string;
   lang?: string;
@@ -13,83 +18,125 @@ const same = (a: unknown, b: unknown): boolean => JSON.stringify(a) === JSON.str
 const copy = <T>(value: T): T => JSON.parse(JSON.stringify(value)) as T;
 const fields = ["name", "title", "description", "doc", "fromLabel", "toLabel"] as const;
 
+/** A placement's fields as the view file names them, from the editor's placement. */
+function fileFields(p: WirePlacement): Record<string, unknown> {
+  const template = p.metadata?.template;
+  return {
+    parent: p.parent ?? null,
+    x: p.x,
+    y: p.y,
+    width: p.width,
+    height: p.height,
+    styleId: p.styleId,
+    override: serializeOverride(OVERRIDE_FIELDS, p.override),
+    template: typeof template === "string" ? template : undefined,
+    collapsed: p.collapsed,
+  };
+}
+
 function changedPlacement(
-  kind: "node" | "zone", id: string, before: WireNode | WireZone | undefined,
-  after: WireNode | WireZone | undefined, original: Record<string, unknown> | undefined,
-  view: string,
+  id: string, before: WirePlacement | undefined, after: WirePlacement | undefined,
+  original: Record<string, unknown> | undefined, view: string,
 ): ModelOp | undefined {
-  if (!after) return { kind, id, view, value: null };
-  const geometryChanged = !before || ["x", "y", "width", "height", "styleId"].some((field) =>
-    !same((before as unknown as Record<string, unknown>)[field], (after as unknown as Record<string, unknown>)[field]))
-    || (kind === "node" && (!same((before as WireNode | undefined)?.zone, (after as WireNode).zone)
-      || !same(before?.metadata?.template, after.metadata?.template)));
-  if (!geometryChanged) return undefined;
-  const value: Record<string, unknown> = { ...(original ?? {}) };
-  if (!original) {
-    if (kind === "node") value.entity = id;
-    else value.id = id;
+  if (!after) return before ? { kind: "placement", id, view, value: null } : undefined;
+  const now = fileFields(after);
+  const was = before ? fileFields(before) : undefined;
+  const changed = Object.keys(now).filter((key) => !was || !same(was[key], now[key]));
+  if (changed.length === 0) return undefined;
+  // Keys the editor does not model ride along from the file; a new placement
+  // is written in the contract's field order.
+  const value: Record<string, unknown> = original ? { ...original } : { entity: id };
+  for (const key of Object.keys(now)) {
+    if (original && !changed.includes(key)) continue;
+    if (now[key] === undefined) delete value[key];
+    else value[key] = now[key];
   }
-  for (const field of ["x", "y", "width", "height", "styleId"] as const) {
-    if (!before || !same(before[field], after[field])) {
-      if (after[field] === undefined) delete value[field];
-      else value[field] = after[field];
-    }
-  }
-  if (kind === "node" && (!before || !same((before as WireNode).zone, (after as WireNode).zone))) {
-    const key = "container" in value ? "container" : "zone";
-    value[key] = (after as WireNode).zone ?? null;
-  }
-  if (kind === "node") {
-    const template = after.metadata?.template;
-    if (!before || !same(before.metadata?.template, template)) {
-      if (typeof template === "string") value.template = template;
-      else delete value.template;
-    }
-  }
-  return { kind, id, view, value };
+  // Every written placement names its parent, null included (CONTRACT.md §8.2);
+  // a file that left the key out gets it on the first write.
+  if (!("parent" in value)) value.parent = now.parent;
+  return { kind: "placement", id, view, value };
+}
+
+/** An edge entry of the view's own `edges` list, in the contract's field order (§8.5). */
+function edgeEntry(e: NonNullable<WireDocument["edges"]>[number]): Record<string, unknown> {
+  const override = serializeOverride(EDGE_OVERRIDE_FIELDS, e.override);
+  return {
+    id: e.id, from: e.from, to: e.to, type: e.type,
+    ...(e.styleId ? { styleId: e.styleId } : {}),
+    ...(override ? { override } : {}),
+    ...(e.routing ? { routing: e.routing } : {}),
+  };
 }
 
 /** Compare completed editor actions by object; carry untouched raw keys through. */
 export function diffModel(
   before: WireDocument, after: WireDocument, originalView: ViewDocument,
   rawEntities: Array<Record<string, unknown>>, rawTexts: Record<string, { entries?: Record<string, Record<string, unknown>> }>,
+  rawRelations: Array<Record<string, unknown>> = [],
 ): ModelOp[] {
   const view = after.bundle?.view.id ?? originalView.id;
-  const ops: ModelOp[] = [];
-  const originalNodes = new Map((originalView.nodes ?? originalView.placements ?? []).map((n) => [n.entity ?? n.id ?? "", n as unknown as Record<string, unknown>]));
-  const originalZones = new Map((originalView.zones ?? []).map((z) => [z.id, z as unknown as Record<string, unknown>]));
-  for (const kind of ["zone", "node"] as const) {
-    const previous = new Map((kind === "zone" ? before.zones ?? [] : before.nodes ?? []).map((n) => [n.id, n]));
-    const current = new Map((kind === "zone" ? after.zones ?? [] : after.nodes ?? []).map((n) => [n.id, n]));
-    for (const id of new Set([...previous.keys(), ...current.keys()])) {
-      const op = changedPlacement(kind, id, previous.get(id), current.get(id),
-        (kind === "zone" ? originalZones : originalNodes).get(id), view);
-      if (op) ops.push(op);
-    }
+  const originals = new Map((originalView.placements ?? []).map((p) => [p.entity, p as Record<string, unknown>]));
+  const previous = new Map((before.placements ?? []).map((p) => [p.id, p]));
+  const current = new Map((after.placements ?? []).map((p) => [p.id, p]));
+
+  const placementOps: ModelOp[] = [];
+  for (const id of new Set([...previous.keys(), ...current.keys()])) {
+    const op = changedPlacement(id, previous.get(id), current.get(id), originals.get(id), view);
+    if (op) placementOps.push(op);
   }
+
+  const entityOps: ModelOp[] = [];
   const originalEntityById = new Map(rawEntities.map((e) => [String(e.id), e]));
-  const beforeNodes = new Map((before.nodes ?? []).map((n) => [n.id, n]));
-  const primaryLang=after.bundle?.project.languages?.[0] ?? "ru";
-  for (const node of after.nodes ?? []) {
-    const old = beforeNodes.get(node.id);
-    const entity = originalEntityById.get(node.id);
+  for (const p of after.placements ?? []) {
+    const old = previous.get(p.id);
+    const entity = originalEntityById.get(p.id);
     if (!entity) {
-      ops.push({ kind: "entity", id: node.id, value: { id: node.id, name: node.label ?? node.id,
-        kind: node.type ?? DEFAULT_STYLE_IDS.node, origin: "authored", status: "present" } });
-    } else if (old && (old.type !== node.type ||
-        (old.label !== node.label && !rawTexts[primaryLang]?.entries?.[node.id]?.name))) {
-      ops.push({ kind: "entity", id: node.id, value: { ...entity,
-        ...(old.label !== node.label && !rawTexts[primaryLang]?.entries?.[node.id]?.name ? { name: node.label ?? node.id } : {}),
-        ...(old.type !== node.type ? { kind: node.type ?? entity.kind } : {}) } });
+      // A placement drawn in the editor brings its entity with it; one that was
+      // already on the view without a registry record is not minted one.
+      if (old) continue;
+      entityOps.push({ kind: "entity", id: p.id, value: { id: p.id, name: p.label ?? p.id,
+        kind: p.type ?? "", origin: "authored", status: "present" } });
+    } else if (old) {
+      // A name or a kind read from code is the code's to change; the diagram never overrides it.
+      const fromCode = entity.origin === "code";
+      const renamed = old.label !== p.label && !fromCode;
+      const retyped = old.type !== p.type && !fromCode;
+      if (renamed || retyped) {
+        entityOps.push({ kind: "entity", id: p.id, value: { ...entity,
+          ...(renamed ? { name: p.label ?? p.id } : {}),
+          ...(retyped ? { kind: p.type ?? entity.kind } : {}) } });
+      }
     }
   }
+
+  // A relation's type is the registry's (relations.json), and the project must
+  // list it (relation-types.json): both are written with the batch that changes it.
+  const registryOps: ModelOp[] = [];
+  const beforeRelations = new Map((before.bundle?.relations?.relations ?? []).map((r) => [r.id, r]));
+  const knownTypes = new Set((before.bundle?.relationTypes?.relationTypes ?? []).map((t) => t.id));
+  const afterTypes = new Map((after.bundle?.relationTypes?.relationTypes ?? []).map((t) => [t.id, t]));
+  const rawRelationById = new Map(rawRelations.map((r) => [String(r.id), r]));
+  for (const [id, type] of afterTypes) {
+    if (!knownTypes.has(id)) registryOps.push({ kind: "relationType", id, value: { ...type } });
+  }
+  for (const r of after.bundle?.relations?.relations ?? []) {
+    const old = beforeRelations.get(r.id);
+    const raw = rawRelationById.get(r.id);
+    if (old && raw && old.type !== r.type && raw.origin !== "code") {
+      registryOps.push({ kind: "relation", id: r.id, value: { ...raw, type: r.type } });
+    }
+  }
+
+  // An entity's name lives in entities.json and is not translated (CONTRACT.md §7.1).
+  const entityIds = new Set([...originalEntityById.keys(), ...current.keys()]);
+  const textOps: ModelOp[] = [];
   const beforeRegistries = before.bundle?.textRegistries ?? {};
   const afterRegistries = after.bundle?.textRegistries ?? {};
   for (const [lang, registry] of Object.entries(afterRegistries)) {
     for (const [id, entry] of Object.entries(registry.entries ?? {})) {
       const prior = beforeRegistries[lang]?.entries?.[id] ?? {};
       const changed = fields.filter((field) => entry[field] !== prior[field] &&
-        !(id.startsWith("e_") && (field === "name" || field === "title") && !rawTexts[lang]?.entries?.[id]?.[field]));
+        !(entityIds.has(id) && (field === "name" || field === "title")));
       if (!changed.length) continue;
       const value = copy(rawTexts[lang]?.entries?.[id] ?? {});
       for (const field of changed) {
@@ -97,23 +144,36 @@ export function diffModel(
         if (typeof text !== "string" || !text.trim()) throw new Error(`Пустой текст ${id}.${field} нельзя сохранить`);
         value[field] = { v: text, at: new Date().toISOString().replace(/\.\d{3}Z$/, "Z"), origin: "authored" };
       }
-      ops.push({ kind: "text", id, lang, value });
+      textOps.push({ kind: "text", id, lang, value });
     }
   }
+
+  const viewOps: ModelOp[] = [];
   const oldRouting = before.metadata?.routing;
   const newRouting = after.metadata?.routing;
   if (!same(before.edges, after.edges) || oldRouting !== newRouting) {
     const value: Record<string, unknown> = { id: view };
     if (oldRouting !== newRouting) value.routing = newRouting ?? null;
-    if (!same(before.edges, after.edges)) value.edges = (after.edges ?? []).map((e) => ({
-      id: e.id, from: e.from, to: e.to, type: e.type, ...e.styleId ? { styleId: e.styleId } : {},
-      ...e.routing ? { routing: e.routing } : {},
-    }));
-    ops.push({ kind: "view", id: view, view, value });
+    if (!same(before.edges, after.edges)) value.edges = (after.edges ?? []).map(edgeEntry);
+    viewOps.push({ kind: "view", id: view, view, value });
   }
-  return [
-    ...ops.filter((op) => op.kind === "entity"),
-    ...ops.filter((op) => op.kind === "zone"),
-    ...ops.filter((op) => op.kind !== "entity" && op.kind !== "zone"),
-  ];
+
+  return [...entityOps, ...registryOps, ...orderPlacements(placementOps, current), ...textOps, ...viewOps];
+}
+
+/**
+ * The host checks the batch as a whole (docs/API.md §3.4), so order is not a
+ * rule; it is kept readable anyway — outer placements first, removals last,
+ * after the children of a removed container have moved to its parent (a
+ * container is removed only with its children moved out in the same batch).
+ */
+function orderPlacements(ops: ModelOp[], current: ReadonlyMap<string, WirePlacement>): ModelOp[] {
+  const depth = (id: string): number => {
+    let d = 0;
+    const seen = new Set<string>();
+    for (let p = current.get(id)?.parent; p && !seen.has(p); p = current.get(p)?.parent) { seen.add(p); d += 1; }
+    return d;
+  };
+  const kept = ops.filter((op) => op.value !== null).sort((a, b) => depth(a.id) - depth(b.id));
+  return [...kept, ...ops.filter((op) => op.value === null)];
 }

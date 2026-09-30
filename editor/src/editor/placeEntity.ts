@@ -1,6 +1,7 @@
 import type { EntityEntry } from "../model/wire-types.js";
 import type { DiagramEditor } from "./DiagramEditor.js";
 import { relationShownByDefault } from "../model/relationVisibility.js";
+import { KindCatalog } from "../model/KindCatalog.js";
 import { canvas } from "../constants/canvas.js";
 
 /** Default box size and the gap between boxes, from the canvas numbers (`/canvas.json`). */
@@ -10,21 +11,31 @@ export function boxMetrics(): { WIDTH: number; HEIGHT: number; GAP_X: number; GA
 }
 const PER_ROW = 4;
 
-/** The box of a registry entity at (x, y): its name and description come from the view's texts. */
+/** A container made or placed in the editor: room for what will go into it (`canvas.json` has only its minimum). */
+export const NEW_CONTAINER_SIZE = { width: 420, height: 300 } as const;
+const CONTAINER_WIDTH = NEW_CONTAINER_SIZE.width;
+const CONTAINER_HEIGHT = NEW_CONTAINER_SIZE.height;
+
+/**
+ * The box of a registry entity at (x, y). Frame or block is the kind's to say
+ * (CONTRACT.md §8.2). The entity's name is its own, not translated (§7.1); its
+ * description comes from the view's texts.
+ */
 export function blockFor(doc: NonNullable<DiagramEditor["canvas"]["model"]>, entity: EntityEntry, x: number, y: number): any {
   const { WIDTH, HEIGHT } = boxMetrics();
-  const text = (doc.bundle?.text?.entries || {})[entity.id] as { name?: string; description?: string } | undefined;
+  const container = KindCatalog.active.isContainer(entity.kind);
+  const text = (doc.bundle?.text?.entries || {})[entity.id] as { description?: string } | undefined;
   return {
     id: entity.id,
-    kind: "node" as const,
+    kind: container ? "zone" as const : "node" as const,
     type: entity.kind,
-    label: text?.name || entity.name || entity.id,
+    label: entity.name || entity.id,
     tags: [],
     metadata: { description: text?.description, codeRef: entity.codeRef },
     x,
     y,
-    width: WIDTH,
-    height: HEIGHT,
+    width: container ? CONTAINER_WIDTH : WIDTH,
+    height: container ? CONTAINER_HEIGHT : HEIGHT,
     parent: null,
     children: [],
     wireOrder: Number.POSITIVE_INFINITY,
@@ -47,14 +58,19 @@ export function placeEntities(
   const doc = editor.canvas.model;
   if (!doc) return [];
   const { WIDTH, HEIGHT, GAP_X, GAP_Y } = boxMetrics();
+  // A grid with a container in it is spaced for the container.
+  const anyContainer = entities.some((e) => KindCatalog.active.isContainer(e.kind));
+  const cellW = anyContainer ? CONTAINER_WIDTH : WIDTH;
+  const cellH = anyContainer ? CONTAINER_HEIGHT : HEIGHT;
 
   const placed: string[] = [];
   for (const entity of entities) {
     if (doc.element(entity.id) !== undefined || placed.includes(entity.id)) continue;
     const i = placed.length;
-    const x = at.x + (i % PER_ROW) * (WIDTH + GAP_X);
-    const y = at.y + Math.floor(i / PER_ROW) * (HEIGHT + GAP_Y);
-    doc.add(blockFor(doc, entity, x, y), doc.containerAt({ x: x + WIDTH / 2, y: y + HEIGHT / 2 }));
+    const x = at.x + (i % PER_ROW) * (cellW + GAP_X);
+    const y = at.y + Math.floor(i / PER_ROW) * (cellH + GAP_Y);
+    const box = blockFor(doc, entity, x, y);
+    doc.add(box, doc.containerAt({ x: x + box.width / 2, y: y + box.height / 2 }));
     placed.push(entity.id);
   }
 

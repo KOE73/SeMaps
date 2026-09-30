@@ -37,6 +37,11 @@ export class PropertiesPanel implements IContentRenderer {
       if (element !== null) this.inspector.updateGeometry(element);
     });
 
+    // An edit made from this panel (a kind, a style variant, a colour) changes what it shows.
+    editor.canvas.events.on("inspect", (selection) => {
+      this.inspector.render(selection);
+    });
+
     editor.canvas.events.on("collapse", () => {
       this.inspector.render(editor.canvas.selected);
     });

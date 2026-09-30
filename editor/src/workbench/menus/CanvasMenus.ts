@@ -1,5 +1,6 @@
 import type { DiagramEditor } from "../../editor/DiagramEditor.js";
 import { edgePreview } from "../../editor/style-preview.js";
+import { variantLabel } from "../../editor/kindSelects.js";
 import type { RoutingMode } from "../../model/style-types.js";
 import { entityOf, type DiagramEdge, type DiagramElement } from "../../model/types.js";
 import { i18n } from "../i18n/I18nService.js";
@@ -106,26 +107,24 @@ function blockItems(editor: DiagramEditor, host: MenuHost, el: DiagramElement): 
     });
   }
 
-  items.push({
-    label: t.style,
-    icon: icons.palette,
-    submenu: () => [
-      {
-        label: t.styleDefault,
-        checked: el.styleId === undefined,
-        preview: () => editor.canvas.previewElement(el, { styleId: null }),
-        onSelect: () => editor.applyStyle(ids, null),
-      },
-      { kind: "separator" },
-      ...styles.list("block").map((s): MenuItem => ({
-        label: s.name,
-        checked: el.styleId === s.id,
+  // The variants of the box's own type (ADR_20260927-7), only when there is a choice.
+  const target = isZone ? "container" : "block";
+  const variants = styles.stylesOf(el.type, target);
+  if (variants.length > 1) {
+    const current = styles.blockStyleIdFor(el);
+    const base = styles.baseStyleOf(el.type, target);
+    items.push({
+      label: t.style,
+      icon: icons.palette,
+      submenu: () => variants.map((s): MenuItem => ({
+        label: variantLabel(s.name, s.id === base),
+        checked: current === s.id,
         title: s.style.description,
-        preview: () => editor.canvas.previewElement(el, { styleId: s.id }),
-        onSelect: () => editor.applyStyle(ids, s.id),
+        preview: () => editor.canvas.previewElement(el, { styleId: s.id === base ? null : s.id }),
+        onSelect: () => editor.applyKindAndStyle(ids, el.type, s.id),
       })),
-    ],
-  });
+    });
+  }
 
   if (editor.canvas.selectedIds.size > 1) {
     items.push({ label: t.align, icon: icons.arrowBarToLeft, submenu: () => [
@@ -157,6 +156,9 @@ function edgeItems(editor: DiagramEditor, host: MenuHost, edge: DiagramEdge): Me
   if (!ids.includes(edge.id)) ids.push(edge.id);
   const edges = ids.map((sid) => doc.edge(sid)!).filter(Boolean);
   const own = edges.some((e) => e.routing !== undefined);
+  const variants = styles.stylesOf(edge.type, "edge");
+  const base = styles.baseStyleOf(edge.type, "edge");
+  const currentStyle = styles.edgeStyleIdFor(edge);
 
   return [
     { label: t.hideEdge, icon: icons.eyeOff, title: t.toggleEdgeHint, onSelect: () => editor.setEdgeShown(edge.id, false) },
@@ -183,26 +185,20 @@ function edgeItems(editor: DiagramEditor, host: MenuHost, edge: DiagramEdge): Me
       ],
     },
     viewRoutingItem(editor),
-    {
-      label: t.style,
-      icon: icons.palette,
-      submenu: () => [
-        {
-          label: t.styleByType,
-          checked: edge.styleId === undefined,
-          preview: () => edgePreview(styles.resolveEdge(styles.has(edge.type) ? edge.type : null)),
-          onSelect: () => editor.applyStyle(ids, null),
-        },
-        { kind: "separator" },
-        ...styles.list("edge").map((s): MenuItem => ({
-          label: s.name,
-          checked: edge.styleId === s.id,
-          title: s.style.description,
-          preview: () => edgePreview(styles.resolveEdge(s.id)),
-          onSelect: () => editor.applyStyle(ids, s.id),
-        })),
-      ],
-    },
+    // The variants of the line's own relation type (ADR_20260930-2), only when there is a choice.
+    ...(variants.length > 1
+      ? [{
+          label: t.style,
+          icon: icons.palette,
+          submenu: (): MenuItem[] => variants.map((s): MenuItem => ({
+            label: variantLabel(s.name, s.id === base),
+            checked: currentStyle === s.id,
+            title: s.style.description,
+            preview: () => edgePreview(styles.resolveEdge(s.id)),
+            onSelect: () => editor.applyRelationTypeAndStyle(ids, edge.type, s.id),
+          })),
+        } satisfies MenuItem]
+      : []),
     { kind: "separator" },
     { label: t.describe, icon: icons.pencil, onSelect: () => editor.openDocEditor(edge.id, "edge") },
     { label: t.properties, icon: icons.listDetails, onSelect: () => host.openPanel("relations") },

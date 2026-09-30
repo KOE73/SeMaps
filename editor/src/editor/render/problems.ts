@@ -42,7 +42,7 @@ export function findProblems(canvas: DiagramCanvas): Problem[] {
   };
 
   overlaps(boxes, add);
-  outsideZone(boxes, add);
+  outsideContainer(boxes, add);
   text(canvas, boxes, add);
   lines(canvas, boxes, add);
 
@@ -86,14 +86,13 @@ function overlaps(boxes: readonly Box[], add: (p: Problem) => void): void {
   }
 }
 
-/** A node that names a zone (or sits in one) but is not wholly inside that zone's rectangle. */
-function outsideZone(boxes: readonly Box[], add: (p: Problem) => void): void {
+/** A placement that names a container (its `parent`) but is not wholly inside that container's rectangle. */
+function outsideContainer(boxes: readonly Box[], add: (p: Problem) => void): void {
   const rects = new Map(boxes.map((b) => [b.el.id, b.rect]));
   for (const { el, rect } of boxes) {
     if (isContainer(el) || el.parent === null) continue;
-    if (el.origin !== undefined && !el.origin.zoneDeclared) continue;
-    const zone = rects.get(el.parent.id);
-    if (zone !== undefined && !inside(zone, rect)) {
+    const container = rects.get(el.parent.id);
+    if (container !== undefined && !inside(container, rect)) {
       add({ kind: "outside-container", ids: [el.id, el.parent.id], text: `${el.id} is not inside its container ${el.parent.id}` });
     }
   }

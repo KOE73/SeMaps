@@ -16,7 +16,7 @@ export function createDefaultRibbonSpec(): RibbonSpec {
             get title() { return i18n.d.ribbon.groups.creation; },
             items: [
               { type: "button", command: "diagram.block.add", size: "large" },
-              { type: "button", command: "diagram.zone.add", size: "large" },
+              { type: "button", command: "diagram.container.add", size: "large" },
             ],
           },
           {
@@ -67,7 +67,7 @@ export function createDefaultRibbonSpec(): RibbonSpec {
             get title() { return i18n.d.ribbon.groups.creation; },
             items: [
               { type: "button", command: "diagram.block.add", size: "large" },
-              { type: "button", command: "diagram.zone.add", size: "large" },
+              { type: "button", command: "diagram.container.add", size: "large" },
             ],
           },
           {
@@ -107,13 +107,6 @@ export function createDefaultRibbonSpec(): RibbonSpec {
                 getValue: () => localStorage.getItem("semaps.ports") || "uniform",
               },
               { type: "toggle", command: "view.edges.toggleStructure", size: "medium" },
-            ],
-          },
-          {
-            id: "model",
-            get title() { return i18n.d.ribbon.groups.file; },
-            items: [
-              { type: "button", command: "file.code.toggle", size: "medium" },
             ],
           },
         ],

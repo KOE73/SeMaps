@@ -57,6 +57,8 @@ export interface Selection {
 export interface CanvasEvents {
   /** Selection changed, including to nothing. */
   select: Selection | null;
+  /** The selected object changed in place: panels showing it redraw (no selection change). */
+  inspect: Selection | null;
   /** The model was mutated by a canvas interaction. */
   modelchange: { reason: string };
   /** A direct-manipulation gesture began; a good moment to snapshot. */
@@ -1410,8 +1412,7 @@ export class DiagramCanvas {
             shouldInclude = true;
           } else if (this.showOverviewShadows) {
             // Global overview includes relations whose style has overview === true
-            const relType = rel.type || rel.relation || "relates";
-            const edgeStyle = this.styleLibrary.resolveEdge(rel.styleId || relType);
+            const edgeStyle = this.styleLibrary.resolveEdge(this.styleLibrary.edgeStyleIdFor({ type: rel.type }));
             if (edgeStyle.overview) {
               shouldInclude = true;
             }
@@ -1419,7 +1420,7 @@ export class DiagramCanvas {
 
           if (!shouldInclude) continue;
 
-          const relType = rel.type || rel.relation || "relates";
+          const relType = rel.type;
           const alreadyPresent = resolved.some((r) => {
             if (rel.id && r.edge.id === rel.id) return true;
             return (
@@ -1440,7 +1441,6 @@ export class DiagramCanvas {
                 to: canvasTo,
                 type: relType,
                 label: rel.label || "",
-                styleId: rel.styleId,
               };
               resolved.push({ edge: potentialEdge, from, to, isPotential: true });
             }

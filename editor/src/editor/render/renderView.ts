@@ -49,10 +49,10 @@ function regionOf(editor: DiagramEditor, req: RenderRequest): Rect | { error: st
 
   if (req.rect && req.rect.width > 0 && req.rect.height > 0) return req.rect;
 
-  const zone = req.ref?.includes("#") ? req.ref.slice(req.ref.indexOf("#") + 1) : "";
-  if (zone !== "") {
-    const box = canvas.shownBoxes().find((b) => b.el.id === zone);
-    if (box === undefined) return { error: `zone ${zone} is not shown in view ${req.view}` };
+  const container = req.ref?.includes("#") ? req.ref.slice(req.ref.indexOf("#") + 1) : "";
+  if (container !== "") {
+    const box = canvas.shownBoxes().find((b) => b.el.id === container);
+    if (box === undefined) return { error: `container ${container} is not shown in view ${req.view}` };
     return grow(box.rect);
   }
 

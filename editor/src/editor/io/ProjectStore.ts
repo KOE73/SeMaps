@@ -1,5 +1,5 @@
 import type { ParsedTextCatalog } from "../../model/text-provenance.js";
-import { parseTextCatalog, serializeTextCatalog } from "../../model/text-provenance.js";
+import { parseTextCatalog } from "../../model/text-provenance.js";
 import type {
   EntityCatalog,
   EntityEntry,
@@ -10,26 +10,38 @@ import type {
   RelationTypeCatalog,
   TextCatalog,
   ViewDocument,
-  ViewEdgePlacement,
-  ViewNodePlacement,
-  ViewZonePlacement,
+  ViewPlacement,
   WireDocument,
+  WireEdge,
+  WirePlacement,
 } from "../../model/wire-types.js";
 import type { ModelStore, SaveTarget } from "./types.js";
-import type { RoutingMode } from "../../model/style-types.js";
 import { relationShownByDefault } from "../../model/relationVisibility.js";
-import { hostWriteHeaders } from "../../util/hostKey.js";
-import { DEFAULT_STYLE_IDS } from "../../model/StyleLibrary.js";
+import { KindCatalog } from "../../model/KindCatalog.js";
+import { EDGE_OVERRIDE_FIELDS, OVERRIDE_FIELDS, parseOverride } from "../../model/override.js";
+
+/** Contract version this editor reads and writes (CONTRACT.md, ADR_20260927-6). */
+export const CONTRACT_VERSION = 5;
 
 /**
- * Reads and writes multi-file project models over HTTP.
- *
- * Symmetrically coordinates:
+ * Keys of an older contract that a view of contract 5 must not have. Such a
+ * view is named, not read (ADR_20260927-3): the loader does not migrate; that
+ * is `semaps migrate`.
+ */
+const OLD_VIEW_KEYS = ["zones", "nodes"] as const;
+const OLD_PLACEMENT_KEYS = ["zone", "container", "id"] as const;
+
+/**
+ * Reads multi-file project models over HTTP:
  * - `project.json`
  * - `entities.json`
  * - `relations.json`
- * - `text.ru.json`
+ * - `relation-types.json`
+ * - `text.<lang>.json`
  * - `views/<view_id>.view.json`
+ *
+ * Writing goes through the host's working model (`HostModelStore`); this
+ * store is what `npm run dev` uses to read the example workspace without Go.
  */
 export class HttpProjectStore implements ModelStore {
   constructor(private readonly baseUrl: string = "./") {}
@@ -41,22 +53,29 @@ export class HttpProjectStore implements ModelStore {
     return this.loadProjectBundle(file, data);
   }
 
-  protected async loadProjectBundle(viewFile: string, viewData: any, provided?: {
+  protected async loadProjectBundle(viewFile: string, viewData: ViewDocument, provided?: {
     project: ProjectManifest;
     entities: EntityCatalog;
     relations: RelationCatalog;
     relationTypes: RelationTypeCatalog;
     texts: Record<string, unknown>;
   }): Promise<WireDocument> {
-    const isView = !!viewData.project;
-    let projectManifest: ProjectManifest = viewData;
-    let dir = viewFile.substring(0, viewFile.lastIndexOf("/") + 1);
+    if (typeof viewData?.project !== "string") {
+      throw new Error(`${viewFile}: это не вид — нет поля «project» (CONTRACT.md §8).`);
+    }
+    checkViewShape(viewFile, viewData);
 
-    if (isView) {
-      dir = dir + "../";
-      projectManifest = provided?.project ?? await fetch(new URL(dir + "project.json", new URL(this.baseUrl, location.href)))
-        .then((r) => r.json())
-        .catch(() => ({ id: viewData.project || "unknown", title: "Архитектурная схема" }));
+    const dir = viewFile.substring(0, viewFile.lastIndexOf("/") + 1) + "../";
+    const url = (path: string): URL => new URL(dir + path, new URL(this.baseUrl, location.href));
+    const projectManifest: ProjectManifest = provided?.project ?? await fetch(url("project.json"))
+      .then((r) => r.json())
+      .catch(() => ({ id: viewData.project || "unknown", title: "Архитектурная схема" }));
+    const version = projectManifest.contractVersion;
+    if (typeof version === "number" && version < CONTRACT_VERSION) {
+      throw new Error(
+        `${dir}project.json: contractVersion ${version} — проект старой формы; редактор читает версию ` +
+          `${CONTRACT_VERSION} (ADR_20260927-6). Переведите проект командой «semaps migrate» (ADR_20260927-3).`,
+      );
     }
 
     const languages = (projectManifest.languages?.length ? projectManifest.languages : ["ru"]) as string[];
@@ -65,18 +84,18 @@ export class HttpProjectStore implements ModelStore {
       provided.entities, provided.relations, provided.relationTypes,
       ...languages.map((lang) => provided.texts[lang] ?? {}),
     ] : await Promise.all([
-      fetch(new URL(dir + "entities.json", new URL(this.baseUrl, location.href)))
+      fetch(url("entities.json"))
         .then((r) => r.json())
         .catch(() => ({ entities: [] })) as Promise<EntityCatalog>,
-      fetch(new URL(dir + "relations.json", new URL(this.baseUrl, location.href)))
+      fetch(url("relations.json"))
         .then((r) => r.json())
         .catch(() => ({ relations: [] })) as Promise<RelationCatalog>,
-      fetch(new URL(dir + "relation-types.json", new URL(this.baseUrl, location.href)))
+      fetch(url("relation-types.json"))
         .then((r) => r.json())
         .catch(() => ({ relationTypes: [] })) as Promise<RelationTypeCatalog>,
       ...languages.map(
         (lang) =>
-          fetch(new URL(dir + `text.${lang}.json`, new URL(this.baseUrl, location.href)))
+          fetch(url(`text.${lang}.json`))
             .then((r) => (r.ok ? r.json() : {}))
             .catch(() => ({})) as Promise<unknown>,
       ),
@@ -93,70 +112,47 @@ export class HttpProjectStore implements ModelStore {
 
     const primary = languages[0] ?? "ru";
     const textRes: TextCatalog = textRegistries[primary] ?? { entries: {} };
+    const kinds = KindCatalog.active;
+    const issues: ModelIssue[] = [];
+    const entityById = new Map((entitiesRes.entities ?? []).map((e) => [e.id, e]));
 
-    const placements = viewData.placements || viewData.nodes || [];
-    const translatedNodes = placements.map((vn: any) => {
-      const entityId = vn.entity || vn.id;
-      const e: EntityEntry = entitiesRes.entities?.find?.((x) => x.id === entityId) ?? {
-        id: entityId,
-        name: entityId,
-        kind: vn.type || DEFAULT_STYLE_IDS.node,
-        codeRef: "",
-      };
-      const t = textRes.entries?.[entityId] ?? {
-        name: e.name || entityId,
-        title: e.name || entityId,
-        doc: "",
-        description: "",
-      };
+    const placements: WirePlacement[] = (viewData.placements ?? []).map((vp: ViewPlacement) => {
+      const entityId = vp.entity;
+      const e: EntityEntry = entityById.get(entityId) ?? { id: entityId, name: entityId, kind: "" };
+      // Only description and doc are texts of an entity; its name is not translated (§7.1).
+      const t = textRes.entries?.[entityId];
+      const override = parseOverride(vp.override, OVERRIDE_FIELDS);
+      if (override.rejected.length > 0) {
+        issues.push({
+          kind: "override-field",
+          message:
+            `${viewFile}: у размещения «${entityId}» в «override» поля вне таблицы ` +
+            `(${override.rejected.join(", ")}) — они не прочитаны (CONTRACT.md §11.6).`,
+        });
+      }
       return {
         id: entityId,
-        label: t.name || t.title || e.name || entityId,
-        type: vn.type || e.kind || DEFAULT_STYLE_IDS.node,
-        zone: vn.zone || vn.container || null,
-        x: vn.x,
-        y: vn.y,
-        width: vn.width || 170,
-        height: vn.height || 50,
-        styleId: vn.styleId,
+        // Frame or block is the kind's to say, not the file's (§8.2).
+        container: kinds.isContainer(e.kind),
+        label: e.name || entityId,
+        type: e.kind,
+        parent: vp.parent ?? null,
+        x: vp.x,
+        y: vp.y,
+        width: vp.width || 170,
+        height: vp.height || 50,
+        ...(vp.styleId === undefined ? {} : { styleId: vp.styleId }),
+        ...(override.value === undefined ? {} : { override: override.value }),
+        ...(vp.collapsed === undefined ? {} : { collapsed: vp.collapsed }),
         metadata: {
           codeRef: e.codeRef,
-          description: t.doc || t.description,
+          description: t?.doc || t?.description,
           // Content template chosen for this one placement, overriding the
           // style's. The exception, not the rule: one node that must show more
           // (or less) than its kind normally does (ADR_20260903 §2.2).
-          template: vn.template,
+          template: vp.template,
         },
         raw: { _entity: e },
-      };
-    });
-
-    /**
-     * A view's zone id was minted by the old layout generator as `z_<x>` from
-     * the container `c_<x>` it renders, so text
-     * keyed to the container is not found under the zone's own id. Resolve
-     * through both. The real fix belongs in the generator — a zone should name
-     * the container it stands for, the way a node placement names its entity.
-     */
-    const zoneTextKey = (id: string) =>
-      textRes.entries?.[id] ? id : id.startsWith("z_") ? "c_" + id.slice(2) : id;
-
-    const translatedZones = (viewData.zones || []).map((vz: any) => {
-      const textKey = zoneTextKey(vz.id);
-      const zName = textRes.entries?.[textKey]?.name || textRes.entries?.[textKey]?.title || vz.name || vz.id;
-      return {
-        id: vz.id,
-        // A zone's caption is `name` on the wire (`label` is a node's); emitting
-        // the wrong one is why zone captions used to render as raw ids.
-        name: zName,
-        type: vz.type || "zone",
-        zone: vz.parent || vz.container || null,
-        x: vz.x,
-        y: vz.y,
-        width: vz.width,
-        height: vz.height,
-        styleId: vz.styleId,
-        metadata: { description: textRes.entries?.[textKey]?.doc || textRes.entries?.[textKey]?.description },
       };
     });
 
@@ -165,30 +161,40 @@ export class HttpProjectStore implements ModelStore {
     const rawEdges = Array.isArray(viewData.edges)
       ? viewData.edges
       : (relationsRes.relations || []).filter((r) =>
-          relationShownByDefault(r, (viewData as ViewDocument).relations as any, relationTypesRes));
+          relationShownByDefault(r, viewData.relations as any, relationTypesRes));
 
-    // A view's own edge placements don't repeat `origin` — only the relation
+    // A view's own edge entries don't repeat `origin` — only the relation
     // registry does — so look it up by id to know whether this edge is
     // allowed any text at all (ADR_20260831 §2.13).
     const relationOriginById = new Map<string, "code" | "authored" | undefined>(
       (relationsRes.relations || []).map((r) => [r.id, r.origin]),
     );
 
-    const translatedEdges = rawEdges.map((ve: any, i: number) => {
+    const translatedEdges: WireEdge[] = rawEdges.map((ve: any, i: number) => {
       const id = ve.id || `edge_${i}`;
       const origin = relationOriginById.get(id) ?? ve.origin;
       const text = origin === "code" ? undefined : textRes.entries?.[id];
+      const override = parseOverride(ve.override, EDGE_OVERRIDE_FIELDS);
+      if (override.rejected.length > 0) {
+        issues.push({
+          kind: "override-field",
+          message:
+            `${viewFile}: у связи «${id}» в «override» поля вне таблицы ` +
+            `(${override.rejected.join(", ")}) — они не прочитаны (CONTRACT.md §11.6).`,
+        });
+      }
       return {
         id,
-        from: ve.from || ve.source,
-        to: ve.to || ve.target,
-        type: ve.type || ve.relation || "relates",
+        from: ve.from,
+        to: ve.to,
+        type: ve.type ?? "",
         // Text of a relation lives in the text catalogue under its own id; a
         // generated relation has none, and its meaning is carried by its type.
         label: text?.name || text?.title || "",
         fromLabel: text?.fromLabel,
         toLabel: text?.toLabel,
         styleId: ve.styleId,
+        ...(override.value === undefined ? {} : { override: override.value }),
         points: ve.points || [],
         ...(origin === undefined ? {} : { origin }),
         // Line shape picked for this one edge. Only the choice: the polyline
@@ -203,14 +209,13 @@ export class HttpProjectStore implements ModelStore {
      * editor says so — but the containment in it must not be read as an
      * assertion about anything.
      */
-    const resolvedAxis = (viewData as ViewDocument).axis ?? projectManifest.defaultAxis;
-    const issues: ModelIssue[] = [];
-    if (isView && !resolvedAxis) {
-      issues.push({
+    const resolvedAxis = viewData.axis ?? projectManifest.defaultAxis;
+    if (!resolvedAxis) {
+      issues.unshift({
         kind: "view-without-axis",
         message:
           `Вид «${viewData.id || viewFile}» не объявляет ось классификации, и у проекта нет ` +
-          `запасной (defaultAxis). Схема открыта, но вложенность блоков в контейнеры ` +
+          `запасной (defaultAxis). Схема открыта, но вложенность размещений в контейнеры ` +
           `здесь ничего не утверждает и не проверяется. ` +
           `См. ADR_20260831_diagrams_text-provenance-and-view-axes.`,
       });
@@ -224,16 +229,14 @@ export class HttpProjectStore implements ModelStore {
       text: textRes,
       textRegistries,
       textFiles,
-      view: isView
-        ? (viewData as ViewDocument)
-        : { id: "v_main", project: projectManifest.id, zones: viewData.zones, nodes: viewData.nodes, edges: viewData.edges },
+      view: viewData,
       // Resolved, not written back: a view that inherits its axis keeps
       // inheriting it, and saving does not mint a field the author never wrote.
       ...(resolvedAxis ? { resolvedAxis } : {}),
       ...(issues.length > 0 ? { issues } : {}),
     };
 
-    const wire: WireDocument = {
+    return {
       metadata: {
         title: projectManifest.title,
         subtitle: projectManifest.subtitle,
@@ -241,165 +244,45 @@ export class HttpProjectStore implements ModelStore {
         // relation type's choice and a single edge's override.
         ...(viewData.routing === undefined ? {} : { routing: viewData.routing }),
       },
-      zones: translatedZones,
-      nodes: translatedNodes,
+      placements,
       edges: translatedEdges,
       views: [],
       bundle,
     };
-
-    return wire;
   }
 
-  async save(target: SaveTarget, wire: WireDocument): Promise<void> {
-    const bundle = wire.bundle;
-
-    // If this is a project-based model, save clean view layout to target.file
-    if (bundle && bundle.project && bundle.view) {
-      await this.saveProjectBundle(target.file, wire, bundle);
-      return;
-    }
-
-    // Fallback for standalone/legacy single-file JSON models
-    const res = await fetch(`/api/save?file=${encodeURIComponent(target.file)}`, {
-      method: "POST",
-      headers: { "Content-Type": "application/json", ...hostWriteHeaders() },
-      body: JSON.stringify(wire, null, 2),
-    });
-    if (!res.ok) throw new Error(`Сервер ответил HTTP ${res.status}`);
+  /**
+   * The host's `/api/save` no longer writes project files (it answers 410):
+   * a project is changed through the working model, `HostModelStore`.
+   */
+  async save(target: SaveTarget, _wire: WireDocument): Promise<void> {
+    throw new Error(
+      `Сохранение «${target.file}» идёт через хост (semaps): этот режим только читает модель.`,
+    );
   }
+}
 
-  private async saveProjectBundle(viewFile: string, wire: WireDocument, bundle: ProjectBundle): Promise<void> {
-    // 1. Construct clean ViewDocument matching CONTRACT.md
-    const zones: ViewZonePlacement[] = (wire.zones || []).map((z) => ({
-      id: z.id,
-      container: (z as any).zone || (z as any).container || null,
-      parent: (z as any).parent || null,
-      x: z.x,
-      y: z.y,
-      width: z.width,
-      height: z.height,
-      styleId: z.styleId,
-    }));
-
-    const nodes: ViewNodePlacement[] = (wire.nodes || []).map((n) => ({
-      id: n.id,
-      container: (n as any).zone || (n as any).container || null,
-      x: n.x,
-      y: n.y,
-      width: n.width,
-      height: n.height,
-      styleId: n.styleId,
-      // Written back because the author put it there. A field the loader reads
-      // but the saver drops is worse than one that never existed: the first
-      // save quietly deletes a hand-made choice.
-      ...(typeof n.metadata?.template === "string" ? { template: n.metadata.template } : {}),
-    }));
-
-    const edges: ViewEdgePlacement[] = (wire.edges || []).map((e) => ({
-      id: e.id,
-      from: e.from,
-      to: e.to,
-      type: e.type,
-      styleId: e.styleId,
-      points: e.points || [],
-      ...(e.routing === undefined ? {} : { routing: e.routing }),
-    }));
-
-    const cleanView: ViewDocument = {
-      id: bundle.view.id || "v_main",
-      project: bundle.project.id,
-      axis: bundle.view.axis,
-      ...(bundle.view.icon === undefined ? {} : { icon: bundle.view.icon }),
-      ...(bundle.view.theme === undefined ? {} : { theme: bundle.view.theme }),
-      ...(bundle.view.order === undefined ? {} : { order: bundle.view.order }),
-      // The document's metadata, not the bundle: that is where the editor sets
-      // or clears the view's line shape, and where undo can reach it.
-      ...(wire.metadata?.routing === undefined ? {} : { routing: wire.metadata.routing as RoutingMode }),
-      ...(bundle.view.relations ? { relations: bundle.view.relations } : {}),
-      zones,
-      nodes,
-      edges,
-    };
-
-    // Save the view file
-    const res = await fetch(`/api/save?file=${encodeURIComponent(viewFile)}`, {
-      method: "POST",
-      headers: { "Content-Type": "application/json", ...hostWriteHeaders() },
-      body: JSON.stringify(cleanView, null, 2),
-    });
-    if (!res.ok) throw new Error(`Не удалось сохранить ${viewFile}: HTTP ${res.status}`);
-
-    // Update text and entities if any new items were created/modified
-    const dir = viewFile.substring(0, viewFile.lastIndexOf("/") + 1) + "../";
-    let textModified = false;
-    let entitiesModified = false;
-
-    const currentText = bundle.text.entries || {};
-    const currentEntities = bundle.entities.entities || [];
-    const entityMap = new Map(currentEntities.map((e) => [e.id, e]));
-
-    for (const n of wire.nodes || []) {
-      if (!entityMap.has(n.id)) {
-        currentEntities.push({
-          id: n.id,
-          name: n.label || n.id,
-          kind: n.type || DEFAULT_STYLE_IDS.node,
-          origin: "authored",
-          status: "present",
-          codeRef: n.metadata?.codeRef || "",
-          members: [],
-        });
-        entitiesModified = true;
-      }
-      if (n.label && currentText[n.id]?.name !== n.label) {
-        currentText[n.id] = { ...currentText[n.id], name: n.label, doc: n.metadata?.description || currentText[n.id]?.doc || "" };
-        textModified = true;
-      }
-    }
-
-    for (const z of wire.zones || []) {
-      const zoneName = z.name;
-      if (zoneName && currentText[z.id]?.name !== zoneName) {
-        currentText[z.id] = { ...currentText[z.id], name: zoneName, doc: z.metadata?.description || currentText[z.id]?.doc || "" };
-        textModified = true;
-      }
-    }
-
-    if (entitiesModified) {
-      await fetch(`/api/save?file=${encodeURIComponent(dir + "entities.json")}`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json", ...hostWriteHeaders() },
-        body: JSON.stringify({ entities: currentEntities }, null, 2),
-      }).catch((err) => console.warn("Не удалось синхронизировать entities.json:", err));
-    }
-
-    const registries = bundle.textRegistries ?? (textModified ? { ru: { entries: currentText } } : null);
-    if (registries) {
-      for (const [lang, catalog] of Object.entries(registries)) {
-        if (!catalog?.entries || Object.keys(catalog.entries).length === 0) continue;
-        const textFile = dir + `text.${lang}.json`;
-        // Keys written since this view was opened — a new view's name, an
-        // agent's description — are on disk but not in the bundle; keep them.
-        const onDisk = await fetch(new URL(textFile, new URL(this.baseUrl, location.href)))
-          .then((r) => (r.ok ? r.json() : null))
-          .then((raw) => (raw ? parseTextCatalog(raw, lang) : null))
-          .catch(() => null);
-        const loaded = bundle.textFiles?.[lang] ?? null;
-        const entries = { ...onDisk?.entries, ...catalog.entries };
-        const provenance = { ...onDisk?.provenance, ...loaded?.provenance };
-        const base = onDisk || loaded
-          ? { contractVersion: 3, language: lang, entries: { ...onDisk?.entries, ...loaded?.entries }, provenance }
-          : null;
-        // Values the user changed are re-stamped as authored; the rest keep the
-        // provenance they were loaded with, so an untouched save is a no-op diff.
-        const file = serializeTextCatalog(lang, entries, base);
-        await fetch(`/api/save?file=${encodeURIComponent(textFile)}`, {
-          method: "POST",
-          headers: { "Content-Type": "application/json", ...hostWriteHeaders() },
-          body: JSON.stringify(file, null, 2),
-        }).catch((err) => console.warn(`Не удалось синхронизировать text.${lang}.json:`, err));
-      }
+/** Refuse a view of an older contract, naming the file and the key. */
+function checkViewShape(file: string, view: ViewDocument): void {
+  for (const key of OLD_VIEW_KEYS) {
+    if (key in view) {
+      throw new Error(
+        `${file}: ключ «${key}» — форма вида старого контракта. В контракте 5 блоки и контейнеры — ` +
+          `один массив «placements» (CONTRACT.md §8.3, ADR_20260927-6); переведите проект командой «semaps migrate».`,
+      );
     }
   }
+  (view.placements ?? []).forEach((p, i) => {
+    for (const key of OLD_PLACEMENT_KEYS) {
+      if (key in p) {
+        throw new Error(
+          `${file}: placements[${i}] — поле «${key}» старого контракта. Размещение называет сущность ` +
+            `полем «entity», контейнер — полем «parent» (CONTRACT.md §8.3).`,
+        );
+      }
+    }
+    if (typeof p.entity !== "string" || p.entity === "") {
+      throw new Error(`${file}: placements[${i}] без «entity» (CONTRACT.md §8.2).`);
+    }
+  });
 }

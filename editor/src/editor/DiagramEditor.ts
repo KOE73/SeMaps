@@ -3,19 +3,21 @@ import { DiagramCanvas, type Selection } from "../canvas/DiagramCanvas.js";
 import type { StrokeScaling } from "../canvas/Viewport.js";
 import { canvas as canvasNumbers } from "../constants/canvas.js";
 import { layoutFreeKey } from "../util/keys.js";
-import { placeEntities } from "./placeEntity.js";
+import { NEW_CONTAINER_SIZE, placeEntities } from "./placeEntity.js";
 import {
   CenterPortAssigner,
   DiscretePortAssigner,
   UniformPortAssigner,
 } from "../canvas/ports/assigners.js";
 import { DiagramDocument } from "../model/document.js";
-import { DEFAULT_STYLE_IDS, StyleLibrary } from "../model/StyleLibrary.js";
+import { StyleLibrary } from "../model/StyleLibrary.js";
+import { KindCatalog, loadKindCatalog } from "../model/KindCatalog.js";
 import { builtinStyleSheet } from "../model/style-defaults.js";
 import type { WireStyleSheet } from "../model/style-types.js";
 import { parseDocument, serializeDocument } from "../model/wire.js";
 import type { ModelIssue, WireDocument } from "../model/wire-types.js";
-import type { DiagramElement } from "../model/types.js";
+import { entityOf, type DiagramElement } from "../model/types.js";
+import { i18n } from "../workbench/i18n/I18nService.js";
 import { snap } from "../geometry/rect.js";
 import { History } from "./History.js";
 import { Inspector, type InspectorHost } from "./Inspector.js";
@@ -37,7 +39,6 @@ import {
   type ModelEvent,
   HttpStyleStore,
   download,
-  readJsonFile,
   HttpWorkspaceStore,
   type ModelStore,
   type NewProject,
@@ -78,6 +79,14 @@ import { DIAGRAM_CONFIG } from "../constants/diagram-constants.js";
 /** How long a text field must be quiet before its edits become a history step. */
 const FIELD_EDIT_QUIET_MS = DIAGRAM_CONFIG.interaction.fieldEditQuietMs;
 
+/**
+ * The types a block and a container get when they are drawn on the canvas
+ * rather than placed from the registry: two neutral entries of the tool's own
+ * dictionary. The person changes the type in Properties.
+ */
+const NEW_BLOCK_KIND = "component";
+const NEW_CONTAINER_KIND = "group";
+
 const INSPECTOR_WIDTH_KEY = "semaps:inspector-width";
 const MIN_INSPECTOR_WIDTH = 320;
 const STYLE_LIST_WIDTH_KEY = "semaps:style-list-width";
@@ -88,10 +97,22 @@ function clamp(value: number, min: number, max: number): number {
   return Math.min(max, Math.max(min, value));
 }
 
+/**
+ * List a relation type in the project's own vocabulary (`relation-types.json`,
+ * CONTRACT.md §5): a relation may only have a type the project lists, and the
+ * dictionary offers types the project has not used yet.
+ */
+function registerRelationType(doc: DiagramDocument, type: string): void {
+  const bundle = doc.bundle;
+  if (bundle === null) return;
+  const catalog = (bundle.relationTypes ??= { relationTypes: [] });
+  if (!catalog.relationTypes.some((t) => t.id === type)) catalog.relationTypes.push({ id: type, origin: "authored" });
+}
+
 type Slot =
-  | "canvas" | "catalog" | "custom-catalog" | "custom-catalog-section"
+  | "canvas" | "catalog"
   | "inspector-badge" | "inspector-body" | "edges-body" | "filters-body" | "title" | "zoom"
-  | "json-modal" | "json-text" | "file-input" | "drop-hint" | "sidebar"
+  | "sidebar"
   | "styles-body" | "style-list" | "style-editor" | "style-pane-resizer"
   | "inspector" | "inspector-resizer"
   | "tab-base" | "base-search" | "base-body" | "base-list";
@@ -146,6 +167,11 @@ export class DiagramEditor implements InspectorHost, StylePanelHost, DiagramEdit
   currentView: ViewEntry | null = null;
   get currentViewId(): string | null { return this.currentView?.id ?? null; }
   readonly workspaceEvents = new Emitter<{ change: null }>();
+  /**
+   * The style library and the dictionary of types arrive from the host after
+   * the panels are built: whoever drew from them before redraws on `loaded`.
+   */
+  readonly libraryEvents = new Emitter<{ loaded: null }>();
   private dirty = false;
   private readonly modelDirty = new Map<string, DirtySummary>();
   private metadataProject: string | null = null;
@@ -207,7 +233,7 @@ export class DiagramEditor implements InspectorHost, StylePanelHost, DiagramEdit
     this.bindCanvas();
     this.bindActions();
     this.bindKeyboard();
-    this.bindFiles();
+    this.bindEntityDrop();
     this.bindInspectorResize();
     this.bindStyleListResize();
     this.initTheme();
@@ -220,7 +246,14 @@ export class DiagramEditor implements InspectorHost, StylePanelHost, DiagramEdit
     void this.start();
   }
 
+  /**
+   * Set by the workbench, whose panels are dock panels rather than the slots
+   * `setTab` toggles: asking for a tab brings the dock panel of that name forward.
+   */
+  panelOpener: ((panelId: string) => void) | null = null;
+
   openTab(tab: Tab): void {
+    this.panelOpener?.(tab === "edges" ? "relations" : tab);
     this.setTab(tab);
   }
 
@@ -249,12 +282,11 @@ export class DiagramEditor implements InspectorHost, StylePanelHost, DiagramEdit
   }
 
   /**
-   * Load the style library, then the first model.
+   * Load the style library and the dictionary of types, then the first model.
    *
-   * Ordered, not parallel: `parseDocument` migrates a zone's inline colours
-   * into the library as it parses, so a model opened against the placeholder
-   * library would mint its imported styles into a library about to be thrown
-   * away — and the zones would come back wearing ids that no longer exist.
+   * Ordered, not parallel: whether a placement is a container is its kind's to
+   * say (CONTRACT.md §8.2), so the dictionary must be in force before a view is
+   * read.
    */
   private async start(): Promise<void> {
     try {
@@ -265,7 +297,17 @@ export class DiagramEditor implements InspectorHost, StylePanelHost, DiagramEdit
           "Используются встроенные стили. Сохранение стилей перезапишет файл на сервере.",
       );
     }
+    // Before the first view: whether a placement is a container is its kind's to say.
+    try {
+      KindCatalog.active = await loadKindCatalog();
+    } catch (err) {
+      this.notify(
+        `Словарь типов не загружен: ${(err as Error).message}\n` +
+          "Контейнеры не будут распознаны, пока словарь не придёт от сервера.",
+      );
+    }
     this.styleList.render();
+    this.libraryEvents.emit("loaded", null);
 
     await this.reloadWorkspace();
     const hashView = location.hash.match(/^#(v_[^?]+)/)?.[1];
@@ -383,10 +425,8 @@ export class DiagramEditor implements InspectorHost, StylePanelHost, DiagramEdit
   private slot(name: Slot): HTMLElement {
     let node = this.slots.get(name);
     if (node === undefined) {
-      if (name === "file-input" || name === "base-search") {
+      if (name === "base-search") {
         node = document.createElement("input");
-      } else if (name === "json-text") {
-        node = document.createElement("textarea");
       } else {
         node = document.createElement("div");
       }
@@ -453,21 +493,7 @@ export class DiagramEditor implements InspectorHost, StylePanelHost, DiagramEdit
       const actionNode = target.closest<HTMLElement>("[data-action]");
       if (actionNode === null || actionNode.getAttribute("disabled") !== null) return;
       const action = actionNode.dataset.action;
-      if (action !== undefined) {
-        if (action === "open-file") {
-          const rect = actionNode.getBoundingClientRect();
-          const pos = { clientX: rect.left + rect.width / 2, clientY: rect.top + rect.height / 2 };
-          if (this.hasUnsavedChanges) {
-            this.confirmDiscardOrSave(pos, () => {
-              (this.slot("file-input") as HTMLInputElement).click();
-            });
-          } else {
-            (this.slot("file-input") as HTMLInputElement).click();
-          }
-          return;
-        }
-        void this.runAction(action);
-      }
+      if (action !== undefined) void this.runAction(action);
     });
 
     this.root.addEventListener("change", (e) => {
@@ -507,7 +533,7 @@ export class DiagramEditor implements InspectorHost, StylePanelHost, DiagramEdit
     if (select && select.value !== lang) {
       select.value = lang;
     }
-    this.inspector.render(this.canvas.selected);
+    this.refreshInspector(this.canvas.selected);
   }
 
   /** Per-viewer preference, like ports: the model never learns about it. */
@@ -554,7 +580,7 @@ export class DiagramEditor implements InspectorHost, StylePanelHost, DiagramEdit
   private async runAction(action: string): Promise<void> {
     switch (action) {
       case "create-node": return this.createNode();
-      case "create-zone": return this.createZone();
+      case "create-container": return this.createContainer();
       case "delete": return this.deleteSelection();
       case "undo": return this.undo();
       case "redo": return this.redo();
@@ -565,10 +591,6 @@ export class DiagramEditor implements InspectorHost, StylePanelHost, DiagramEdit
       case "zoom-out": return this.canvas.zoomBy(0.8);
       case "zoom-reset": return this.canvas.resetZoom();
       case "toggle-sidebar": return this.toggleSidebar();
-      case "open-file": return this.slot("file-input").click();
-      case "toggle-json": return this.toggleJsonModal();
-      case "copy-json": return this.copyJson();
-      case "apply-json": return this.applyJson();
       case "tab-properties": return this.setTab("properties");
       case "tab-edges": return this.setTab("edges");
       case "tab-filters": return this.setTab("filters");
@@ -597,7 +619,7 @@ export class DiagramEditor implements InspectorHost, StylePanelHost, DiagramEdit
       node.classList.toggle("is-active", node.dataset.tab === tab);
     }
 
-    if (tab === "properties") this.inspector.render(this.canvas.selected);
+    if (tab === "properties") this.refreshInspector(this.canvas.selected);
     else if (tab === "edges") this.edgesPanel.render();
     else if (tab === "filters") this.filtersPanel.render();
     else if (tab === "styles") this.styleList.render();
@@ -714,53 +736,25 @@ export class DiagramEditor implements InspectorHost, StylePanelHost, DiagramEdit
     });
   }
 
-  private bindFiles(): void {
-    const input = this.slot("file-input") as unknown as HTMLInputElement;
-    input.addEventListener("change", () => {
-      const file = input.files?.[0];
-      if (file !== undefined) void this.loadFile(file);
-      input.value = "";
-    });
-
-    const hint = this.slot("drop-hint");
+  /** An entity dragged from the Base or Neighbourhood panel lands on the canvas where it is dropped. */
+  private bindEntityDrop(): void {
+    const isEntity = (e: DragEvent): boolean => e.dataTransfer?.types.includes("application/semaps-entity") ?? false;
     window.addEventListener("dragover", (e) => {
-      e.preventDefault();
-      if (!e.dataTransfer?.types.includes("application/semaps-entity")) {
-        hint.hidden = false;
-      }
-    });
-    window.addEventListener("dragleave", (e) => {
-      if (e.relatedTarget === null) hint.hidden = true;
+      if (isEntity(e)) e.preventDefault();
     });
     window.addEventListener("drop", (e) => {
+      if (!isEntity(e)) return;
       e.preventDefault();
-      hint.hidden = true;
-
-      const entityData = e.dataTransfer?.getData("application/semaps-entity");
-      if (entityData) {
-        try {
-          const payload = JSON.parse(entityData);
-          if (payload && payload.id) {
-            const at = this.canvas.toModel(e.clientX, e.clientY);
-            const [id] = placeEntities(this, [payload.entity], at);
-            if (id !== undefined) this.canvas.select(id);
-            this.basePanel.render();
-          }
-        } catch (err) {}
-        return;
-      }
-      const file = e.dataTransfer?.files[0];
-      if (file === undefined) return;
-      if (!file.name.endsWith(".json")) {
-        this.notify("Перетащите файл с расширением .json");
-        return;
-      }
-      if (this.hasUnsavedChanges) {
-        this.confirmDiscardOrSave({ clientX: e.clientX, clientY: e.clientY }, () => {
-          void this.loadFile(file);
-        });
-      } else {
-        void this.loadFile(file);
+      try {
+        const payload = JSON.parse(e.dataTransfer!.getData("application/semaps-entity"));
+        if (payload && payload.id) {
+          const at = this.canvas.toModel(e.clientX, e.clientY);
+          const [id] = placeEntities(this, [payload.entity], at);
+          if (id !== undefined) this.canvas.select(id);
+          this.basePanel.render();
+        }
+      } catch {
+        // A payload that is not ours: nothing to place.
       }
     });
   }
@@ -898,7 +892,14 @@ export class DiagramEditor implements InspectorHost, StylePanelHost, DiagramEdit
       if (view) await this.loadView(view);
     } else if (this.currentView) {
       if (event.changed.some((ref) => ref.kind === "project" || ref.kind === "text")) await this.reloadWorkspace();
+      // The reload rebuilds the model, and with it the selection. A save echoes
+      // back as such an event, so without this every Save dropped what was selected.
+      const primary = this.canvas.selected?.id;
+      const kept = [...this.canvas.selectedIds].filter((id) => id !== primary);
+      if (primary !== undefined) kept.push(primary);
       await this.loadView(this.currentView);
+      const alive = kept.filter((id) => this.canvas.model?.element(id) !== undefined || this.canvas.model?.edge(id) !== undefined);
+      if (alive.length > 0) this.canvas.selectMany(alive);
     }
     this.workspaceEvents.emit("change",null);
   }
@@ -912,26 +913,12 @@ export class DiagramEditor implements InspectorHost, StylePanelHost, DiagramEdit
     }).catch((err)=>this.notify(`Не удалось передать изменение хосту: ${(err as Error).message}`));
   }
 
-  async loadFile(file: File): Promise<void> {
-    try {
-      const wire = await readJsonFile(file);
-      this.currentView = null;
-      this.workspaceEvents.emit("change", null);
-      this.loadWire(wire, file.name);
-      this.addCustomCatalogEntry(file.name, wire);
-    } catch (err) {
-      this.notify((err as Error).message);
-    }
-  }
-
   private loadWire(wire: WireDocument, title: string): void {
     // Anything half-typed belongs to the model being replaced, not the new one.
     if (this.fieldEditTimer !== null) window.clearTimeout(this.fieldEditTimer);
     this.fieldEditTimer = null;
     this.fieldEditSnapshot = null;
 
-    // Parsed against the live library so that a model still carrying inline
-    // zone colours is migrated into named styles as it loads (see wire.ts).
     const doc = parseDocument(wire, this.styleLibrary);
     this.canvas.setModel(doc);
     if(this.store instanceof HostModelStore && this.currentView){this.store.confirmLoaded(this.currentView.file,serializeDocument(doc))}
@@ -942,7 +929,7 @@ export class DiagramEditor implements InspectorHost, StylePanelHost, DiagramEdit
     this.renderViews(doc);
     this.renderTags();
     this.syncToolbar(null);
-    // Migration may have minted styles; the list must show them.
+    // The tree of styles shows how many elements of the new view wear each.
     this.styleList.render();
     this.basePanel.render();
     this.showModelIssues(wire.bundle?.issues ?? []);
@@ -1024,40 +1011,6 @@ export class DiagramEditor implements InspectorHost, StylePanelHost, DiagramEdit
     this.renderTags();
   }
 
-  // ---------------------------------------------------------------- catalog
-
-  private addCustomCatalogEntry(name: string, wire: WireDocument): void {
-    this.slot("custom-catalog-section").hidden = false;
-    this.slot("custom-catalog").appendChild(
-      el(
-        "button",
-        {
-          class: "catalog-item",
-          on: {
-            click: (e: MouseEvent) => {
-              if (this.hasUnsavedChanges) {
-                this.confirmDiscardOrSave({ clientX: e.clientX, clientY: e.clientY }, () => {
-                  this.currentView = null;
-                  this.loadWire(wire, name);
-                });
-              } else {
-                this.currentView = null;
-                this.loadWire(wire, name);
-              }
-            },
-          },
-        },
-        [
-          el("span", { class: "catalog-icon theme-blue" }, [iconEl("doc")]),
-          el("span", { class: "catalog-text sidebar-label" }, [
-            el("span", { class: "catalog-title", text: name }),
-            el("span", { class: "catalog-subtitle", text: "Пользовательский файл" }),
-          ]),
-        ],
-      ),
-    );
-  }
-
   private renderViews(_doc: DiagramDocument): void {
     this.filtersPanel.render();
   }
@@ -1082,7 +1035,7 @@ export class DiagramEditor implements InspectorHost, StylePanelHost, DiagramEdit
     const node: DiagramElement = {
       id: `e_${Date.now().toString(36)}`,
       kind: "node",
-      type: DEFAULT_STYLE_IDS.node,
+      type: NEW_BLOCK_KIND,
       label: "Новый блок",
       tags: [],
       metadata: {},
@@ -1098,33 +1051,34 @@ export class DiagramEditor implements InspectorHost, StylePanelHost, DiagramEdit
     this.canvas.select(node.id);
   }
 
-  createZone(): void {
+  /**
+   * A new container: an authored entity of a container kind and its placement
+   * (CONTRACT.md §8.2 — a container is an entity like any other). The entity
+   * reaches the registry with the first sync, as a new block's does.
+   */
+  createContainer(): void {
     const doc = this.canvas.model;
     if (doc === null) return;
     const at = this.canvas.viewCenter();
-    const id = `z_${Date.now().toString(36)}`;
+    const x = snap(at.x, canvasNumbers().grid);
+    const y = snap(at.y, canvasNumbers().grid);
 
-    const zone: DiagramElement = {
-      id,
+    const container: DiagramElement = {
+      id: `e_${Date.now().toString(36)}`,
       kind: "zone",
-      type: "boundary",
-      label: "Новая область / Слой",
-      semanticId: `zone.${id}`,
+      type: NEW_CONTAINER_KIND,
+      label: "Новый контейнер",
       tags: [],
-      metadata: { description: "Пользовательский логический контейнер." },
-      x: snap(at.x, canvasNumbers().grid), y: snap(at.y, canvasNumbers().grid), width: 420, height: 300,
-      // A named style, not five inline colours. The slate theme is what the old
-      // hardcoded literals here spelled out, so a new zone looks the same as
-      // before while now being repaintable in one place.
-      styleId: "zone.slate",
+      metadata: {},
+      x, y, ...NEW_CONTAINER_SIZE,
       parent: null,
       children: [],
       wireOrder: Number.POSITIVE_INFINITY,
     };
 
-    doc.add(zone, null);
-    this.commit("create-zone");
-    this.canvas.select(zone.id);
+    doc.add(container, doc.containerAt({ x: x + NEW_CONTAINER_SIZE.width / 2, y: y + NEW_CONTAINER_SIZE.height / 2 }));
+    this.commit("create-container");
+    this.canvas.select(container.id);
   }
 
   /**
@@ -1231,7 +1185,7 @@ export class DiagramEditor implements InspectorHost, StylePanelHost, DiagramEdit
     // inspector from binding to something that no longer exists (D-05).
     if (this.canvas.selected?.id === edgeId) this.canvas.select(null);
     this.commit("delete-edge");
-    this.inspector.render(this.canvas.selected);
+    this.refreshInspector(this.canvas.selected);
   }
 
   /** Whether the relation `id` is drawn on this view (not only known, as a ghost). */
@@ -1254,16 +1208,16 @@ export class DiagramEditor implements InspectorHost, StylePanelHost, DiagramEdit
         id: rel.id,
         from: rel.from,
         to: rel.to,
-        type: rel.type || (rel as { relation?: string }).relation || "relates",
-        label: (rel as { label?: string }).label || "",
-        ...(rel.styleId === undefined ? {} : { styleId: rel.styleId }),
+        type: rel.type,
+        label: rel.label || "",
+        ...(rel.origin === undefined ? {} : { origin: rel.origin }),
       });
       this.commit("show-edge");
     } else {
       doc.removeEdge(id);
       this.commit("hide-edge");
     }
-    this.inspector.render(this.canvas.selected);
+    this.refreshInspector(this.canvas.selected);
   }
 
   addEdgeFromSelection(targetId: string, type: string, label: string): void {
@@ -1279,7 +1233,18 @@ export class DiagramEditor implements InspectorHost, StylePanelHost, DiagramEdit
       type,
     });
     this.commit("add-edge");
+    this.refreshInspector(selection);
+  }
+
+  /**
+   * Redraw whatever shows the selected object: the built-in inspector and, via
+   * `inspect`, the Properties and Relations panels of the workbench, which
+   * otherwise only redraw when the selection changes — so an edit made from one
+   * of them left the other stale.
+   */
+  private refreshInspector(selection: Selection | null): void {
     this.inspector.render(selection);
+    this.canvas.events.emit("inspect", selection);
   }
 
   /**
@@ -1299,7 +1264,7 @@ export class DiagramEditor implements InspectorHost, StylePanelHost, DiagramEdit
     apply();
     this.markDirty();
     if (options.rerender === true) this.canvas.render();
-    if (options.reselect === true) this.inspector.render(this.canvas.selected);
+    if (options.reselect === true) this.refreshInspector(this.canvas.selected);
 
     if (this.fieldEditTimer !== null) window.clearTimeout(this.fieldEditTimer);
     this.fieldEditTimer = window.setTimeout(() => this.flushFieldEdit(), FIELD_EDIT_QUIET_MS);
@@ -1424,23 +1389,125 @@ export class DiagramEditor implements InspectorHost, StylePanelHost, DiagramEdit
       if (need !== null && need > el.height) el.height = need;
     }
     this.commit("template");
-    this.inspector.render(this.canvas.selected);
+    this.refreshInspector(this.canvas.selected);
   }
 
-  /** Give these boxes (or these edges) a named style, one undo step; `null` — back to the default. */
-  applyStyle(ids: readonly string[], styleId: string | null): void {
+  /**
+   * The one way the UI sets the kind and style of blocks and containers
+   * (ADR_20260927-7): the Properties kind select and variant cards, the canvas
+   * menu's «Стиль» and the Styles panel's «Применить» all end here. One undo step.
+   *
+   * - A kind read from code stays the code's: such an element takes the style
+   *   only when it belongs to its own kind, otherwise it is skipped and the
+   *   skip said once.
+   * - `styleId` null, or the kind's base style, removes the explicit `styleId`:
+   *   the base is never written. So a kind change drops an explicit style
+   *   unless a non-base style of the new kind is passed along.
+   * - An element of the other sort (a block for a container kind, or the other
+   *   way round) is left alone: turning one into the other is not a kind edit.
+   */
+  applyKindAndStyle(ids: readonly string[], kind: string, styleId: string | null): void {
     const doc = this.canvas.model;
-    if (!doc) return;
+    if (!doc || kind === "") return;
+    const lib = this.styleLibrary;
+    const catalog = KindCatalog.active;
+    const skipped: string[] = [];
+    let changed = false;
+
     for (const id of ids) {
-      const target = doc.element(id) ?? doc.edge(id);
-      if (!target) continue;
-      target.styleId = styleId ?? undefined;
       const el = doc.element(id);
-      const need = el ? this.canvas.contentHeight(el) : null;
-      if (el && need !== null && need > el.height) el.height = need;
+      if (!el) continue;
+      const target = StyleLibrary.targetOfElement(el);
+      if (catalog.lookup(kind) !== undefined && StyleLibrary.targetOfKind(kind) !== target) continue;
+      if (styleId !== null && lib.has(styleId) && lib.targetOf(styleId) !== target) continue;
+
+      let nextKind = kind;
+      if (entityOf(el)?.origin === "code" && el.type !== kind) {
+        // The code decides the kind; the style is taken only when it is one of that kind's.
+        const fits = styleId !== null && (lib.fits(styleId, el.type, target) || styleId === lib.baseStyleOf(el.type, target));
+        if (!fits) {
+          skipped.push(el.label || el.id);
+          continue;
+        }
+        nextKind = el.type;
+      }
+
+      const base = lib.baseStyleOf(nextKind, target);
+      const nextStyle = styleId === null || styleId === base || !lib.has(styleId) ? undefined : styleId;
+      if (el.type === nextKind && el.styleId === nextStyle) continue;
+      el.type = nextKind;
+      if (nextStyle === undefined) delete el.styleId;
+      else el.styleId = nextStyle;
+      // A box too short for its new style's content grows to fit, never shrinks.
+      const need = this.canvas.contentHeight(el);
+      if (need !== null && need > el.height) el.height = need;
+      changed = true;
     }
-    this.commit("style");
-    this.inspector.render(this.canvas.selected);
+
+    if (changed) this.commit("kind-style");
+    this.refreshInspector(this.canvas.selected);
+    if (skipped.length > 0) {
+      this.toast(i18n.format(i18n.d.panels.properties.kindFromCodeSkipped, { names: skipped.join(", ") }));
+    }
+  }
+
+  /**
+   * The same for lines (ADR_20260930-2): the relation type and the style of
+   * that type together, the one mechanism behind the Properties type select and
+   * variant cards, the line's menu and the Styles panel. One undo step.
+   *
+   * A relation is a registry record and, when drawn, an entry of the view's own
+   * `edges`; the type goes to both, the style only to the entry (a relation
+   * shown as a ghost has none). A type read from code stays the code's. A new
+   * type is listed in the project's `relation-types.json` in the same batch.
+   */
+  applyRelationTypeAndStyle(ids: readonly string[], type: string, styleId: string | null): void {
+    const doc = this.canvas.model;
+    if (!doc || type === "") return;
+    const lib = this.styleLibrary;
+    const skipped: string[] = [];
+    let changed = false;
+
+    for (const id of ids) {
+      const edge = doc.edge(id);
+      const relation = doc.relations.find((r) => r.id === id);
+      if (edge === undefined && relation === undefined) continue;
+      if (styleId !== null && lib.has(styleId) && lib.targetOf(styleId) !== "edge") continue;
+      const current = edge?.type ?? relation!.type;
+      const fromCode = edge?.origin === "code" || relation?.origin === "code";
+
+      let nextType = type;
+      if (fromCode && current !== type) {
+        const fits = styleId !== null && (lib.fits(styleId, current, "edge") || styleId === lib.baseStyleOf(current, "edge"));
+        if (!fits) {
+          skipped.push(id);
+          continue;
+        }
+        nextType = current;
+      }
+
+      const base = lib.baseStyleOf(nextType, "edge");
+      const nextStyle = styleId === null || styleId === base || !lib.has(styleId) ? undefined : styleId;
+      const typeChanged = current !== nextType;
+      if (!typeChanged && (edge === undefined || edge.styleId === nextStyle)) continue;
+
+      if (typeChanged) {
+        registerRelationType(doc, nextType);
+        if (edge !== undefined) edge.type = nextType;
+        if (relation !== undefined) relation.type = nextType;
+      }
+      if (edge !== undefined) {
+        if (nextStyle === undefined) delete edge.styleId;
+        else edge.styleId = nextStyle;
+      }
+      changed = true;
+    }
+
+    if (changed) this.commit("relation-type-style");
+    this.refreshInspector(this.canvas.selected);
+    if (skipped.length > 0) {
+      this.toast(i18n.format(i18n.d.panels.properties.kindFromCodeSkipped, { names: skipped.join(", ") }));
+    }
   }
 
   /** Line shape of these edges alone (`null` — back to the view's / type's), one undo step. */
@@ -1468,6 +1535,7 @@ export class DiagramEditor implements InspectorHost, StylePanelHost, DiagramEdit
 
   /** From the inspector's "править стиль" button. */
   openStyleTab(styleId: string): void {
+    this.panelOpener?.("styles");
     this.setTab("styles");
     this.openStyle(styleId);
   }
@@ -1620,71 +1688,6 @@ export class DiagramEditor implements InspectorHost, StylePanelHost, DiagramEdit
     const doc = this.canvas.model;
     if (doc === null) return;
     download(drawioFileName(doc), exportDrawio(doc, this.styleLibrary), "application/xml");
-  }
-
-  toggleJsonModal(): void {
-    let modal = this.slots.get("json-modal");
-    let editor = this.slots.get("json-text") as HTMLTextAreaElement | undefined;
-    if (!modal || !modal.parentElement) {
-      editor = el("textarea", {
-        attrs: {
-          spellcheck: "false",
-          style: "width: 100%; height: 360px; font-family: monospace; font-size: calc(12px * var(--ui-text)); background: var(--bg, #1a1a1a); color: var(--text, #fff); border: 1px solid var(--border, #3a3a3c); border-radius: 4px; padding: calc(8px * var(--ui-space)); resize: vertical; box-sizing: border-box;",
-        },
-      }) as HTMLTextAreaElement;
-      this.slots.set("json-text", editor);
-
-      const closeBtn = el("button", { class: "btn-icon", on: { click: () => { modal!.hidden = true; } } }, [iconEl("close")]);
-      const copyBtn = el("button", { class: "btn", text: "Копировать", on: { click: () => { void this.copyJson(); } } });
-      const applyBtn = el("button", { class: "btn btn-primary", text: "Применить к холсту", on: { click: () => { this.applyJson(); } } });
-
-      modal = el("div", { class: "modal", attrs: { hidden: "true" } }, [
-        el("div", { class: "modal-card", attrs: { style: "width: 600px; max-width: 90vw;" } }, [
-          el("div", { class: "modal-head", attrs: { style: "display: flex; justify-content: space-between; align-items: center; padding: calc(10px * var(--ui-space)) calc(14px * var(--ui-space)); border-bottom: 1px solid var(--border, #3a3a3c);" } }, [
-            el("h3", { text: "Модель диаграммы (JSON)", attrs: { style: "margin: 0; font-size: calc(14px * var(--ui-text));" } }),
-            closeBtn,
-          ]),
-          el("div", { class: "modal-body", attrs: { style: "padding: calc(14px * var(--ui-space));" } }, [editor]),
-          el("div", { class: "modal-foot", attrs: { style: "display: flex; justify-content: flex-end; gap: calc(8px * var(--ui-space)); padding: calc(10px * var(--ui-space)) calc(14px * var(--ui-space)); border-top: 1px solid var(--border, #3a3a3c);" } }, [
-            copyBtn,
-            applyBtn,
-          ]),
-        ]),
-      ]);
-      this.slots.set("json-modal", modal);
-      document.body.appendChild(modal);
-    }
-
-    const doc = this.canvas.model;
-    if (modal.hidden) {
-      if (editor) editor.value = doc === null ? "" : JSON.stringify(serializeDocument(doc), null, 2);
-      modal.hidden = false;
-    } else {
-      modal.hidden = true;
-    }
-  }
-
-  async copyJson(): Promise<void> {
-    const editor = this.slot("json-text") as unknown as HTMLTextAreaElement;
-    try {
-      await navigator.clipboard.writeText(editor.value);
-      this.notify("JSON скопирован в буфер обмена");
-    } catch {
-      this.notify("Не удалось получить доступ к буферу обмена");
-    }
-  }
-
-  applyJson(): void {
-    const editor = this.slot("json-text") as unknown as HTMLTextAreaElement;
-    try {
-      const wire = JSON.parse(editor.value) as WireDocument;
-      const title = wire.metadata?.title ?? "Пользовательская схема";
-      this.currentView = null;
-      this.loadWire(wire, title);
-      this.slot("json-modal").hidden = true;
-    } catch (err) {
-      this.notify(`Ошибка в формате JSON: ${(err as Error).message}`);
-    }
   }
 
   // ------------------------------------------------------------------- ui

@@ -15,21 +15,12 @@ import {
 export class CatalogPanel implements IContentRenderer {
   readonly element: HTMLElement;
   private readonly catalogSlot: HTMLElement;
-  private readonly customCatalogSlot: HTMLElement;
-  private readonly customSection: HTMLElement;
-  private readonly customLabel: HTMLElement;
   private readonly projectLabel: HTMLElement;
   private readonly addProjectBtn: HTMLElement;
   private readonly hintDiv: HTMLElement;
 
   constructor(private readonly editor: DiagramEditor) {
     this.catalogSlot = el("div");
-    this.customCatalogSlot = el("div");
-    this.customLabel = el("div", { class: "section-label sidebar-label", text: i18n.d.panels.catalog.customSection });
-    this.customSection = el("div", { attrs: { hidden: "true" } }, [
-      this.customLabel,
-      this.customCatalogSlot,
-    ]);
 
     this.projectLabel = el("div", { class: "section-label sidebar-label", text: i18n.d.panels.catalog.projectCatalog });
     this.addProjectBtn = el("button", {
@@ -40,13 +31,12 @@ export class CatalogPanel implements IContentRenderer {
     const scroll = el("div", { class: "sidebar-scroll", attrs: { style: "flex: 1; overflow-y: auto; padding: calc(8px * var(--ui-space));" } }, [
       el("div", { class: "catalog-toolbar" }, [this.projectLabel, this.addProjectBtn]),
       this.catalogSlot,
-      this.customSection,
     ]);
 
     this.hintDiv = el("div", { class: "hint sidebar-label", attrs: { style: "padding: calc(8px * var(--ui-space)); border-top: 1px solid var(--border);" } }, [
-      el("div", { text: i18n.d.panels.catalog.hintDragZone }),
+      el("div", { text: i18n.d.panels.catalog.hintDragContainer }),
       el("div", { text: i18n.d.panels.catalog.hintDragBlock }),
-      el("div", { text: i18n.d.panels.catalog.hintCollapseZone }),
+      el("div", { text: i18n.d.panels.catalog.hintCollapseContainer }),
     ]);
 
     this.element = el(
@@ -66,13 +56,12 @@ export class CatalogPanel implements IContentRenderer {
   }
 
   private updateLabels(): void {
-    this.customLabel.textContent = i18n.d.panels.catalog.customSection;
     this.projectLabel.textContent = i18n.d.panels.catalog.projectCatalog;
     replaceChildren(this.addProjectBtn, iconEl("plus"), i18n.d.panels.catalog.addProject);
     replaceChildren(this.hintDiv,
-      el("div", { text: i18n.d.panels.catalog.hintDragZone }),
+      el("div", { text: i18n.d.panels.catalog.hintDragContainer }),
       el("div", { text: i18n.d.panels.catalog.hintDragBlock }),
-      el("div", { text: i18n.d.panels.catalog.hintCollapseZone }),
+      el("div", { text: i18n.d.panels.catalog.hintCollapseContainer }),
     );
   }
 

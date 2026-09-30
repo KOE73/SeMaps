@@ -814,27 +814,6 @@ body {
   color: var(--muted);
 }
 
-.drop-hint {
-  position: absolute;
-  inset: 16px;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  border: 4px dashed var(--accent-soft);
-  border-radius: 12px;
-  background: var(--accent-soft);
-  pointer-events: none;
-  z-index: 30;
-}
-
-.drop-hint-card {
-  padding: calc(20px * var(--ui-space)) calc(28px * var(--ui-space));
-  border: 1px solid var(--line);
-  border-radius: 12px;
-  background: var(--panel);
-  text-align: center;
-}
-
 /* --------------------------------------------------------------- inspector */
 
 /*
@@ -1105,6 +1084,206 @@ body {
 .style-empty {
   padding: calc(12px * var(--ui-space));
   text-align: center;
+}
+
+/* Styles panel tree: group of the dictionary → type (entity kind or relation type) → styles. */
+.style-tree-group,
+.style-tree-kind {
+  display: flex;
+  align-items: center;
+  gap: calc(6px * var(--ui-space));
+  padding: calc(3px * var(--ui-space)) calc(6px * var(--ui-space));
+  border: 1px solid transparent;
+  border-radius: 6px;
+  cursor: pointer;
+  user-select: none;
+}
+
+.style-tree-group {
+  font-weight: 700;
+  font-size: calc(12px * var(--ui-text));
+}
+
+.style-tree-kind {
+  padding-left: calc(18px * var(--ui-space));
+  font-size: calc(12px * var(--ui-text));
+}
+
+.style-tree-group:hover,
+.style-tree-kind:hover {
+  background: var(--hover);
+}
+
+.style-tree-group.is-selected,
+.style-tree-kind.is-selected {
+  border-color: var(--accent);
+}
+
+.style-tree-chevron {
+  flex: 0 0 auto;
+  width: 14px;
+  color: var(--muted);
+}
+
+.style-tree-name {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.style-tree-id {
+  font-size: calc(10px * var(--ui-text));
+  font-weight: 400;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  max-width: 40%;
+}
+
+.style-row.style-tree-leaf {
+  margin-left: calc(28px * var(--ui-space));
+  gap: calc(6px * var(--ui-space));
+  padding: calc(2px * var(--ui-space)) calc(4px * var(--ui-space));
+}
+
+.style-tree-empty {
+  padding: calc(2px * var(--ui-space)) 0 calc(4px * var(--ui-space)) calc(34px * var(--ui-space));
+  font-size: calc(11px * var(--ui-text));
+}
+
+/* Styles panel row: apply · copy / delete · count, a dense 2×2 at the row's end. */
+.style-row-actions {
+  flex: 0 0 auto;
+  display: grid;
+  grid-template-columns: auto auto;
+  align-items: center;
+  justify-items: center;
+  gap: 1px;
+}
+
+.style-row-actions .btn-icon {
+  padding: 1px;
+  line-height: 0;
+  font-size: calc(11px * var(--ui-text));
+}
+
+.style-row-actions .style-row-count {
+  min-width: 0;
+  padding: 0 3px;
+  border-radius: 6px;
+  font-size: calc(9px * var(--ui-text));
+  line-height: 1.3;
+}
+
+/* Properties: the current style, and the variants of the element's type. */
+.style-head {
+  align-items: center;
+}
+
+.style-head-name {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-size: calc(12px * var(--ui-text));
+  font-weight: 600;
+}
+
+.style-variants {
+  display: flex;
+  flex-wrap: wrap;
+  gap: calc(4px * var(--ui-space));
+  margin-top: calc(4px * var(--ui-space));
+}
+
+.style-variant {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 2px;
+  width: 72px;
+  padding: 3px;
+  border: 1px solid var(--line);
+  border-radius: 6px;
+  background: var(--panel-alt);
+  color: var(--text);
+  cursor: pointer;
+}
+
+.style-variant:hover {
+  background: var(--hover);
+}
+
+.style-variant.is-active {
+  border-color: var(--accent);
+  background: var(--accent-soft);
+}
+
+.style-variant-preview {
+  display: flex;
+  padding: 1px;
+  border-radius: 4px;
+  background: var(--input-bg);
+}
+
+.style-variant-name {
+  max-width: 100%;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-size: calc(10px * var(--ui-text));
+}
+
+/* «Выделить»: ready colours, small and dense. */
+.highlight-palette {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 3px;
+  margin: calc(2px * var(--ui-space)) 0 calc(4px * var(--ui-space));
+}
+
+.highlight-swatch {
+  width: 16px;
+  height: 16px;
+  padding: 0;
+  border: 2px solid;
+  border-radius: 4px;
+  cursor: pointer;
+}
+
+.highlight-swatch:hover {
+  transform: scale(1.15);
+}
+
+.highlight-swatch.is-active {
+  outline: 2px solid var(--accent);
+  outline-offset: 1px;
+}
+
+.highlight-reset {
+  margin-left: 2px;
+  font-size: calc(11px * var(--ui-text));
+}
+
+/* «Выделить» → значок: the icon in effect and its name; the picker opens under it. */
+.override-icon summary {
+  display: flex;
+  align-items: center;
+  gap: calc(6px * var(--ui-space));
+  cursor: pointer;
+  list-style: none;
+}
+
+.override-icon summary::-webkit-details-marker {
+  display: none;
+}
+
+.override-icon-name.is-inherited {
+  opacity: 0.6;
 }
 
 /* -------------------------------------------------------------- style form */
