@@ -2,6 +2,7 @@ import type { DiagramDocument } from "./document.js";
 import type { DiagramEdge, DiagramElement } from "./types.js";
 import { entityOf } from "./types.js";
 import { deriveLabelFromVia } from "./viaLabel.js";
+import { relationVia } from "./realizations.js";
 
 export interface ResolvedRelation {
   id: string;
@@ -69,8 +70,9 @@ export function resolveElementRelations(
           const relId = rel.id || `rel_${canvasFrom}_${canvasTo}_${rel.type || "rel"}`;
           // For code-origin relations, derive the label from via if no authored text exists
           let label = rel.label || "";
-          if (rel.origin === "code" && !rel.label && rel.via) {
-            label = deriveLabelFromVia(rel.via);
+          const via = relationVia(rel);
+          if (rel.origin === "code" && !rel.label && via) {
+            label = deriveLabelFromVia(via);
           }
           map.set(relId, {
             id: relId,

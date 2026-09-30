@@ -101,6 +101,7 @@ func (m *Model) GetView(ref string) (ViewInfo, error) {
 	for _, e := range m.records("entity") {
 		ents[e.str("id")] = e
 	}
+	names := m.EntityNames()
 
 	items := viewItems(doc, "placements")
 	byID := map[string]*PlacementInfo{}
@@ -110,7 +111,7 @@ func (m *Model) GetView(ref string) (ViewInfo, error) {
 		id := p.str("entity")
 		info := &PlacementInfo{Entity: id, StyleID: p.str("styleId"), Template: p.str("template")}
 		if e := ents[id]; e != nil {
-			info.Name, info.Kind = e.str("name"), e.str("kind")
+			info.Name, info.Kind = names[id], e.str("kind")
 		}
 		info.Container = m.kinds.IsContainer(info.Kind)
 		info.Rect = placementRect(p, info.Container, cv)

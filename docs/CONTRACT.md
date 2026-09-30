@@ -10,7 +10,10 @@ v5 — словарь типов, контейнер — это сущность
 [`ADR_20260930-2`](adr/ADR_20260930-2_contract_edge-style-belongs-to-a-relation-type.md);
 принадлежность контейнеру в графе берётся из связей `contains`:
 [`ADR_20260930`](adr/ADR_20260930_contract_graph-containers-from-contains.md).
-Версии 4 в этой линии нет: реализации в коде (`code[]`) не входят в v5.
+Реализации в коде — `code[]` у сущности и `evidence[]` у связи, форма взята у забытой ветки
+([`ADR_20260927-2`](adr/ADR_20260927-2_contract_entity-is-intent-code-is-realizations.md)) без её сверки по языкам:
+[`ADR_20260930-4`](adr/ADR_20260930-4_contract_code-shape-now-multi-language-later.md). Имя нарисованной сущности — текст под её `id`:
+[`ADR_20260930-5`](adr/ADR_20260930-5_contract_authored-entity-name-is-text.md). Версии 4 в этой линии нет: обе формы — часть v5.
 Старую форму загрузчик не читает, а называет
 ([`ADR_20260927-3`](adr/ADR_20260927-3_core_migrations-outside-the-loader.md)); переписывает её
 `semaps migrate` ([`ADOPTING.md`](ADOPTING.md)).
@@ -123,29 +126,59 @@ workspace (нет даже `projects/`) законен. Файл `catalog.json` 
       "origin": "code",
       "status": "present",
       "namespace": "Acme.Agent.Guards",
-      "codeRef": "src/Acme.Agent/Guards/RepetitionGuardMiddleware.cs",
-      "symbol": "Acme.Agent.Guards.RepetitionGuardMiddleware",
+      "code": [
+        { "lang": "csharp", "ref": "src/Acme.Agent/Guards/RepetitionGuardMiddleware.cs",
+          "symbol": "Acme.Agent.Guards.RepetitionGuardMiddleware" }
+      ],
       "members": []
+    },
+    {
+      "id": "e_storage",
+      "kind": "subsystem",
+      "origin": "authored",
+      "status": "present",
+      "code": [{ "ref": "docs/storage.md" }]
     }
   ]
 }
 ```
 
+Имя второй сущности, нарисованной, — в `text.<lang>.json` под её `id` (§7): в `entities.json` у неё `name` нет.
+
 | Поле | Обяз. | Смысл |
 |---|---|---|
-| `id` | да | префикс `e_`. Выдаётся **один раз и не меняется никогда**, включая переименование типа |
-| `name` | да | каноническое имя типа. **Не переводится**, в текстах его нет |
+| `id` | да | префикс `e_`. Выдаётся **один раз и не меняется никогда**, включая переименование |
+| `name` | у `code` и без `origin` | имя типа из кода, **не переводится**, в текстах его нет. У `origin: authored` поля **нет**: имя нарисованной сущности — текст `name` под её `id` в `text.<lang>.json` (§7.1), правится свободно, `id` при этом не меняется. Пакет, что несёт `name` у `authored`, правило записи отвергает, а файл с таким полем загрузчик и `semaps check` называют старой формой ([`ADR_20260930-5`](adr/ADR_20260930-5_contract_authored-entity-name-is-text.md)). Что показать, когда имени нет в языке: имя другого языка проекта (в порядке `languages`), иначе `id` |
 | `kind` | да | тип из словаря `kinds.json` (§6): из кода — `nativeKind` символа (`class`, `namespace`, `assembly`…), руками — архитектурный (`app`, `database`, `subsystem`…). Тип вне словаря допустим, `semaps check` о нём сообщает. Тип с `container: true` делает сущность **контейнером** (§8.2) |
-| `origin` | нет | `code` \| `authored`. v2-шное `manual` переименовано в `authored` |
+| `origin` | нет | `code` \| `authored`. v2-шное `manual` переименовано в `authored`. От него зависит, где имя (`name`, выше) |
 | `status` | нет | `present` \| `missing` \| `planned`. Записи не удаляются: ушедшая сущность сохраняет `id` для ссылок |
 | `namespace` | нет | пространство имён / пакет из кода |
-| `codeRef` | нет | путь от корня репозитория. У сущности от внешнего символа (`io.Writer`, [`ADR_20260927-4`](adr/ADR_20260927-4_contract_external-symbols.md)) его нет: файла нет, и кнопки кода нет; остаётся `symbol` |
-| `symbol` | нет | `id` символа в фактах извлекателя ([`EXTRACTOR.md`](EXTRACTOR.md) §2.1, форма — [`ADR_20260923-5`](adr/ADR_20260923-5_extractors_symbol-ids.md)). Ключ, по которому `semaps sync` узнаёт сущность на следующем прогоне; ставит его сверка. Человек правит его в одном случае — подтверждая переименование в коде (EXTRACTOR §5). У `authored` не бывает. [`ADR_20260923-9`](adr/ADR_20260923-9_core_sync-symbol-mapping-and-containment.md) |
+| `code` | нет | реализации в коде, от нуля до N, по одной на язык (ниже). Нет кода — нет ключа, не `[]`. `codeRef` и `symbol` верхнего уровня упразднены |
 | `members` | нет | члены типа, для директивы `@Members` шаблона содержимого (§11.2) |
 
-**Инвариант:** `id` уникален в проекте. Переименование типа — правка `name` при
-неизменном `id`; ни один другой файл при этом не меняется. `symbol` уникален среди
-не-`authored` записей: два одинаковых — реестр противоречит себе, `sync` не пишет ничего.
+**Запись `code[]`** — одна реализация сущности
+([`ADR_20260930-4`](adr/ADR_20260930-4_contract_code-shape-now-multi-language-later.md), форма — [`ADR_20260927-2`](adr/ADR_20260927-2_contract_entity-is-intent-code-is-realizations.md)):
+
+| Поле | Обяз. | Смысл |
+|---|---|---|
+| `lang` | вместе с `symbol` | язык — `language` фактов извлекателя: `csharp`, `typescript`, `go` |
+| `ref` | нет | файл от корня исходников (`source_root`), для просмотра кода и `semaps check`; якорь `#…` или `:строка` допустим. Запись с `symbol` без `ref` — реализация **внешнего символа** (`io.Writer`, [`ADR_20260927-4`](adr/ADR_20260927-4_contract_external-symbols.md)): файла нет, кнопки кода нет |
+| `symbol` | вместе с `lang` | `id` символа в фактах извлекателя ([`EXTRACTOR.md`](EXTRACTOR.md) §2.1, форма — [`ADR_20260923-5`](adr/ADR_20260923-5_extractors_symbol-ids.md)). Ключ, по которому `semaps sync` узнаёт сущность на следующем прогоне; ставит его сверка. Человек правит его в одном случае — подтверждая переименование в коде (EXTRACTOR §5) |
+| `status` | нет | `missing` — символ пропал из фактов своего языка; допустимо, но сверка сегодня его не ставит |
+
+Запись должна иметь `ref` или `symbol`. Запись только с `ref` — ручная ссылка на файл (`.csproj`, схема БД, документ). На один
+язык — не больше одной записи. У сущности `authored` `code` допустим (нарисовал — потом привязал к файлу), но сверка её не
+сопоставляет с символами. `namespace` остаётся полем сущности, выведенного из `symbol` нет; `native` в записи нет
+(`ADR_20260930-3` §4).
+
+**Сверка ведёт одну реализацию за прогон.** Прогон извлекателя языка L меняет только запись `code[]` с `lang: L` и пишет
+её: `lang`, `ref`, `symbol`. Сущность, реализованная только на другом языке, для него не существует: не `missing`, не
+усыновляется, не трогается. Привязка второго языка к уже существующей сущности, выведенные статусы, неизменный `origin` —
+не сделано, ждёт проекта, которому это нужно (ADR_20260930-4 §4).
+
+**Инвариант:** `id` уникален в проекте. Переименование типа из кода — правка `name` при неизменном `id`; ни один
+другой файл при этом не меняется. Пара `(lang, symbol)` уникальна среди не-`authored` записей `code[]`, и у сущности не
+больше одной записи на язык: иначе реестр противоречит себе, `sync` не пишет ничего.
 
 Сущность от символа `module` (сборка, пространство имён, файл) — обычная сущность:
 `kind` — `nativeKind` символа (`assembly`, `namespace`, `file`); эти типы — контейнеры по
@@ -187,14 +220,15 @@ workspace (нет даже `projects/`) законен. Файл `catalog.json` 
     { "id": "r_repguard_illmmiddleware_implements",
       "from": "e_repetitionguardmiddleware", "to": "e_illmmiddleware",
       "type": "implements", "origin": "code", "status": "present",
-      "evidence": [{ "codeRef": "src/Acme.Agent/Guards/RepetitionGuardMiddleware.cs" }] },
+      "evidence": [{ "lang": "csharp", "ref": "src/Acme.Agent/Guards/RepetitionGuardMiddleware.cs",
+                     "symbol": "Acme.Agent.Guards.RepetitionGuardMiddleware" }] },
     { "id": "r_controller_outcome_holds_activeRuns",
       "from": "e_vmcontroller", "to": "e_vmrunoutcome",
       "type": "holds.many", "origin": "code", "status": "present",
-      "via": { "member": "activeRuns", "memberKind": "field", "modifiers": ["private", "readonly"],
-               "text": "ConcurrentDictionary<long, Task<VmRunOutcome>>", "path": ["value", "result"],
-               "cardinality": "keyed", "mutability": "mutable", "deferred": true },
-      "evidence": [{ "codeRef": "src/VM/VmController.cs", "symbol": "VM.VmController" }] }
+      "evidence": [{ "lang": "csharp", "ref": "src/VM/VmController.cs", "symbol": "VM.VmController",
+                     "via": { "member": "activeRuns", "memberKind": "field", "modifiers": ["private", "readonly"],
+                              "text": "ConcurrentDictionary<long, Task<VmRunOutcome>>", "path": ["value", "result"],
+                              "cardinality": "keyed", "mutability": "mutable", "deferred": true } }] }
   ]
 }
 ```
@@ -206,8 +240,19 @@ workspace (нет даже `projects/`) законен. Файл `catalog.json` 
 | `type` | да | `id` из `relation-types.json` |
 | `origin` | нет | `code` \| `authored` |
 | `status` | нет | `present` \| `missing` |
-| `via` | нет | подпись членской связи: `member`, `memberKind`, `modifiers`, `text`, `path`, `cardinality`, `mutability`, `deferred` (все необязательны); есть только у членских связей (`kind` в фактах — `holds`, `uses`, `injects`) |
-| `evidence` | нет | `[{ codeRef, symbol?, line? }]` — проверяемое основание связи. `native` ребра фактов (как язык выразил связь) в реестр не пишется: он для показа и фильтров, тип связи по нему не выводится ([`ADR_20260930-3`](adr/ADR_20260930-3_contract_fact-kinds-and-derived-relation-types.md)) |
+| `evidence` | нет | реализации связи в коде — проверяемое основание, от нуля до N, по одной на язык (ниже). Нет оснований — нет ключа. `via` верхнего уровня упразднён |
+
+**Запись `evidence[]`** — та же форма, что запись `code[]` сущности (§3: `lang` и `symbol` вместе, `ref`, `status`;
+`symbol` и `ref` — символ и файл конца `from`, у внешнего символа `ref` нет), и ещё:
+
+| Поле | Обяз. | Смысл |
+|---|---|---|
+| `via` | нет | подпись членской связи в этом языке: `member`, `memberKind`, `modifiers`, `text`, `path`, `cardinality`, `mutability`, `deferred` (все необязательны); есть только у членских связей (`kind` в фактах — `holds`, `uses`, `injects`). Подпись связи — `via` первой записи, у которой он есть. Запись может состоять из одного `via` |
+
+Запись должна иметь `ref`, `symbol` или `via`; номер строки — якорь `:N` в `ref`, `codeRef` и `line` упразднены.
+`native` ребра фактов (как язык выразил связь) в реестр не пишется: он для показа и фильтров, тип связи по нему не выводится
+([`ADR_20260930-3`](adr/ADR_20260930-3_contract_fact-kinds-and-derived-relation-types.md)). Как у сущности, `sync` пишет одну запись
+за прогон — языка своих фактов ([`ADR_20260930-4`](adr/ADR_20260930-4_contract_code-shape-now-multi-language-later.md)).
 
 Порождённые сверкой типы из органических рёбер: `extends`, `implements`, `contains`
 (вложенность: сборка / пространство имён / файл содержит тип, тип — вложенный тип),
@@ -389,14 +434,23 @@ MCP `get_kinds` отдаёт словарь и то, что проект исп�
 
 | Префикс | Объект | Что переводится |
 |---|---|---|
-| `e_` | сущность | только `description`, `doc` — имя не переводится |
+| `e_` | сущность | `description`, `doc`; у сущности `origin: authored` ещё и `name`. Имя сущности из кода не переводится: оно в `entities.json`, в текстах его нет |
 | `rt_` | тип связи | `name`, `description` |
 | `r_` | связь | `name` (подпись на холсте), `description`, `fromLabel`, `toLabel` |
 | `v_` | вид | `name` (заголовок в каталоге и над холстом), `description`. Ключ — `id` вида целиком: он сам начинается с `v_` |
 
-Контейнер — сущность, поэтому его подпись — `name` в `entities.json`, а описание и `doc` — под
-его `e_`-ключом, как у любой сущности. Ключей `c_` и `z_` нет: загрузчик их не читает,
-`semaps check` называет такой ключ.
+**Имя нарисованной сущности** ([`ADR_20260930-5`](adr/ADR_20260930-5_contract_authored-entity-name-is-text.md)) — текст `name` под
+её `e_`-ключом, по языкам, с провенансом, как у остальных текстов; в `entities.json` у неё `name` нет. Экран показывает `id`
+и имя; имя правится свободно (правка текста, в панели «Изменения» — правка текста под `id` сущности), `id` не меняется. Нет
+имени в основном языке проекта (первый в `languages`) — показывается имя другого языка (в порядке `languages`), иначе `id`;
+для имён нарисованных сущностей это и есть фолбэк (правило §7.4 «фолбэка нет» к ним не относится). Пустое имя не пишется.
+Пакет, создающий нарисованную сущность, несёт её `name` хотя бы в одном языке; `name` под ключом сущности из кода правило
+записи отвергает, `title` под `e_`-ключом не бывает никогда. Проверка `semaps check` называет недостачу, только когда имени
+нет ни в одном языке, и «лишнее имя» — текст `name` под ключом сущности из кода, который никто не читает.
+
+Контейнер — сущность, поэтому его подпись — то же имя: текст `name` под его `e_`-ключом (если он нарисован; `namespace` из
+кода назван в `entities.json`), а описание и `doc` — там же, как у любой сущности. Ключей `c_` и `z_` нет: загрузчик их не
+читает, `semaps check` называет такой ключ.
 
 ### 7.2 Поля
 
@@ -540,8 +594,8 @@ units**, результат — 8 шестнадцатеричных цифр в
    без округления до сетки. Новый вид — `{"id","project","axis","placements":[]}`; имя вида — текст
    под его `id` (§7).
 
-Имя и описание контейнера — как у любой сущности: `name` в `entities.json`, `description` и
-`doc` в текстах под её `e_`-ключом. Отдельных ключей для рамок нет.
+Имя и описание контейнера — как у любой сущности: имя нарисованного контейнера — текст `name`
+(§7.1), `description` и `doc` — тексты под её `e_`-ключом. Отдельных ключей для рамок нет.
 
 ### 8.3 Старая форма
 
@@ -592,10 +646,11 @@ units**, результат — 8 шестнадцатеричных цифр в
 
 ## 9. Инварианты, которые обязан держать любой писатель файлов
 
-1. `id` сущности не меняется никогда; переименование — только `name`.
+1. `id` сущности не меняется никогда; переименование — только имени: у нарисованной сущности это
+   правка её текста `name`, у сущности из кода — `name` в `entities.json`.
 2. Текст живёт в каталогах текстов. В `relations.json` подписей нет, в
-   `entities.json` описаний нет.
-3. Имя сущности не переводится.
+   `entities.json` описаний нет, а имени у нарисованной сущности нет.
+3. Имя сущности из кода не переводится; имя нарисованной — переводимый текст.
 4. `at` — всегда UTC с `Z`.
 5. Правка значения человеком делает его `authored` и снимает `from`/`fromHash`.
 6. В `views/` пишет редактор по действию человека и агент по прямой просьбе человека;

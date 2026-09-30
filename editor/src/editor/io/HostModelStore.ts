@@ -2,6 +2,7 @@ import type { WireDocument, EntityCatalog, RelationCatalog, RelationTypeCatalog,
 import type { SaveTarget } from "./types.js";
 import { HttpProjectStore } from "./ProjectStore.js";
 import { diffModel, type ModelOp } from "./ModelSync.js";
+import { entityDisplayName, type NamedEntity } from "../../model/entityName.js";
 
 export interface ChangedRef { kind: string; id: string; view?: string; lang?: string; author: string }
 export interface DirtySummary { registry: ChangedRef[]; views: Record<string, ChangedRef[]> }
@@ -142,8 +143,9 @@ export class HostModelStore extends HttpProjectStore {
     const record = (file: string, key: string, id: string): Record<string, unknown> | undefined =>
       ((snapshot?.registry[file] as Record<string, Array<Record<string, unknown>>> | undefined)?.[key] ?? [])
         .find((r) => r.id === id);
-    // An entity's name is not translated: it lives in entities.json (CONTRACT.md §7.1).
-    const entity = (id: string): string => (record("entities.json", "entities", id)?.name as string | undefined) ?? id;
+    // An entity's name: the registry's for one from code, its text `name` for an authored one (entityDisplayName).
+    const entity = (id: string): string => entityDisplayName(
+      record("entities.json", "entities", id) as NamedEntity | undefined, id, snapshot?.texts, lang, snapshot?.project.languages ?? []);
     const relation = (id: string): string => {
       const r = record("relations.json", "relations", id);
       if (!r) return id;
@@ -154,7 +156,8 @@ export class HostModelStore extends HttpProjectStore {
     if (ref.kind === "project") return snapshot?.project.title ?? id;
     if (ref.kind === "relationType") return text(`rt_${id}`) ?? id;
     if (id.startsWith("r_")) return relation(id);
-    if (id.startsWith("e_") || ref.kind === "entity" || ref.kind === "placement") return entity(id);
+    // A text under an entity's id is a change of that entity: its name resolved, whichever language it is in.
+    if (id.startsWith("e_") || ref.kind === "entity" || ref.kind === "placement" || record("entities.json", "entities", id)) return entity(id);
     return text(id) ?? id;
   }
 

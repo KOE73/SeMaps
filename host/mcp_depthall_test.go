@@ -19,7 +19,7 @@ func chainSession(t *testing.T) *mcp.ClientSession {
 	dir := filepath.Join(ws, "projects", "p")
 	var entities, relations []string
 	for i := 0; i <= 7; i++ {
-		entities = append(entities, fmt.Sprintf(`{"id":"e_%d","name":"N%d","kind":"class","origin":"code","symbol":"N.N%d"}`, i, i, i))
+		entities = append(entities, fmt.Sprintf(`{"id":"e_%d","name":"N%d","kind":"class","origin":"code","code":[{"lang":"csharp","symbol":"N.N%d"}]}`, i, i, i))
 		if i > 0 {
 			relations = append(relations, fmt.Sprintf(`{"id":"r_%d","from":"e_%d","to":"e_%d","type":"extends","origin":"code","status":"present"}`, i, i, i-1))
 		}

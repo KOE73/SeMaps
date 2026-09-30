@@ -31,9 +31,12 @@ func TestEntityIDs(t *testing.T) {
 	if got := js(t, v2, "placements"); got != `[{"entity":"e_llm_core_3","parent":null,"x":5,"y":5}]` {
 		t.Errorf("v2 placements %s", got)
 	}
-	// Names fall back to the id tail, and are reported.
-	if n := str(t, entityByID(t, ws, "p", "e_llm_core_2"), "name"); n != "LLM Core!" {
+	// Names fall back to the id tail (written as a text of the main language), and are reported.
+	if n := str(t, readTree(t, ws, "projects/p/text.ru.json"), "entries", "e_llm_core_2", "name", "v"); n != "LLM Core!" {
 		t.Errorf("name %q", n)
+	}
+	if has(entityByID(t, ws, "p", "e_llm_core_2"), "name") {
+		t.Error("an authored group has no name in entities.json")
 	}
 	if len(rep.Projects[0].NoName) != 4 {
 		t.Errorf("no-name %v", rep.Projects[0].NoName)
@@ -50,17 +53,27 @@ func TestNameChoiceAcrossLanguages(t *testing.T) {
 			{"id":"z_y","container":null,"x":0,"y":0}],"nodes":[]}`,
 	}))
 	rep := run(t, ws, Options{})
-	// z_x: en is first in languages, and the c_ key of the container holds the name.
-	if n := str(t, entityByID(t, ws, "p", "e_x"), "name"); n != "X" {
-		t.Errorf("name of e_x %q", n)
+	en, ru := readTree(t, ws, "projects/p/text.en.json"), readTree(t, ws, "projects/p/text.ru.json")
+	// z_x: the name in every language that has one — en from the c_ key of the
+	// container, ru from the zone's own key (both languages, nothing lost).
+	if n := str(t, en, "entries", "e_x", "name", "v"); n != "X" {
+		t.Errorf("en name of e_x %q", n)
+	}
+	if n := str(t, ru, "entries", "e_x", "name", "v"); n != "Икс" {
+		t.Errorf("ru name of e_x %q", n)
 	}
 	// z_y: no en text under z_y; the fallback key c_y (tail of z_) is searched too.
-	if n := str(t, entityByID(t, ws, "p", "e_y"), "name"); n != "Игрек" {
-		t.Errorf("name of e_y %q", n)
+	if n := str(t, en, "entries", "e_y", "name", "v"); n != "Игрек" {
+		t.Errorf("en name of e_y %q", n)
+	}
+	if n := str(t, ru, "entries", "e_y", "name", "v"); n != "Игрек" {
+		t.Errorf("ru name of e_y %q", n)
 	}
 	p := rep.Projects[0]
-	if len(p.LostNames) != 1 || !strings.Contains(p.LostNames[0], "ru z_x: «Икс»") {
-		t.Errorf("lost names %v", p.LostNames)
+	// z_x named "Икс" in ru and "X" (its container's key) in en: one name per
+	// language, nothing lost (the en name is not a conflict: it is another language)
+	if len(p.NameConflicts) != 0 {
+		t.Errorf("name conflicts %v", p.NameConflicts)
 	}
 	if len(p.NoName) != 0 {
 		t.Errorf("no-name %v", p.NoName)
@@ -102,9 +115,15 @@ func TestTextsMovedAndKeysRemoved(t *testing.T) {
 	if len(p.UnconsumedText) != 1 || !strings.Contains(p.UnconsumedText[0], "c_other «Чужой»") {
 		t.Errorf("unconsumed %v", p.UnconsumedText)
 	}
-	// The entity was minted from the container.
-	if n := str(t, entityByID(t, ws, "p", "e_grp"), "name"); n != "Группа" {
+	// The entity was minted from the container; its name is a text, first of its fields.
+	if n := str(t, text, "entries", "e_grp", "name", "v"); n != "Группа" {
 		t.Errorf("name %q", n)
+	}
+	if got := strings.Join(keysOf(t, text, "entries", "e_grp"), ","); got != "name,description,doc" {
+		t.Errorf("fields %s", got)
+	}
+	if has(entityByID(t, ws, "p", "e_grp"), "name") {
+		t.Error("an authored group has no name in entities.json")
 	}
 }
 
@@ -311,16 +330,20 @@ func TestContainerWithoutZoneAndMissingParent(t *testing.T) {
 	}))
 	rep := run(t, ws, Options{})
 	p := rep.Projects[0]
-	if got := entityIDs(t, ws, "p"); !reflect.DeepEqual(got, []string{"e_a", "e_lone", "e_ok"}) {
+	// No view shows a container: no entity for it, only a line in the report.
+	if got := entityIDs(t, ws, "p"); !reflect.DeepEqual(got, []string{"e_a"}) {
 		t.Errorf("entities %v", got)
 	}
-	if p.ContainerEntities != 2 || p.ContainsAdded != 0 {
+	if p.ContainerEntities != 0 || p.ContainsAdded != 0 {
 		t.Errorf("counts %+v", *p)
 	}
-	if !anyContains(p.Notes, "c_ghost") || !anyContains(p.Notes, "повторён") {
+	if !reflect.DeepEqual(p.UnplacedContainers, []string{"c_lone (parent c_ghost)", "c_ok"}) {
+		t.Errorf("unplaced containers %v", p.UnplacedContainers)
+	}
+	if !anyContains(p.Notes, "повторён") {
 		t.Errorf("notes %v", p.Notes)
 	}
-	if len(p.MatchRules) != 1 || !strings.Contains(p.MatchRules[0], `theme "green"`) {
+	if len(p.MatchRules) != 1 || p.MatchRules[0] != `c_ok без сущности: theme "green"` {
 		t.Errorf("match rules %v", p.MatchRules)
 	}
 	if exists(ws, "projects/p/containers.json") {
@@ -533,7 +556,7 @@ func TestVersionGate(t *testing.T) {
 	ws = mkws(t, files)
 	rep = run(t, ws, Options{})
 	out := printed(rep)
-	if !strings.Contains(out, "Проект q: уже v5") || !strings.Contains(out, "Проект p\n") {
+	if !strings.Contains(out, "Проект q: уже в текущей форме") || !strings.Contains(out, "Проект p\n") {
 		t.Errorf("report:\n%s", out)
 	}
 	if snapshot(t, ws)["projects/q/containers.json"] == "" {
@@ -720,8 +743,13 @@ func TestMissingRegistryFilesAreCreated(t *testing.T) {
 	})
 	run(t, ws, Options{})
 	ents := readTree(t, ws, "projects/p/entities.json")
-	if got := js(t, ents); got != `{"contractVersion":5,"entities":[{"id":"e_g","name":"g","kind":"group","origin":"authored","status":"present"}]}` {
+	if got := js(t, ents); got != `{"contractVersion":5,"entities":[{"id":"e_g","kind":"group","origin":"authored","status":"present"}]}` {
 		t.Errorf("entities.json: %s", got)
+	}
+	// its name (the tail of the zone id: nothing else names it) is a text of the main language,
+	// in a catalogue made for it
+	if got := js(t, readTree(t, ws, "projects/p/text.ru.json"), "entries", "e_g", "name", "v"); got != `"g"` {
+		t.Errorf("name text: %s", got)
 	}
 	if exists(ws, "projects/p/relations.json") {
 		t.Error("relations.json created without need")

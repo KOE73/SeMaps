@@ -102,24 +102,44 @@ func TestAddEntityMintsRefusesAndChecks(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	id, err := m.AddEntity("", "Billing DB", "database", "agent")
+	id, err := m.AddEntity("", "Billing DB", "database", "", "agent")
 	if err != nil || id != "e_billing_db" {
 		t.Fatalf("minted id = %q, %v", id, err)
 	}
-	if again, err := m.AddEntity("", "Billing DB", "database", "agent"); err != nil || again == id {
+	if again, err := m.AddEntity("", "Billing DB", "database", "", "agent"); err != nil || again == id {
 		t.Fatalf("second mint = %q, %v", again, err)
 	}
-	if _, err := m.AddEntity("e_billing_db", "Other", "app", "agent"); err == nil || !strings.Contains(err.Error(), "exists") {
+	if _, err := m.AddEntity("e_billing_db", "Other", "app", "", "agent"); err == nil || !strings.Contains(err.Error(), "exists") {
 		t.Fatalf("existing id: %v", err)
 	}
-	if _, err := m.AddEntity("node_1", "N", "app", "agent"); err == nil || !strings.Contains(err.Error(), "starts with e_") {
+	if _, err := m.AddEntity("node_1", "N", "app", "", "agent"); err == nil || !strings.Contains(err.Error(), "starts with e_") {
 		t.Fatalf("id without e_: %v", err)
 	}
-	if _, err := m.AddEntity("", "N", " ", "agent"); err == nil || !strings.Contains(err.Error(), "kind is empty") {
+	if _, err := m.AddEntity("", "N", " ", "", "agent"); err == nil || !strings.Contains(err.Error(), "kind is empty") {
 		t.Fatalf("empty kind: %v", err)
+	}
+	if _, err := m.AddEntity("", " ", "app", "", "agent"); err == nil || !strings.Contains(err.Error(), "name is empty") {
+		t.Fatalf("empty name: %v", err)
 	}
 	e := m.record("entity", id)
 	if e == nil || e.str("origin") != "authored" || e.str("status") != "present" {
 		t.Fatalf("entity = %v", e)
+	}
+	// an authored entity has no name in entities.json: its name is a text of the main language (ADR_20260930-5)
+	if has(e, "name") {
+		t.Fatalf("an authored entity carries a name in entities.json: %v", e)
+	}
+	if got := m.EntityName(id); got != "Billing DB" {
+		t.Fatalf("name = %q", got)
+	}
+	if raw, _ := m.Text("ru", id); !strings.Contains(string(raw), `"Billing DB"`) {
+		t.Fatalf("name text = %s", raw)
+	}
+	// the name can change, the id stays
+	if err := m.SetText("ru", id, "name", "Billing", "agent"); err != nil {
+		t.Fatal(err)
+	}
+	if got := m.EntityName(id); got != "Billing" {
+		t.Fatalf("renamed = %q", got)
 	}
 }

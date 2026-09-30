@@ -19,8 +19,8 @@ type FactsSource struct {
 	Facts     *Facts
 }
 
-// GraphNode is a symbol, an entity, or both, joined by entity.symbol
-// (CONTRACT.md §3). Named GraphNode, not Node: core.Edge/core.Symbol already
+// GraphNode is a symbol, an entity, or both, joined by the (language, symbol)
+// of an entity's code[] entry (CONTRACT.md §3). Named GraphNode, not Node: core.Edge/core.Symbol already
 // name the facts types this joins.
 type GraphNode struct {
 	ID         string `json:"id"`
@@ -142,18 +142,23 @@ func BuildGraph(sources []FactsSource, model *Model) (*Graph, error) {
 	if err != nil {
 		return nil, err
 	}
-	// entity by symbol: first entity claiming a symbol wins (CONTRACT §3's
-	// invariant says this map has at most one entry per symbol among
-	// non-authored entities; a broken registry is not this function's job to
-	// catch — sync/check already do).
-	entityBySymbol := map[string]*object{}
+	names := model.EntityNames()
+	// entity by (language, symbol): first entity claiming a symbol of a
+	// language wins (CONTRACT §3's invariant says this map has at most one
+	// entry per pair among non-authored entities; a broken registry is not this
+	// function's job to catch — sync/check already do). The language is the
+	// facts' `language`, so a symbol id of one language never joins another's.
+	entityBySymbol := map[[2]string]*object{}
 	for _, e := range entities {
 		if e.str("origin") == "authored" {
 			continue
 		}
-		if s := e.str("symbol"); s != "" {
-			if _, ok := entityBySymbol[s]; !ok {
-				entityBySymbol[s] = e
+		for _, c := range entries(e, "code") {
+			if s := c.str("symbol"); s != "" {
+				k := [2]string{c.str("lang"), s}
+				if _, ok := entityBySymbol[k]; !ok {
+					entityBySymbol[k] = e
+				}
 			}
 		}
 	}
@@ -180,7 +185,7 @@ func BuildGraph(sources []FactsSource, model *Model) (*Graph, error) {
 				}
 			}
 			entityKind[key] = s.NativeKind // what sync writes as the entity's kind (ADR_20260923-9)
-			if e := entityBySymbol[s.ID]; e != nil && !consumed[e] {
+			if e := entityBySymbol[[2]string{src.Facts.Language, s.ID}]; e != nil && !consumed[e] {
 				consumed[e] = true
 				n.Entity, n.Status, n.Presence = e.str("id"), e.str("status"), "both"
 				entityNodeKey[e.str("id")] = key
@@ -198,7 +203,7 @@ func BuildGraph(sources []FactsSource, model *Model) (*Graph, error) {
 		if consumed[e] {
 			continue
 		}
-		id, name, file := e.str("id"), e.str("name"), codeRefFile(e.str("codeRef"))
+		id, name, file := e.str("id"), names[e.str("id")], refFile(firstRef(entries(e, "code")))
 		entityKind[id] = e.str("kind")
 		n := GraphNode{ID: id, Kind: e.str("kind"), Name: name, Status: e.str("status"), Presence: "model"}
 		if ns := e.str("namespace"); ns != "" {
@@ -234,7 +239,7 @@ func BuildGraph(sources []FactsSource, model *Model) (*Graph, error) {
 			}
 			ge := GraphEdge{From: from, To: to, Kind: e.Kind, Type: relType, Via: e.Via, Line: e.Line, File: e.File, Presence: "code"}
 
-			fromEnt, toEnt := entityBySymbol[e.From], entityBySymbol[e.To]
+			fromEnt, toEnt := entityBySymbol[[2]string{src.Facts.Language, e.From}], entityBySymbol[[2]string{src.Facts.Language, e.To}]
 			if fromEnt != nil && toEnt != nil {
 				var key string
 				if e.Kind == "holds" || e.Kind == "uses" {
@@ -264,13 +269,7 @@ func BuildGraph(sources []FactsSource, model *Model) (*Graph, error) {
 		if !ok1 || !ok2 {
 			continue // dangling relation; not this function's job to flag
 		}
-		var via *Via
-		if raw, ok := r.vals["via"]; ok && len(raw) > 0 && string(raw) != "null" {
-			var v Via
-			if json.Unmarshal(raw, &v) == nil {
-				via = &v
-			}
-		}
+		via := relationVia(r)
 		relType := relationType(r)
 		kind, _, _ := strings.Cut(relType, ".")
 		edges = append(edges, GraphEdge{From: from, To: to, Kind: kind, Type: relType, Via: via, Relation: r.str("id"), Status: r.str("status"), Presence: "model"})

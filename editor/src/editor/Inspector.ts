@@ -23,6 +23,8 @@ import {
   type PlacementOverride,
 } from "../model/override.js";
 import { kindSelect, relationTypeSelect, variantLabel } from "./kindSelects.js";
+import { nameIsText } from "../model/entityName.js";
+import { evidenceOf, langTag, realizationsOf, refOf } from "../model/realizations.js";
 
 export interface InspectorHost {
   readonly canvas: DiagramCanvas;
@@ -55,7 +57,9 @@ export interface InspectorHost {
   openStyleTab(styleId: string): void;
   openTab(tab: "properties" | "edges" | "filters" | "styles" | "base"): void;
   openDocEditor(targetId?: string | null, kind?: "node" | "zone" | "edge"): void;
-  openCodeViewer?(codeRef?: string | null, label?: string): void;
+  openCodeViewer?(ref?: string | null, label?: string): void;
+  /** Copy the entity id to the clipboard and say so with a toast. */
+  copyId?(id: string): void;
 }
 
 /**
@@ -169,7 +173,6 @@ export class Inspector {
           })
         : null,
       el("div", { class: "field-row" }, [
-        el("span", { class: "mono muted", text: `ID: ${element.id}` }),
         this.copyLinkButton(element.id),
         coords,
       ]),
@@ -183,7 +186,7 @@ export class Inspector {
       this.overrideSection(element),
       this.templatePicker(element),
       this.descriptionField(element),
-      this.codeRefField(element),
+      this.realizationsField(element),
       container ? null : el("div", { class: "panel-section" }, [
         el("button", {
           class: "btn full",
@@ -245,6 +248,7 @@ export class Inspector {
         el("span", { class: "mono muted", text: `ID: ${edge.id}` }),
         el("span", { class: "mono coords", text: `${fromEl?.label || edge.from} →${toEl?.label || edge.to}` }),
       ]),
+      this.evidenceField(edge),
       el("label", { class: "field" }, [
         el("div", { attrs: { style: "display: flex; align-items: center; justify-content: space-between; margin-bottom: calc(2px * var(--ui-space));" } }, [
           el("span", { class: "field-label", text: i18n.d.panels.properties.edgeLabelTitle }),
@@ -371,34 +375,64 @@ export class Inspector {
   }
 
   /**
-   * The entity's `name` (CONTRACT.md §3): one per entity, not translated, so
-   * there is no language chip. A name read from code is the code's.
+   * The entity's name, with its id beside it (read-only, with a copy button).
+   *
+   * The name of an authored entity is a text — `name` in `text.<lang>.json` —
+   * so it is edited per language (the chip says which) and never touches the
+   * entity record. A name read from code is the code's: shown, not edited.
    */
   private labelField(element: DiagramElement): HTMLElement {
     const t = i18n.d.panels.properties;
-    const label = el("span", { class: "field-label", text: t.labelTitle });
-    if (entityOf(element)?.origin === "code") {
-      return el("div", { class: "field" }, [
-        label,
-        el("div", { class: "readonly-box input-strong", text: element.label, title: t.nameFromCode }),
-      ]);
-    }
-    return el("label", { class: "field" }, [
-      label,
-      el("input", {
-        class: "input-strong",
-        type: "text",
-        value: element.label,
-        on: {
-          input: (e) => {
-            const value = (e.target as HTMLInputElement).value;
-            this.host.editField(() => {
-              element.label = value;
-            }, { rerender: true });
-          },
-        },
-      }),
+    const doc = this.host.canvas.model;
+    const entity = entityOf(element) ?? doc?.entities.find((e) => e.id === element.id);
+    const editable = doc !== null && nameIsText(entity);
+
+    const name = editable
+      ? el("label", { class: "field", attrs: { style: "min-width: 0;" } }, [
+          el("div", { attrs: { style: "display: flex; align-items: center; justify-content: space-between;" } }, [
+            el("span", { class: "field-label", text: t.labelTitle }),
+            el("span", { class: "chip chip-lang", text: doc.textLang.toUpperCase() }),
+          ]),
+          el("input", {
+            class: "input-strong",
+            type: "text",
+            value: element.label,
+            on: {
+              input: (e) => {
+                const value = (e.target as HTMLInputElement).value;
+                // The host refuses an empty name: nothing is sent, the old name stays.
+                if (value.trim() === "") return;
+                this.host.editField(() => {
+                  element.label = value;
+                  doc.setText(element.id, { name: value }, doc.textLang);
+                }, { rerender: true });
+              },
+              change: (e) => {
+                const input = e.target as HTMLInputElement;
+                if (input.value.trim() === "") input.value = element.label;
+              },
+            },
+          }),
+        ])
+      : el("div", { class: "field", attrs: { style: "min-width: 0;" } }, [
+          el("span", { class: "field-label", text: t.labelTitle }),
+          el("div", { class: "readonly-box input-strong", text: element.label, title: t.nameFromCode }),
+        ]);
+
+    const id = el("div", { class: "field", attrs: { style: "min-width: 0;" } }, [
+      el("span", { class: "field-label", text: t.idTitle }),
+      el("div", { class: "field-row gap", attrs: { style: "justify-content: flex-start;" } }, [
+        el("div", { class: "readonly-box mono", text: element.id, title: element.id, attrs: { style: "flex: 1; min-width: 0;" } }),
+        el("button", {
+          class: "btn btn-secondary btn-small",
+          title: t.copyIdTitle,
+          attrs: { style: "flex-shrink: 0;" },
+          on: { click: () => this.host.copyId?.(element.id) },
+        }, [iconEl("copy")]),
+      ]),
     ]);
+
+    return el("div", { class: "grid-2", attrs: { style: "align-items: end;" } }, [name, id]);
   }
 
   /**
@@ -860,40 +894,64 @@ export class Inspector {
     ]);
   }
 
-  private codeRefField(element: DiagramElement): HTMLElement {
-    const value = typeof element.metadata.codeRef === "string" ? element.metadata.codeRef : "";
-    const isAvailable = value.trim() ? SourceCodeService.isFileAvailable(value.trim()) : false;
-    const showCodeBtn = Boolean(value.trim()) && isAvailable !== false;
-
+  /** The entity's realizations: read-only, one row and one code button each. */
+  private realizationsField(element: DiagramElement): HTMLElement {
+    const p = i18n.d.panels.properties;
+    const code = realizationsOf(element.metadata);
     return el("div", { class: "field" }, [
-      el("span", { class: "field-label", text: i18n.d.panels.properties.codeRefTitle }),
-      el("div", { attrs: { style: "display: flex; gap: calc(6px * var(--ui-space)); align-items: center;" } }, [
-        el("input", {
-          class: "mono input-code",
-          attrs: { style: "flex: 1; min-width: 0;" },
-          type: "text",
-          value,
-          placeholder: i18n.d.panels.properties.codeRefPlaceholder,
-          on: {
-            input: (e) => {
-              const next = (e.target as HTMLInputElement).value;
-              this.host.editField(() => {
-                element.metadata.codeRef = next;
-              });
-            },
-          },
-        }),
-        showCodeBtn
-          ? el("button", {
-              class: "btn btn-secondary",
-              title: "Просмотреть исходный код (без сохранения)",
-              attrs: { style: "padding: calc(4px * var(--ui-space)) calc(8px * var(--ui-space)); flex-shrink: 0;" },
-              on: {
-                click: () => this.host.openCodeViewer?.(value, element.label),
-              },
-            }, [iconEl("code")])
-          : null,
-      ].filter(Boolean) as HTMLElement[]),
+      el("span", { class: "field-label", text: p.realizationsTitle }),
+      code.length === 0
+        ? el("span", { class: "muted", text: p.realizationsEmpty })
+        : el("div", { class: "code-realizations", attrs: { style: "display: flex; flex-direction: column; gap: calc(4px * var(--ui-space));" } },
+            code.map((r) => this.codeRow(r, [r.symbol ?? "", refOf(r)], element.label))),
+    ]);
+  }
+
+  /**
+   * One realization or evidence entry: [language tag: a code button when there
+   * is a file to open] then details, dimmed and struck through when missing.
+   */
+  private codeRow(r: { lang?: string; ref?: string; status?: string }, details: string[], label: string): HTMLElement {
+    const p = i18n.d.panels.properties;
+    const missing = r.status === "missing";
+    const ref = refOf(r);
+    const canOpen = ref !== "" && SourceCodeService.isFileAvailable(ref) !== false;
+    const tag = langTag(r) || "·";
+    const strike = missing ? " text-decoration: line-through;" : "";
+    return el("div", {
+      class: `field-row code-realization${missing ? " is-missing" : ""}`,
+      title: missing ? `${ref} — ${p.codeMissing}` : ref,
+      attrs: { style: `justify-content: flex-start; gap: calc(6px * var(--ui-space));${missing ? " opacity: 0.55;" : ""}` },
+    }, [
+      canOpen
+        ? el("button", {
+            class: "btn btn-secondary btn-small",
+            title: `${p.viewCodeTitle}: ${ref}`,
+            text: tag,
+            attrs: { style: `flex-shrink: 0;${strike}` },
+            on: { click: () => this.host.openCodeViewer?.(ref, label) },
+          })
+        : el("span", { class: "chip chip-lang", text: tag, attrs: { style: `flex-shrink: 0;${strike}` } }),
+      ...details.filter(Boolean).map((d) => el("span", {
+        class: "mono muted",
+        text: d,
+        attrs: { style: `min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;${strike}` },
+      })),
+      missing ? el("span", { class: "muted", text: p.codeMissing }) : null,
+    ]);
+  }
+
+  /** A relation's evidence, one row per language: its file (when it has one) and the member it comes through. */
+  private evidenceField(edge: DiagramEdge): HTMLElement | null {
+    const doc = this.host.canvas.model;
+    const rel = doc?.relations.find((r) => r.id === edge.id);
+    const evidence = evidenceOf(rel);
+    if (evidence.length === 0 || doc === null) return null;
+    const label = `${doc.entityName(edge.from)} → ${doc.entityName(edge.to)}`;
+    return el("div", { class: "field" }, [
+      el("span", { class: "field-label", text: i18n.d.panels.properties.evidenceTitle }),
+      el("div", { class: "code-realizations", attrs: { style: "display: flex; flex-direction: column; gap: calc(4px * var(--ui-space));" } },
+        evidence.map((e) => this.codeRow(e, [e.via?.member ?? "", e.via?.text ?? "", e.symbol ?? "", refOf(e)], label))),
     ]);
   }
 

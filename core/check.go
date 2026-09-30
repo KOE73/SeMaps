@@ -6,14 +6,19 @@
 //  1. stale translations — `fromHash` no longer matches its source
 //  2. divergences — two languages both `authored`, neither derived from the
 //     other: not translations at all
-//  3. missing text — an id used by the structure has no text
+//  3. missing text — an id used by the structure has no text; an authored
+//     entity has no `name` text in any language (ADR_20260930-5); a `name`
+//     text under the id of an entity from code is «лишнее имя» — nobody reads it
 //  4. views without an axis
 //  5. containment contradictions — one block placed in different containers
 //     by two views declaring the *same* axis
-//  6. broken codeRef — a file that is no longer there
+//  6. broken code[].ref — a file that is no longer there; a malformed code[]
+//     or evidence[] entry (ADR_20260930-4)
 //  7. the old shape — project.json of another contractVersion, a view with
 //     `zones`/`nodes`, containers.json, c_/z_ text keys, `kinds` or a zone key
-//     in a workspace file (ADR_20260927-3): the same text the loader answers with
+//     in a workspace file, a top-level `codeRef`/`symbol`/`via`, the `name` of
+//     an authored entity in entities.json (ADR_20260927-3): the same text the
+//     loader answers with
 //  8. placements — of no entity, in a parent that is not a container placement
 //     of the view or in a loop, an override field outside CONTRACT §11.6
 //  9. entity kinds and relation types not in the dictionary («не из словаря»):
@@ -155,7 +160,7 @@ func Check(workspace, sourceRoot string, defaultKinds []byte) []Finding {
 	checkWorkspaceFiles(workspace, kinds, report)
 
 	root := filepath.Join(workspace, "projects")
-	entries, err := os.ReadDir(root)
+	projectDirs, err := os.ReadDir(root)
 	if errors.Is(err, fs.ErrNotExist) {
 		return findings // an empty workspace is legal: projects are created from the editor
 	}
@@ -164,7 +169,7 @@ func Check(workspace, sourceRoot string, defaultKinds []byte) []Finding {
 		return findings
 	}
 
-	for _, entry := range entries {
+	for _, entry := range projectDirs {
 		if !entry.IsDir() {
 			continue
 		}
@@ -206,18 +211,26 @@ func Check(workspace, sourceRoot string, defaultKinds []byte) []Finding {
 			languages = []string{"ru"}
 		}
 
+		// the registries as ordered objects, so that the old shape can be named
+		// by its keys (oldShape); the loader answers with the same text
 		var ents struct {
-			Entities []struct {
-				ID      string
-				Kind    string `json:"kind"`
-				CodeRef string `json:"codeRef"`
-			} `json:"entities"`
+			Entities []*object `json:"entities"`
 		}
 		load("entities.json", &ents)
 		var rels struct {
-			Relations []struct{ ID, Type, Relation string } `json:"relations"`
+			Relations []*object `json:"relations"`
 		}
 		load("relations.json", &rels)
+		for _, e := range ents.Entities {
+			if old := oldShape("entity", e); old != "" {
+				report(project, "форма контракта", fmt.Sprintf("entities.json: %s: %s (`semaps migrate`, ADR_20260930-4/5)", e.str("id"), old))
+			}
+		}
+		for _, r := range rels.Relations {
+			if old := oldShape("relation", r); old != "" {
+				report(project, "форма контракта", fmt.Sprintf("relations.json: %s: %s (`semaps migrate`, ADR_20260930-4)", r.str("id"), old))
+			}
+		}
 		var types struct {
 			RelationTypes []struct {
 				ID      string
@@ -281,11 +294,13 @@ func Check(workspace, sourceRoot string, defaultKinds []byte) []Finding {
 		}
 
 		// ------------------------------------------------------- 3: недостача
-		// Only what is actually authored is expected to carry text. An entity's
-		// name is canonical and lives in entities.json — not translated; a
-		// container is an entity, so it is named there too (CONTRACT §8.2).
-		// Views and relation types are named by a human, so silence there is a
-		// real gap.
+		// Only what is actually authored is expected to carry text. The name of
+		// an entity from code is canonical and lives in entities.json — not
+		// translated. The name of an authored entity (a container is one too,
+		// CONTRACT §8.2) is a text under its id; a language without it falls back
+		// to another one, so the gap is an entity with no name in any language
+		// (ADR_20260930-5). Views and relation types are named by a human in every
+		// language, so silence there is a real gap.
 		mustBeNamed := map[string]bool{}
 		for id := range declared {
 			mustBeNamed[id] = true
@@ -327,7 +342,7 @@ func Check(workspace, sourceRoot string, defaultKinds []byte) []Finding {
 			}
 			for _, key := range sortedKeys(catalogues[lang]) {
 				if strings.HasPrefix(key, "c_") || strings.HasPrefix(key, "z_") {
-					report(project, "форма контракта", fmt.Sprintf("text.%s.json: %s — ключи c_/z_ упразднены, имя контейнера — name его сущности (CONTRACT §7.1)", lang, key))
+					report(project, "форма контракта", fmt.Sprintf("text.%s.json: %s — ключи c_/z_ упразднены, имя контейнера — текст name под id его сущности (CONTRACT §7.1)", lang, key))
 				}
 				// a bare string instead of a value with provenance is the shape of contract 2; nobody reads it
 				for _, field := range textFields {
@@ -338,13 +353,40 @@ func Check(workspace, sourceRoot string, defaultKinds []byte) []Finding {
 			}
 		}
 
+		for _, e := range ents.Entities {
+			if !isAuthored(e) {
+				// the name of an entity from code is the code's, in entities.json; a `name` text under
+				// its id is left over from before ADR_20260930-5 and is never read
+				for _, lang := range languages {
+					if record, ok := catalogues[lang][e.str("id")]; ok {
+						if _, ok := record.field("name"); ok {
+							report(project, "лишнее имя", fmt.Sprintf("%s@%s: текст name у сущности из кода не читается — её имя в entities.json (ADR_20260930-5)", e.str("id"), lang))
+						}
+					}
+				}
+				continue
+			}
+			named := false
+			for _, lang := range languages {
+				if record, ok := catalogues[lang][e.str("id")]; ok {
+					if v, ok := record.field("name"); ok && strings.TrimSpace(v.V) != "" {
+						named = true
+					}
+				}
+			}
+			if !named {
+				report(project, "недостача", fmt.Sprintf("%s: у нарисованной сущности нет имени ни в одном языке (`name` в text.<lang>.json, CONTRACT §7.1)", e.str("id")))
+			}
+		}
+
 		// ---------------------------------------- 9: типы не из словаря
 		entityKind := map[string]string{}
 		outside := map[string][]string{}
 		for _, e := range ents.Entities {
-			entityKind[e.ID] = e.Kind
-			if _, ok := kinds.Lookup(e.Kind); !ok && e.Kind != "" {
-				outside[e.Kind] = append(outside[e.Kind], e.ID)
+			id, kind := e.str("id"), e.str("kind")
+			entityKind[id] = kind
+			if _, ok := kinds.Lookup(kind); !ok && kind != "" {
+				outside[kind] = append(outside[kind], id)
 			}
 		}
 		for _, k := range sortedKeys(outside) {
@@ -370,12 +412,11 @@ func Check(workspace, sourceRoot string, defaultKinds []byte) []Finding {
 
 		// ------------------------------------------------ типы связей объявлены
 		for _, r := range rels.Relations {
-			t := r.Type
-			if t == "" {
-				t = r.Relation
+			if t := relationType(r); t != "" && len(declared) > 0 && !declared[t] {
+				report(project, "тип связи", fmt.Sprintf("%s: тип %q не объявлен в relation-types.json", r.str("id"), t))
 			}
-			if t != "" && len(declared) > 0 && !declared[t] {
-				report(project, "тип связи", fmt.Sprintf("%s: тип %q не объявлен в relation-types.json", r.ID, t))
+			if err := checkCode("relation", r.str("id"), entries(r, "evidence")); err != nil {
+				report(project, "реализация", err.Error())
 			}
 		}
 
@@ -410,17 +451,17 @@ func Check(workspace, sourceRoot string, defaultKinds []byte) []Finding {
 			}
 		}
 
-		// ------------------------------------------------------------ 6: codeRef
+		// ------------------------------------------------------- 6: code[].ref
 		for _, e := range ents.Entities {
-			if e.CodeRef == "" {
-				continue
+			if err := checkCode("entity", e.str("id"), entries(e, "code")); err != nil {
+				report(project, "реализация", err.Error())
 			}
-			file := e.CodeRef
-			if i := strings.IndexAny(file, "#:"); i >= 0 {
-				file = file[:i]
-			}
-			if !exists(filepath.Join(sourceRoot, filepath.FromSlash(file))) {
-				report(project, "битый codeRef", fmt.Sprintf("%s: %s", e.ID, e.CodeRef))
+			for _, c := range entries(e, "code") {
+				ref := c.str("ref")
+				// a realization of an external symbol has no file (ADR_20260927-4)
+				if ref != "" && !exists(filepath.Join(sourceRoot, filepath.FromSlash(refFile(ref)))) {
+					report(project, "битая ссылка на код", fmt.Sprintf("%s: %s", e.str("id"), ref))
+				}
 			}
 		}
 	}

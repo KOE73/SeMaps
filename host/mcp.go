@@ -99,10 +99,10 @@ type setTextIn struct {
 type addEntityIn struct {
 	Project     string `json:"project,omitempty"`
 	ID          string `json:"id,omitempty" jsonschema:"e_<name>; default: minted from name"`
-	Name        string `json:"name" jsonschema:"canonical name, not translated (CONTRACT §3)"`
+	Name        string `json:"name" jsonschema:"the name the entity is shown by; written as its name text in lang (an authored entity has no name in entities.json, CONTRACT §7.1); change it later with set_text field name; the id does not change"`
 	Kind        string `json:"kind" jsonschema:"a kind of get_kinds (app, service, component, external, database…); a kind outside it is allowed and flagged by check"`
 	Description string `json:"description,omitempty" jsonschema:"written as a text, like set_text"`
-	Lang        string `json:"lang,omitempty" jsonschema:"language of description; default: the project's first language"`
+	Lang        string `json:"lang,omitempty" jsonschema:"language of name and description; default: the project's first language"`
 }
 
 type addRelationIn struct {
@@ -227,7 +227,7 @@ type addContainerIn struct {
 	Project          string  `json:"project,omitempty"`
 	View             string  `json:"view"`
 	Entity           string  `json:"entity,omitempty" jsonschema:"an existing entity of a container kind to place; else give name and kind"`
-	Name             string  `json:"name,omitempty" jsonschema:"a new authored entity: its canonical name (the container's caption); the id is minted"`
+	Name             string  `json:"name,omitempty" jsonschema:"a new authored entity: its name (the container's caption), written as a text in the project's first language; the id is minted"`
 	Kind             string  `json:"kind,omitempty" jsonschema:"kind of the new entity: a container kind of get_kinds; default group"`
 	Parent           string  `json:"parent,omitempty" jsonschema:"entity id of the container placement it goes into; empty for none"`
 	StyleID          string  `json:"styleId,omitempty"`
@@ -576,26 +576,65 @@ func (s *mcpServer) getEntity(_ context.Context, _ *mcp.CallToolRequest, in enti
 	if (in.ID == "") == (in.Symbol == "") {
 		return nil, nil, errors.New("pass id or symbol")
 	}
+	m, err := s.model(in.Project)
+	if err != nil {
+		return nil, nil, err
+	}
 	ents, err := s.records(in.Project, "entities.json")
 	if err != nil {
 		return nil, nil, err
 	}
 	for _, e := range ents {
-		if (in.ID != "" && e.str("id") == in.ID) || (in.Symbol != "" && e.str("symbol") == in.Symbol) {
-			return nil, e.raw, nil
+		if (in.ID != "" && e.str("id") == in.ID) || (in.Symbol != "" && slices.Contains(e.symbols(), in.Symbol)) {
+			return nil, entityAnswer(e, m.EntityName(e.str("id"))), nil
 		}
 	}
 	return nil, nil, fmt.Errorf("no entity %s%s", in.ID, in.Symbol)
 }
 
+// entityAnswer is an entity as an agent reads it: its record of entities.json
+// and, for an authored entity — which has no name there, its name is a text
+// (CONTRACT §7.1) — the name it is shown by: the text in the main language,
+// else in another, else its id.
+func entityAnswer(e record, name string) any {
+	if e.str("origin") != "authored" {
+		return e.raw
+	}
+	out := map[string]any{}
+	for k, v := range e.fields {
+		out[k] = v
+	}
+	out["name"] = name
+	return out
+}
+
+// symbols are the symbols of the entity's realizations (code[]).
+func (r record) symbols() []string {
+	var out []string
+	list, _ := r.fields["code"].([]any)
+	for _, c := range list {
+		if o, ok := c.(map[string]any); ok {
+			if s, _ := o["symbol"].(string); s != "" {
+				out = append(out, s)
+			}
+		}
+	}
+	return out
+}
+
 func (s *mcpServer) findEntities(_ context.Context, _ *mcp.CallToolRequest, in findIn) (*mcp.CallToolResult, any, error) {
+	m, err := s.model(in.Project)
+	if err != nil {
+		return nil, nil, err
+	}
 	ents, err := s.records(in.Project, "entities.json")
 	if err != nil {
 		return nil, nil, err
 	}
+	names := m.EntityNames()
 	q := strings.ToLower(in.Query)
 	limit := orInt(in.Limit, 50)
-	var out []record
+	var out []any
 	total := 0
 	for _, e := range ents {
 		if in.Kind != "" && e.str("kind") != in.Kind {
@@ -604,15 +643,18 @@ func (s *mcpServer) findEntities(_ context.Context, _ *mcp.CallToolRequest, in f
 		if in.Status != "" && orStr(e.str("status"), "present") != in.Status {
 			continue
 		}
-		if q != "" && !strings.Contains(strings.ToLower(e.str("name")+"\x00"+e.str("symbol")+"\x00"+e.str("namespace")+"\x00"+e.str("id")), q) {
+		if q != "" && !strings.Contains(strings.ToLower(names[e.str("id")]+"\x00"+strings.Join(e.symbols(), "\x00")+"\x00"+e.str("namespace")+"\x00"+e.str("id")), q) {
 			continue
 		}
 		total++
 		if len(out) < limit {
-			out = append(out, e)
+			out = append(out, entityAnswer(e, names[e.str("id")]))
 		}
 	}
-	return nil, map[string]any{"total": total, "entities": raws(out)}, nil
+	if out == nil {
+		out = []any{}
+	}
+	return nil, map[string]any{"total": total, "entities": out}, nil
 }
 
 func (s *mcpServer) getRelations(_ context.Context, _ *mcp.CallToolRequest, in relationsIn) (*mcp.CallToolResult, any, error) {
@@ -992,12 +1034,13 @@ func (s *mcpServer) addEntity(_ context.Context, _ *mcp.CallToolRequest, in addE
 	if err != nil {
 		return nil, nil, err
 	}
-	id, err := m.AddEntity(in.ID, in.Name, in.Kind, "agent")
+	lang := orStr(in.Lang, m.Languages()[0])
+	id, err := m.AddEntity(in.ID, in.Name, in.Kind, lang, "agent")
 	if err != nil {
 		return nil, nil, err
 	}
 	if in.Description != "" {
-		if err := m.SetText(orStr(in.Lang, m.Languages()[0]), id, "description", in.Description, "agent"); err != nil {
+		if err := m.SetText(lang, id, "description", in.Description, "agent"); err != nil {
 			s.changed(in.Project, m)
 			return nil, nil, fmt.Errorf("%s added, its description not: %w", id, err)
 		}

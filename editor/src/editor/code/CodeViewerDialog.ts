@@ -1,5 +1,6 @@
 import { SourceCodeService } from "./SourceCodeService.js";
 import { iconSvg, type IconName } from "../../ui/icons.js";
+import { fileOfRef } from "../../model/realizations.js";
 
 /** An icon inside an `innerHTML` template. */
 const ic = (name: IconName): string => `<span class="ui-icon">${iconSvg(name)}</span>`;
@@ -160,30 +161,32 @@ export class CodeViewerDialog {
    * source" link (PLAN_20260928-2 step 4), which knows a node's line but has
    * no other way to jump to it.
    */
-  async openAt(codeRef: string, line: number, title?: string): Promise<void> {
-    await this.open(codeRef, title);
+  async openAt(ref: string, line: number, title?: string): Promise<void> {
+    await this.open(ref, title);
     const target = this.bodyEl.querySelector<HTMLElement>(`.semaps-code-line-num[data-line="${line}"]`);
     target?.parentElement?.scrollIntoView({ block: "center" });
     target?.parentElement?.classList.add("semaps-code-line-target");
   }
 
   /**
-   * Open the modal code viewer for a specific codeRef.
+   * Open the modal code viewer for a file `ref` (its `#..`/`:..` anchor, if
+   * any, is not part of the path and is ignored here; `openAt` jumps to a line).
    */
-  async open(codeRef: string, title?: string): Promise<void> {
+  async open(ref: string, title?: string): Promise<void> {
+    const path = fileOfRef(ref);
     this.isOpen = true;
-    this.currentPath = codeRef;
+    this.currentPath = path;
     this.currentCode = "";
 
     this.titleEl.textContent = title ? `Исходный код: ${title}` : "Исходный код";
-    this.pathBadgeEl.textContent = codeRef;
-    this.pathBadgeEl.title = codeRef;
-    this.langTagEl.textContent = SourceCodeService.getLanguageLabel(codeRef);
+    this.pathBadgeEl.textContent = path;
+    this.pathBadgeEl.title = path;
+    this.langTagEl.textContent = SourceCodeService.getLanguageLabel(path);
 
     this.bodyEl.innerHTML = `
       <div class="semaps-code-loading">
         <span style="font-size: 24px; animation: spin 1s linear infinite;">${ic("hourglass")}</span>
-        <span>Загрузка файла ${codeRef}...</span>
+        <span>Загрузка файла ${path}...</span>
       </div>
     `;
 
@@ -196,10 +199,10 @@ export class CodeViewerDialog {
     this.cardEl.style.margin = "";
 
     try {
-      const source = await SourceCodeService.fetchSource(codeRef);
+      const source = await SourceCodeService.fetchSource(path);
       this.currentCode = source;
 
-      const result = SourceCodeService.highlight(source, codeRef);
+      const result = SourceCodeService.highlight(source, path);
       this.bodyEl.innerHTML = result.html;
 
       const sizeKb = (new Blob([source]).size / 1024).toFixed(1);
@@ -215,7 +218,7 @@ export class CodeViewerDialog {
           <div class="semaps-code-error-title">Не удалось загрузить исходный код</div>
           <div class="semaps-code-error-msg">${err?.message || "Файл недоступен на сервере"}</div>
           <div style="font-size: 11px; color: #71717a; margin-top: 8px;">
-            Проверьте параметр запуска сервера <code>-root</code> и наличие файла <code>${codeRef}</code>
+            Проверьте параметр запуска сервера <code>-root</code> и наличие файла <code>${path}</code>
           </div>
         </div>
       `;

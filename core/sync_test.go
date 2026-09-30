@@ -84,6 +84,22 @@ func find(list []map[string]any, id string) map[string]any {
 	return nil
 }
 
+// realization is the code[] entry of an entity map: the one bound to a symbol
+// of the language, or, with an empty language, the first one; nil when none.
+func realization(e map[string]any, lang string) map[string]any {
+	list, _ := e["code"].([]any)
+	for _, c := range list {
+		if m, _ := c.(map[string]any); m != nil && (lang == "" || m["lang"] == lang) {
+			return m
+		}
+	}
+	return nil
+}
+
+// symbolOf and refOf are the symbol and the file of an entity's first realization.
+func symbolOf(e map[string]any) any { return realization(e, "")["symbol"] }
+func refOf(e map[string]any) any    { return realization(e, "")["ref"] }
+
 func sync(t *testing.T, ws string, f *Facts, opt SyncOptions) *SyncReport {
 	t.Helper()
 	rep, err := SyncWorkspace(ws, f, opt)
@@ -101,9 +117,9 @@ const (
 	adoptProject  = `{"id":"p","contractVersion":5,"sources":{"include":["src"]}}`
 	adoptEntities = `{
   "entities": [
-    {"id":"e_asm_onnx","name":"NeuroModFlowNet.ONNX","kind":"assembly","origin":"code","codeRef":"src/NeuroModFlowNet.ONNX/NeuroModFlowNet.ONNX.csproj"},
-    {"id":"e_x","name":"X","kind":"class","namespace":"N","codeRef":"src/NeuroModFlowNet.ONNX/Old/X.cs","note":"kept"},
-    {"id":"e_guard","name":"Guard","kind":"concept","origin":"authored","status":"planned"}
+    {"id":"e_asm_onnx","name":"NeuroModFlowNet.ONNX","kind":"assembly","origin":"code","code":[{"ref":"src/NeuroModFlowNet.ONNX/NeuroModFlowNet.ONNX.csproj"}]},
+    {"id":"e_x","name":"X","kind":"class","namespace":"N","code":[{"ref":"src/NeuroModFlowNet.ONNX/Old/X.cs"}],"note":"kept"},
+    {"id":"e_guard","kind":"concept","origin":"authored","status":"planned"}
   ]
 }`
 	adoptRelations = `{"contractVersion":5,"relations":[
@@ -189,23 +205,24 @@ func TestSyncFirstRunAdoptsHandMadeEntities(t *testing.T) {
 	v := load(t, dir)
 
 	asm := find(v.Entities, "e_asm_onnx")
-	if asm["symbol"] != "NeuroModFlowNet.ONNX" || asm["kind"] != "assembly" {
-		t.Errorf("assembly not adopted by codeRef+name: %v", asm)
+	if symbolOf(asm) != "NeuroModFlowNet.ONNX" || asm["kind"] != "assembly" {
+		t.Errorf("assembly not adopted by ref+name: %v", asm)
 	}
 	x := find(v.Entities, "e_x")
-	if x["symbol"] != "N.X" || x["origin"] != "code" || x["codeRef"] != "src/NeuroModFlowNet.ONNX/X.cs" || x["note"] != "kept" {
-		t.Errorf("class not adopted by namespace+name+kind, or a field lost: %v", x)
+	if r := realization(x, "csharp"); len(x["code"].([]any)) != 1 || r["symbol"] != "N.X" || r["ref"] != "src/NeuroModFlowNet.ONNX/X.cs" ||
+		x["origin"] != "code" || x["note"] != "kept" {
+		t.Errorf("class not adopted by namespace+name+kind (its hand-written file link becomes the realization), or a field lost: %v", x)
 	}
 	if find(v.Entities, "e_x_2") != nil || find(v.Entities, "e_assembly_neuromodflownet_onnx") != nil {
 		t.Error("an adopted entity was duplicated")
 	}
 
 	guard := find(v.Entities, "e_guard")
-	if guard["origin"] != "authored" || guard["kind"] != "concept" || guard["symbol"] != nil {
+	if guard["origin"] != "authored" || guard["kind"] != "concept" || guard["code"] != nil {
 		t.Errorf("authored entity touched: %v", guard)
 	}
 	guard2 := find(v.Entities, "e_guard_2")
-	if guard2 == nil || guard2["symbol"] != "N.Guard" || guard2["kind"] != "class" || guard2["status"] != "present" {
+	if guard2 == nil || symbolOf(guard2) != "N.Guard" || guard2["kind"] != "class" || guard2["status"] != "present" {
 		t.Fatalf("new entity for N.Guard: want e_guard_2, got %v", guard2)
 	}
 	if members, _ := guard2["members"].([]any); len(members) != 1 {
@@ -223,7 +240,7 @@ func TestSyncFirstRunAdoptsHandMadeEntities(t *testing.T) {
 		t.Fatalf("contains relation: %v", contains)
 	}
 	ev := contains["evidence"].([]any)[0].(map[string]any)
-	if ev["codeRef"] != "src/NeuroModFlowNet.ONNX/NeuroModFlowNet.ONNX.csproj" || ev["symbol"] != "NeuroModFlowNet.ONNX" {
+	if ev["lang"] != "csharp" || ev["ref"] != "src/NeuroModFlowNet.ONNX/NeuroModFlowNet.ONNX.csproj" || ev["symbol"] != "NeuroModFlowNet.ONNX" {
 		t.Errorf("evidence: %v", ev)
 	}
 	if find(v.Relations, "r_x_base_extends") == nil || find(v.Relations, "r_asm_onnx_guard_2_contains") == nil {
@@ -273,11 +290,11 @@ func TestSyncFirstRunAdoptsHandMadeEntities(t *testing.T) {
 // keeps nothing by name, and a changed name alone must not re-mint.
 func TestSyncMatchesBySymbolNotByName(t *testing.T) {
 	ws, dir := workspace(t, `{"id":"p","contractVersion":5}`, `{"entities":[
-    {"id":"e_legacy_name","name":"Legacy","kind":"class","origin":"code","symbol":"A.C","codeRef":"a/Old.cs"}]}`, "", "")
+    {"id":"e_legacy_name","name":"Legacy","kind":"class","origin":"code","code":[{"lang":"csharp","ref":"a/Old.cs","symbol":"A.C"}]}]}`, "", "")
 	rep := sync(t, ws, facts(t, `{"language":"csharp","root":".","symbols":[
     {"id":"A.C","kind":"type","nativeKind":"record","name":"C","namespace":"A","file":"a/C.cs"}],"edges":[]}`), SyncOptions{})
 	e := find(load(t, dir).Entities, "e_legacy_name")
-	if e["name"] != "Legacy" || e["kind"] != "class" || e["codeRef"] != "a/C.cs" || e["namespace"] != "A" {
+	if e["name"] != "Legacy" || e["kind"] != "class" || refOf(e) != "a/C.cs" || symbolOf(e) != "A.C" || e["namespace"] != "A" {
 		t.Errorf("entity: %v", e)
 	}
 	if len(rep.Added) != 0 {
@@ -378,7 +395,7 @@ func TestSyncRenameIsOnlyACandidate(t *testing.T) {
 
 func TestSyncConfirmedRenameKeepsID(t *testing.T) {
 	ws, dir := workspace(t, `{"id":"p","contractVersion":5}`, `{"entities":[
-    {"id":"e_old","name":"Old","kind":"class","origin":"code","symbol":"A.Old","codeRef":"a/F.cs"}]}`, "", "")
+    {"id":"e_old","name":"Old","kind":"class","origin":"code","code":[{"lang":"csharp","ref":"a/F.cs","symbol":"A.Old"}]}]}`, "", "")
 	next := `{"language":"csharp","root":".","symbols":[
     {"id":"A.New","kind":"type","nativeKind":"class","name":"New","namespace":"A","file":"a/F.cs"}],"edges":[]}`
 	if rep := sync(t, ws, facts(t, next), SyncOptions{}); len(rep.Renames) != 1 {
@@ -386,7 +403,7 @@ func TestSyncConfirmedRenameKeepsID(t *testing.T) {
 	}
 	// What the report tells the human to do: point the old entity at the new symbol.
 	writeFile(t, filepath.Join(dir, "entities.json"), `{"entities":[
-    {"id":"e_old","name":"New","kind":"class","origin":"code","namespace":"A","symbol":"A.New","codeRef":"a/F.cs"}]}`)
+    {"id":"e_old","name":"New","kind":"class","origin":"code","namespace":"A","code":[{"lang":"csharp","ref":"a/F.cs","symbol":"A.New"}]}]}`)
 	rep := sync(t, ws, facts(t, next), SyncOptions{DryRun: true})
 	if !rep.Empty() {
 		t.Errorf("after confirming: %+v", rep)
@@ -424,13 +441,13 @@ func TestSyncTypeScriptFileModuleAndClassOfOneName(t *testing.T) {
 	// A TS file module and its class share file and name; the hand entity's
 	// kind picks the class.
 	ws, dir := workspace(t, `{"id":"p","contractVersion":5}`, `{"entities":[
-    {"id":"e_canvas","name":"DiagramCanvas","kind":"class","codeRef":"src/DiagramCanvas.ts"}]}`, "", "")
+    {"id":"e_canvas","name":"DiagramCanvas","kind":"class","code":[{"ref":"src/DiagramCanvas.ts"}]}]}`, "", "")
 	sync(t, ws, facts(t, `{"language":"typescript","root":".","symbols":[
     {"id":"src/DiagramCanvas","kind":"module","nativeKind":"file","name":"DiagramCanvas","file":"src/DiagramCanvas.ts"},
     {"id":"src/DiagramCanvas#DiagramCanvas","kind":"type","nativeKind":"class","name":"DiagramCanvas","file":"src/DiagramCanvas.ts"}],
     "edges":[{"from":"src/DiagramCanvas","to":"src/DiagramCanvas#DiagramCanvas","kind":"contains"}]}`), SyncOptions{})
 	v := load(t, dir)
-	if find(v.Entities, "e_canvas")["symbol"] != "src/DiagramCanvas#DiagramCanvas" {
+	if symbolOf(find(v.Entities, "e_canvas")) != "src/DiagramCanvas#DiagramCanvas" || realization(find(v.Entities, "e_canvas"), "typescript") == nil {
 		t.Errorf("e_canvas: %v", find(v.Entities, "e_canvas"))
 	}
 	file := find(v.Entities, "e_file_src_diagramcanvas")
@@ -447,11 +464,11 @@ func TestSyncTypeScriptFileModuleAndClassOfOneName(t *testing.T) {
 // rules must see through that; kinds are compared as they are.
 func TestSyncAdoptsGenericsAndModifierKinds(t *testing.T) {
 	ws, dir := workspace(t, `{"id":"p","contractVersion":5}`, `{"entities":[
-    {"id":"e_runner","name":"IRunner<in TIn, out TOut>","kind":"interface","namespace":"N","codeRef":"src/IRunner.cs","origin":"code"},
-    {"id":"e_conv","name":"ConverterBase<TIn>","kind":"abstract-class","namespace":"N","codeRef":"src/Old/ConverterBase.cs","origin":"code"},
-    {"id":"e_nested","name":"Outer<T>","kind":"class","namespace":"N","codeRef":"src/Outer.cs","origin":"code"},
+    {"id":"e_runner","name":"IRunner<in TIn, out TOut>","kind":"interface","namespace":"N","code":[{"ref":"src/IRunner.cs"}],"origin":"code"},
+    {"id":"e_conv","name":"ConverterBase<TIn>","kind":"abstract-class","namespace":"N","code":[{"ref":"src/Old/ConverterBase.cs"}],"origin":"code"},
+    {"id":"e_nested","name":"Outer<T>","kind":"class","namespace":"N","code":[{"ref":"src/Outer.cs"}],"origin":"code"},
     {"id":"e_util","name":"Util","kind":"static-class","namespace":"N","origin":"code"},
-    {"id":"e_pt","name":"Point","kind":"record-struct","namespace":"N","codeRef":"src/Point.cs","origin":"code"}]}`, "", "")
+    {"id":"e_pt","name":"Point","kind":"record-struct","namespace":"N","code":[{"ref":"src/Point.cs"}],"origin":"code"}]}`, "", "")
 	rep := sync(t, ws, facts(t, `{"language":"csharp","root":".","symbols":[
     {"id":"N.ConverterBase`+"`"+`1","kind":"type","nativeKind":"abstract-class","name":"ConverterBase","namespace":"N","file":"src/ConverterBase.cs"},
     {"id":"N.IRunner`+"`"+`2","kind":"interface","nativeKind":"interface","name":"IRunner","namespace":"N","file":"src/IRunner.cs"},
@@ -468,12 +485,12 @@ func TestSyncAdoptsGenericsAndModifierKinds(t *testing.T) {
 		"e_runner": "N.IRunner`2",       // rule 1, generic name
 		"e_conv":   "N.ConverterBase`1", // rule 2: file moved, generic name, same kind
 		"e_nested": "N.Outer`1",         // rule 1, sealed-class
-		"e_util":   "N.Util",            // rule 2, no codeRef, same kind
+		"e_util":   "N.Util",            // rule 2, no file link, same kind
 		"e_pt":     "N.Point",
 	} {
 		e := find(v.Entities, id)
-		if e["symbol"] != want {
-			t.Errorf("%s: symbol %v, want %s", id, e["symbol"], want)
+		if symbolOf(e) != want {
+			t.Errorf("%s: symbol %v, want %s", id, symbolOf(e), want)
 		}
 	}
 	if e := find(v.Entities, "e_conv"); e["kind"] != "abstract-class" || e["name"] != "ConverterBase<TIn>" {
@@ -497,7 +514,7 @@ func TestSyncKindsAreNotCollapsed(t *testing.T) {
 		sync(t, ws, facts(t, `{"language":"csharp","root":".","symbols":[
     {"id":"N.Point","kind":"type","nativeKind":"`+nk+`","name":"Point","namespace":"N","file":"src/Point.cs"}],"edges":[]}`), SyncOptions{})
 		v := load(t, dir)
-		got := find(v.Entities, "e_pt")["symbol"] == "N.Point"
+		got := symbolOf(find(v.Entities, "e_pt")) == "N.Point"
 		if got != adopted {
 			t.Errorf("nativeKind %s: adopted=%v, want %v", nk, got, adopted)
 		}
@@ -747,8 +764,8 @@ func TestLegacyReferencesRelationBecomesMissing(t *testing.T) {
 	// are not confirmed by new facts, they should be marked as missing.
 	// This tests the fix for the bug where legacy relations would stay present forever.
 	ws, dir := workspace(t, adoptProject, `{"entities":[
-    {"id":"e_a","name":"A","kind":"class","origin":"code","symbol":"N.A","codeRef":"src/A.cs"},
-    {"id":"e_b","name":"B","kind":"class","origin":"code","symbol":"N.B","codeRef":"src/B.cs"}
+    {"id":"e_a","name":"A","kind":"class","origin":"code","code":[{"lang":"csharp","ref":"src/A.cs","symbol":"N.A"}]},
+    {"id":"e_b","name":"B","kind":"class","origin":"code","code":[{"lang":"csharp","ref":"src/B.cs","symbol":"N.B"}]}
   ]}`, `{"contractVersion":5,"relations":[
     {"id":"r_a_b_references","from":"e_a","to":"e_b","type":"references","origin":"code","status":"present"}
   ]}`, "")

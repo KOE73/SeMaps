@@ -51,7 +51,7 @@ export function openHelpDialog(): void {
   ]);
 
   const code = box("code", ["code", h.code], h.codeNote, [
-    el("div", { class: "help-coderef", text: `⟵ ${h.codeRef}` }),
+    el("div", { class: "help-coderef", text: `⟵ ${h.realizations}` }),
   ]);
 
   const body = el("div", { class: "help-map" }, [

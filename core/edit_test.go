@@ -20,13 +20,16 @@ func editWorkspace(t *testing.T) string {
 		"project.json":     `{"id":"p","contractVersion":5}`,
 		"../../kinds.json": `{"groups":[{"id":"t","name":{"ru":"т"},"kinds":[{"id":"group","name":{"ru":"группа"},"container":true}]}]}`,
 		"entities.json": `{"entities":[
-  {"id":"e_a","name":"A","kind":"class","origin":"code","symbol":"N.A"},
-  {"id":"e_b","name":"B","kind":"class","origin":"code","symbol":"N.B"},
-  {"id":"e_x","name":"X","kind":"app","origin":"authored"},
-  {"id":"e_core","name":"Core","kind":"group","origin":"authored"}]}`,
+  {"id":"e_a","name":"A","kind":"class","origin":"code","code":[{"lang":"csharp","symbol":"N.A"}]},
+  {"id":"e_b","name":"B","kind":"class","origin":"code","code":[{"lang":"csharp","symbol":"N.B"}]},
+  {"id":"e_x","kind":"app","origin":"authored"},
+  {"id":"e_core","kind":"group","origin":"authored"}]}`,
+		"text.ru.json": `{"contractVersion":5,"language":"ru","entries":{
+  "e_x":{"name":{"v":"X","at":"2026-09-24T00:00:00Z","origin":"authored"}},
+  "e_core":{"name":{"v":"Core","at":"2026-09-24T00:00:00Z","origin":"authored"}}}}`,
 		"relations.json": `{"contractVersion":5,"relations":[
   {"id":"r_a_b_items_item","from":"e_a","to":"e_b","type":"holds.many","origin":"code","status":"present",
-   "via":{"member":"items","path":["item"],"cardinality":"many","mutability":"mutable"}}]}`,
+   "evidence":[{"lang":"csharp","symbol":"N.A","via":{"member":"items","path":["item"],"cardinality":"many","mutability":"mutable"}}]}]}`,
 		"relation-types.json": `{"contractVersion":5,"relationTypes":[
   {"id":"holds.many","origin":"code","visibility":"visible"},
   {"id":"call","origin":"authored"}]}`,
@@ -119,8 +122,8 @@ func TestAddRelationMintsIDAndChecksEnds(t *testing.T) {
 	if last["origin"] != "authored" || last["type"] != "call" {
 		t.Fatalf("added: %v", last)
 	}
-	// The code relation kept its via.
-	if rels.Relations[0]["via"] == nil {
+	// The code relation kept its via, in its evidence.
+	if ev, _ := rels.Relations[0]["evidence"].([]any); len(ev) != 1 || ev[0].(map[string]any)["via"] == nil {
 		t.Fatal("via of the code relation is gone")
 	}
 }
@@ -173,17 +176,21 @@ func TestConfirmRenames(t *testing.T) {
 	id, _ := AddRelation(ws, "", "e_a", "e_x", "call")
 	refused(t, ConfirmRelationRename(ws, "", id, "m"), "no via")
 
-	var ents struct{ Entities []map[string]any }
+	var ents struct {
+		Entities []struct{ Code []map[string]any }
+	}
 	readAs(t, ws, "entities.json", &ents)
-	if ents.Entities[0]["symbol"] != "N.A2" {
-		t.Fatalf("symbol %v", ents.Entities[0]["symbol"])
+	if code := ents.Entities[0].Code; len(code) != 1 || code[0]["symbol"] != "N.A2" || code[0]["lang"] != "csharp" {
+		t.Fatalf("code %v", code)
 	}
 	var rels struct {
-		Relations []struct{ Via map[string]any }
+		Relations []struct {
+			Evidence []struct{ Via map[string]any }
+		}
 	}
 	readAs(t, ws, "relations.json", &rels)
-	if rels.Relations[0].Via["member"] != "entries" || rels.Relations[0].Via["path"] == nil {
-		t.Fatalf("via %v", rels.Relations[0].Via)
+	if via := rels.Relations[0].Evidence[0].Via; via["member"] != "entries" || via["path"] == nil {
+		t.Fatalf("via %v", via)
 	}
 }
 

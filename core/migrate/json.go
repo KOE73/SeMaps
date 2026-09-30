@@ -64,6 +64,15 @@ func (o *obj) rename(oldK, newK string) bool {
 	return true
 }
 
+// setFirst puts a key first; an existing key moves to the front with the new value.
+func (o *obj) setFirst(k string, v any) {
+	if o.has(k) {
+		o.del(k)
+	}
+	o.m[k] = v
+	o.keys = append([]string{k}, o.keys...)
+}
+
 // insertBefore puts a new key right before an existing one (append when the
 // anchor is absent). The key must be new.
 func (o *obj) insertBefore(anchor, k string, v any) {

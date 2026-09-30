@@ -12,7 +12,8 @@ func geomModel(t *testing.T) *Model {
 	}
 	m.SetCanvas(testCanvas(t))
 	ops := []Op{
-		modelOp("entity", "e_in", "", "", `{"id":"e_in","name":"In","kind":"subsystem","origin":"authored"}`),
+		modelOp("entity", "e_in", "", "", `{"id":"e_in","kind":"subsystem","origin":"authored"}`),
+		modelOp("text", "e_in", "", "ru", `{"name":{"v":"In","at":"2026-09-30T00:00:00Z","origin":"authored"}}`),
 		modelOp("placement", "e_in", "v_main", "", `{"entity":"e_in","parent":"e_core","x":100,"y":100,"width":200,"height":150}`),
 		modelOp("placement", "e_a", "v_main", "", `{"entity":"e_a","parent":"e_in","x":120,"y":140,"width":100,"height":40}`),
 		modelOp("placement", "e_b", "v_main", "", `{"entity":"e_b","parent":null,"x":600,"y":600}`),
@@ -156,8 +157,8 @@ func TestAddContainerNewOrExisting(t *testing.T) {
 		t.Fatalf("new container = %+v", got)
 	}
 	e := m.record("entity", id)
-	if e == nil || e.str("kind") != "group" || e.str("origin") != "authored" || e.str("status") != "present" || e.str("name") != "Storage" {
-		t.Fatalf("entity = %v", e)
+	if e == nil || e.str("kind") != "group" || e.str("origin") != "authored" || e.str("status") != "present" || has(e, "name") || m.EntityName(id) != "Storage" {
+		t.Fatalf("entity = %v, name %q", e, m.EntityName(id))
 	}
 	if len(rep.Touched) == 0 || rep.Touched[len(rep.Touched)-1] != "v_main#"+id {
 		t.Fatalf("touched = %v", rep.Touched)
@@ -172,7 +173,7 @@ func TestAddContainerNewOrExisting(t *testing.T) {
 		t.Fatal("a new container is appended")
 	}
 	// an existing entity of a container kind
-	if _, err := m.AddEntity("e_sub", "Sub", "subsystem", "agent"); err != nil {
+	if _, err := m.AddEntity("e_sub", "Sub", "subsystem", "", "agent"); err != nil {
 		t.Fatal(err)
 	}
 	if _, _, err := m.AddContainer("v_main", ContainerSpec{Entity: "e_sub", Rect: Rect{X: 900, Y: 0, Width: 200, Height: 200}}, true, "agent"); err != nil {

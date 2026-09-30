@@ -7,6 +7,7 @@ import "prismjs/components/prism-json.js";
 import "prismjs/components/prism-markdown.js";
 import "prismjs/components/prism-sql.js";
 import "prismjs/components/prism-bash.js";
+import { fileOfRef } from "../../model/realizations.js";
 
 export interface HighlightResult {
   readonly html: string;
@@ -34,20 +35,20 @@ export class SourceCodeService {
    * Check whether a source file is verified to exist on the server.
    * Returns true if verified, false if verified missing/directory, or undefined if not checked yet.
    */
-  static isFileAvailable(codeRef: string): boolean | undefined {
-    const cleanPath = codeRef.trim().replace(/^\/+/, "");
+  static isFileAvailable(ref: string): boolean | undefined {
+    const cleanPath = fileOfRef(ref).replace(/^\/+/, "");
     if (!cleanPath) return false;
     return this.availabilityCache.get(cleanPath);
   }
 
   /**
-   * Asynchronously validate a batch of code references against the server in the background.
+   * Asynchronously validate a batch of refs (a file, maybe with an anchor) against the server in the background.
    * Populates availabilityCache and returns true if any new status was established.
    */
-  static async validateCodeRefs(codeRefs: readonly string[]): Promise<boolean> {
+  static async validateRefs(refs: readonly string[]): Promise<boolean> {
     const toCheck: string[] = [];
-    for (const ref of codeRefs) {
-      const clean = ref.trim().replace(/^\/+/, "");
+    for (const ref of refs) {
+      const clean = fileOfRef(ref).replace(/^\/+/, "");
       if (clean && !this.availabilityCache.has(clean)) {
         toCheck.push(clean);
       }
@@ -88,8 +89,8 @@ export class SourceCodeService {
   /**
    * Fetch raw source code text by relative codebase path.
    */
-  static async fetchSource(codeRef: string): Promise<string> {
-    const cleanPath = codeRef.trim().replace(/^\/+/, "");
+  static async fetchSource(ref: string): Promise<string> {
+    const cleanPath = fileOfRef(ref).replace(/^\/+/, "");
     if (!cleanPath) throw new Error("Empty code reference");
 
     const cached = this.cache.get(cleanPath);
@@ -125,8 +126,8 @@ export class SourceCodeService {
   /**
    * Determine programming language name from file extension.
    */
-  static detectLanguage(codeRef: string): string {
-    const ext = codeRef.split(".").pop()?.toLowerCase() ?? "";
+  static detectLanguage(ref: string): string {
+    const ext = fileOfRef(ref).split(".").pop()?.toLowerCase() ?? "";
     switch (ext) {
       case "cs":
         return "csharp";
@@ -162,8 +163,8 @@ export class SourceCodeService {
   /**
    * Format language badge display name (e.g. "C#", "TypeScript").
    */
-  static getLanguageLabel(codeRef: string): string {
-    const lang = this.detectLanguage(codeRef);
+  static getLanguageLabel(ref: string): string {
+    const lang = this.detectLanguage(ref);
     switch (lang) {
       case "csharp":
         return "C#";
@@ -191,8 +192,8 @@ export class SourceCodeService {
   /**
    * Highlight code string with Prism and wrap in structured line numbers.
    */
-  static highlight(code: string, codeRef: string): HighlightResult {
-    const lang = this.detectLanguage(codeRef);
+  static highlight(code: string, ref: string): HighlightResult {
+    const lang = this.detectLanguage(ref);
     const grammar = Prism.languages[lang] ?? Prism.languages.clike ?? Prism.languages.markup ?? ({} as Prism.Grammar);
 
     const rawLines = code.replace(/\r\n/g, "\n").split("\n");
@@ -208,7 +209,7 @@ export class SourceCodeService {
 
     return {
       html: `<div class="semaps-code-lines">${lineElements.join("")}</div>`,
-      language: this.getLanguageLabel(codeRef),
+      language: this.getLanguageLabel(ref),
       lineCount,
     };
   }
@@ -216,9 +217,9 @@ export class SourceCodeService {
   /**
    * Load source code and format a compact snippet for rich tooltips.
    */
-  static async getPreview(codeRef: string, maxLines = 14): Promise<CodePreviewResult> {
-    const source = await this.fetchSource(codeRef);
-    const lang = this.detectLanguage(codeRef);
+  static async getPreview(ref: string, maxLines = 14): Promise<CodePreviewResult> {
+    const source = await this.fetchSource(ref);
+    const lang = this.detectLanguage(ref);
     const grammar = Prism.languages[lang] ?? Prism.languages.clike ?? Prism.languages.markup ?? ({} as Prism.Grammar);
 
     const allLines = source.replace(/\r\n/g, "\n").split("\n");
@@ -234,10 +235,10 @@ export class SourceCodeService {
     });
 
     return {
-      path: codeRef,
+      path: fileOfRef(ref),
       snippetHtml: `<div class="semaps-code-lines">${lineElements.join("")}</div>`,
       totalLines,
-      language: this.getLanguageLabel(codeRef),
+      language: this.getLanguageLabel(ref),
     };
   }
 }

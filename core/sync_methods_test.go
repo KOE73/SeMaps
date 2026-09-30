@@ -183,7 +183,7 @@ func TestSyncSecondPassMarksNothingMissingForRemovedMethod(t *testing.T) {
 	v := load(t, dir)
 	var x map[string]any
 	for _, e := range v.Entities {
-		if e["symbol"] == "N.X" {
+		if symbolOf(e) == "N.X" {
 			x = e
 		}
 	}

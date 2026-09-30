@@ -121,8 +121,8 @@ func (r *SyncReport) Print(w io.Writer) {
 	}
 	if len(r.Renames) > 0 {
 		fmt.Fprintln(w, "Переименование:")
-		fmt.Fprintln(w, "  Сущность: поставьте старой сущности `symbol` нового символа (и `name`, если имя сменилось).")
-		fmt.Fprintln(w, "  Членская связь: установите `via.member` старой связи на новое имя члена и повторите сверку.")
+		fmt.Fprintln(w, "  Сущность: поставьте старой сущности в code[] `symbol` нового символа (и `name`, если имя сменилось).")
+		fmt.Fprintln(w, "  Членская связь: установите `via.member` в evidence[] старой связи на новое имя члена и повторите сверку.")
 		fmt.Fprintln(w, "  Не переименование — повторите с --no-renames.")
 	}
 }
@@ -233,7 +233,7 @@ func Sync(model *Model, facts *Facts, opt SyncOptions) (*SyncReport, error) {
 
 	// ------------------------------------------------ registry must be sane
 	taken := map[string]bool{}   // every entity id, any origin
-	bySymbol := map[string]int{} // symbol -> index, non-authored only
+	bySymbol := map[string]int{} // symbol of this language's realization -> index, non-authored only
 	for i, e := range ents.items {
 		id := e.str("id")
 		if id == "" {
@@ -248,9 +248,21 @@ func Sync(model *Model, facts *Facts, opt SyncOptions) (*SyncReport, error) {
 		if e.str("origin") == "authored" {
 			continue
 		}
-		if s := e.str("symbol"); s != "" {
+		// One realization per entity per language (CONTRACT §3): the run of
+		// this facts' language sees only the entry of its own language.
+		langs := map[string]bool{}
+		for _, c := range entries(e, "code") {
+			if l := c.str("lang"); l != "" {
+				if langs[l] {
+					rep.Broken = append(rep.Broken, fmt.Sprintf("%s: в code[] два элемента языка %s", id, l))
+				}
+				langs[l] = true
+			}
+		}
+		if k := entryFor(entries(e, "code"), facts.Language); k >= 0 {
+			s := entries(e, "code")[k].str("symbol")
 			if j, dup := bySymbol[s]; dup {
-				rep.Broken = append(rep.Broken, fmt.Sprintf("%s и %s: у обеих symbol %s", ents.items[j].str("id"), id, s))
+				rep.Broken = append(rep.Broken, fmt.Sprintf("%s и %s: у обеих symbol %s (%s)", ents.items[j].str("id"), id, s, facts.Language))
 				continue
 			}
 			bySymbol[s] = i
@@ -280,9 +292,10 @@ func Sync(model *Model, facts *Facts, opt SyncOptions) (*SyncReport, error) {
 	}
 	held := map[int]bool{}       // entities waiting for a human
 	heldSym := map[string]bool{} // symbols waiting for a human
+	lang := facts.Language
 	adopt(ents.items, symbols, order, match, matched, held, heldSym, rep)
 	if !opt.NoRenames {
-		renames(ents.items, symbols, order, match, matched, held, heldSym, rep)
+		renames(ents.items, symbols, order, match, matched, held, heldSym, lang, rep)
 	}
 
 	// ------------------------------------------------ apply to entities
@@ -294,14 +307,14 @@ func Sync(model *Model, facts *Facts, opt SyncOptions) (*SyncReport, error) {
 		}
 		e := ents.items[i]
 		inCode[e.str("id")] = true
-		if msg := updateEntity(e, symbols[sid]); msg != "" {
+		if msg := updateEntity(e, symbols[sid], lang); msg != "" {
 			rep.Changed = append(rep.Changed, msg)
 			ents.dirty = true
 		}
 	}
 	gone := map[string]bool{}
 	for i, e := range ents.items {
-		if !managed(e) || held[i] {
+		if !managed(e, lang) || held[i] {
 			continue
 		}
 		if _, ok := matched[i]; ok {
@@ -329,10 +342,7 @@ func Sync(model *Model, facts *Facts, opt SyncOptions) (*SyncReport, error) {
 		if s.Namespace != "" {
 			e.set("namespace", s.Namespace)
 		}
-		if s.File != "" { // an external symbol has no file (ADR_20260927-4)
-			e.set("codeRef", s.File)
-		}
-		e.set("symbol", s.ID)
+		e.set("code", []*object{codeEntry(lang, s)}) // an external symbol has no file, so no ref (ADR_20260927-4)
 		if len(s.Members) > 0 {
 			e.vals["members"] = s.Members
 			e.keys = append(e.keys, "members")
@@ -392,14 +402,10 @@ func Sync(model *Model, facts *Facts, opt SyncOptions) (*SyncReport, error) {
 						r.set("status", "present")
 						changes = append(changes, "status")
 					}
-					// Update via
-					existingViaJSON, hasVia := r.vals["via"]
-					newViaJSON := encodeJSON(edge.Via)
-					if !hasVia || compactJSON(existingViaJSON) != compactJSON(newViaJSON) {
-						r.set("via", edge.Via)
-						if hasVia {
-							changes = append(changes, "via")
-						}
+					// Update the member signature in the evidence of this language
+					hadVia := relationVia(r) != nil
+					if putVia(r, lang, fromSym, edge.Via) {
+						changes = append(changes, map[bool]string{true: "via", false: "evidence"}[hadVia])
 					}
 					if len(changes) > 0 {
 						rels.dirty = true
@@ -417,8 +423,7 @@ func Sync(model *Model, facts *Facts, opt SyncOptions) (*SyncReport, error) {
 			r.set("type", relType)
 			r.set("origin", "code")
 			r.set("status", "present")
-			r.set("via", edge.Via)
-			r.set("evidence", evidenceOf(fromSym))
+			r.set("evidence", []*object{evidenceEntry(lang, fromSym, edge.Via)})
 			rels.items = append(rels.items, r)
 			rels.dirty = true
 			confirmed[len(rels.items)-1] = true
@@ -459,7 +464,7 @@ func Sync(model *Model, facts *Facts, opt SyncOptions) (*SyncReport, error) {
 			r.set("type", edge.Kind)
 			r.set("origin", "code")
 			r.set("status", "present")
-			r.set("evidence", evidenceOf(fromSym))
+			r.set("evidence", []*object{evidenceEntry(lang, fromSym, nil)})
 			rels.items = append(rels.items, r)
 			rels.dirty = true
 			confirmed[len(rels.items)-1] = true
@@ -495,12 +500,8 @@ func Sync(model *Model, facts *Facts, opt SyncOptions) (*SyncReport, error) {
 				continue
 			}
 			// This is a missing member relation
-			via, hasVia := r.vals["via"]
-			if !hasVia || len(via) == 0 || string(via) == "null" {
-				continue
-			}
-			var v Via
-			if err := json.Unmarshal(via, &v); err != nil {
+			v := relationVia(r)
+			if v == nil {
 				continue
 			}
 			path := strings.Join(v.Path, ",")
@@ -518,12 +519,8 @@ func Sync(model *Model, facts *Facts, opt SyncOptions) (*SyncReport, error) {
 				continue
 			}
 			from, to := r.str("from"), r.str("to")
-			via, hasVia := r.vals["via"]
-			if !hasVia || len(via) == 0 || string(via) == "null" {
-				continue
-			}
-			var v Via
-			if err := json.Unmarshal(via, &v); err != nil {
+			v := relationVia(r)
+			if v == nil {
 				continue
 			}
 			path := strings.Join(v.Path, ",")
@@ -538,11 +535,8 @@ func Sync(model *Model, facts *Facts, opt SyncOptions) (*SyncReport, error) {
 				// Potential rename: same (from, to, path, type) but different member name
 				for _, mi := range missingIndices {
 					r := rels.items[mi]
-					via, _ := r.vals["via"]
-					var v Via
-					json.Unmarshal(via, &v)
 					memberRenameHolds[mi] = true
-					oldMember := v.Member
+					oldMember := relationVia(r).Member
 					for _, newMember := range newMembers[key] {
 						if oldMember != newMember {
 							rep.Renames = append(rep.Renames, fmt.Sprintf("%s (%s) → %s", r.str("id"), oldMember, newMember))
@@ -685,19 +679,28 @@ func SyncWorkspace(workspace string, facts *Facts, opt SyncOptions) (*SyncReport
 	return rep, err
 }
 
-// managed: an entity sync answers for — `origin: code`, or adopted earlier.
-// Authored entities and hand-made ones without origin that matched nothing
-// are not sync's business.
-func managed(e *object) bool {
-	origin := e.str("origin")
-	return origin != "authored" && (origin == "code" || e.str("symbol") != "")
+// managed: an entity this run answers for — one realized in the facts'
+// language (its `code[]` has an entry of that language bound to a symbol), or
+// `origin: code` with no symbol bound anywhere. Authored entities, entities
+// realized only in another language, and hand-made ones without origin that
+// matched nothing are not this run's business (ADR_20260930-4).
+func managed(e *object, lang string) bool {
+	if e.str("origin") == "authored" {
+		return false
+	}
+	list := entries(e, "code")
+	if entryFor(list, lang) >= 0 {
+		return true
+	}
+	return e.str("origin") == "code" && !hasBound(list)
 }
 
-// adopt matches entities made without sync (no `symbol`) to symbols, so that
-// a first run keeps their ids instead of minting duplicates. Two rules, in
-// order; each must be unique both ways, otherwise both sides are held:
+// adopt matches entities made without sync (no realization bound to a symbol)
+// to symbols, so that a first run keeps their ids instead of minting
+// duplicates. Two rules, in order; each must be unique both ways, otherwise
+// both sides are held:
 //
-//  1. same file (codeRef without its #/: anchor) and same name; several
+//  1. same file (a `ref` of code[] without its #/: anchor) and same name; several
 //     symbols there (a TS file module and its class) are narrowed by kind;
 //  2. same namespace, same name and the same kind family.
 //
@@ -716,7 +719,7 @@ func adopt(items []*object, symbols map[string]Symbol, order []string,
 	rules := []rule{
 		{
 			entityKey: func(e *object) string {
-				if f := codeRefFile(e.str("codeRef")); f != "" {
+				if f := refFile(firstRef(entries(e, "code"))); f != "" {
 					return f + "\x00" + baseName(e.str("name"))
 				}
 				return ""
@@ -749,7 +752,7 @@ func adopt(items []*object, symbols map[string]Symbol, order []string,
 		claims := map[string]int{}
 		var candidates []int
 		for i, e := range items {
-			if e.str("origin") == "authored" || e.str("symbol") != "" || e.str("id") == "" || held[i] {
+			if e.str("origin") == "authored" || hasBound(entries(e, "code")) || e.str("id") == "" || held[i] {
 				continue
 			}
 			if _, ok := matched[i]; ok {
@@ -803,7 +806,7 @@ func adopt(items []*object, symbols map[string]Symbol, order []string,
 // file and kind. Every such pair is only a candidate: held entities are
 // neither marked missing, held symbols are not minted, until a human decides.
 func renames(items []*object, symbols map[string]Symbol, order []string,
-	match map[string]int, matched map[int]string, held map[int]bool, heldSym map[string]bool, rep *SyncReport) {
+	match map[string]int, matched map[int]string, held map[int]bool, heldSym map[string]bool, lang string, rep *SyncReport) {
 
 	type group struct {
 		ents []int
@@ -817,13 +820,13 @@ func renames(items []*object, symbols map[string]Symbol, order []string,
 		return groups[k]
 	}
 	for i, e := range items {
-		if !managed(e) || held[i] || e.str("status") == "missing" {
+		if !managed(e, lang) || held[i] || e.str("status") == "missing" {
 			continue
 		}
 		if _, ok := matched[i]; ok {
 			continue
 		}
-		if f := codeRefFile(e.str("codeRef")); f != "" {
+		if f := refFile(entityRef(e, lang)); f != "" {
 			g := at(f + "\x00" + normKind(e.str("kind")))
 			g.ents = append(g.ents, i)
 		}
@@ -859,13 +862,34 @@ func renames(items []*object, symbols map[string]Symbol, order []string,
 }
 
 // updateEntity brings a matched entity in line with its symbol. id, name and
-// kind are the human's once the entity exists; namespace, codeRef, members
-// and status follow the code. Returns a report line, or "" if nothing changed.
-func updateEntity(e *object, s Symbol) string {
+// kind are the human's once the entity exists; namespace, the realization of
+// this language in code[] (lang, ref, symbol), members and status follow the
+// code. Returns a report line, or "" if nothing changed.
+func updateEntity(e *object, s Symbol, lang string) string {
 	var changes []string
-	adopted := e.str("symbol") == ""
-	if e.str("symbol") != s.ID {
-		e.set("symbol", s.ID)
+	list := entries(e, "code")
+	k := entryFor(list, lang)
+	adopted := k < 0
+	if adopted {
+		// The hand-written link to a file (a `ref` only) becomes the realization,
+		// preferring the one that names the symbol's own file; none: a new entry.
+		for i, c := range list {
+			if c.str("symbol") == "" && c.str("lang") == "" && (k < 0 || refFile(c.str("ref")) == s.File) {
+				k = i
+			}
+		}
+		if k < 0 {
+			list = append(list, newObject())
+			k = len(list) - 1
+		}
+	}
+	old, _ := list[k].MarshalJSON()
+	setCodeEntry(list[k], lang, s)
+	if now, _ := list[k].MarshalJSON(); adopted || compactJSON(old) != compactJSON(now) {
+		setEntries(e, "code", list) // written only when it changed: a rewrite would reformat the file's own bytes
+		if !adopted {
+			changes = append(changes, "code")
+		}
 	}
 	if e.str("origin") != "code" {
 		e.set("origin", "code")
@@ -878,14 +902,6 @@ func updateEntity(e *object, s Symbol) string {
 			e.set("namespace", s.Namespace)
 		}
 		changes = append(changes, "namespace")
-	}
-	if e.str("codeRef") != s.File {
-		if s.File == "" {
-			e.del("codeRef")
-		} else {
-			e.set("codeRef", s.File)
-		}
-		changes = append(changes, "codeRef")
 	}
 	if len(s.Members) > 0 {
 		if raw, ok := e.vals["members"]; !ok || compactJSON(raw) != compactJSON(s.Members) {
@@ -949,22 +965,6 @@ func included(file string, include []string) bool {
 	return false
 }
 
-// evidenceOf is the basis of a relation written from the symbol `from`. An
-// external symbol has no file, so only its symbol id is the basis.
-func evidenceOf(from Symbol) []map[string]string {
-	if from.File == "" {
-		return []map[string]string{{"symbol": from.ID}}
-	}
-	return []map[string]string{{"codeRef": from.File, "symbol": from.ID}}
-}
-
-func codeRefFile(ref string) string {
-	if i := strings.IndexAny(ref, "#:"); i >= 0 {
-		return ref[:i]
-	}
-	return ref
-}
-
 func relationType(r *object) string {
 	if t := r.str("type"); t != "" {
 		return t
@@ -977,18 +977,13 @@ func triple(from, to, kind string) string { return from + "\x00" + to + "\x00" +
 // relationKey returns the identification key for any relation: either triple
 // (from, to, type) for organic edges or member key for member relations.
 func relationKey(r *object) string {
-	via, ok := r.vals["via"]
-	if !ok || len(via) == 0 || string(via) == "null" {
+	v := relationVia(r)
+	if v == nil {
 		// Organic relation
 		return triple(r.str("from"), r.str("to"), relationType(r))
 	}
 	// Member relation: key is (from, to, family, via.member, via.path)
-	var v Via
-	if err := json.Unmarshal(via, &v); err != nil {
-		// Malformed via; treat as organic for ordering
-		return triple(r.str("from"), r.str("to"), relationType(r))
-	}
-	return memberRelationKey(r.str("from"), r.str("to"), relationType(r), &v)
+	return memberRelationKey(r.str("from"), r.str("to"), relationType(r), v)
 }
 
 // memberRelationKey creates the identification key for a member relation:

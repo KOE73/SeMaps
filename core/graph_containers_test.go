@@ -75,9 +75,9 @@ func TestBuildGraphContainersFromContains(t *testing.T) {
 // for a group entity — a container of no code at all.
 func TestBuildGraphContainersFromAuthoredRelation(t *testing.T) {
 	m := graphModel(t, `{"entities":[
-		{"id":"e_grp","name":"Frontend","kind":"group","origin":"authored","status":"present"},
-		{"id":"e_ui","name":"Ui","kind":"component","origin":"authored","status":"present"},
-		{"id":"e_x","name":"X","kind":"class","origin":"code","status":"present","symbol":"A.X"}]}`,
+		{"id":"e_grp","kind":"group","origin":"authored","status":"present"},
+		{"id":"e_ui","kind":"component","origin":"authored","status":"present"},
+		{"id":"e_x","name":"X","kind":"class","origin":"code","status":"present","code":[{"lang":"csharp","symbol":"A.X"}]}]}`,
 		`{"relations":[
 		{"id":"r_grp_ui_contains","from":"e_grp","to":"e_ui","type":"contains","origin":"authored"},
 		{"id":"r_ui_x_contains","from":"e_ui","to":"e_x","type":"contains","origin":"authored"},

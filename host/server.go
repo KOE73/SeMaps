@@ -1,9 +1,9 @@
 // The SeMaps host: serves the editor bundle, a workspace of models, and the
-// source tree that `codeRef` points into. Three roots, kept apart on purpose:
+// source tree that the `ref` of `code[]` points into. Three roots, kept apart on purpose:
 //
 //   - the tool itself: `app/` and `defaults/`, embedded into the binary;
 //   - the workspace: projects, and any override of the defaults;
-//   - the source root: code, read-only, for the code viewer and codeRef checks.
+//   - the source root: code, read-only, for the code viewer and the code[].ref checks.
 //
 // Run with no arguments from anywhere inside a project: the workspace and the
 // source root are found by walking up from the current directory.
@@ -240,10 +240,10 @@ func main() {
 
 	var port int
 	var workspaceDir, sourceDir string
-	var noBrowser bool
+	var noBrowser, dropUntyped bool
 	flag.IntVar(&port, "port", 8777, "Port to listen on; the next free one is taken if busy")
 	flag.StringVar(&workspaceDir, "workspace", "", "Workspace directory (default: found upward from the current directory)")
-	flag.StringVar(&sourceDir, "source-root", "", "Directory codeRef paths resolve against (default: the repository root above the workspace)")
+	flag.StringVar(&sourceDir, "source-root", "", "Directory the code[].ref paths resolve against (default: the repository root above the workspace)")
 	var here bool
 	flag.BoolVar(&noBrowser, "no-browser", false, "Do not open a browser")
 	flag.BoolVar(&here, "here", false, "Run the server in this console instead of a new window")
@@ -260,6 +260,7 @@ func main() {
 	}
 	if migrateMode {
 		flag.BoolVar(&sync.dryRun, "dry-run", false, "Report only, write nothing")
+		flag.BoolVar(&dropUntyped, "drop-untyped-styles", false, "Also drop the styles of the workspace styles.json that name no type (forKinds); the views that named them lose the styleId, the report says which")
 	}
 	if syncMode {
 		flag.StringVar(&sync.facts, "facts", "", "Extractor facts (EXTRACTOR.md §2); `-` reads stdin. Default: run the extractors of the .semaps file")
@@ -269,7 +270,7 @@ func main() {
 		flag.BoolVar(&sync.noRenames, "no-renames", false, "Treat rename candidates as one entity gone and one new")
 	}
 	flag.Usage = func() {
-		fmt.Fprintln(os.Stderr, "usage: semaps [flags] [dir | file.semaps]\n       semaps check [flags] [dir | file.semaps]\n       semaps migrate [--dry-run] [dir | file.semaps]\n       semaps sync [--extractor <id>] [--run <id> | --facts <file.json>] [flags] [dir | file.semaps]\n       semaps extract [--extractor <id>] [dir | file.semaps]\n       semaps doctor [dir | file.semaps]\n       semaps mcp [--project <id>] [dir | file.semaps]\n\nWith no arguments, finds a *.semaps project file upward from the current directory.\n`check` reports stale texts, views without an axis, broken codeRef and the like;\nexit code 1 when anything is found.\n`sync` reconciles entities.json and relations.json with extractor facts; without\n--facts it runs the extractors listed in the .semaps file. `extract` only runs them;\n`doctor` shows which extractors and runtimes are found;\n`migrate` rewrites the workspace of a project of an older contract to the current one, in place,\nand prints what it did and what a human must decide (idempotent; --dry-run writes nothing);\n`mcp` serves the registry as MCP tools on stdio (docs/API.md §6). Flags go\nbefore the project argument. `semaps sync --help` lists its flags.")
+		fmt.Fprintln(os.Stderr, "usage: semaps [flags] [dir | file.semaps]\n       semaps check [flags] [dir | file.semaps]\n       semaps migrate [--dry-run] [--drop-untyped-styles] [dir | file.semaps]\n       semaps sync [--extractor <id>] [--run <id> | --facts <file.json>] [flags] [dir | file.semaps]\n       semaps extract [--extractor <id>] [dir | file.semaps]\n       semaps doctor [dir | file.semaps]\n       semaps mcp [--project <id>] [dir | file.semaps]\n\nWith no arguments, finds a *.semaps project file upward from the current directory.\n`check` reports stale texts, views without an axis, broken code[].ref and the like;\nexit code 1 when anything is found.\n`sync` reconciles entities.json and relations.json with extractor facts; without\n--facts it runs the extractors listed in the .semaps file. `extract` only runs them;\n`doctor` shows which extractors and runtimes are found;\n`migrate` rewrites the workspace of a project of an older contract to the current one, in place,\nand prints what it did and what a human must decide (idempotent; --dry-run writes nothing);\n`mcp` serves the registry as MCP tools on stdio (docs/API.md §6). Flags go\nbefore the project argument. `semaps sync --help` lists its flags.")
 		flag.PrintDefaults()
 	}
 	flag.Parse()
@@ -350,7 +351,7 @@ func main() {
 	}
 	if migrateMode {
 		fmt.Printf("  workspace:   %s\n\n", absWorkspace)
-		os.Exit(runMigrate(os.Stdout, absWorkspace, sync.dryRun))
+		os.Exit(runMigrate(os.Stdout, absWorkspace, sync.dryRun, dropUntyped, proj.Extractors))
 	}
 	if doctorMode {
 		os.Exit(runDoctor(os.Stdout, proj))

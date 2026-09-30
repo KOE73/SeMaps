@@ -141,9 +141,13 @@ When working with the registry files directly (not recommended for agents; usefu
      `languages`, `sources.include`; optional `subtitle`, `icon`, `theme`, `order` for the catalogue.
    - `entities.json`: `e_` ids, `kind` (a kind of the dictionary — MCP `get_kinds`; the project's
      own kinds go into `<workspace>/kinds.json`, which adds to the tool's dictionary), `origin: code`
-     for anything read from the code, and `codeRef` relative to `source_root`. With an extractor for
-     the language, let `semaps sync` write it (see below) instead. A container (a subsystem, a
-     layer, a group) is an entity of a container kind, not a separate file.
+     and the `name` of the code for anything read from the code, and `code: [{lang, ref, symbol}]`
+     with `ref` relative to `source_root` (a hand link to a file is `code: [{ref}]`). With an
+     extractor for the language, let `semaps sync` write it (see below) instead. A container (a
+     subsystem, a layer, a group) is an entity of a container kind, not a separate file. An entity
+     you draw is `origin: authored` and has **no** `name` here: its name is a `name` text under its
+     id in `text.<lang>.json` (through MCP `add_entity`, or `set_text` with `field: name`; the id
+     never changes, the name may).
    - `relations.json` + `relation-types.json`: every `type` used must be declared in
      `relation-types.json`; its name, description and style belong to the dictionary
      (`relationGroups` of `kinds.json`).
@@ -229,18 +233,22 @@ report, write. `semaps extract` only runs the extractors and prints each run's i
   (`--facts -` reads stdin); keep such files out of the workspace and out of git.
 - Only symbols under `project.json → sources.include` enter the project.
 - The first run **adopts** entities you already have (for example the assemblies from the
-  section above): same `codeRef` and `name`, or same `namespace`, `name` and `kind`. Generic
-  parameter lists in names (`IRunner<in TIn, out TOut>`) and leading modifiers in kinds
-  (`class` vs `abstract-class`) do not get in the way; compound kinds stay whole
-  (`struct` does not adopt `record-struct`). They keep their ids, names and kinds and get a
-  `symbol` field — that is the key for every later run; do not remove it.
-  An entity that fits several symbols (or the reverse) is reported as `неоднозначно`: set its
-  `symbol` by hand.
+  section above): same file (`ref` of its `code[]`) and `name`, or same `namespace`, `name` and
+  `kind`. Generic parameter lists in names (`IRunner<in TIn, out TOut>`) and leading modifiers in
+  kinds (`class` vs `abstract-class`) do not get in the way; compound kinds stay whole
+  (`struct` does not adopt `record-struct`). They keep their ids, names and kinds, and their
+  `code[]` entry gets the run's `lang` and the `symbol` — that is the key for every later run; do
+  not remove it. An entity that fits several symbols (or the reverse) is reported as `неоднозначно`:
+  set the `symbol` of its `code[]` entry by hand.
+- A run reconciles **one** realization per entity: the `code[]` entry whose `lang` is the facts'
+  language ([ADR_20260930-4](adr/ADR_20260930-4_contract_code-shape-now-multi-language-later.md)). An
+  entity realized only in another language is not touched by it, and a second language is not bound
+  to an existing entity by sync — put the entry into its `code[]` yourself.
 - `authored` entities, texts and views are never written. A class gone from the code gets
   `status: missing`, never deleted.
 - `переименование?` in the report: an entity vanished and a new symbol of the same kind
-  appeared in the same file. Nothing is decided. If it is a rename, set the old entity's
-  `symbol` to the new symbol id (and `name`, if you want) and run again; if not, run with
+  appeared in the same file. Nothing is decided. If it is a rename, set the `symbol` of the old
+  entity's `code[]` entry to the new symbol id (and `name`, if you want) and run again; if not, run with
   `--no-renames`. Decide with the human when the entity sits on views.
 - `extends`, `implements`, `contains`, `references` become relations (`origin: code`) and their
   types are added to `relation-types.json`. Give each new type a name in `text.<lang>.json`
@@ -362,40 +370,63 @@ file of the project (`views/…`, `project.json`, `entities.json`, `relations.js
 
 ## Moving a workspace to the current contract: `semaps migrate`
 
-The loader reads only the current shape (contract 5). A workspace written for contract 3 — a
-`project.json` below 5, views with `zones`/`nodes`, a `containers.json`, `c_`/`z_` text keys,
-`kinds` in `styles.json`, `zone` in `canvas.json` — is refused with an error that names the file
-and the field, and `semaps check` says the same. The way out is one command, run from the
-consuming repo:
+The loader reads only the current shape (contract 5, with the code shape of
+[ADR_20260930-4](adr/ADR_20260930-4_contract_code-shape-now-multi-language-later.md) and the name shape
+of [ADR_20260930-5](adr/ADR_20260930-5_contract_authored-entity-name-is-text.md)). A workspace written for
+contract 3 — a `project.json` below 5, views with `zones`/`nodes`, a `containers.json`, `c_`/`z_` text
+keys, `kinds` in `styles.json`, `zone` in `canvas.json` — or a contract-5 one in the earlier form — a
+`codeRef`/`symbol` on an entity, a `via` on a relation, the `name` of an authored entity in
+`entities.json` — is refused with an error that names the file and the field, and `semaps check` says
+the same. The way out is one command, run from the consuming repo:
 
 ```
 semaps migrate --dry-run <name>.semaps   # what would be done; writes nothing, exit 1 when there is something
 semaps migrate <name>.semaps             # rewrites the workspace files in place
+semaps migrate --drop-untyped-styles <name>.semaps   # the same, and drops the styles that name no type
 ```
 
 It rewrites **in place**, all or nothing (every new content is computed first), and is idempotent:
 run again, it reports «Уже контракт v5». Commit the result as one change, apart from other work.
 What it does:
 
-- a **zone** of a view becomes an authored **entity of kind `group`** (the name from the
-  `z_`/`c_` text, else from the id), and the view's `zones` and `nodes` become one `placements`
-  array with `parent`; the text keys `z_`/`c_` are removed (a name in another language is listed:
-  an entity's name is not translated);
+- a **zone** of a view becomes an authored **entity of kind `group`**, and the view's `zones` and
+  `nodes` become one `placements` array with `parent`; the text keys `z_`/`c_` are removed. The name of
+  the zone (the container's, if the zone shows one) goes to the entity's `name` **text in every
+  language** that has one, with its provenance — nothing is lost by language; a zone nobody names is
+  named by the tail of its id, in the main language, and listed;
 - `styleId` `zone.<colour>`/`container.<colour>[.dashed]` becomes an `override` with the colours of the
   old style definition (the workspace's, else the tool's old built-in one); other `styleId`s stay;
-- an entry of `containers.json` becomes a `group` entity, its `parent` a `contains` relation, and
-  the file is removed. Its `match` rules, `axis` and `theme` are **not converted** — they are
-  printed in the report;
+- a container of `containers.json` **that a zone shows** becomes the group entity of that zone, its
+  `parent` a `contains` relation; **a container no view shows gets no entity**. The file is removed;
+  its entries and their `match` rules, `axis` and `theme` are **not converted** — they are printed in the
+  report;
+- **realizations in code:** an entity's `codeRef` + `symbol` become `code: [{lang, ref, symbol}]`, a
+  relation's `via` and `evidence[].codeRef` become `evidence: [{lang, ref, symbol, via}]` (a `line`
+  becomes the anchor `:N` of the `ref`). The `lang` is the language of the project's extractor in the
+  `.semaps` file when all extractors of that project are of one language; otherwise migrate **stops and
+  asks** — it names the entries and writes nothing; add the extractor with its language to the file and
+  run again. A `codeRef` alone (a file link) needs no language;
+- **names:** the `name` of an `authored` entity leaves `entities.json` and becomes its `name` text in the
+  main language of the project (`languages[0]`; provenance `authored`, `at` — the time of the run); a
+  text catalogue that does not exist yet is made. A `name` text under the id of an entity from code
+  that only repeats its name word for word is dead (the name of such an entity is the code's) and is
+  removed; one that says something else stays, and `semaps check` lists it («лишнее имя»);
 - `styles.json` of the workspace: `kinds` → `forKinds`, container styles get `appliesTo: container`,
-  `default.zone` → `default.container`; styles that have no `forKinds` are kept and listed as «без
-  типа» (a type is never invented — assign one, or delete the style); `canvas.json`: `zone` →
-  `container`; a `styleId` on a relation type is dropped and named;
+  `default.zone` → `default.container`; a style **without `forKinds` whose id a shipped default has is
+  dropped — the default wins** (the workspace `styles.json` replaces the library whole, so what stays in it
+  hides the default of its id); the other styles that have no `forKinds` are kept and listed as «без
+  типа» (a type is never invented — assign one, or delete the style). **`--drop-untyped-styles`** drops
+  them too: the placements and edges of the views that named them lose the `styleId`, and the report
+  lists which; a `styles.json` left without any style is removed, so that the shipped library applies;
+  `canvas.json`: `zone` → `container`; a `styleId` on a relation type is dropped and named;
 - `contractVersion` goes to 5 in every file that has one.
 
-The report ends with «Решает человек»: the `match` rules to turn into `contains` relations (or drop),
-names lost in other languages, styles without a type. Then run `semaps check`: entity kinds and relation
-types outside the dictionary are listed («не из словаря»); add the project's own to
-`<workspace>/kinds.json`. Do not edit `contractVersion` by hand instead of migrating.
+The report ends with «Решает человек»: the `match` rules and unplaced containers of `containers.json`, styles
+without a type (or the placements that lost a dropped style), zones nobody names. Then run `semaps
+check`: entity kinds and relation types outside the dictionary are listed («не из словаря»); add the
+project's own to `<workspace>/kinds.json`; two languages with the same name both `authored` are listed as
+`расхождение` — mark one as translated from the other (§ «Two languages»). Do not edit `contractVersion` by
+hand instead of migrating.
 
 ## Traps
 

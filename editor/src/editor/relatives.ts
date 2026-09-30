@@ -90,10 +90,9 @@ export function rings(doc: DiagramDocument, id: string, type: string, dir: Dir):
   return out;
 }
 
-/** The name the user sees: the text catalogue's, else the registry's. */
+/** The name the user sees (`entityDisplayName`, in the model's language). */
 export function nameOf(doc: DiagramDocument, e: EntityEntry): string {
-  const texts = doc.bundle?.text?.entries || {};
-  return String((texts[e.id] as { name?: string } | undefined)?.name || e.name || e.id);
+  return doc.nameOfEntity(e);
 }
 
 function entityIndex(doc: DiagramDocument): Map<string, EntityEntry> {

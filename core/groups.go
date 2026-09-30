@@ -55,7 +55,7 @@ func (m *Model) AxisGroups() ([]GroupAxis, error) {
 	names := map[string]string{}
 	if r := m.registries["entity"]; r != nil {
 		for _, e := range r.items {
-			names[e.str("id")] = e.str("name")
+			names[e.str("id")] = m.nameLocked(e)
 		}
 	}
 	defaultAxis := m.manifest.str("defaultAxis")

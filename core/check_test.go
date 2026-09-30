@@ -147,16 +147,66 @@ func TestCheckBareTextStringIsTheOldShape(t *testing.T) {
 	}
 }
 
-// A broken codeRef is reported; a clean workspace is clean.
+// A broken code[].ref is reported, one of an external symbol (no ref) is not;
+// a clean workspace is clean.
 func TestCheckCodeRefs(t *testing.T) {
 	ws := t.TempDir()
 	proj := filepath.Join(ws, "projects", "p")
 	writeFile(t, filepath.Join(proj, "project.json"), `{"id":"p","title":"P","contractVersion":5}`)
 	writeFile(t, filepath.Join(proj, "entities.json"), `{"contractVersion":5,"entities":[
-		{"id":"e_a","name":"A","kind":"class","codeRef":"src/a.go#L3"},
-		{"id":"e_gone","name":"Gone","kind":"class","codeRef":"src/Gone.cs"}]}`)
+		{"id":"e_a","name":"A","kind":"class","code":[{"lang":"go","ref":"src/a.go#L3","symbol":"a.A"}]},
+		{"id":"e_gone","name":"Gone","kind":"class","code":[{"ref":"src/Gone.cs"}]},
+		{"id":"e_ext","name":"Writer","kind":"external","code":[{"lang":"go","symbol":"io.Writer"}]}]}`)
 	writeFile(t, filepath.Join(ws, "src", "a.go"), "package a\n")
-	if b := checkByKind(t, ws)["битый codeRef"]; b != "p: e_gone: src/Gone.cs;" {
+	if b := checkByKind(t, ws)["битая ссылка на код"]; b != "p: e_gone: src/Gone.cs;" {
 		t.Errorf("broken refs: %q", b)
+	}
+}
+
+// The shape of ADR_20260930-4/5 is what check reads: a top-level codeRef,
+// symbol or via, an authored entity's name in entities.json and a malformed
+// code[] entry are named; an authored entity without a name text is a gap only
+// when no language has one.
+func TestCheckCodeShapeAndAuthoredNames(t *testing.T) {
+	ws := t.TempDir()
+	proj := filepath.Join(ws, "projects", "p")
+	writeFile(t, filepath.Join(proj, "project.json"), `{"id":"p","title":"P","contractVersion":5,"languages":["ru","en"]}`)
+	writeFile(t, filepath.Join(proj, "entities.json"), `{"contractVersion":5,"entities":[
+		{"id":"e_old","name":"Old","kind":"class","symbol":"N.Old","codeRef":"src/Old.cs"},
+		{"id":"e_named","name":"Named in the file","kind":"group","origin":"authored"},
+		{"id":"e_ru","kind":"group","origin":"authored"},
+		{"id":"e_en","kind":"group","origin":"authored"},
+		{"id":"e_none","kind":"group","origin":"authored"},
+		{"id":"e_dead","name":"Dead","kind":"class","origin":"code"},
+		{"id":"e_half","name":"Half","kind":"class","code":[{"lang":"go","ref":"a.go"},{"ref":"a.go","symbol":"a.A"}]},
+		{"id":"e_twice","name":"Twice","kind":"class","code":[{"lang":"go","symbol":"a.A"},{"lang":"go","symbol":"a.B"}]}]}`)
+	writeFile(t, filepath.Join(proj, "relations.json"), `{"contractVersion":5,"relations":[
+		{"id":"r_old","from":"e_ru","to":"e_en","type":"holds.one","via":{"member":"x"},"evidence":[{"codeRef":"a.go"}]}]}`)
+	name := `{"name":{"v":"%s","at":"2026-09-24T00:00:00Z","origin":"authored"}}`
+	writeFile(t, filepath.Join(proj, "text.ru.json"), `{"contractVersion":5,"language":"ru","entries":{"e_ru":`+strings.Replace(name, "%s", "Русское", 1)+`,"e_dead":`+strings.Replace(name, "%s", "Мёртвое", 1)+`}}`)
+	writeFile(t, filepath.Join(proj, "text.en.json"), `{"contractVersion":5,"language":"en","entries":{"e_en":`+strings.Replace(name, "%s", "English", 1)+`}}`)
+	byKind := checkByKind(t, ws)
+	for _, want := range []string{
+		"entities.json: e_old: `codeRef` верхнего уровня",
+		"entities.json: e_named: `name` у authored-сущности",
+		"relations.json: r_old: `via` верхнего уровня",
+	} {
+		if !strings.Contains(byKind["форма контракта"], want) {
+			t.Errorf("old shape: want %q in %q", want, byKind["форма контракта"])
+		}
+	}
+	if got := byKind["недостача"]; !strings.Contains(got, "e_none: у нарисованной сущности нет имени ни в одном языке") ||
+		strings.Contains(got, "e_ru") || strings.Contains(got, "e_en") {
+		t.Errorf("a name in one language is enough, none in any is a gap: %q", got)
+	}
+	if got := byKind["лишнее имя"]; !strings.Contains(got, "e_dead@ru") || strings.Contains(got, "e_ru") {
+		t.Errorf("a name text under the id of an entity from code is dead: %q", got)
+	}
+	got := byKind["реализация"]
+	// the old relation has no valid evidence entry either; e_old in the old shape is named above, not here
+	for _, want := range []string{"e_half: code[] entry needs lang and symbol together", "e_twice: two code[] entries of language go"} {
+		if !strings.Contains(got, want) {
+			t.Errorf("code[]: want %q in %q", want, got)
+		}
 	}
 }

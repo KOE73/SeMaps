@@ -1,5 +1,6 @@
 import type { CommandDefinition } from "./types.js";
 import { i18n } from "../i18n/I18nService.js";
+import { fileRealizations } from "../../model/realizations.js";
 import {
   openEditProjectDialog,
   openEditViewDialog,
@@ -125,7 +126,7 @@ export function createBuiltinCommands(): CommandDefinition[] {
       keyTip: "C",
       isEnabled: (ctx) => {
         const sel = ctx.canvas.selectedElement();
-        return Boolean(sel && typeof sel.metadata?.codeRef === "string" && sel.metadata.codeRef.trim());
+        return Boolean(sel && fileRealizations(sel.metadata).length > 0);
       },
       execute: (ctx) => ctx.editor.openCodeViewer?.(),
     },

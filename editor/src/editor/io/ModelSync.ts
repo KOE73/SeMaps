@@ -1,5 +1,6 @@
 import type { WireDocument, WirePlacement, ViewDocument } from "../../model/wire-types.js";
 import { EDGE_OVERRIDE_FIELDS, OVERRIDE_FIELDS, serializeOverride } from "../../model/override.js";
+import { nameIsText, type NamedEntity } from "../../model/entityName.js";
 
 /**
  * One operation of the host's working model (docs/API.md). A placement is
@@ -94,17 +95,15 @@ export function diffModel(
       // A placement drawn in the editor brings its entity with it; one that was
       // already on the view without a registry record is not minted one.
       if (old) continue;
-      entityOps.push({ kind: "entity", id: p.id, value: { id: p.id, name: p.label ?? p.id,
+      // No `name`: the name of an authored entity is a text, sent with the same batch (below).
+      entityOps.push({ kind: "entity", id: p.id, value: { id: p.id,
         kind: p.type ?? "", origin: "authored", status: "present" } });
     } else if (old) {
-      // A name or a kind read from code is the code's to change; the diagram never overrides it.
-      const fromCode = entity.origin === "code";
-      const renamed = old.label !== p.label && !fromCode;
-      const retyped = old.type !== p.type && !fromCode;
-      if (renamed || retyped) {
-        entityOps.push({ kind: "entity", id: p.id, value: { ...entity,
-          ...(renamed ? { name: p.label ?? p.id } : {}),
-          ...(retyped ? { kind: p.type ?? entity.kind } : {}) } });
+      // A kind read from code is the code's to change; the diagram never overrides it.
+      // A name is never an entity edit: an authored one is a text op, one from code is not editable.
+      const retyped = old.type !== p.type && entity.origin !== "code";
+      if (retyped) {
+        entityOps.push({ kind: "entity", id: p.id, value: { ...entity, kind: p.type ?? entity.kind } });
       }
     }
   }
@@ -127,7 +126,9 @@ export function diffModel(
     }
   }
 
-  // An entity's name lives in entities.json and is not translated (CONTRACT.md §7.1).
+  // The name of an authored entity is its text `name` (per language); the name of an entity from
+  // code stays in entities.json, untranslated, and is not the diagram's to change. `title` is
+  // no field of an entity at all.
   const entityIds = new Set([...originalEntityById.keys(), ...current.keys()]);
   const textOps: ModelOp[] = [];
   const beforeRegistries = before.bundle?.textRegistries ?? {};
@@ -135,8 +136,18 @@ export function diffModel(
   for (const [lang, registry] of Object.entries(afterRegistries)) {
     for (const [id, entry] of Object.entries(registry.entries ?? {})) {
       const prior = beforeRegistries[lang]?.entries?.[id] ?? {};
-      const changed = fields.filter((field) => entry[field] !== prior[field] &&
-        !(entityIds.has(id) && (field === "name" || field === "title")));
+      const isEntity = entityIds.has(id);
+      const known = originalEntityById.get(id) as NamedEntity | undefined;
+      // An entity not in the registry gets one only when drawn now (above), so only then is its name a text.
+      const nameIsAText = known !== undefined ? nameIsText(known) : current.has(id) && !previous.has(id);
+      const changed = fields.filter((field) => {
+        if (entry[field] === prior[field]) return false;
+        if (!isEntity) return true;
+        if (field === "title") return false;
+        // An empty name is refused by the host: the editor never sends one, the old name stays.
+        if (field === "name") return nameIsAText && (entry.name ?? "").trim() !== "";
+        return true;
+      });
       if (!changed.length) continue;
       const value = copy(rawTexts[lang]?.entries?.[id] ?? {});
       for (const field of changed) {

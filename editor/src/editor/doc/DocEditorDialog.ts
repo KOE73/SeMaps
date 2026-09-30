@@ -320,17 +320,13 @@ export class DocEditorDialog {
     if (this.currentKind === "edge") {
       const edge = doc.edge(this.currentTargetId);
       if (edge) {
-        const fromEl = doc.element(edge.from);
-        const toEl = doc.element(edge.to);
-        const fromName = doc.getText(edge.from, this.currentLang)?.name || fromEl?.label || edge.from;
-        const toName = doc.getText(edge.to, this.currentLang)?.name || toEl?.label || edge.to;
-        titleText = `${fromName} → ${toName}`;
+        titleText = `${doc.entityName(edge.from, this.currentLang)} → ${doc.entityName(edge.to, this.currentLang)}`;
         kindText = edge.type || "RELATION";
       }
     } else {
       const el = doc.element(this.currentTargetId);
       if (el) {
-        titleText = el.label || el.id;
+        titleText = doc.entityName(el.id, this.currentLang);
         kindText = KindCatalog.active.name(el.type, i18n.currentLanguage) || (isContainer(el) ? "CONTAINER" : "NODE");
       }
     }

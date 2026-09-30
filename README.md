@@ -7,7 +7,7 @@ the question it answers. Layout is manual only; there is no auto-layout. This is
 diagrams — the live code graph page lays itself out by algorithm, on purpose
 ([`ADR_20260928-2`](docs/adr/ADR_20260928-2_editor_graph-is-a-separate-form.md)).
 
-- The machine checks mechanical sync with code: does the entity exist, does `codeRef` resolve,
+- The machine checks mechanical sync with code: does the entity exist, does the `ref` of its `code[]` resolve,
   does a relation point anywhere.
 - Meaning (containers, axes, texts, views) stays with the human and the agent.
 
@@ -31,7 +31,7 @@ sync with code (in progress, see below) will show where the code has moved away 
 |---|---|
 | Editor (`editor/`) | works: canvas, views, styles, content templates, texts with provenance |
 | Host (`host/`) | works: one binary, `*.semaps` project files, save, source viewer |
-| `semaps check` (`core/`) | works: stale texts, views without an axis, broken `codeRef`, … |
+| `semaps check` (`core/`) | works: stale texts, views without an axis, broken `code[].ref`, … |
 | Sync with code (`core/`) | works: `semaps sync` runs the extractors of the `.semaps` file; `/extract` and `/setup` pages in the editor — [`PLAN_20260924_host_setup-and-extract`](docs/plans/PLAN_20260924_host_setup-and-extract.md) |
 | Extractor for TypeScript (`extractors/typescript/`) | **in progress** — [`PLAN_20260923_extractors_typescript`](docs/plans/PLAN_20260923_extractors_typescript.md) |
 | Extractor for C# (`extractors/csharp/`) | **in progress** — [`PLAN_20260923_extractors_csharp`](docs/plans/PLAN_20260923_extractors_csharp.md) |
@@ -74,7 +74,7 @@ In the **root of your project** (next to `.git`) create `<name>.semaps`, e.g. `m
 version: 1
 name: My project
 workspace: docs/diagrams   # where the maps live (projects/)
-source_root: .             # where the code lives, for codeRef
+source_root: .             # where the code lives, for the code[].ref paths
 port: 8777
 ```
 
@@ -126,7 +126,7 @@ semaps check
 
 Same project lookup as above. Reports stale translations, texts that are missing, views without
 an axis, one block in two containers on the same axis, entity kinds and relation types outside
-the dictionary, broken `codeRef`, and a workspace of an older contract. Exit code 1 when
+the dictionary, broken `code[].ref`, and a workspace of an older contract. Exit code 1 when
 anything is found, so a consuming project can run it in CI. A workspace written for an older
 contract is rewritten by `semaps migrate` ([`docs/ADOPTING.md`](docs/ADOPTING.md)).
 

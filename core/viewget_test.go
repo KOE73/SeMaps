@@ -10,7 +10,8 @@ func TestGetViewTreeAndEdgeVisibility(t *testing.T) {
 	cv := testCanvas(t)
 	m.SetCanvas(cv)
 	ops := []Op{
-		modelOp("entity", "e_in", "", "", `{"id":"e_in","name":"Inner","kind":"group","origin":"authored"}`),
+		modelOp("entity", "e_in", "", "", `{"id":"e_in","kind":"group","origin":"authored"}`),
+		modelOp("text", "e_in", "", "ru", `{"name":{"v":"Inner","at":"2026-09-30T00:00:00Z","origin":"authored"}}`),
 		modelOp("placement", "e_in", "v_main", "", `{"entity":"e_in","parent":"e_core","x":20,"y":40,"width":300,"height":200,"override":{"fill":"#ffffff","border":{"color":"#000000"}}}`),
 		modelOp("placement", "e_b", "v_main", "", `{"entity":"e_b","parent":"e_in","x":40,"y":80}`),
 	}

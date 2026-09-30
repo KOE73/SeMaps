@@ -77,7 +77,7 @@ x, y         number    top-left corner, model coordinates
 width        number
 height       number
 tags         string[]
-metadata     object    type (subtitle text), description, codeRef, responsibilities[]
+metadata     object    type (subtitle text), description, code[] (realizations), responsibilities[]
 ```
 
 `metadata.type` is a free-text subtitle and is **not** the same field as `type`.
@@ -470,8 +470,9 @@ or resize. For edges it shows `FROM … TO …` instead.
 ### R-INSP-04 — Editable fields
 
 Caption (`label` for nodes, `name` for zones), semantic type, description
-(`metadata.description`) and code reference (`metadata.codeRef`). Caption and
-type edits re-render the canvas immediately.
+(`metadata.description`); the entity's code realizations (`metadata.code[]`) are
+listed read-only, one code button each. Caption and type edits re-render the
+canvas immediately.
 
 ### R-INSP-05 — Type vocabulary
 
@@ -602,7 +603,7 @@ Exports a `.drawio` (mxGraph) document in which:
 - nodes become child cells of their declared zone, with coordinates converted
   from absolute to **zone-relative**;
 - edges become orthogonal `mxCell` edges;
-- semantics (`type`, `semanticId`, `tags`, `codeRef`) are carried in an
+- semantics (`type`, `semanticId`, `tags`, `codeRef` — the first realization's file) are carried in an
   `<Object as="data">` child so the meaning survives the round trip;
 - the file downloads with a name derived from the model title.
 

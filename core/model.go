@@ -342,7 +342,7 @@ func (m *Model) applyOne(op Op) error {
 				return refuse("no relation %s", op.ID)
 			}
 			if r.str("origin") == "code" {
-				return refuse("relation %s comes from code: it has no texts, its label is drawn from `via` (CONTRACT §4)", op.ID)
+				return refuse("relation %s comes from code: it has no texts, its label is drawn from the `via` of its evidence (CONTRACT §4)", op.ID)
 			}
 		case strings.HasPrefix(op.ID, "rt_"), strings.HasPrefix(op.ID, "v_"):
 		default:
@@ -367,9 +367,6 @@ func (m *Model) applyOne(op Op) error {
 		for _, field := range entry.keys {
 			if !slices.Contains(TextFields, field) {
 				return refuse("field %q: allowed %s (CONTRACT §7.2)", field, strings.Join(TextFields, ", "))
-			}
-			if strings.HasPrefix(op.ID, "e_") && (field == "name" || field == "title") && len(old.vals[field]) == 0 {
-				return refuse("an entity's name is not translated and lives in entities.json (CONTRACT §7.1)")
 			}
 		}
 		if len(old.keys) > 0 {
@@ -579,6 +576,11 @@ func LoadModelWithoutJournal(workspace, project string, defaultKinds []byte) (*M
 			return nil, err
 		}
 		m.registries[kind] = r
+		for _, item := range r.items {
+			if old := oldShape(kind, item); old != "" {
+				return nil, refuse("%s: %s: %s — форма до ADR_20260930-4/5, нужна текущая (`semaps migrate`, ADR_20260927-3)", spec.file, item.str("id"), old)
+			}
+		}
 	}
 	return m, nil
 }

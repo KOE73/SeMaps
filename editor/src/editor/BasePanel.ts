@@ -4,6 +4,7 @@ import { kindIconEl } from "../ui/kindIcons.js";
 import { i18n } from "../workbench/i18n/I18nService.js";
 import type { DiagramEditor } from "./DiagramEditor.js";
 import { placeEntities } from "./placeEntity.js";
+import { realizationSearchText } from "../model/realizations.js";
 
 export class BasePanel {
   /** Kinds the list is narrowed to; empty means every kind. */
@@ -45,8 +46,9 @@ export class BasePanel {
     const found = entities.filter((e: any) => {
       if (!e) return false;
       const id = String(e.id ?? "");
-      const name = String(texts[id]?.name || e.name || id);
-      return name.toLowerCase().includes(query) || id.toLowerCase().includes(query);
+      const name = doc.nameOfEntity(e);
+      return name.toLowerCase().includes(query) || id.toLowerCase().includes(query) ||
+        realizationSearchText(e).toLowerCase().includes(query);
     });
 
     // A kind picked in another project, or gone since, must not hide everything.
@@ -64,7 +66,7 @@ export class BasePanel {
       this.body,
       ...matches.map((e: any) => {
         const id = String(e?.id ?? "");
-        const name = String(texts[id]?.name || e?.name || id);
+        const name = doc.nameOfEntity(e);
         const isPlaced = placedIds.has(id);
 
         const row = document.createElement("div");

@@ -60,9 +60,19 @@ func (m *Model) text(lang, key string) (*object, error) {
 // SetText writes one field as authored, at = now. What a text may be is Apply's
 // rule (ADR_20260926), the same for the editor.
 func (m *Model) SetText(lang, key, field, value, author string) error {
-	entry, err := m.text(lang, key)
+	op, err := m.textOp(lang, key, field, value)
 	if err != nil {
 		return err
+	}
+	_, err = m.Apply([]Op{op}, author)
+	return err
+}
+
+// textOp is the op that sets one field of a text entry as authored, at = now.
+func (m *Model) textOp(lang, key, field, value string) (Op, error) {
+	entry, err := m.text(lang, key)
+	if err != nil {
+		return Op{}, err
 	}
 	v := newObject()
 	v.set("v", value)
@@ -70,14 +80,19 @@ func (m *Model) SetText(lang, key, field, value, author string) error {
 	v.set("origin", "authored")
 	entry.set(field, v)
 	b, _ := entry.MarshalJSON()
-	_, err = m.Apply([]Op{{Kind: "text", ID: key, Lang: lang, Value: b}}, author)
-	return err
+	return Op{Kind: "text", ID: key, Lang: lang, Value: b}, nil
 }
 
 // AddEntity adds an authored entity — a part of the system no extractor
 // reports (CONTRACT §3: kind app, external, database…). The id is id when
 // given, else minted from the name; an existing one is refused, not replaced.
-func (m *Model) AddEntity(id, name, kind, author string) (string, error) {
+// The name is the entity's `name` text in lang (the project's main language
+// when empty), written in the same batch as the entity: an authored entity has
+// no name in entities.json (CONTRACT §3, §7; ADR_20260930-5).
+func (m *Model) AddEntity(id, name, kind, lang, author string) (string, error) {
+	if strings.TrimSpace(name) == "" {
+		return "", refuse("name is empty")
+	}
 	taken := map[string]bool{}
 	for _, e := range m.records("entity") {
 		taken[e.str("id")] = true
@@ -86,15 +101,23 @@ func (m *Model) AddEntity(id, name, kind, author string) (string, error) {
 		id = mint("e_"+slug(name), taken)
 	} else if taken[id] {
 		return "", refuse("entity %s exists", id)
+	} else if !hasIDPrefix(id, "e_") {
+		return "", refuse("entity id %q: starts with e_ (CONTRACT §3)", id)
 	}
 	o := newObject()
 	o.set("id", id)
-	o.set("name", name)
 	o.set("kind", kind)
 	o.set("origin", "authored")
 	o.set("status", "present")
 	b, _ := o.MarshalJSON()
-	_, err := m.Apply([]Op{{Kind: "entity", ID: id, Value: b}}, author)
+	if lang == "" {
+		lang = m.Languages()[0]
+	}
+	nameOp, err := m.textOp(lang, id, "name", name)
+	if err != nil {
+		return "", err
+	}
+	_, err = m.Apply([]Op{{Kind: "entity", ID: id, Value: b}, nameOp}, author)
 	return id, err
 }
 
@@ -183,6 +206,9 @@ func (m *Model) SetRelationVisible(viewID, relationID string, visible bool, auth
 	return err
 }
 
+// ConfirmEntityRename points the entity's realization in code — the one entry
+// of its code[] bound to a symbol — at the symbol it was renamed to. An entity
+// realized in several languages is not decided here (ADR_20260930-4).
 func (m *Model) ConfirmEntityRename(entityID, symbol, author string) error {
 	if symbol == "" {
 		return refuse("symbol is empty")
@@ -194,12 +220,29 @@ func (m *Model) ConfirmEntityRename(entityID, symbol, author string) error {
 	if e.str("origin") == "authored" {
 		return refuse("entity %s is authored: it has no symbol", entityID)
 	}
-	e.set("symbol", symbol)
+	list := entries(e, "code")
+	k := -1
+	for i, c := range list {
+		if c.str("symbol") == "" {
+			continue
+		}
+		if k >= 0 {
+			return refuse("entity %s is realized in several languages: a rename is not confirmed for it yet (ADR_20260930-4)", entityID)
+		}
+		k = i
+	}
+	if k < 0 {
+		return refuse("entity %s has no realization bound to a symbol: nothing to rename", entityID)
+	}
+	list[k].set("symbol", symbol)
+	setEntries(e, "code", list)
 	b, _ := e.MarshalJSON()
 	_, err := m.Apply([]Op{{Kind: "entity", ID: entityID, Value: b}}, author)
 	return err
 }
 
+// ConfirmRelationRename renames the member in the `via` of the relation's
+// evidence.
 func (m *Model) ConfirmRelationRename(relationID, member, author string) error {
 	if member == "" {
 		return refuse("member is empty")
@@ -208,14 +251,23 @@ func (m *Model) ConfirmRelationRename(relationID, member, author string) error {
 	if r == nil {
 		return refuse("no relation %s", relationID)
 	}
-	via, err := child(r, "via")
-	if err != nil || len(via.keys) == 0 {
-		return refuse("relation %s has no via: it is not a member relation", relationID)
+	list := entries(r, "evidence")
+	k := -1
+	for i, c := range list {
+		if evidenceVia(c) != nil {
+			k = i
+			break
+		}
 	}
+	if k < 0 {
+		return refuse("relation %s has no via in its evidence: it is not a member relation", relationID)
+	}
+	via, _ := child(list[k], "via")
 	via.set("member", member)
-	r.set("via", via)
+	list[k].set("via", via)
+	setEntries(r, "evidence", list)
 	b, _ := r.MarshalJSON()
-	_, err = m.Apply([]Op{{Kind: "relation", ID: relationID, Value: b}}, author)
+	_, err := m.Apply([]Op{{Kind: "relation", ID: relationID, Value: b}}, author)
 	return err
 }
 

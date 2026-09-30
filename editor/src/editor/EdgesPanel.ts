@@ -4,6 +4,7 @@ import { SearchableSelect, type SearchableOption } from "./SearchableSelect.js";
 import { edgeVariantSelect, relationTypeSelect } from "./kindSelects.js";
 import { resolveElementRelations, type ResolvedRelation } from "../model/relations-resolver.js";
 import { cardinalityToLabel } from "../model/viaLabel.js";
+import { relationVia } from "../model/realizations.js";
 import type { DiagramEditor } from "./DiagramEditor.js";
 import { i18n } from "../workbench/i18n/I18nService.js";
 import { iconEl } from "../ui/icons.js";
@@ -273,13 +274,12 @@ export class EdgesPanel {
               styleId: item.styleId,
             };
 
-            // For code-origin relations, preserve via and set toLabel from cardinality if needed
-            if (item.raw && item.raw.origin === "code" && item.raw.via) {
+            // A code-origin relation with a member signature: set toLabel from its cardinality
+            const via = relationVia(item.raw);
+            if (item.raw && item.raw.origin === "code" && via) {
               edgeData.origin = "code";
-              edgeData.via = item.raw.via;
-              // Set toLabel from cardinality if no authored toLabel
-              if (!item.raw.toLabel && item.raw.via.cardinality) {
-                edgeData.toLabel = cardinalityToLabel(item.raw.via.cardinality);
+              if (!item.raw.toLabel && via.cardinality) {
+                edgeData.toLabel = cardinalityToLabel(via.cardinality);
               }
             }
 
@@ -309,7 +309,7 @@ export class EdgesPanel {
       el("span", { class: "mono", attrs: { style: "opacity: 0.7; font-size: calc(10px * var(--ui-text));" } }, [iconEl(isOutgoing ? "arrowRight" : "arrowLeft")]),
       el("span", { class: "input-strong", text: otherName }),
       item.label ? el("span", { class: "muted mono", text: `«${item.label}»`, attrs: { style: "font-size: calc(10px * var(--ui-text));" } }) : null,
-      item.raw?.via?.text ? el("span", { class: "muted mono", text: item.raw.via.text, attrs: { style: "font-size: calc(9px * var(--ui-text)); opacity: 0.7;" }, title: `Member type: ${item.raw.via.text}` }) : null,
+      relationVia(item.raw)?.text ? el("span", { class: "muted mono", text: relationVia(item.raw)!.text!, attrs: { style: "font-size: calc(9px * var(--ui-text)); opacity: 0.7;" }, title: `Member type: ${relationVia(item.raw)!.text}` }) : null,
     ]);
 
     const typeCol = el("div", { class: "edge-col-type" }, [

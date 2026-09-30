@@ -10,6 +10,7 @@ import { SourceCodeService } from "../editor/code/SourceCodeService.js";
 import { DIAGRAM_CONFIG } from "../constants/diagram-constants.js";
 import { canvas } from "../constants/canvas.js";
 import { KindCatalog } from "../model/KindCatalog.js";
+import { langTag, realizationsOf, refOf } from "../model/realizations.js";
 import { i18n } from "../workbench/i18n/I18nService.js";
 import { iconSvg } from "../ui/icons.js";
 
@@ -352,9 +353,9 @@ export class InteractionController {
       this.canvas.hideAllTooltips();
       const doc = this.canvas.model;
       const el = doc?.element(hit.elementId);
-      const codeRef = typeof el?.metadata?.codeRef === "string" ? el.metadata.codeRef.trim() : "";
-      if (codeRef) {
-        this.canvas.events.emit("openCodeViewer", { id: hit.elementId, codeRef, label: el?.label });
+      const ref = fileAtPointer(e.target);
+      if (ref) {
+        this.canvas.events.emit("openCodeViewer", { id: hit.elementId, ref, label: el?.label });
       }
     }
   };
@@ -431,17 +432,15 @@ export class InteractionController {
       if (hit.edgeId) {
         const edge = doc.edge(targetId);
         if (edge) {
-          const fromEl = doc.element(edge.from);
-          const toEl = doc.element(edge.to);
-          const fromName = doc.getText(edge.from, lang)?.name || fromEl?.label || edge.from;
-          const toName = doc.getText(edge.to, lang)?.name || toEl?.label || edge.to;
+          const fromName = doc.entityName(edge.from, lang);
+          const toName = doc.entityName(edge.to, lang);
           name = `${fromName} → ${toName}`;
           kind = edge.type || "RELATION";
         }
       } else if (hit.elementId) {
         const el = doc.element(targetId);
         if (el) {
-          name = doc.getText(el.id, lang)?.name || el.label || el.id;
+          name = doc.entityName(el.id, lang);
           kind = el.type || (isContainer(el) ? "ZONE" : "NODE");
         }
       }
@@ -475,9 +474,9 @@ export class InteractionController {
     // 1b. Hover on CodeView Button -> Show Rich Code Tooltip immediately
     if (hit.role === Role.CodeView && hit.elementId !== null) {
       const el = doc.element(hit.elementId);
-      const codeRef = typeof el?.metadata?.codeRef === "string" ? el.metadata.codeRef.trim() : "";
-      if (codeRef) {
-        this.showCodePreviewTooltip(codeRef, el?.label || hit.elementId, e.clientX, e.clientY);
+      const ref = fileAtPointer(e.target);
+      if (ref) {
+        this.showCodePreviewTooltip(ref, el?.label || hit.elementId, e.clientX, e.clientY);
         return;
       }
     }
@@ -487,10 +486,10 @@ export class InteractionController {
       const el = doc.element(hit.elementId);
       if (el) {
         const text = doc.getText(el.id, lang);
-        // An entity's name is not translated: it is the entity's, not the text catalogue's (CONTRACT.md §7.1).
         const name = el.label || el.id;
         const desc = text?.description || (typeof el.metadata?.description === "string" ? el.metadata.description : "");
-        const codeRef = typeof el.metadata?.codeRef === "string" ? el.metadata.codeRef : "";
+        const codeLines = realizationsOf(el.metadata).map((r) =>
+          [langTag(r), r.symbol ?? "", refOf(r)].filter(Boolean).join("  ") + (r.status === "missing" ? `  · ${i18n.d.panels.properties.codeMissing}` : ""));
         const kind = KindCatalog.active.name(el.type, i18n.currentLanguage);
 
         let content = `<div class="semaps-tooltip-header">
@@ -501,8 +500,8 @@ export class InteractionController {
         if (desc) {
           content += `<div class="semaps-tooltip-body">${escapeHtml(desc)}</div>`;
         }
-        if (codeRef) {
-          content += `<div class="semaps-tooltip-coderef">${escapeHtml(codeRef)}</div>`;
+        for (const line of codeLines) {
+          content += `<div class="semaps-tooltip-coderef">${escapeHtml(line)}</div>`;
         }
 
         this.canvas.showTooltip(content, e.clientX, e.clientY);
@@ -515,10 +514,8 @@ export class InteractionController {
       const edgeId = hit.edgeId;
       const edge = doc.edge(edgeId);
       if (edge) {
-        const fromEl = doc.element(edge.from);
-        const toEl = doc.element(edge.to);
-        const fromName = doc.getText(edge.from, lang)?.name || fromEl?.label || edge.from;
-        const toName = doc.getText(edge.to, lang)?.name || toEl?.label || edge.to;
+        const fromName = doc.entityName(edge.from, lang);
+        const toName = doc.entityName(edge.to, lang);
         const text = doc.getText(edge.id, lang);
         const desc = text?.description || edge.label || "";
 
@@ -551,10 +548,8 @@ export class InteractionController {
     const edge = doc.edge(edgeId);
     if (!edge) return;
     const lang = this.canvas.dataLang || "ru";
-    const fromEl = doc.element(edge.from);
-    const toEl = doc.element(edge.to);
-    const fromName = doc.getText(edge.from, lang)?.name || fromEl?.label || edge.from;
-    const toName = doc.getText(edge.to, lang)?.name || toEl?.label || edge.to;
+    const fromName = doc.entityName(edge.from, lang);
+    const toName = doc.entityName(edge.to, lang);
     const text = doc.getText(edge.id, lang);
     const desc = text?.description || edge.label || "";
     const docText = text?.doc || "";
@@ -582,16 +577,16 @@ export class InteractionController {
   }
 
   private async showCodePreviewTooltip(
-    codeRef: string,
+    ref: string,
     label: string,
     x: number,
     y: number,
   ): Promise<void> {
-    const langLabel = SourceCodeService.getLanguageLabel(codeRef);
+    const langLabel = SourceCodeService.getLanguageLabel(ref);
     const initialHtml = `
       <div class="semaps-rich-code-tooltip-head">
         <span style="font-weight: 700;"><span class="ui-icon">${iconSvg("code")}</span> ${escapeHtml(label)}</span>
-        <span class="semaps-rich-code-tooltip-path" title="${escapeHtml(codeRef)}">${escapeHtml(codeRef)}</span>
+        <span class="semaps-rich-code-tooltip-path" title="${escapeHtml(ref)}">${escapeHtml(ref)}</span>
       </div>
       <div class="semaps-rich-code-tooltip-body">
         <div style="color: #888; padding: 8px;"><span class="ui-icon">${iconSvg("hourglass")}</span> Загрузка фрагмента кода...</div>
@@ -605,11 +600,11 @@ export class InteractionController {
     this.canvas.showRichTooltip(initialHtml, x, y);
 
     try {
-      const preview = await SourceCodeService.getPreview(codeRef, 12);
+      const preview = await SourceCodeService.getPreview(ref, 12);
       const content = `
         <div class="semaps-rich-code-tooltip-head">
           <span style="font-weight: 700;"><span class="ui-icon">${iconSvg("code")}</span> ${escapeHtml(label)}</span>
-          <span class="semaps-rich-code-tooltip-path" title="${escapeHtml(codeRef)}">${escapeHtml(codeRef)}</span>
+          <span class="semaps-rich-code-tooltip-path" title="${escapeHtml(ref)}">${escapeHtml(ref)}</span>
         </div>
         <div class="semaps-rich-code-tooltip-body">
           ${preview.snippetHtml}
@@ -624,7 +619,7 @@ export class InteractionController {
       const content = `
         <div class="semaps-rich-code-tooltip-head">
           <span style="font-weight: 700;"><span class="ui-icon">${iconSvg("code")}</span> ${escapeHtml(label)}</span>
-          <span class="semaps-rich-code-tooltip-path" title="${escapeHtml(codeRef)}">${escapeHtml(codeRef)}</span>
+          <span class="semaps-rich-code-tooltip-path" title="${escapeHtml(ref)}">${escapeHtml(ref)}</span>
         </div>
         <div class="semaps-rich-code-tooltip-body">
           <div style="color: #f87171; padding: 8px;"><span class="ui-icon">${iconSvg("alert")}</span> ${escapeHtml(err?.message || "Файл недоступен")}</div>
@@ -1015,6 +1010,12 @@ function escapeHtml(s: string): string {
     .replace(/>/g, "&gt;")
     .replace(/"/g, "&quot;")
     .replace(/'/g, "&#039;");
+}
+
+/** The file of the code button under the pointer (`data-code-ref`, one button per realization), if any. */
+function fileAtPointer(target: EventTarget | null): string {
+  const node = target instanceof Element ? target.closest("[data-code-ref]") : null;
+  return node?.getAttribute("data-code-ref")?.trim() ?? "";
 }
 
 export type { RoleHit };

@@ -440,12 +440,16 @@ func (m *Model) AddContainer(view string, spec ContainerSpec, human bool, author
 		id = mint("e_"+slug(spec.Name), taken)
 		e := newObject()
 		e.set("id", id)
-		e.set("name", spec.Name)
 		e.set("kind", kind)
 		e.set("origin", "authored")
 		e.set("status", "present")
 		b, _ := e.MarshalJSON()
-		extra = append(extra, Op{Kind: "entity", ID: id, Value: b})
+		// its name is a text of the main language, in the same batch (ADR_20260930-5)
+		nameOp, err := m.textOp(m.Languages()[0], id, "name", spec.Name)
+		if err != nil {
+			return "", GeomReport{}, err
+		}
+		extra = append(extra, Op{Kind: "entity", ID: id, Value: b}, nameOp)
 	}
 	if l.items[id] != nil {
 		return "", GeomReport{}, refuse("%s is already on %s", id, view)

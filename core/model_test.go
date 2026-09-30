@@ -18,7 +18,7 @@ func TestModelJournalSaveAndOrderedBytes(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	entity := `{"id":"e_a","name":"A edited","kind":"class","origin":"code","symbol":"N.A"}`
+	entity := `{"id":"e_a","name":"A edited","kind":"class","origin":"code","code":[{"lang":"csharp","symbol":"N.A"}]}`
 	if _, err := m.Apply([]Op{modelOp("entity", "e_a", "", "", entity)}, "human"); err != nil {
 		t.Fatal(err)
 	}
@@ -36,7 +36,7 @@ func TestModelJournalSaveAndOrderedBytes(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	want := "{\n  \"entities\": [\n    {\n      \"id\": \"e_a\",\n      \"name\": \"A edited\",\n      \"kind\": \"class\",\n      \"origin\": \"code\",\n      \"symbol\": \"N.A\"\n    },\n    {\n      \"id\": \"e_b\",\n      \"name\": \"B\",\n      \"kind\": \"class\",\n      \"origin\": \"code\",\n      \"symbol\": \"N.B\"\n    },\n    {\n      \"id\": \"e_x\",\n      \"name\": \"X\",\n      \"kind\": \"app\",\n      \"origin\": \"authored\"\n    },\n    {\n      \"id\": \"e_core\",\n      \"name\": \"Core\",\n      \"kind\": \"group\",\n      \"origin\": \"authored\"\n    }\n  ]\n}\n"
+	want := "{\n  \"entities\": [\n    {\n      \"id\": \"e_a\",\n      \"name\": \"A edited\",\n      \"kind\": \"class\",\n      \"origin\": \"code\",\n      \"code\": [\n        {\n          \"lang\": \"csharp\",\n          \"symbol\": \"N.A\"\n        }\n      ]\n    },\n    {\n      \"id\": \"e_b\",\n      \"name\": \"B\",\n      \"kind\": \"class\",\n      \"origin\": \"code\",\n      \"code\": [\n        {\n          \"lang\": \"csharp\",\n          \"symbol\": \"N.B\"\n        }\n      ]\n    },\n    {\n      \"id\": \"e_x\",\n      \"kind\": \"app\",\n      \"origin\": \"authored\"\n    },\n    {\n      \"id\": \"e_core\",\n      \"kind\": \"group\",\n      \"origin\": \"authored\"\n    }\n  ]\n}\n"
 	if !bytes.Equal(got, []byte(want)) {
 		t.Fatalf("bytes differ from hand edit:\n%s", got)
 	}

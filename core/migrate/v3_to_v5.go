@@ -1,10 +1,13 @@
 package migrate
 
-// The v3 → v5 step for one project (ADR_20260927-3, ADR_20260927-6): zones and
-// containers become group entities, a view keeps one `placements` array,
-// containment becomes `contains` relations, colour styles of zones become an
-// `override`. Every function works on the in-memory JSON trees; nothing is
-// written here.
+// The migration of one project (ADR_20260927-3, ADR_20260927-6, ADR_20260930-4,
+// ADR_20260930-5): from contract 3, zones and containers become group entities
+// (the ones a view shows; a container no view shows gets none), a view keeps one
+// `placements` array, containment becomes `contains` relations, colour styles of
+// zones become an `override`; then, for a project of contract 3 and for one already
+// at 5 alike, the final shape — an entity's realizations in `code[]`, a relation's
+// in `evidence[]`, the name of an authored entity a text under its id. Every
+// function works on the in-memory JSON trees; nothing is written here.
 
 import (
 	"bytes"
@@ -25,8 +28,9 @@ type newEnt struct {
 	fallback string // id tail: the name when no text names it
 	zoneKeys []string
 	baseKeys []string
-	name     string
-	fromFile bool // made from containers.json
+	// names is the entity's name per language: the `name` value (with its
+	// provenance) of the first text key of its zones or container that has one.
+	names map[string]any
 }
 
 // keys lists the text keys that describe the entity: the keys of the zones that
@@ -95,6 +99,12 @@ type projectMigration struct {
 	rep         *ProjectReport
 	styles      *styleLib
 	langs       []string
+	opt         Options
+	fromV3      bool // the project is below contract 5: the v3 steps run
+
+	// needLang lists what needs a language of the realization and has none to
+	// take: the project has not exactly one extractor in the .semaps file.
+	needLang []string
 
 	proj, ents, rels, rtypes, conts *file
 	views                           []*viewData
@@ -117,46 +127,45 @@ type projectMigration struct {
 	containsVis   string // "visible", "hidden" or ""
 }
 
-func migrateProject(ws, id string, styles *styleLib) (*ProjectReport, []fileOut, error) {
+// prepareProject computes every new content of one project in memory. It does
+// not collect the outputs: the workspace styles are decided after all projects
+// are prepared, and a style dropped there is dropped from the views here first
+// (dropStyleRefs), so collect comes last.
+func prepareProject(ws, id string, styles *styleLib, opt Options) (*projectMigration, error) {
 	rel := "projects/" + id
 	pr := &ProjectReport{ID: id}
 	proj, err := loadFile(ws, rel+"/project.json", true)
 	if err != nil {
-		return nil, nil, err
+		return nil, err
 	}
 	ver, has, err := versionOf(proj.root)
 	if err != nil {
-		return nil, nil, ferr(proj.rel, "contractVersion", "%v", err)
+		return nil, ferr(proj.rel, "contractVersion", "%v", err)
 	}
 	if ver > targetVersion {
-		return nil, nil, ferr(proj.rel, "contractVersion", "%d новее поддерживаемого %d", ver, targetVersion)
+		return nil, ferr(proj.rel, "contractVersion", "%d новее поддерживаемого %d", ver, targetVersion)
 	}
 	pr.FromVersion = ver
-	if has && ver >= targetVersion {
-		pr.Skipped = true
-		return pr, nil, nil
-	}
 	m := &projectMigration{
-		ws: ws, id: id, rel: rel, rep: pr, styles: styles, proj: proj,
+		ws: ws, id: id, rel: rel, rep: pr, styles: styles, proj: proj, opt: opt,
+		fromV3:     !(has && ver >= targetVersion),
 		textByLang: map[string]*textData{},
 		origEnts:   map[string]bool{}, entIDs: map[string]bool{},
 		relIDs: map[string]bool{}, relPairs: map[string]bool{},
 		zoneEnt: map[string]*newEnt{}, contEnt: map[string]*newEnt{},
 	}
-	steps := []func() error{
-		m.loadAll, m.parseViews, m.makeEntities, m.containment,
-		m.convertTexts, m.rewriteViews, m.exceptions, m.appendRegistry,
+	steps := []func() error{m.loadAll}
+	if m.fromV3 {
+		steps = append(steps, m.parseViews, m.makeEntities, m.containment,
+			m.convertTexts, m.rewriteViews, m.exceptions, m.appendRegistry)
 	}
+	steps = append(steps, m.finalShape)
 	for _, s := range steps {
 		if err := s(); err != nil {
-			return nil, nil, err
+			return nil, err
 		}
 	}
-	outs, err := m.collect()
-	if err != nil {
-		return nil, nil, err
-	}
-	return pr, outs, nil
+	return m, nil
 }
 
 // ---------------------------------------------------------------- loading
@@ -422,46 +431,22 @@ func slugify(s string) string {
 	return out
 }
 
-func (m *projectMigration) mint(srcID string, fromFile bool) *newEnt {
+func (m *projectMigration) mint(srcID string) *newEnt {
 	slug := slugify(tailOf(srcID))
 	id := "e_" + slug
 	for n := 2; m.entIDs[id]; n++ {
 		id = fmt.Sprintf("e_%s_%d", slug, n)
 	}
 	m.entIDs[id] = true
-	e := &newEnt{id: id, srcID: srcID, fallback: tailOf(srcID), fromFile: fromFile}
+	e := &newEnt{id: id, srcID: srcID, fallback: tailOf(srcID), names: map[string]any{}}
 	m.newEnts = append(m.newEnts, e)
 	return e
 }
 
-// makeEntities creates the group entities: containers.json first (every
-// container, referenced or not), then the zones of the views in file order.
+// makeEntities creates the group entities of the zones of the views, in file
+// order. A container of containers.json that no zone shows gets no entity: it is
+// only listed in the report, with its `match` rules (containment).
 func (m *projectMigration) makeEntities() error {
-	if m.conts != nil {
-		arr, err := m.conts.array("containers")
-		if err != nil {
-			return err
-		}
-		for i, it := range arr {
-			fld := fmt.Sprintf("containers[%d]", i)
-			co, ok := asObj(it)
-			if !ok {
-				return ferr(m.conts.rel, fld, "ожидался объект")
-			}
-			cid, ok := asStr(co.get("id"))
-			if !ok || cid == "" {
-				return ferr(m.conts.rel, fld+".id", "нужна непустая строка")
-			}
-			if m.contEnt[cid] != nil {
-				m.rep.Notes = append(m.rep.Notes, fmt.Sprintf("containers.json: контейнер %s повторён, взят первый", cid))
-				continue
-			}
-			e := m.mint(cid, true)
-			e.baseKeys = []string{cid}
-			m.contEnt[cid] = e
-			m.rep.ContainerEntities++
-		}
-	}
 	for _, v := range m.views {
 		for _, z := range v.zones {
 			m.rep.Zones++
@@ -476,15 +461,15 @@ func (m *projectMigration) makeEntities() error {
 			if z.container != "" {
 				e = m.contEnt[z.container]
 				if e == nil {
-					e = m.mint(z.container, false)
+					e = m.mint(z.container)
 					e.baseKeys = []string{z.container}
 					m.contEnt[z.container] = e
-					m.rep.ZoneEntities++
+					m.rep.ContainerEntities++
 				}
 			} else {
 				e = m.zoneEnt[z.id]
 				if e == nil {
-					e = m.mint(z.id, false)
+					e = m.mint(z.id)
 					m.zoneEnt[z.id] = e
 					m.rep.ZoneEntities++
 				}
@@ -536,13 +521,30 @@ func (m *projectMigration) containment() error {
 		seen := map[string]bool{}
 		for i, it := range arr {
 			fld := fmt.Sprintf("containers[%d]", i)
-			co, _ := asObj(it)
-			cid, _ := asStr(co.get("id"))
+			co, ok := asObj(it)
+			if !ok {
+				return ferr(m.conts.rel, fld, "ожидался объект")
+			}
+			cid, ok := asStr(co.get("id"))
+			if !ok || cid == "" {
+				return ferr(m.conts.rel, fld+".id", "нужна непустая строка")
+			}
 			if seen[cid] {
+				m.rep.Notes = append(m.rep.Notes, fmt.Sprintf("containers.json: контейнер %s повторён, взят первый", cid))
 				continue
 			}
 			seen[cid] = true
+			parent, _, err := strField(co, "parent")
+			if err != nil {
+				return ferr(m.conts.rel, fld+".parent", "%v", err)
+			}
+			// A container gets an entity only where a zone of a view shows it
+			// (makeEntities); the rest of containers.json is only listed here.
 			child := m.contEnt[cid]
+			target := "без сущности"
+			if child != nil {
+				target = "→ " + child.id
+			}
 			var extra []string
 			if mv, ok := co.lookup("match"); ok && !isNull(mv) {
 				extra = append(extra, "match "+compactJSON(mv))
@@ -554,22 +556,31 @@ func (m *projectMigration) containment() error {
 				extra = append(extra, "theme "+compactJSON(tv))
 			}
 			if len(extra) > 0 {
-				m.rep.MatchRules = append(m.rep.MatchRules, fmt.Sprintf("%s → %s: %s", cid, child.id, strings.Join(extra, "; ")))
+				m.rep.MatchRules = append(m.rep.MatchRules, fmt.Sprintf("%s %s: %s", cid, target, strings.Join(extra, "; ")))
 			}
-			parent, _, err := strField(co, "parent")
-			if err != nil {
-				return ferr(m.conts.rel, fld+".parent", "%v", err)
+			if child == nil {
+				line := cid
+				if parent != "" {
+					line += " (parent " + parent + ")"
+				}
+				m.rep.UnplacedContainers = append(m.rep.UnplacedContainers, line)
 			}
 			if parent == "" {
 				continue
 			}
 			pe := m.contEnt[parent]
-			if pe == nil || parent == cid {
+			switch {
+			case parent == cid:
 				m.rep.Notes = append(m.rep.Notes,
-					fmt.Sprintf("containers.json: %s.parent «%s» — такого контейнера нет, связь contains не создана", cid, parent))
-				continue
+					fmt.Sprintf("containers.json: %s.parent — сам контейнер, связь contains не создана", cid))
+			case child == nil:
+				// the container itself has no entity: nothing to contain
+			case pe == nil:
+				m.rep.Notes = append(m.rep.Notes,
+					fmt.Sprintf("containers.json: %s.parent «%s» — такого контейнера нет или он не размещён ни на одном виде, связь contains не создана", cid, parent))
+			default:
+				m.addContains(pe, child)
 			}
-			m.addContains(pe, child)
 		}
 		if ov, ok := m.conts.root.lookup("overrides"); ok && !isNull(ov) {
 			oo, ok := asObj(ov)
@@ -588,7 +599,7 @@ func (m *projectMigration) containment() error {
 						fmt.Sprintf("%s → %s: сущности %s нет в entities.json", eid, cid, eid))
 				case pe == nil:
 					m.rep.UnappliedOverrides = append(m.rep.UnappliedOverrides,
-						fmt.Sprintf("%s → %s: контейнера %s нет в containers.json и ни одна зона его не показывает", eid, cid, cid))
+						fmt.Sprintf("%s → %s: контейнер %s не размещён ни на одном виде, сущности у него нет", eid, cid, cid))
 				default:
 					m.addContains(pe, &newEnt{id: eid})
 				}
@@ -647,7 +658,46 @@ func sameValue(a, b any) bool {
 	return val(a) == val(b)
 }
 
-func (m *projectMigration) chooseName(e *newEnt) {
+// provenance is a text value written by the migration.
+func provenance(v string) *obj {
+	o := newObj()
+	o.set("v", jsonStr(v))
+	o.set("at", jsonStr(nowUTC()))
+	o.set("origin", jsonStr("authored"))
+	return o
+}
+
+// nameValue is the `name` value of an entry with its provenance, as it is (a
+// plain string of contract 2 becomes an authored value); nil when it has none.
+func nameValue(td *textData, key string) any {
+	en := entryObj(td, key)
+	if en == nil {
+		return nil
+	}
+	nv, ok := en.lookup("name")
+	if !ok {
+		return nil
+	}
+	if s, ok := asStr(nv); ok {
+		if s == "" {
+			return nil
+		}
+		return provenance(s)
+	}
+	if no, ok := asObj(nv); ok {
+		if s, _ := asStr(no.get("v")); s != "" {
+			return deepCopy(no)
+		}
+	}
+	return nil
+}
+
+// chooseNames sets the name of a new entity in every language that names it: the
+// first text key of its zones, then of its container, that has one (nothing is
+// lost by language; the entity's name is a text per language, ADR_20260930-5).
+// Another name of the same language under a later key is reported. No language
+// names it: the tail of its id becomes the name in the main language.
+func (m *projectMigration) chooseNames(e *newEnt) {
 	keys := e.keys()
 	for _, lang := range m.langs {
 		td := m.textByLang[lang]
@@ -655,14 +705,49 @@ func (m *projectMigration) chooseName(e *newEnt) {
 			continue
 		}
 		for _, k := range keys {
-			if s := nameOf(td, k); s != "" {
-				e.name = s
-				return
+			v := nameValue(td, k)
+			if v == nil {
+				continue
+			}
+			if e.names[lang] == nil {
+				e.names[lang] = v
+				continue
+			}
+			if !sameValue(e.names[lang], v) {
+				m.rep.NameConflicts = append(m.rep.NameConflicts,
+					fmt.Sprintf("%s %s: «%s» — у сущности %s взято другое имя: «%s»", lang, k, valueText(v), e.id, valueText(e.names[lang])))
 			}
 		}
 	}
-	e.name = e.fallback
-	m.rep.NoName = append(m.rep.NoName, fmt.Sprintf("%s → %s: имя «%s» (хвост id)", e.srcID, e.id, e.name))
+	if len(e.names) == 0 {
+		e.names[m.langs[0]] = provenance(e.fallback)
+		m.rep.NoName = append(m.rep.NoName, fmt.Sprintf("%s → %s: имя «%s» (хвост id)", e.srcID, e.id, e.fallback))
+	}
+}
+
+// valueText is the `v` of a provenance value.
+func valueText(v any) string {
+	if o, ok := asObj(v); ok {
+		s, _ := asStr(o.get("v"))
+		return s
+	}
+	return ""
+}
+
+// ensureText is the text catalogue of a language, made when the project has none:
+// a name has to be written somewhere.
+func (m *projectMigration) ensureText(lang string) *textData {
+	if td := m.textByLang[lang]; td != nil {
+		return td
+	}
+	f := newFile(m.ws, m.rel+"/text."+lang+".json")
+	f.root.set("language", jsonStr(lang))
+	entries := newObj()
+	f.root.set("entries", entries)
+	td := &textData{f: f, lang: lang, entries: entries, changed: true}
+	m.texts = append(m.texts, td)
+	m.textByLang[lang] = td
+	return td
 }
 
 func (m *projectMigration) convertTexts() error {
@@ -678,7 +763,17 @@ func (m *projectMigration) convertTexts() error {
 		}
 	}
 	for _, e := range m.newEnts {
-		m.chooseName(e)
+		m.chooseNames(e)
+		// the fallback name of an entity nobody names is written to the main
+		// language, whose catalogue may not exist yet
+		langs := make([]string, 0, len(e.names))
+		for lang := range e.names {
+			langs = append(langs, lang)
+		}
+		sort.Strings(langs)
+		for _, lang := range langs {
+			m.ensureText(lang)
+		}
 	}
 	seen := map[string]bool{}
 	lost := func(list *[]string, s string) {
@@ -696,11 +791,6 @@ func (m *projectMigration) convertTexts() error {
 		newEntries := map[string]*obj{}
 		for _, e := range m.newEnts {
 			keys := e.keys()
-			for _, k := range keys {
-				if nm := nameOf(td, k); nm != "" && nm != e.name {
-					lost(&m.rep.LostNames, fmt.Sprintf("%s %s: «%s» (имя сущности %s: «%s»)", td.lang, k, nm, e.id, e.name))
-				}
-			}
 			var target *obj
 			existing := false
 			if ev, ok := td.entries.lookup(e.id); ok {
@@ -709,6 +799,15 @@ func (m *projectMigration) convertTexts() error {
 					return ferr(td.f.rel, "entries."+e.id, "ожидался объект")
 				}
 				target, existing = o, true
+			}
+			// the name of the entity in this language, first among its fields
+			if nv := e.names[td.lang]; nv != nil && (target == nil || !target.has("name")) {
+				if target == nil {
+					target = newObj()
+				}
+				target.setFirst("name", nv)
+				m.rep.NamesMoved++
+				td.changed = true
 			}
 			for _, field := range []string{"description", "doc"} {
 				var chosen any
@@ -769,11 +868,23 @@ func (m *projectMigration) convertTexts() error {
 			} else if strings.HasPrefix(k, "z_") || strings.HasPrefix(k, "c_") {
 				removed[k] = true
 				nm := nameOf(td, k)
+				line := fmt.Sprintf("%s %s", td.lang, k)
 				if nm != "" {
-					m.rep.UnconsumedText = append(m.rep.UnconsumedText, fmt.Sprintf("%s %s «%s»", td.lang, k, nm))
-				} else {
-					m.rep.UnconsumedText = append(m.rep.UnconsumedText, fmt.Sprintf("%s %s", td.lang, k))
+					line = fmt.Sprintf("%s %s «%s»", td.lang, k, nm)
 				}
+				// what else the deleted entry held, so that nothing goes silently
+				if en := entryObj(td, k); en != nil {
+					var rest []string
+					for _, fk := range en.keys {
+						if fk != "name" {
+							rest = append(rest, fk)
+						}
+					}
+					if len(rest) > 0 {
+						line += " + " + strings.Join(rest, ", ")
+					}
+				}
+				m.rep.UnconsumedText = append(m.rep.UnconsumedText, line)
 			}
 		}
 		m.rep.TextsRemoved += len(removed)
@@ -840,6 +951,7 @@ func (m *projectMigration) convertTexts() error {
 			out.set("rt_contains", rt)
 		}
 		td.f.root.set("entries", out)
+		td.entries = out // what later steps add goes into the object that is written
 		td.f.dirty = true
 	}
 	return nil
@@ -1086,7 +1198,7 @@ func (m *projectMigration) appendRegistry() error {
 		for _, e := range m.newEnts {
 			o := newObj()
 			o.set("id", jsonStr(e.id))
-			o.set("name", jsonStr(e.name))
+			// an authored entity has no name here: its name is a text under its id
 			o.set("kind", jsonStr("group"))
 			o.set("origin", jsonStr("authored"))
 			o.set("status", jsonStr("present"))
@@ -1142,7 +1254,7 @@ func (m *projectMigration) collect() ([]fileOut, error) {
 		td.f.bump = true
 		files = append(files, td.f)
 	}
-	if m.conts != nil {
+	if m.conts != nil && m.fromV3 {
 		m.conts.remove = true
 		files = append(files, m.conts)
 	}
@@ -1162,5 +1274,6 @@ func (m *projectMigration) collect() ([]fileOut, error) {
 			m.rep.Files = append(m.rep.Files, f.rel)
 		}
 	}
+	m.rep.Skipped = !m.fromV3 && len(outs) == 0
 	return outs, nil
 }

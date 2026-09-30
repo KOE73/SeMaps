@@ -2323,7 +2323,7 @@ textarea {
 }
 
 .help-file.is-coderef .help-file-note::after {
-  content: "  →  codeRef";
+  content: "  →  code[]";
   color: var(--accent);
   font-family: monospace;
 }

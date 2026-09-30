@@ -15,7 +15,7 @@ const externalFacts = `{"language":"go","root":".","edgeKinds":["extends","imple
   ]}`
 
 // An interface outside the read code comes as an external symbol: no file,
-// not filtered by sources.include; it becomes an entity without codeRef, and
+// not filtered by sources.include; it becomes an entity whose realization has no ref, and
 // the edge to it is an ordinary relation (ADR_20260927-4).
 func TestSyncExternalSymbol(t *testing.T) {
 	ws, dir := workspace(t, `{"id":"p","contractVersion":5,"sources":{"include":["go"]}}`, `{"entities":[]}`, "", "")
@@ -25,11 +25,14 @@ func TestSyncExternalSymbol(t *testing.T) {
 	}
 	v := load(t, dir)
 	w := find(v.Entities, "e_writer")
-	if w == nil || w["kind"] != "external" || w["symbol"] != "io.Writer" || w["namespace"] != "io" {
+	if w == nil || w["kind"] != "external" || symbolOf(w) != "io.Writer" || w["namespace"] != "io" {
 		t.Fatalf("external entity: %v", v.Entities)
 	}
-	if ref, has := w["codeRef"]; has {
-		t.Fatalf("an external entity has no codeRef, got %v", ref)
+	// its realization has no file: a code[] entry without ref (ADR_20260927-4)
+	if r := realization(w, "go"); r == nil || len(w["code"].([]any)) != 1 {
+		t.Fatalf("external entity has no realization of its language: %v", w)
+	} else if ref, has := r["ref"]; has {
+		t.Fatalf("an external realization has no ref, got %v", ref)
 	}
 	if find(v.Entities, "e_error") == nil {
 		t.Fatalf("entities: %v", v.Entities)
@@ -60,7 +63,7 @@ func TestSyncExternalSymbolAsFromEnd(t *testing.T) {
 		t.Fatalf("relations: %v", load(t, dir).Relations)
 	}
 	ev := r["evidence"].([]any)[0].(map[string]any)
-	if _, has := ev["codeRef"]; has || ev["symbol"] != "io.Reader" {
+	if _, has := ev["ref"]; has || ev["symbol"] != "io.Reader" || ev["lang"] != "go" {
 		t.Fatalf("evidence of an external end: %v", ev)
 	}
 }

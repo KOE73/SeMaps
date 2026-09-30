@@ -338,7 +338,7 @@ export class NeighbourhoodPanel {
 
   private name(e: EntityEntry): string {
     const doc = this.editor.canvas.model;
-    return doc ? nameOf(doc, e) : e.name;
+    return doc ? nameOf(doc, e) : e.name ?? e.id;
   }
 
   private isPlaced(id: string): boolean {

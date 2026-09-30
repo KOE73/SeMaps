@@ -168,7 +168,7 @@ func TestWatchRunEndsInGraphEvent(t *testing.T) {
 	entitiesFile := filepath.Join(dir, "entities.json")
 	for file, body := range map[string]string{
 		"project.json":   `{"id":"p","contractVersion":5}`,
-		"entities.json":  `{"entities":[{"id":"e_a","name":"A","kind":"class","origin":"code","status":"present","codeRef":"A.cs","symbol":"A"}]}`,
+		"entities.json":  `{"entities":[{"id":"e_a","name":"A","kind":"class","origin":"code","status":"present","code":[{"lang":"csharp","ref":"A.cs","symbol":"A"}]}]}`,
 		"relations.json": `{"relations":[]}`,
 	} {
 		p := filepath.Join(dir, file)

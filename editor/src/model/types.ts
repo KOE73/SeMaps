@@ -1,6 +1,6 @@
 import type { Rect } from "../geometry/types.js";
 import type { RoutingMode } from "./style-types.js";
-import type { EntityEntry, WireMetadata, RelationVia } from "./wire-types.js";
+import type { EntityEntry, WireMetadata } from "./wire-types.js";
 import type { PlacementOverride } from "./override.js";
 
 /**
@@ -29,7 +29,10 @@ export interface DiagramElement {
   readonly kind: ElementKind;
   /** The entity's `kind` (CONTRACT.md §3). Selects a base style; never an enum. */
   type: string;
-  /** The entity's `name`. */
+  /**
+   * The entity's display name in the current text language (`entityDisplayName`):
+   * derived state, kept current by `DiagramDocument.refreshNames()`.
+   */
   label: string;
   semanticId?: string;
   tags: string[];
@@ -103,11 +106,6 @@ export interface DiagramEdge {
    * `fromLabel` or `toLabel` on one.
    */
   origin?: "code" | "authored";
-  /**
-   * Member relation signature (ADR_20260924-4): present only for member relations from code.
-   * The edge label is derived from this when `origin: "code"` and no authored text exists.
-   */
-  via?: RelationVia;
   /**
    * Line shape for this one edge, overriding the view's and the type's choice.
    *

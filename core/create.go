@@ -1,7 +1,6 @@
 package core
 
 import (
-	"encoding/json"
 	"errors"
 	"fmt"
 	"io/fs"
@@ -155,12 +154,5 @@ func CreateView(workspace, project string, v NewView) error {
 func (m *Model) Languages() []string {
 	m.mu.Lock()
 	defer m.mu.Unlock()
-	var langs []string
-	if raw, ok := m.manifest.vals["languages"]; ok {
-		_ = json.Unmarshal(raw, &langs)
-	}
-	if len(langs) == 0 {
-		return []string{"ru"}
-	}
-	return langs
+	return m.textLanguages()
 }

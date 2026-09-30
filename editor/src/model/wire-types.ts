@@ -17,7 +17,8 @@ export interface WireMetadata {
   type?: string;
   kind?: string;
   description?: string;
-  codeRef?: string;
+  /** The entity's realizations, copied from `EntityEntry.code`; absent when there are none. */
+  code?: CodeRealization[];
   responsibilities?: string[];
   [key: string]: unknown;
 }
@@ -35,7 +36,7 @@ export interface WirePlacement {
    * catalog): drawn as a frame and may hold other placements.
    */
   container: boolean;
-  /** The entity's `name`. */
+  /** The entity's display name (`entityDisplayName`). */
   label?: string;
   /** The entity's `kind`. */
   type?: string;
@@ -115,12 +116,18 @@ export interface WireDocument {
 
 export interface EntityEntry {
   id: string;
-  name: string;
+  /**
+   * Only an entity from code (or without an origin) has a `name` here. The name
+   * of an `authored` entity is a text: `name` under its id in `text.<lang>.json`,
+   * per language. Read it through `entityDisplayName`, never from this field.
+   */
+  name?: string;
   kind: string;
   origin?: "code" | "authored";
   status?: "present" | "missing" | "planned";
   namespace?: string;
-  codeRef?: string;
+  /** 0..N realizations, one per language; absent (never `[]`) when there is no code. */
+  code?: CodeRealization[];
   /**
    * Members of the type, for templates that show more than a caption.
    *
@@ -150,10 +157,29 @@ export interface EntityCatalog {
   entities: EntityEntry[];
 }
 
-export interface RelationEvidence {
-  codeRef?: string;
+/** One realization of an entity in code. */
+export interface CodeRealization {
+  /** Language of the extractor facts (`go`, `csharp`, `typescript`, …); comes with `symbol`. */
+  lang?: string;
+  /**
+   * File from the source root, possibly with a `#..`/`:..` anchor. Absent for an
+   * external symbol (`io.Writer`): there is no file of ours to open.
+   */
+  ref?: string;
+  /** Symbol id in the facts; comes with `lang`. */
   symbol?: string;
-  line?: number;
+  /** `missing` when the symbol left the facts; `present` is not written. */
+  status?: "missing";
+}
+
+/** One language's evidence for a relation. */
+export interface RelationEvidence {
+  lang?: string;
+  ref?: string;
+  symbol?: string;
+  /** Member relation signature in this language; it lives only here. */
+  via?: RelationVia;
+  status?: "missing";
 }
 
 export interface RelationVia {
@@ -188,10 +214,10 @@ export interface RelationEntry {
   origin?: "code" | "authored";
   status?: "present" | "missing";
   /**
-   * Member relation signature (ADR_20260924-4): present only for member relations from code.
-   * The edge label is derived from this when `origin: "code"` and no authored text exists.
+   * Per-language evidence, absent when there is none. A member relation's
+   * signature (`via`) lives on its entries — see `relationVia()`; the edge label
+   * is derived from it when `origin: "code"` and no authored text exists.
    */
-  via?: RelationVia;
   evidence?: RelationEvidence[];
   points?: Array<{ x: number; y: number }>;
   [key: string]: unknown;

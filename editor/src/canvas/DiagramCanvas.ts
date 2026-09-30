@@ -40,6 +40,7 @@ import { getMarkerOffset } from "./render/PaintRegistry.js";
 import { EDGE_ATTR } from "../interaction/roles.js";
 import { InteractionController } from "../interaction/InteractionController.js";
 import { SourceCodeService } from "../editor/code/SourceCodeService.js";
+import { fileRealizations, refOf } from "../model/realizations.js";
 import { DIAGRAM_CONFIG } from "../constants/diagram-constants.js";
 import { canvas } from "../constants/canvas.js";
 import { iconSvg } from "../ui/icons.js";
@@ -70,7 +71,7 @@ export interface CanvasEvents {
   openDocEditor: { id: string; kind?: "node" | "zone" | "edge" };
   /** Double click on a line, shown or ghost: its owner decides whether to show or hide it. */
   edgeToggle: { id: string };
-  openCodeViewer: { id: string; codeRef: string; label?: string };
+  openCodeViewer: { id: string; ref: string; label?: string };
   /** Right click on a box, a line or the empty canvas: whoever owns menus decides what to offer. */
   contextmenu: { target: "element" | "edge" | "canvas"; id: string | null; clientX: number; clientY: number };
 }
@@ -420,6 +421,7 @@ export class DiagramCanvas {
 
   setModel(doc: DiagramDocument): void {
     this.doc = doc;
+    this.adoptNames(doc);
     this.selection = null;
     this.selectionIds.clear();
     this.collapsed = new Set();
@@ -427,7 +429,7 @@ export class DiagramCanvas {
     this.render();
     this.fit();
     this.events.emit("select", null);
-    this.validateModelCodeRefs(doc);
+    this.validateModelRefs(doc);
   }
 
   /**
@@ -440,6 +442,7 @@ export class DiagramCanvas {
    */
   replaceModel(doc: DiagramDocument): void {
     this.doc = doc;
+    this.adoptNames(doc);
     const alive = (id: string): boolean =>
       doc.element(id) !== undefined || doc.edge(id) !== undefined;
 
@@ -453,20 +456,23 @@ export class DiagramCanvas {
     this.events.emit("select", this.selection);
     // Undo and redo land here: every list built from the model must redraw.
     this.events.emit("modelchange", { reason: "replace" });
-    this.validateModelCodeRefs(doc);
+    this.validateModelRefs(doc);
   }
 
-  private validateModelCodeRefs(doc: DiagramDocument): void {
-    const codeRefs: string[] = [];
-    for (const el of doc.elements()) {
-      if (typeof el.metadata?.codeRef === "string") {
-        const ref = el.metadata.codeRef.trim();
-        if (ref) codeRefs.push(ref);
-      }
-    }
-    if (codeRefs.length === 0) return;
+  /** A model shows names in the language the viewer chose, whatever it was loaded or restored in. */
+  private adoptNames(doc: DiagramDocument): void {
+    doc.lang = this.dataLang || "ru";
+    doc.refreshNames();
+  }
 
-    void SourceCodeService.validateCodeRefs(codeRefs).then((hasUpdates) => {
+  private validateModelRefs(doc: DiagramDocument): void {
+    const refs: string[] = [];
+    for (const el of doc.elements()) {
+      for (const r of fileRealizations(el.metadata)) refs.push(refOf(r));
+    }
+    if (refs.length === 0) return;
+
+    void SourceCodeService.validateRefs(refs).then((hasUpdates) => {
       if (hasUpdates && this.doc === doc) {
         this.render();
       }

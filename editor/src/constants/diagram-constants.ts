@@ -39,7 +39,7 @@ export const DIAGRAM_CONFIG = {
     /** Width of the doc (file icon) button in px */
     docButtonWidth: 18,
 
-    /** Width of the code (</> icon) button in px */
+    /** Least width of a code button in px; it grows with its language tag */
     codeButtonWidth: 18,
 
     /** Horizontal padding inside the node in px */

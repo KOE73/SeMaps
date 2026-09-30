@@ -3,6 +3,7 @@ import type { DiagramEditor } from "./DiagramEditor.js";
 import { relationShownByDefault } from "../model/relationVisibility.js";
 import { KindCatalog } from "../model/KindCatalog.js";
 import { canvas } from "../constants/canvas.js";
+import { realizationsOf } from "../model/realizations.js";
 
 /** Default box size and the gap between boxes, from the canvas numbers (`/canvas.json`). */
 export function boxMetrics(): { WIDTH: number; HEIGHT: number; GAP_X: number; GAP_Y: number } {
@@ -18,20 +19,21 @@ const CONTAINER_HEIGHT = NEW_CONTAINER_SIZE.height;
 
 /**
  * The box of a registry entity at (x, y). Frame or block is the kind's to say
- * (CONTRACT.md §8.2). The entity's name is its own, not translated (§7.1); its
- * description comes from the view's texts.
+ * (CONTRACT.md §8.2). Its name is the display name in the current text
+ * language (`entityDisplayName`); its description comes from the view's texts.
  */
 export function blockFor(doc: NonNullable<DiagramEditor["canvas"]["model"]>, entity: EntityEntry, x: number, y: number): any {
   const { WIDTH, HEIGHT } = boxMetrics();
   const container = KindCatalog.active.isContainer(entity.kind);
   const text = (doc.bundle?.text?.entries || {})[entity.id] as { description?: string } | undefined;
+  const code = realizationsOf(entity);
   return {
     id: entity.id,
     kind: container ? "zone" as const : "node" as const,
     type: entity.kind,
-    label: entity.name || entity.id,
+    label: doc.nameOfEntity(entity),
     tags: [],
-    metadata: { description: text?.description, codeRef: entity.codeRef },
+    metadata: { description: text?.description, ...(code.length > 0 ? { code } : {}) },
     x,
     y,
     width: container ? CONTAINER_WIDTH : WIDTH,

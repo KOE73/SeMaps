@@ -10,6 +10,12 @@ import (
 
 var fixtureNames = []string{"shapes_demo", "overview", "nmfn_like"}
 
+// fixtureOptions: the one extractor of the nmfn_like project is a C# one, as
+// its .semaps file would say (the language of code realizations is never guessed).
+func fixtureOptions(dry bool) Options {
+	return Options{DryRun: dry, Extractors: []Extractor{{Project: "nmfn", Language: "csharp"}}}
+}
+
 // checkV5Shape verifies invariants every migrated fixture must satisfy.
 func checkV5Shape(t *testing.T, ws string) {
 	t.Helper()
@@ -27,6 +33,30 @@ func checkV5Shape(t *testing.T, ws string) {
 		ents := map[string]bool{}
 		for _, eid := range entityIDs(t, ws, id) {
 			ents[eid] = true
+			// the final shape (ADR_20260930-4/5): realizations in code[], an authored
+			// entity's name is a text, not a key of entities.json
+			e := entityByID(t, ws, id, eid)
+			if has(e, "codeRef") || has(e, "symbol") {
+				t.Errorf("%s: %s keeps codeRef/symbol", id, eid)
+			}
+			if o, _ := asStr(e.get("origin")); o == "authored" && has(e, "name") {
+				t.Errorf("%s: authored %s keeps a name in entities.json", id, eid)
+			}
+		}
+		if exists(ws, "projects/"+id+"/relations.json") {
+			rels := readTree(t, ws, "projects/"+id+"/relations.json")
+			for _, r := range at(t, rels, "relations").([]any) {
+				if has(r, "via") {
+					t.Errorf("%s: a relation keeps a top-level via: %s", id, js(t, r))
+				}
+				if has(r, "evidence") {
+					for _, ev := range at(t, r, "evidence").([]any) {
+						if has(ev, "codeRef") || has(ev, "line") {
+							t.Errorf("%s: evidence in the old shape: %s", id, js(t, ev))
+						}
+					}
+				}
+			}
 		}
 		views, _ := filepath.Glob(filepath.Join(dir, "views", "*.view.json"))
 		for _, vf := range views {
@@ -93,14 +123,14 @@ func TestFixturesIdempotent(t *testing.T) {
 	for _, name := range fixtureNames {
 		t.Run(name, func(t *testing.T) {
 			ws := copyFixture(t, name)
-			first := run(t, ws, Options{})
+			first := run(t, ws, fixtureOptions(false))
 			if !first.Changed() {
 				t.Fatal("first run changed nothing")
 			}
 			checkV5Shape(t, ws)
 			after1 := snapshot(t, ws)
 
-			second := run(t, ws, Options{})
+			second := run(t, ws, fixtureOptions(false))
 			if second.Changed() {
 				t.Fatalf("second run reports changes: %s", printed(second))
 			}
@@ -125,7 +155,7 @@ func TestFixturesDryRun(t *testing.T) {
 		t.Run(name, func(t *testing.T) {
 			ws := copyFixture(t, name)
 			before := snapshot(t, ws)
-			dry := run(t, ws, Options{DryRun: true})
+			dry := run(t, ws, fixtureOptions(true))
 			if !dry.Changed() {
 				t.Fatal("dry run reports nothing to do")
 			}
@@ -135,13 +165,13 @@ func TestFixturesDryRun(t *testing.T) {
 			if !strings.Contains(printed(dry), "--dry-run") {
 				t.Errorf("dry run report lacks the mode line:\n%s", printed(dry))
 			}
-			real := run(t, ws, Options{})
+			real := run(t, ws, fixtureOptions(false))
 			if !reflect.DeepEqual(dry.Projects, real.Projects) || !reflect.DeepEqual(dry.Files, real.Files) ||
 				!reflect.DeepEqual(dry.WorkspaceNotes, real.WorkspaceNotes) {
 				t.Errorf("dry-run report differs from the real one")
 			}
 			// Repeated dry run of the migrated workspace: nothing to do.
-			if run(t, ws, Options{DryRun: true}).Changed() {
+			if run(t, ws, fixtureOptions(true)).Changed() {
 				t.Error("dry run after migration still finds work")
 			}
 		})
@@ -169,7 +199,8 @@ func TestShapesDemo(t *testing.T) {
 	rep := run(t, ws, Options{})
 	p := rep.Projects[0]
 	if p.Zones != 3 || p.ZoneEntities != 3 || p.ContainerEntities != 0 || p.Placements != 11 ||
-		p.Overrides != 3 || p.ContainsAdded != 0 || p.TextsMoved != 3 || p.TextsRemoved != 3 {
+		p.Overrides != 3 || p.ContainsAdded != 0 || p.TextsMoved != 3 || p.TextsRemoved != 3 ||
+		p.NamesMoved != 11 || p.CodeEntries != 1 || p.EvidenceConverted != 0 {
 		t.Errorf("counts: %+v", *p)
 	}
 	after := snapshot(t, ws)
@@ -221,8 +252,18 @@ func TestShapesDemo(t *testing.T) {
 		t.Errorf("entities: %v", ids)
 	}
 	g := entityByID(t, ws, "shapes_demo", "e_zone_human")
-	if js(t, g) != `{"id":"e_zone_human","name":"Человек","kind":"group","origin":"authored","status":"present"}` {
+	if js(t, g) != `{"id":"e_zone_human","kind":"group","origin":"authored","status":"present"}` {
 		t.Errorf("group entity: %s", js(t, g))
+	}
+	// the authored entities of the project: their names left entities.json for the texts,
+	// the file link of the class became a realization without a language (no symbol)
+	for _, id := range []string{"actor_user", "uc_edit", "cls_template", "tbl_templates"} {
+		if has(entityByID(t, ws, "shapes_demo", id), "name") {
+			t.Errorf("%s keeps a name in entities.json", id)
+		}
+	}
+	if got := js(t, entityByID(t, ws, "shapes_demo", "cls_template"), "code"); got != `[{"ref":"editor/src/content/TemplateLibrary.ts"}]` {
+		t.Errorf("hand file link: %s", got)
 	}
 	ents := readTree(t, ws, base+"entities.json")
 	if has(ents, "contractVersion") {
@@ -237,8 +278,15 @@ func TestShapesDemo(t *testing.T) {
 	if got := str(t, text, "entries", "e_zone_human", "description", "v"); got != "То, что делается руками." {
 		t.Errorf("description: %s", got)
 	}
-	if has(at(t, text, "entries", "e_zone_human"), "name") {
-		t.Error("name must not move to the entity key")
+	// the name of the zone is now the entity's name text, first among its fields
+	if got := strings.Join(keysOf(t, text, "entries", "e_zone_human"), ","); got != "name,description" {
+		t.Errorf("fields of the group's text: %s", got)
+	}
+	if got := str(t, text, "entries", "e_zone_human", "name", "v"); got != "Человек" {
+		t.Errorf("group name: %s", got)
+	}
+	if got := str(t, text, "entries", "actor_user", "name", "v"); got != "Владелец схемы" {
+		t.Errorf("name of an authored entity: %s", got)
 	}
 	if got := js(t, text, "contractVersion"); got != "5" {
 		t.Errorf("text version %s", got)
@@ -256,7 +304,9 @@ func TestOverview(t *testing.T) {
 	ws := copyFixture(t, "overview")
 	rep := run(t, ws, Options{})
 	p := rep.Projects[0]
-	if p.Zones != 5 || p.ZoneEntities != 5 || p.Placements != 20 || p.Overrides != 5 || p.TextsMoved != 0 || p.TextsRemoved != 5 {
+	// 15 authored entities and 5 groups: 20 names become texts
+	if p.Zones != 5 || p.ZoneEntities != 5 || p.Placements != 20 || p.Overrides != 5 || p.TextsMoved != 0 || p.TextsRemoved != 5 ||
+		p.NamesMoved != 20 || p.CodeEntries != 0 {
 		t.Errorf("counts: %+v", *p)
 	}
 	if len(p.NoName) != 0 {
@@ -267,8 +317,11 @@ func TestOverview(t *testing.T) {
 	if !reflect.DeepEqual(ids[15:], want) {
 		t.Errorf("new entities: %v", ids[15:])
 	}
-	if got := str(t, entityByID(t, ws, "overview", "e_host"), "name"); got != "Хост semaps.exe (host/)" {
+	if got := str(t, readTree(t, ws, "projects/overview/text.ru.json"), "entries", "e_host", "name", "v"); got != "Хост semaps.exe (host/)" {
 		t.Errorf("name: %s", got)
+	}
+	if has(entityByID(t, ws, "overview", "e_host"), "name") || has(entityByID(t, ws, "overview", "e_editor"), "name") {
+		t.Error("an authored entity keeps a name in entities.json")
 	}
 	view := readTree(t, ws, "projects/overview/views/v_overview.view.json")
 	last := at(t, view, "placements", 19)
@@ -292,39 +345,86 @@ func TestOverview(t *testing.T) {
 func TestNmfnLike(t *testing.T) {
 	fixedNow(t)
 	ws := copyFixture(t, "nmfn_like")
-	rep := run(t, ws, Options{})
+	rep := run(t, ws, fixtureOptions(false))
 	p := rep.Projects[0]
-	if p.Zones != 8 || p.ZoneEntities != 4 || p.ContainerEntities != 4 || p.Placements != 14 ||
-		p.Overrides != 4 || p.ContainsAdded != 2 || p.TextsMoved != 5 || p.TextsRemoved != 11 {
+	if p.Zones != 8 || p.ZoneEntities != 4 || p.ContainerEntities != 3 || p.Placements != 14 ||
+		p.Overrides != 4 || p.ContainsAdded != 2 || p.TextsMoved != 5 || p.TextsRemoved != 11 ||
+		p.NamesMoved != 11 || p.CodeEntries != 5 || p.EvidenceConverted != 1 {
 		t.Errorf("counts: %+v", *p)
 	}
 	base := "projects/nmfn/"
 
-	// containers.json first (e_onnx is taken by an existing entity), then zones.
+	// The zones of the views in file order (e_onnx is taken by an existing entity);
+	// c_orphan, which no view shows, gets no entity.
 	ids := entityIDs(t, ws, "nmfn")
-	want := []string{"e_onnx_2", "e_graph", "e_onnx_core", "e_orphan", "e_deco", "e_sub", "e_odd", "e_teal"}
+	want := []string{"e_onnx_2", "e_graph", "e_onnx_core", "e_deco", "e_sub", "e_odd", "e_teal"}
 	if !reflect.DeepEqual(ids[5:], want) {
 		t.Fatalf("new entities: %v", ids[5:])
 	}
-	name := func(id string) string { return str(t, entityByID(t, ws, "nmfn", id), "name") }
+	if anyContains(ids, "orphan") {
+		t.Error("an unplaced container became an entity")
+	}
+	if !reflect.DeepEqual(p.UnplacedContainers, []string{"c_orphan"}) {
+		t.Errorf("unplaced containers: %v", p.UnplacedContainers)
+	}
+	// The name of an authored entity is a text under its id, in both languages,
+	// with the provenance the source text had; entities.json has no name for it.
+	ru0 := readTree(t, ws, "projects/nmfn/text.ru.json")
+	en0 := readTree(t, ws, "projects/nmfn/text.en.json")
 	for id, n := range map[string]string{
-		"e_onnx_2": "ONNX", "e_graph": "Graph", "e_onnx_core": "Ядро ONNX", "e_orphan": "Сирота",
+		"e_onnx_2": "ONNX", "e_graph": "Graph", "e_onnx_core": "Ядро ONNX",
 		"e_deco": "Декор", "e_sub": "sub", "e_odd": "odd", "e_teal": "teal",
 	} {
-		if name(id) != n {
-			t.Errorf("name of %s: %q, want %q", id, name(id), n)
+		if has(entityByID(t, ws, "nmfn", id), "name") {
+			t.Errorf("%s: an authored entity has no name in entities.json", id)
 		}
+		if got := str(t, ru0, "entries", id, "name", "v"); got != n {
+			t.Errorf("ru name of %s: %q, want %q", id, got, n)
+		}
+	}
+	for id, n := range map[string]string{"e_onnx_2": "ONNX assembly", "e_graph": "Graph", "e_onnx_core": "ONNX core", "e_deco": "Decoration"} {
+		if got := str(t, en0, "entries", id, "name", "v"); got != n {
+			t.Errorf("en name of %s: %q, want %q", id, got, n)
+		}
+	}
+	if has(at(t, en0, "entries"), "e_sub") {
+		t.Error("no en name to invent for a zone that has none")
+	}
+	if got := js(t, en0, "entries", "e_onnx_2", "name"); got != `{"v":"ONNX assembly","at":"2026-09-01T10:00:00Z","origin":"translated","from":"ru","fromHash":"a3f19c00"}` {
+		t.Errorf("the provenance of a translated name must move as it is: %s", got)
+	}
+	// Realizations: codeRef + symbol → code[] with the language of the only extractor.
+	tr := entityByID(t, ws, "nmfn", "e_tracker")
+	if got := js(t, tr, "code"); got != `[{"lang":"csharp","ref":"src/NeuroModFlowNet.CV/Tracker.cs","symbol":"NeuroModFlowNet.CV.Tracker"}]` || has(tr, "codeRef") || has(tr, "symbol") {
+		t.Errorf("e_tracker: %s", js(t, tr))
+	}
+	if got := strings.Join(tr.keys, ","); got != "id,name,kind,origin,status,namespace,code,members" {
+		t.Errorf("entity keys: %s", got)
+	}
+	if got := js(t, entityByID(t, ws, "nmfn", "e_onnx"), "code"); got != `[{"lang":"csharp","symbol":"NeuroModFlowNet.ONNX"}]` {
+		t.Errorf("a symbol without a file: %s", got)
+	}
+	relsOut := readTree(t, ws, "projects/nmfn/relations.json")
+	holds := at(t, relsOut, "relations", 0)
+	if has(holds, "via") || strings.Join(holds.(*obj).keys, ",") != "id,from,to,type,origin,status,evidence" {
+		t.Errorf("the via is inside the evidence: %s", js(t, holds))
+	}
+	if got := js(t, holds, "evidence"); got != `[{"lang":"csharp","ref":"src/NeuroModFlowNet.ONNX/OnnxModel.cs","symbol":"NeuroModFlowNet.ONNX.OnnxModel",`+
+		`"via":{"member":"session","memberKind":"field","modifiers":["private","readonly"],"text":"OnnxSession","cardinality":"one"}}]` {
+		t.Errorf("evidence: %s", got)
 	}
 	if len(p.NoName) != 3 {
 		t.Errorf("no-name: %v", p.NoName)
 	}
-	if len(p.LostNames) != 3 || !anyContains(p.LostNames, "en z_deco") || !anyContains(p.LostNames, "en c_onnx:") {
-		t.Errorf("lost names: %v", p.LostNames)
+	// nothing is lost by language any more: both languages keep the name (see below)
+	if len(p.NameConflicts) != 0 {
+		t.Errorf("name conflicts: %v", p.NameConflicts)
 	}
 	if len(p.LostText) != 1 || !anyContains(p.LostText, "ru z_core.title") {
 		t.Errorf("lost text: %v", p.LostText)
 	}
-	if len(p.UnconsumedText) != 1 || !anyContains(p.UnconsumedText, "ru z_stale «Забытая зона»") {
+	// the texts of the container no view shows go with it, named in the report
+	if len(p.UnconsumedText) != 2 || !anyContains(p.UnconsumedText, "ru z_stale «Забытая зона»") || !anyContains(p.UnconsumedText, "ru c_orphan «Сирота»") {
 		t.Errorf("unconsumed: %v", p.UnconsumedText)
 	}
 	if len(p.MatchRules) != 3 || !anyContains(p.MatchRules, `c_onnx → e_onnx_2: match {"path":["src/NeuroModFlowNet.ONNX/"]}; axis "axis_assembly"`) ||
@@ -366,7 +466,7 @@ func TestNmfnLike(t *testing.T) {
 		t.Errorf("rt_contains en: %s", got)
 	}
 	// Key position: the entity entry takes the place of its first source key.
-	if got := keysOf(t, ru, "entries"); !reflect.DeepEqual(got, []string{"e_onnx_2", "e_onnx_core", "e_deco", "e_session", "v_assemblies", "rt_depends", "rt_contains"}) {
+	if got := keysOf(t, ru, "entries"); !reflect.DeepEqual(got, []string{"e_onnx_2", "e_graph", "e_onnx_core", "e_deco", "e_session", "v_assemblies", "rt_depends", "e_sub", "e_odd", "e_teal", "rt_contains"}) {
 		t.Errorf("ru entries: %v", got)
 	}
 	if got := str(t, en, "entries", "v_assemblies", "name", "v"); got != "Assemblies <&>" {
@@ -471,7 +571,9 @@ func TestNmfnLike(t *testing.T) {
 
 	out := printed(rep)
 	for _, frag := range []string{
-		"Проект nmfn", "зон → сущностей: 8 → 4", "контейнеров containers.json → сущностей: 4",
+		"Проект nmfn", "зон → сущностей: 8 → 4", "контейнеров containers.json, размещённых на видах → сущностей: 3",
+		"контейнеров containers.json без размещения (сущности нет): 1", "имён нарисованных сущностей записано в тексты: 11",
+		"сущностей: codeRef/symbol → code[]: 5; связей: via/evidence в новой форме: 1", "контейнеры containers.json, не размещённые ни на одном виде",
 		"размещений: 14", "override создано: 4", "связей contains добавлено: 2", "версия: 3 → 5",
 		"Решает человек", "правила match", "styleId оставлены", "overrides не применены",
 		"стили без типа: 4", "стили без типа (связи): 1", "Общие файлы рабочего пространства",

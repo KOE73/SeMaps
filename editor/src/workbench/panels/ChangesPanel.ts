@@ -53,8 +53,10 @@ export class ChangesPanel implements IContentRenderer {
       return this.group("map", entry ? this.editor.viewName(entry) : id, dirty!.views[id]!, project.id);
     });
     // Narrowed to a view, the registry part keeps what is drawn on it and the view's own texts.
+    // A rename is a text under the entity's id: it belongs to the view the entity is placed on.
     const drawn = new Set((filter ? dirty?.views[filter] ?? [] : []).map((r) => r.id));
-    const registry = (dirty?.registry ?? []).filter((r) => !filter || drawn.has(r.id) || r.id === filter);
+    const placedHere = (id: string): boolean => filter === view.id && this.editor.canvas.model?.element(id) !== undefined;
+    const registry = (dirty?.registry ?? []).filter((r) => !filter || drawn.has(r.id) || r.id === filter || placedHere(r.id));
     if (registry.length > 0) groups.push(this.group("books", t.registry, registry, project.id));
 
     replaceChildren(this.body, head, ...(groups.length > 0 ? groups : [el("div", { class: "changes-empty", text: t.none })]));

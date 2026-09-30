@@ -17,6 +17,7 @@ import type { WireStyleSheet } from "../model/style-types.js";
 import { parseDocument, serializeDocument } from "../model/wire.js";
 import type { ModelIssue, WireDocument } from "../model/wire-types.js";
 import { entityOf, type DiagramElement } from "../model/types.js";
+import { fileRealizations, lineOfRef, refOf } from "../model/realizations.js";
 import { i18n } from "../workbench/i18n/I18nService.js";
 import { snap } from "../geometry/rect.js";
 import { History } from "./History.js";
@@ -267,19 +268,22 @@ export class DiagramEditor implements InspectorHost, StylePanelHost, DiagramEdit
     this.docEditor.open(id, kind);
   }
 
-  openCodeViewer(codeRef?: string | null, label?: string): void {
-    if (!codeRef) {
+  openCodeViewer(ref?: string | null, label?: string): void {
+    if (!ref) {
+      // No file given: the selection's first realization that has one.
       const selected = this.canvas.selectedElement();
-      if (selected && typeof selected.metadata?.codeRef === "string") {
-        codeRef = selected.metadata.codeRef;
+      const first = selected ? fileRealizations(selected.metadata)[0] : undefined;
+      if (selected && first) {
+        ref = refOf(first);
         label = label || selected.label;
       }
     }
-    if (!codeRef) {
-      this.notify("У выбранного элемента не указана ссылка на исходный код (codeRef)");
+    if (!ref) {
+      this.notify(i18n.d.panels.properties.noCodeSelected);
       return;
     }
-    void this.codeViewer.open(codeRef, label);
+    const line = lineOfRef(ref);
+    void (line === undefined ? this.codeViewer.open(ref, label) : this.codeViewer.openAt(ref, line, label));
   }
 
   /**
@@ -511,8 +515,8 @@ export class DiagramEditor implements InspectorHost, StylePanelHost, DiagramEdit
       this.openDocEditor(payload.id, payload.kind);
     });
 
-    this.canvas.events.on("openCodeViewer", (payload: { id: string; codeRef: string; label?: string }) => {
-      this.openCodeViewer(payload.codeRef, payload.label);
+    this.canvas.events.on("openCodeViewer", (payload: { id: string; ref: string; label?: string }) => {
+      this.openCodeViewer(payload.ref, payload.label);
     });
 
     this.canvas.events.on("viewport", (state) => {
@@ -561,6 +565,13 @@ export class DiagramEditor implements InspectorHost, StylePanelHost, DiagramEdit
   applyDataLang(lang: string): void {
     this.dataLang = lang;
     this.canvas.dataLang = lang;
+    // Names of authored entities are texts: they follow the language.
+    const model = this.canvas.model;
+    if (model !== null && model.lang !== lang) {
+      model.lang = lang;
+      model.refreshNames();
+      this.canvas.render();
+    }
     localStorage.setItem("semaps.dataLang", lang);
     this.workspaceEvents.emit("change", null);
     const select = this.root.querySelector<HTMLSelectElement>("[data-select='data-lang']");
@@ -1081,6 +1092,8 @@ export class DiagramEditor implements InspectorHost, StylePanelHost, DiagramEdit
 
     const target = doc.containerAt({ x: x + 95, y: y + 30 });
     doc.add(node, target);
+    // The name of an authored entity is a text; its entity reaches the registry with the first sync.
+    doc.setText(node.id, { name: node.label }, doc.textLang);
     this.commit("create-node");
     this.canvas.select(node.id);
   }
@@ -1111,6 +1124,7 @@ export class DiagramEditor implements InspectorHost, StylePanelHost, DiagramEdit
     };
 
     doc.add(container, doc.containerAt({ x: x + NEW_CONTAINER_SIZE.width / 2, y: y + NEW_CONTAINER_SIZE.height / 2 }));
+    doc.setText(container.id, { name: container.label }, doc.textLang);
     this.commit("create-container");
     this.canvas.select(container.id);
   }
@@ -1871,6 +1885,14 @@ export class DiagramEditor implements InspectorHost, StylePanelHost, DiagramEdit
     const link = this.linkFor(ids ?? [...this.canvas.selectedIds]);
     if (link === "") return;
     void navigator.clipboard.writeText(link).then(() => this.toast(`Ссылка скопирована: ${link}`));
+  }
+
+  /** Copy an entity id (as it is, without a view prefix) and say so with a short-lived toast. */
+  copyId(id: string): void {
+    void navigator.clipboard.writeText(id).then(
+      () => this.toast(i18n.format(i18n.d.panels.properties.idCopied, { id })),
+      () => this.toast(id),
+    );
   }
 
   toast(message: string): void {

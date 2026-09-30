@@ -18,6 +18,8 @@ import type {
 import type { ModelStore, SaveTarget } from "./types.js";
 import { relationShownByDefault } from "../../model/relationVisibility.js";
 import { KindCatalog } from "../../model/KindCatalog.js";
+import { entityDisplayName } from "../../model/entityName.js";
+import { realizationsOf } from "../../model/realizations.js";
 import { EDGE_OVERRIDE_FIELDS, OVERRIDE_FIELDS, parseOverride } from "../../model/override.js";
 
 /** Contract version this editor reads and writes (CONTRACT.md, ADR_20260927-6). */
@@ -118,9 +120,9 @@ export class HttpProjectStore implements ModelStore {
 
     const placements: WirePlacement[] = (viewData.placements ?? []).map((vp: ViewPlacement) => {
       const entityId = vp.entity;
-      const e: EntityEntry = entityById.get(entityId) ?? { id: entityId, name: entityId, kind: "" };
-      // Only description and doc are texts of an entity; its name is not translated (§7.1).
+      const e: EntityEntry = entityById.get(entityId) ?? { id: entityId, kind: "" };
       const t = textRes.entries?.[entityId];
+      const code = realizationsOf(e);
       const override = parseOverride(vp.override, OVERRIDE_FIELDS);
       if (override.rejected.length > 0) {
         issues.push({
@@ -134,7 +136,8 @@ export class HttpProjectStore implements ModelStore {
         id: entityId,
         // Frame or block is the kind's to say, not the file's (§8.2).
         container: kinds.isContainer(e.kind),
-        label: e.name || entityId,
+        // The editor puts the viewer's data language over this (`DiagramDocument.refreshNames`).
+        label: entityDisplayName(e, entityId, textRegistries, primary, languages),
         type: e.kind,
         parent: vp.parent ?? null,
         x: vp.x,
@@ -145,7 +148,7 @@ export class HttpProjectStore implements ModelStore {
         ...(override.value === undefined ? {} : { override: override.value }),
         ...(vp.collapsed === undefined ? {} : { collapsed: vp.collapsed }),
         metadata: {
-          codeRef: e.codeRef,
+          ...(code.length > 0 ? { code } : {}),
           description: t?.doc || t?.description,
           // Content template chosen for this one placement, overriding the
           // style's. The exception, not the rule: one node that must show more

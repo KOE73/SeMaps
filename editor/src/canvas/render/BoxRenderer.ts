@@ -13,6 +13,7 @@ import { SourceCodeService } from "../../editor/code/SourceCodeService.js";
 import { DIAGRAM_CONFIG } from "../../constants/diagram-constants.js";
 import { canvas } from "../../constants/canvas.js";
 import { iconGlyph } from "./iconGlyph.js";
+import { fileRealizations, langTag, refOf } from "../../model/realizations.js";
 
 /**
  * The default leaf renderer: a rounded rectangle with a caption, a subtitle and
@@ -72,26 +73,43 @@ export class BoxRenderer implements ElementRenderer {
     ]);
     g.appendChild(docGroup);
 
-    // 2b. Code button if codeRef is present and available
-    const codeRef = typeof el.metadata?.codeRef === "string" ? el.metadata.codeRef.trim() : "";
-    const isAvailable = codeRef ? SourceCodeService.isFileAvailable(codeRef) : false;
-    if (codeRef && isAvailable !== false) {
-      const step = NODE_LAYOUT.docButtonWidth + 4;
-      const codeX = chrome.docGrow === "right" ? docX + step : docX - step;
+    // 2b. One code button per realization that has a file, labelled with its
+    // language tag; none for an entity without code, an external symbol, or a
+    // file the source root does not have.
+    let edge = chrome.docGrow === "right" ? docX + NODE_LAYOUT.docButtonWidth + 4 : docX - 4;
+    for (const r of fileRealizations(el.metadata)) {
+      const ref = refOf(r);
+      if (SourceCodeService.isFileAvailable(ref) === false) continue;
+      const tag = langTag(r);
+      const w = Math.max(NODE_LAYOUT.codeButtonWidth, tag.length * 6 + 8);
+      const codeX = chrome.docGrow === "right" ? edge : edge - w;
+      edge = chrome.docGrow === "right" ? edge + w + 4 : edge - w - 4;
+      const missing = r.status === "missing";
       const codeGroup = svg("g", {
-        class: "semaps-node-code",
+        class: `semaps-node-code${missing ? " is-missing" : ""}`,
         [ROLE_ATTR]: Role.CodeView,
-        style: "cursor: pointer;",
+        "data-code-ref": ref,
+        style: `cursor: pointer;${missing ? " opacity: 0.5;" : ""}`,
       }, [
         svg("rect", {
           x: codeX,
           y: docY,
-          width: NODE_LAYOUT.codeButtonWidth,
+          width: w,
           height: NODE_LAYOUT.topBarHeight,
           rx: 4,
           class: "semaps-node-code-rect",
         }),
-        iconGlyph("code", codeX + 3.5, docY + 1.5, 11, "semaps-node-code-icon"),
+        text(
+          {
+            x: codeX + w / 2,
+            y: docY + 10,
+            "text-anchor": "middle",
+            "font-size": "9px",
+            class: "semaps-node-code-icon",
+            "pointer-events": "none",
+          },
+          tag,
+        ),
       ]);
       g.appendChild(codeGroup);
     }

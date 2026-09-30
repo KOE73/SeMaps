@@ -115,7 +115,7 @@ export interface DiagramEditorFacade {
   alignEdges(side: "left" | "right" | "top" | "bottom"): void;
   alignSelection(mode: "left" | "right" | "top" | "bottom" | "width" | "height"): void;
   openDocEditor(targetId?: string | null): void;
-  openCodeViewer?(codeRef?: string | null, label?: string): void;
+  openCodeViewer?(ref?: string | null, label?: string): void;
   applyTheme(theme: string): void;
   applyDensity(density: string): void;
   applyDataLang(lang: string): void;

@@ -24,7 +24,7 @@ func manyEntitiesSession(t *testing.T, n int) *mcp.ClientSession {
 		if i > 0 {
 			b.WriteString(",")
 		}
-		fmt.Fprintf(&b, `{"id":"e_%d","name":"E%d","kind":"class","origin":"authored","status":"planned"}`, i, i)
+		fmt.Fprintf(&b, `{"id":"e_%d","name":"E%d","kind":"class","origin":"code","status":"planned"}`, i, i)
 	}
 	b.WriteString(`]}`)
 	files := map[string]string{
@@ -158,8 +158,8 @@ func TestMCPGetGraphMissingDefaultVsInclude(t *testing.T) {
 	files := map[string]string{
 		"project.json": `{"id":"p","contractVersion":5}`,
 		"entities.json": `{"entities":[
-			{"id":"e_a","name":"A","kind":"class","origin":"authored","status":"present"},
-			{"id":"e_gone","name":"Gone","kind":"class","origin":"authored","status":"missing"}
+			{"id":"e_a","name":"A","kind":"class","origin":"code","status":"present"},
+			{"id":"e_gone","name":"Gone","kind":"class","origin":"code","status":"missing"}
 		]}`,
 		"relations.json": `{"relations":[
 			{"id":"r_gone","from":"e_a","to":"e_gone","type":"uses","origin":"code","status":"missing"}

@@ -25,7 +25,7 @@ func graphFixture(t *testing.T, withRun bool) (*graphService, *modelService) {
 	dir := filepath.Join(ws, "projects", "p")
 	for file, body := range map[string]string{
 		"project.json":   `{"id":"p","contractVersion":5}`,
-		"entities.json":  `{"entities":[{"id":"e_a","name":"A","kind":"class","origin":"code","status":"present","codeRef":"A.cs","symbol":"A"}]}`,
+		"entities.json":  `{"entities":[{"id":"e_a","name":"A","kind":"class","origin":"code","status":"present","code":[{"lang":"csharp","ref":"A.cs","symbol":"A"}]}]}`,
 		"relations.json": `{"relations":[]}`,
 	} {
 		p := filepath.Join(dir, file)
@@ -361,10 +361,12 @@ func containerFixture(t *testing.T) *httptest.Server {
 	for file, body := range map[string]string{
 		"project.json": `{"id":"p","contractVersion":5,"defaultAxis":"axis_a"}`,
 		"entities.json": `{"entities":[
-			{"id":"e_grp","name":"Frontend","kind":"group","origin":"authored","status":"present"},
-			{"id":"e_a","name":"A","kind":"class","origin":"code","status":"present","codeRef":"A.cs","symbol":"A"}]}`,
+			{"id":"e_grp","kind":"group","origin":"authored","status":"present"},
+			{"id":"e_a","name":"A","kind":"class","origin":"code","status":"present","code":[{"lang":"csharp","ref":"A.cs","symbol":"A"}]}]}`,
 		"relations.json":      `{"relations":[{"id":"r_grp_a_contains","from":"e_grp","to":"e_a","type":"contains","origin":"authored"}]}`,
 		"relation-types.json": `{"relationTypes":[{"id":"contains","origin":"code"}]}`,
+		// the group is authored: its name is a text (ADR_20260930-5)
+		"text.ru.json": `{"contractVersion":5,"language":"ru","entries":{"e_grp":{"name":{"v":"Frontend","at":"2026-09-30T00:00:00Z","origin":"authored"}}}}`,
 		"views/v.view.json": `{"id":"v","project":"p","axis":"axis_b","placements":[
 			{"entity":"e_grp","parent":null,"x":0,"y":0,"width":300,"height":300},
 			{"entity":"e_a","parent":"e_grp","x":20,"y":50}]}`,
@@ -486,7 +488,7 @@ func TestGraphEndpointMissingDefaultVsInclude(t *testing.T) {
 	files := map[string]string{
 		"project.json": `{"id":"p","contractVersion":5}`,
 		"entities.json": `{"entities":[
-			{"id":"e_a","name":"A","kind":"class","origin":"code","status":"present","codeRef":"A.cs","symbol":"A"},
+			{"id":"e_a","name":"A","kind":"class","origin":"code","status":"present","code":[{"lang":"csharp","ref":"A.cs","symbol":"A"}]},
 			{"id":"e_gone","name":"Gone","kind":"class","origin":"code","status":"missing"}
 		]}`,
 		"relations.json": `{"relations":[

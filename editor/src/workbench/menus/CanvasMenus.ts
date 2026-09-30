@@ -3,6 +3,7 @@ import { edgePreview } from "../../editor/style-preview.js";
 import { variantLabel } from "../../editor/kindSelects.js";
 import type { RoutingMode } from "../../model/style-types.js";
 import { entityOf, type DiagramEdge, type DiagramElement } from "../../model/types.js";
+import { fileRealizations, langTag, refOf } from "../../model/realizations.js";
 import { i18n } from "../i18n/I18nService.js";
 import { icons } from "../../ui/icons.js";
 import { t as shellStrings } from "../../shell/strings.js";
@@ -136,8 +137,12 @@ function blockItems(editor: DiagramEditor, host: MenuHost, el: DiagramElement): 
 
   items.push({ kind: "separator" });
   items.push({ label: t.describe, icon: icons.pencil, onSelect: () => editor.openDocEditor(el.id, isZone ? "zone" : "node") });
-  const codeRef = typeof el.metadata.codeRef === "string" ? el.metadata.codeRef : entity?.codeRef;
-  if (codeRef) items.push({ label: t.code, icon: icons.code, note: codeRef.split("/").pop(), onSelect: () => editor.openCodeViewer(codeRef, el.label) });
+  // One item per realization that has a file, labelled with its language tag.
+  const own = fileRealizations(el.metadata);
+  for (const r of own.length > 0 ? own : fileRealizations(entity)) {
+    const ref = refOf(r);
+    items.push({ label: `${t.code}: ${langTag(r)}`, icon: icons.code, note: ref.split("/").pop(), onSelect: () => editor.openCodeViewer(ref, el.label) });
+  }
   items.push({ label: t.properties, icon: icons.listDetails, onSelect: () => host.openPanel("properties") });
   items.push({ label: t.blockStyle, icon: icons.palette, onSelect: () => host.openStyleEditor(styles.blockStyleIdFor(el)) });
   if (entity) items.push({ label: t.neighbourhood, icon: icons.hierarchy, onSelect: () => host.openPanel("neighbourhood") });

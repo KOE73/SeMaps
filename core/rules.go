@@ -71,10 +71,13 @@ func oneOf(o *object, field string, allowed ...string) bool {
 
 func (after *Model) checkEntity(before *Model, id string) error {
 	old, o := findByID(before.registries["entity"].items, id), findByID(after.registries["entity"].items, id)
+	authored := isAuthored(o)
 	switch {
 	case old == nil && !hasIDPrefix(id, "e_"):
 		return refuse("entity id %q: starts with e_ (CONTRACT §3)", id)
-	case changed(old, o, "name") && strings.TrimSpace(o.str("name")) == "":
+	case authored && has(o, "name") && (changed(old, o, "name") || changed(old, o, "origin")):
+		return refuse("entity %s: an authored entity has no name in entities.json — its name is a text under its id (CONTRACT §3, §7; ADR_20260930-5)", id)
+	case !authored && (changed(old, o, "name") || changed(old, o, "origin")) && strings.TrimSpace(o.str("name")) == "":
 		return refuse("entity %s: name is empty (CONTRACT §3)", id)
 	case changed(old, o, "kind") && strings.TrimSpace(o.str("kind")) == "":
 		return refuse("entity %s: kind is empty (CONTRACT §3)", id)
@@ -82,6 +85,17 @@ func (after *Model) checkEntity(before *Model, id string) error {
 		return refuse("entity %s: origin %q: code or authored (CONTRACT §3)", id, o.str("origin"))
 	case changed(old, o, "status") && !oneOf(o, "status", "present", "missing", "planned"):
 		return refuse("entity %s: status %q: present, missing or planned (CONTRACT §3)", id, o.str("status"))
+	}
+	if s := oldShape("entity", o); s != "" {
+		return refuse("entity %s: %s (CONTRACT §3; `semaps migrate`)", id, s)
+	}
+	if changed(old, o, "code") {
+		if err := checkCode("entity", id, entries(o, "code")); err != nil {
+			return err
+		}
+	}
+	if authored && (old == nil || changed(old, o, "origin")) && !after.hasNameText(id) {
+		return refuse("entity %s: an authored entity needs a name: a `name` text under its id in at least one language (CONTRACT §7; ADR_20260930-5)", id)
 	}
 	return nil
 }
@@ -105,6 +119,12 @@ func (after *Model) checkRelation(before *Model, id string) error {
 	}
 	if changed(old, o, "origin") && !oneOf(o, "origin", "code", "authored") {
 		return refuse("relation %s: origin %q: code or authored (CONTRACT §4)", id, o.str("origin"))
+	}
+	if s := oldShape("relation", o); s != "" {
+		return refuse("relation %s: %s (CONTRACT §4; `semaps migrate`)", id, s)
+	}
+	if changed(old, o, "evidence") {
+		return checkCode("relation", id, entries(o, "evidence"))
 	}
 	return nil
 }
@@ -131,6 +151,17 @@ func (after *Model) checkText(before *Model, lang, key string) error {
 	for _, field := range entry.keys {
 		if old != nil && bytes.Equal(old.vals[field], entry.vals[field]) {
 			continue
+		}
+		if strings.HasPrefix(key, "e_") && (field == "name" || field == "title") {
+			e := findByID(after.registries["entity"].items, key)
+			switch {
+			case field == "title":
+				return refuse("%s.title (%s): an entity has a name, not a title (CONTRACT §7.1)", key, lang)
+			case e == nil:
+				return refuse("%s.name (%s): no entity %s", key, lang, key)
+			case !isAuthored(e):
+				return refuse("%s.name (%s): the name of an entity that comes from code is its code name in entities.json and is not translated (CONTRACT §7.1)", key, lang)
+			}
 		}
 		var v struct {
 			V      *string `json:"v"`

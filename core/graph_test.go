@@ -17,7 +17,7 @@ func graphModel(t *testing.T, entities, relations string) *Model {
 
 func TestBuildGraphPresenceBoth(t *testing.T) {
 	m := graphModel(t, `{"entities":[
-		{"id":"e_x","name":"X","kind":"class","origin":"code","status":"present","codeRef":"src/X.cs","symbol":"A.X"}
+		{"id":"e_x","name":"X","kind":"class","origin":"code","status":"present","code":[{"lang":"csharp","ref":"src/X.cs","symbol":"A.X"}]}
 	]}`, `{"relations":[]}`)
 	facts := &Facts{Language: "csharp", Root: ".", Symbols: []Symbol{
 		{ID: "A.X", Kind: "type", NativeKind: "class", Name: "X", File: "src/X.cs"},
@@ -51,8 +51,8 @@ func TestBuildGraphPresenceCodeOnly(t *testing.T) {
 
 func TestBuildGraphPresenceModelOnlyAndMissingStatus(t *testing.T) {
 	m := graphModel(t, `{"entities":[
-		{"id":"e_planned","name":"Planned","kind":"class","origin":"authored","status":"planned"},
-		{"id":"e_missing","name":"Gone","kind":"class","origin":"code","status":"missing","codeRef":"src/Gone.cs","symbol":"A.Gone"}
+		{"id":"e_planned","kind":"class","origin":"authored","status":"planned"},
+		{"id":"e_missing","name":"Gone","kind":"class","origin":"code","status":"missing","code":[{"lang":"csharp","ref":"src/Gone.cs","symbol":"A.Gone"}]}
 	]}`, `{"relations":[]}`)
 	facts := &Facts{Language: "csharp", Root: ".", Symbols: []Symbol{}}
 	g, err := BuildGraph([]FactsSource{{Extractor: "csharp", Facts: facts}}, m)
@@ -78,8 +78,8 @@ func TestBuildGraphPresenceModelOnlyAndMissingStatus(t *testing.T) {
 
 func TestBuildGraphTwoExtractorsOneProject(t *testing.T) {
 	m := graphModel(t, `{"entities":[
-		{"id":"e_cs","name":"App","kind":"class","origin":"code","status":"present","codeRef":"App.cs","symbol":"App"},
-		{"id":"e_ts","name":"Widget","kind":"module","origin":"code","status":"present","codeRef":"widget.ts","symbol":"widget"}
+		{"id":"e_cs","name":"App","kind":"class","origin":"code","status":"present","code":[{"lang":"csharp","ref":"App.cs","symbol":"App"}]},
+		{"id":"e_ts","name":"Widget","kind":"module","origin":"code","status":"present","code":[{"lang":"typescript","ref":"widget.ts","symbol":"widget"}]}
 	]}`, `{"relations":[]}`)
 	csFacts := &Facts{Language: "csharp", Root: ".", Symbols: []Symbol{
 		{ID: "App", Kind: "type", NativeKind: "class", Name: "App", File: "App.cs"},
@@ -108,8 +108,8 @@ func TestBuildGraphTwoExtractorsOneProject(t *testing.T) {
 
 func TestBuildGraphDeterministic(t *testing.T) {
 	m := graphModel(t, `{"entities":[
-		{"id":"e_a","name":"A","kind":"class","origin":"code","status":"present","codeRef":"src/A.cs","symbol":"A"},
-		{"id":"e_b","name":"B","kind":"class","origin":"code","status":"present","codeRef":"src/B.cs","symbol":"B"}
+		{"id":"e_a","name":"A","kind":"class","origin":"code","status":"present","code":[{"lang":"csharp","ref":"src/A.cs","symbol":"A"}]},
+		{"id":"e_b","name":"B","kind":"class","origin":"code","status":"present","code":[{"lang":"csharp","ref":"src/B.cs","symbol":"B"}]}
 	]}`, `{"relations":[
 		{"id":"r_a_b_extends","from":"e_a","to":"e_b","type":"extends","origin":"code","status":"present"}
 	]}`)

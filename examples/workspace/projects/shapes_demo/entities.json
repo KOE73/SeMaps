@@ -2,7 +2,6 @@
   "entities": [
     {
       "id": "actor_user",
-      "name": "Владелец схемы",
       "kind": "external",
       "origin": "authored",
       "status": "present",
@@ -10,7 +9,6 @@
     },
     {
       "id": "uc_edit",
-      "name": "Править содержимое блока",
       "kind": "usecase",
       "origin": "authored",
       "status": "present",
@@ -18,11 +16,14 @@
     },
     {
       "id": "cls_template",
-      "name": "TemplateLibrary",
       "kind": "class",
       "origin": "authored",
       "status": "present",
-      "codeRef": "editor/src/content/TemplateLibrary.ts",
+      "code": [
+        {
+          "ref": "editor/src/content/TemplateLibrary.ts"
+        }
+      ],
       "members": [
         {
           "kind": "field",
@@ -58,7 +59,6 @@
     },
     {
       "id": "tbl_templates",
-      "name": "templates.json",
       "kind": "database",
       "origin": "authored",
       "status": "present",
@@ -82,7 +82,6 @@
     },
     {
       "id": "store_assets",
-      "name": "content/",
       "kind": "database",
       "origin": "authored",
       "status": "present",
@@ -90,7 +89,6 @@
     },
     {
       "id": "dec_valid",
-      "name": "Текст разобрался?",
       "kind": "decision",
       "origin": "authored",
       "status": "present",
@@ -98,7 +96,6 @@
     },
     {
       "id": "stage_compile",
-      "name": "Компиляция",
       "kind": "stage",
       "origin": "authored",
       "status": "present",
@@ -106,7 +103,6 @@
     },
     {
       "id": "pic_model",
-      "name": "Модель",
       "kind": "concept",
       "origin": "authored",
       "status": "present",
@@ -114,21 +110,18 @@
     },
     {
       "id": "e_zone_human",
-      "name": "Человек",
       "kind": "group",
       "origin": "authored",
       "status": "present"
     },
     {
       "id": "e_zone_machine",
-      "name": "Разбор",
       "kind": "group",
       "origin": "authored",
       "status": "present"
     },
     {
       "id": "e_zone_storage",
-      "name": "Хранение",
       "kind": "group",
       "origin": "authored",
       "status": "present"

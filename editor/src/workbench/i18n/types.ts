@@ -190,8 +190,18 @@ export interface UiDictionary {
       readonly styleEditBtn: string;
       readonly descriptionTitle: string;
       readonly descriptionPlaceholder: string;
-      readonly codeRefTitle: string;
-      readonly codeRefPlaceholder: string;
+      /** The entity's realizations in code (`code[]`) and a relation's evidence. */
+      readonly realizationsTitle: string;
+      readonly realizationsEmpty: string;
+      readonly evidenceTitle: string;
+      /** Said of a realization whose symbol left the facts. */
+      readonly codeMissing: string;
+      readonly viewCodeTitle: string;
+      readonly noCodeSelected: string;
+      /** The entity id next to its name, with a copy button; `idCopied` takes `{id}`. */
+      readonly idTitle: string;
+      readonly copyIdTitle: string;
+      readonly idCopied: string;
       readonly blockRelationsBtn: string;
       readonly deleteItemBtn: string;
       readonly deleteEdgeBtn: string;
@@ -476,7 +486,7 @@ export interface UiDictionary {
     readonly anotherProject: string;
     readonly code: string;
     readonly codeNote: string;
-    readonly codeRef: string;
+    readonly realizations: string;
     readonly inEditor: string;
     readonly mapCatalog: string;
     readonly mapBase: string;
