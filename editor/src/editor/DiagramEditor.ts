@@ -911,6 +911,51 @@ export class DiagramEditor implements InspectorHost, StylePanelHost, DiagramEdit
     }
   }
 
+  /**
+   * Another view of the open project on a second canvas that is never shown:
+   * the working model as this editor sees it (unsaved changes included), drawn
+   * with the same styles, templates and pictures. Nothing of what the person
+   * works with is touched — not this canvas, the selection, the undo stack or
+   * the open view. The caller draws from it and calls `dispose`.
+   */
+  async offscreenCanvas(viewId: string): Promise<{ canvas: DiagramCanvas; dispose: () => void }> {
+    const project = this.currentView === null ? undefined : this.projectOf(this.currentView);
+    if (project === undefined) throw new Error("no project is open in this editor");
+    const entry = project.views.find((v) => v.id === viewId);
+    if (entry === undefined) throw new Error(`view ${viewId} does not exist in project ${project.id}`);
+    if (entry.error) throw new Error(`view ${viewId} cannot be opened: ${entry.error}`);
+
+    const wire = await this.store.load(entry.file);
+
+    const host = document.createElement("div");
+    host.className = this.canvas.hostElement.className.replace(/\b(is-panning|with-grid)\b/g, "").trim();
+    host.style.cssText = "position:fixed;left:-100000px;top:0;width:1600px;height:1200px;overflow:hidden;pointer-events:none;";
+    document.body.appendChild(host);
+    const canvas = new DiagramCanvas(host, {
+      styles: this.canvas.styles,
+      templates: this.canvas.templates,
+      assets: this.canvas.assets,
+    });
+    const dispose = (): void => {
+      canvas.destroy();
+      host.remove();
+    };
+    try {
+      canvas.dataLang = this.dataLang;
+      await this.canvas.templates.whenLoaded();
+      canvas.setModel(parseDocument(wire, this.canvas.styles));
+      // Pictures arrive after the first frame and repaint it; text is measured with the real fonts.
+      await this.canvas.assets.settled();
+      await document.fonts.ready;
+      canvas.render();
+      await this.canvas.assets.settled();
+      return { canvas, dispose };
+    } catch (e) {
+      dispose();
+      throw e;
+    }
+  }
+
   private async receiveModelEvent(event: ModelEvent): Promise<void> {
     const project=this.currentView && this.projectOf(this.currentView)?.id;
     if (!project) return;

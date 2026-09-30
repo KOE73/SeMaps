@@ -42,14 +42,24 @@ export class TemplateLibrary {
    * Read the registry. A missing file is normal — a workspace that has never
    * used a template still draws, with the built-in caption-only look.
    */
-  async load(): Promise<void> {
-    try {
-      const res = await fetch(new URL(TEMPLATE_FILE, new URL(this.baseUrl, location.href)));
-      this.sheet = res.ok ? ((await res.json()) as WireTemplateSheet) : { templates: [] };
-    } catch {
-      this.sheet = { templates: [] };
-    }
-    this.compiled.clear();
+  load(): Promise<void> {
+    this.loading = (async () => {
+      try {
+        const res = await fetch(new URL(TEMPLATE_FILE, new URL(this.baseUrl, location.href)));
+        this.sheet = res.ok ? ((await res.json()) as WireTemplateSheet) : { templates: [] };
+      } catch {
+        this.sheet = { templates: [] };
+      }
+      this.compiled.clear();
+    })();
+    return this.loading;
+  }
+
+  private loading: Promise<void> | null = null;
+
+  /** Settles once the registry has been read (at once when no read was started). */
+  whenLoaded(): Promise<void> {
+    return this.loading ?? Promise.resolve();
   }
 
   list(): readonly WireTemplate[] {

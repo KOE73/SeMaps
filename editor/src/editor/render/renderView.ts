@@ -1,15 +1,17 @@
 import type { Rect } from "../../geometry/types.js";
+import type { DiagramCanvas } from "../../canvas/DiagramCanvas.js";
 import type { DiagramEditor } from "../DiagramEditor.js";
 import type { RenderRequest } from "../io/HostModelStore.js";
 import { findProblems, type Problem } from "./problems.js";
 
 export type RenderAnswer =
-  | { png: string; width: number; height: number; problems: Problem[] }
+  | { png: string; width: number; height: number; rect: Rect; problems: Problem[] }
   | { error: string };
 
 const NS = "http://www.w3.org/2000/svg";
 const MARGIN = 24;
-const DEFAULT_MAX = 2048;
+/** Same as the host's default; the host always sends its own. */
+const DEFAULT_MAX = 1600;
 /** Styles the stylesheet would otherwise supply, read from the browser and written inline. */
 const INLINE = [
   "fill", "fill-opacity", "fill-rule", "stroke", "stroke-width", "stroke-opacity", "stroke-dasharray",
@@ -18,33 +20,42 @@ const INLINE = [
   "filter", "display", "visibility", "marker-start", "marker-mid", "marker-end", "stop-color", "stop-opacity",
 ];
 
-/** Answer one render request from the editor's current working state, unsaved included. */
+/**
+ * Answer one render request from the editor's current working state, unsaved
+ * included. The view on screen is drawn from its own canvas; any other view of
+ * the project is drawn from a hidden canvas that lives only for this answer.
+ */
 export async function renderView(editor: DiagramEditor, req: RenderRequest): Promise<RenderAnswer> {
   try {
-    if (editor.currentViewId !== req.view) {
-      return { error: `view ${req.view} is not open in this editor; open it` };
+    if (editor.currentViewId === req.view && editor.canvas.model !== null) {
+      return await draw(editor.canvas, req);
     }
-    const canvas = editor.canvas;
-    if (canvas.model === null) return { error: `view ${req.view} is not open in this editor; open it` };
-
-    const region = regionOf(editor, req);
-    if ("error" in region) return region;
-
-    const wanted = req.scale && req.scale > 0 ? req.scale : 1;
-    const max = req.maxSize && req.maxSize > 0 ? req.maxSize : DEFAULT_MAX;
-    const scale = Math.min(wanted, max / Math.max(region.width, region.height));
-    const width = Math.max(1, Math.round(region.width * scale));
-    const height = Math.max(1, Math.round(region.height * scale));
-
-    const png = await paint(editor, region, width, height);
-    return { png, width, height, problems: findProblems(canvas) };
+    const side = await editor.offscreenCanvas(req.view);
+    try {
+      return await draw(side.canvas, req);
+    } finally {
+      side.dispose();
+    }
   } catch (e) {
     return { error: (e as Error).message };
   }
 }
 
-function regionOf(editor: DiagramEditor, req: RenderRequest): Rect | { error: string } {
-  const canvas = editor.canvas;
+async function draw(canvas: DiagramCanvas, req: RenderRequest): Promise<RenderAnswer> {
+  const region = regionOf(canvas, req);
+  if ("error" in region) return region;
+
+  const wanted = req.scale && req.scale > 0 ? req.scale : 1;
+  const max = req.maxSize && req.maxSize > 0 ? req.maxSize : DEFAULT_MAX;
+  const scale = Math.min(wanted, max / Math.max(region.width, region.height));
+  const width = Math.max(1, Math.round(region.width * scale));
+  const height = Math.max(1, Math.round(region.height * scale));
+
+  const png = await paint(canvas, region, width, height);
+  return { png, width, height, rect: region, problems: findProblems(canvas) };
+}
+
+function regionOf(canvas: DiagramCanvas, req: RenderRequest): Rect | { error: string } {
   const grow = (r: Rect): Rect => ({ x: r.x - MARGIN, y: r.y - MARGIN, width: r.width + MARGIN * 2, height: r.height + MARGIN * 2 });
 
   if (req.rect && req.rect.width > 0 && req.rect.height > 0) return req.rect;
@@ -62,8 +73,7 @@ function regionOf(editor: DiagramEditor, req: RenderRequest): Rect | { error: st
 }
 
 /** The region as a PNG, base64 without the data: prefix. */
-async function paint(editor: DiagramEditor, region: Rect, width: number, height: number): Promise<string> {
-  const canvas = editor.canvas;
+async function paint(canvas: DiagramCanvas, region: Rect, width: number, height: number): Promise<string> {
   const live = canvas.svgElement;
   const host = canvas.hostElement;
 

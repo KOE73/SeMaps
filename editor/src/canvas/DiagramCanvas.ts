@@ -89,6 +89,9 @@ export interface DiagramCanvasOptions {
    * content directory. Same value the stores get; see `DiagramEditorOptions`.
    */
   modelsBase?: string;
+  /** Registries of another canvas to draw with (unsaved edits included); not read again. */
+  templates?: TemplateLibrary;
+  assets?: AssetRegistry;
 }
 
 /**
@@ -216,8 +219,8 @@ export class DiagramCanvas {
     this.portAssigner = options.portAssigner ?? new UniformPortAssigner();
     this.router = options.router ?? new BezierRouter();
     this.registry = options.registry ?? defaultRegistry();
-    this._templates = new TemplateLibrary(options.modelsBase);
-    this._assets = new AssetRegistry(options.modelsBase);
+    this._templates = options.templates ?? new TemplateLibrary(options.modelsBase);
+    this._assets = options.assets ?? new AssetRegistry(options.modelsBase);
 
     this.zonesLayer = svg("g", { class: "semaps-layer-zones" });
     this.edgesLayer = svg("g", { class: "semaps-layer-edges" });
@@ -254,8 +257,8 @@ export class DiagramCanvas {
     // Templates are read once; a picture arrives whenever it arrives, and the
     // frame that needed it has long been drawn. Repainting on arrival is why
     // `AssetRegistry.peek` may answer "not yet" without anything going wrong.
-    void this._templates.load().then(() => this.render());
-    this._assets.onLoaded(() => this.render());
+    if (options.templates === undefined) void this._templates.load().then(() => this.render());
+    this.stopAssetRepaint = this._assets.onLoaded(() => this.render());
 
     this.tooltipEl = document.createElement("div");
     this.tooltipEl.className = "semaps-tooltip";
@@ -787,8 +790,14 @@ export class DiagramCanvas {
     this.events.emit("modelchange", { reason });
   }
 
+  private stopAssetRepaint: () => void = () => {};
+
   destroy(): void {
     this.interaction.destroy();
+    this.stopAssetRepaint();
+    this.tooltipEl.remove();
+    this.richTooltipEl.remove();
+    this.edgeControlsEl.remove();
     this.svgEl.remove();
     this.events.clear();
   }
