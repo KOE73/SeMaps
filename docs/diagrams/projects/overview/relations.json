@@ -1,0 +1,117 @@
+{
+  "contractVersion": 3,
+  "relations": [
+    {
+      "id": "r_editor_http_api_calls",
+      "from": "e_editor",
+      "to": "e_http_api",
+      "type": "calls",
+      "origin": "authored"
+    },
+    {
+      "id": "r_agent_mcp_proxy_calls",
+      "from": "e_agent",
+      "to": "e_mcp_proxy",
+      "type": "calls",
+      "origin": "authored"
+    },
+    {
+      "id": "r_mcp_proxy_mcp_server_calls",
+      "from": "e_mcp_proxy",
+      "to": "e_mcp_server",
+      "type": "calls",
+      "origin": "authored"
+    },
+    {
+      "id": "r_http_api_model_service_calls",
+      "from": "e_http_api",
+      "to": "e_model_service",
+      "type": "calls",
+      "origin": "authored"
+    },
+    {
+      "id": "r_mcp_server_model_service_calls",
+      "from": "e_mcp_server",
+      "to": "e_model_service",
+      "type": "calls",
+      "origin": "authored"
+    },
+    {
+      "id": "r_model_service_model_calls",
+      "from": "e_model_service",
+      "to": "e_model",
+      "type": "calls",
+      "origin": "authored"
+    },
+    {
+      "id": "r_model_rules_calls",
+      "from": "e_model",
+      "to": "e_rules",
+      "type": "calls",
+      "origin": "authored"
+    },
+    {
+      "id": "r_model_journal_writes",
+      "from": "e_model",
+      "to": "e_journal",
+      "type": "writes",
+      "origin": "authored"
+    },
+    {
+      "id": "r_model_workspace_writes",
+      "from": "e_model",
+      "to": "e_workspace",
+      "type": "writes",
+      "origin": "authored"
+    },
+    {
+      "id": "r_mcp_server_sync_calls",
+      "from": "e_mcp_server",
+      "to": "e_sync",
+      "type": "calls",
+      "origin": "authored"
+    },
+    {
+      "id": "r_sync_model_writes",
+      "from": "e_sync",
+      "to": "e_model",
+      "type": "writes",
+      "origin": "authored"
+    },
+    {
+      "id": "r_sync_extract_csharp_runs",
+      "from": "e_sync",
+      "to": "e_extract_csharp",
+      "type": "runs",
+      "origin": "authored"
+    },
+    {
+      "id": "r_sync_extract_ts_runs",
+      "from": "e_sync",
+      "to": "e_extract_ts",
+      "type": "runs",
+      "origin": "authored"
+    },
+    {
+      "id": "r_extract_csharp_source_reads",
+      "from": "e_extract_csharp",
+      "to": "e_source",
+      "type": "reads",
+      "origin": "authored"
+    },
+    {
+      "id": "r_extract_ts_source_reads",
+      "from": "e_extract_ts",
+      "to": "e_source",
+      "type": "reads",
+      "origin": "authored"
+    },
+    {
+      "id": "r_check_workspace_reads",
+      "from": "e_check",
+      "to": "e_workspace",
+      "type": "reads",
+      "origin": "authored"
+    }
+  ]
+}

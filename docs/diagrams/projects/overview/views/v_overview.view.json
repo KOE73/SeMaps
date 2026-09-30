@@ -1,0 +1,173 @@
+{
+  "id": "v_overview",
+  "project": "overview",
+  "zones": [
+    {
+      "id": "z_clients",
+      "container": null,
+      "x": 40,
+      "y": 60,
+      "width": 260,
+      "height": 260,
+      "styleId": "zone.slate"
+    },
+    {
+      "id": "z_host",
+      "container": null,
+      "x": 340,
+      "y": 60,
+      "width": 520,
+      "height": 260,
+      "styleId": "zone.blue"
+    },
+    {
+      "id": "z_core",
+      "container": null,
+      "x": 900,
+      "y": 60,
+      "width": 520,
+      "height": 260,
+      "styleId": "zone.violet"
+    },
+    {
+      "id": "z_storage",
+      "container": null,
+      "x": 340,
+      "y": 360,
+      "width": 520,
+      "height": 160,
+      "styleId": "zone.amber"
+    },
+    {
+      "id": "z_extractors",
+      "container": null,
+      "x": 900,
+      "y": 360,
+      "width": 520,
+      "height": 160,
+      "styleId": "zone.green"
+    }
+  ],
+  "nodes": [
+    {
+      "entity": "e_editor",
+      "zone": "z_clients",
+      "x": 70,
+      "y": 110,
+      "width": 200,
+      "height": 60
+    },
+    {
+      "entity": "e_agent",
+      "zone": "z_clients",
+      "x": 70,
+      "y": 220,
+      "width": 200,
+      "height": 60
+    },
+    {
+      "entity": "e_http_api",
+      "zone": "z_host",
+      "x": 370,
+      "y": 110,
+      "width": 200,
+      "height": 60
+    },
+    {
+      "entity": "e_mcp_proxy",
+      "zone": "z_host",
+      "x": 370,
+      "y": 220,
+      "width": 200,
+      "height": 60
+    },
+    {
+      "entity": "e_model_service",
+      "zone": "z_host",
+      "x": 630,
+      "y": 110,
+      "width": 200,
+      "height": 60
+    },
+    {
+      "entity": "e_mcp_server",
+      "zone": "z_host",
+      "x": 630,
+      "y": 220,
+      "width": 200,
+      "height": 60
+    },
+    {
+      "entity": "e_model",
+      "zone": "z_core",
+      "x": 930,
+      "y": 110,
+      "width": 200,
+      "height": 60
+    },
+    {
+      "entity": "e_rules",
+      "zone": "z_core",
+      "x": 1190,
+      "y": 110,
+      "width": 200,
+      "height": 60
+    },
+    {
+      "entity": "e_sync",
+      "zone": "z_core",
+      "x": 930,
+      "y": 220,
+      "width": 200,
+      "height": 60
+    },
+    {
+      "entity": "e_check",
+      "zone": "z_core",
+      "x": 1190,
+      "y": 220,
+      "width": 200,
+      "height": 60
+    },
+    {
+      "entity": "e_workspace",
+      "zone": "z_storage",
+      "x": 370,
+      "y": 410,
+      "width": 200,
+      "height": 60
+    },
+    {
+      "entity": "e_journal",
+      "zone": "z_storage",
+      "x": 630,
+      "y": 410,
+      "width": 200,
+      "height": 60
+    },
+    {
+      "entity": "e_extract_csharp",
+      "zone": "z_extractors",
+      "x": 930,
+      "y": 410,
+      "width": 200,
+      "height": 60
+    },
+    {
+      "entity": "e_extract_ts",
+      "zone": "z_extractors",
+      "x": 1190,
+      "y": 410,
+      "width": 200,
+      "height": 60
+    },
+    {
+      "entity": "e_source",
+      "zone": null,
+      "x": 1470,
+      "y": 410,
+      "width": 180,
+      "height": 60
+    }
+  ]
+}
