@@ -87,8 +87,9 @@ function growToFit(container: DiagramElement, rect: { x: number; y: number; widt
  * box inside one) selected the boxes go inside it and it grows to hold them;
  * otherwise they go onto free space beside the existing content. Relations are
  * only ever the model's own: the ones between the pasted entities of the edge
- * kinds that were drawn on the graph are put on the view (which is what the
- * view's edge list is for, CONTRACT.md §8.5), whatever their default said.
+ * kinds that were drawn on the graph are put on the view, whatever their default
+ * said; saving records the ones the default would hide in `relations.except`
+ * (CONTRACT.md §8.5, ADR_20260930-7).
  */
 export function pasteGraphNodes(editor: DiagramEditor, payload: GraphClipboard): PasteResult {
   const doc = editor.canvas.model;

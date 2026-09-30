@@ -1277,7 +1277,7 @@ export class DiagramEditor implements InspectorHost, StylePanelHost, DiagramEdit
   /**
    * Show a registry relation on the view, or hide it back to a ghost. The one
    * way the inspector, the line's menu and a double click all go (CONTRACT.md
-   * §8.5: a view shows what its edge list holds).
+   * §8.5, ADR_20260930-7: showing or hiding is a change of the view's `relations.except`).
    */
   setEdgeShown(id: string, shown: boolean): void {
     const doc = this.canvas.model;
@@ -1285,6 +1285,8 @@ export class DiagramEditor implements InspectorHost, StylePanelHost, DiagramEdit
     if (shown) {
       const rel = doc.relations.find((r) => r.id === id);
       if (rel === undefined) return;
+      // The view's own look of this line, if it kept one from before it was hidden.
+      const own = doc.bundle?.view?.edges?.find((entry) => entry.id === id);
       doc.addEdge({
         id: rel.id,
         from: rel.from,
@@ -1292,6 +1294,9 @@ export class DiagramEditor implements InspectorHost, StylePanelHost, DiagramEdit
         type: rel.type,
         label: rel.label || "",
         ...(rel.origin === undefined ? {} : { origin: rel.origin }),
+        ...(own?.styleId === undefined ? {} : { styleId: own.styleId }),
+        ...(own?.override === undefined ? {} : { override: own.override }),
+        ...(own?.routing === undefined ? {} : { routing: own.routing }),
       });
       this.commit("show-edge");
     } else {
@@ -1306,13 +1311,8 @@ export class DiagramEditor implements InspectorHost, StylePanelHost, DiagramEdit
     const selection = this.canvas.selected;
     if (doc === null || selection === null || selection.kind === "edge") return;
 
-    doc.addEdge({
-      id: `edge_${Date.now().toString(36)}`,
-      from: selection.id,
-      to: targetId,
-      label,
-      type,
-    });
+    // A line is a relation of the registry (authored), never a line of this view alone.
+    doc.drawRelation(selection.id, targetId, type, label);
     this.commit("add-edge");
     this.refreshInspector(selection);
   }
@@ -1537,9 +1537,9 @@ export class DiagramEditor implements InspectorHost, StylePanelHost, DiagramEdit
    * that type together, the one mechanism behind the Properties type select and
    * variant cards, the line's menu and the Styles panel. One undo step.
    *
-   * A relation is a registry record and, when drawn, an entry of the view's own
-   * `edges`; the type goes to both, the style only to the entry (a relation
-   * shown as a ghost has none). A type read from code stays the code's. A type
+   * A relation is a registry record and, when drawn, a line on the view; the type
+   * goes to both, the style only to the line — saved as its `styleId` in the view's
+   * `edges` overlay (a relation shown as a ghost has none). A type read from code stays the code's. A type
    * is a string on the relation: the dictionary describes it, the project lists none.
    */
   applyRelationTypeAndStyle(ids: readonly string[], type: string, styleId: string | null): void {

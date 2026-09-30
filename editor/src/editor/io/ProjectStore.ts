@@ -153,12 +153,37 @@ export class HttpProjectStore implements ModelStore {
       };
     });
 
-    // No edge list of its own: the registry's relations, as the view's and
-    // the dictionary's visibility defaults allow (CONTRACT.md §8.5).
-    const rawEdges = Array.isArray(viewData.edges)
-      ? viewData.edges
-      : (relationsRes.relations || []).filter((r) =>
-          relationShownByDefault(r, viewData.relations as any, kinds));
+    // Lines are the registry's relations that the one rule shows (CONTRACT.md §8.5,
+    // ADR_20260930-7): both ends placed on this view, the type's visibility in
+    // the dictionary else the view's `relations.default`, `relations.except`
+    // flipping it. The view's own `edges` list is only an overlay: `{id, styleId?,
+    // override?, routing?}` per relation, what this view adds to the line's look.
+    const placedIds = new Set(placements.map((p) => p.id));
+    const registryIds = new Set((relationsRes.relations || []).map((r) => r.id));
+    const overlay = new Map<string, Record<string, any>>();
+    const oldShape: string[] = [];
+    for (const entry of Array.isArray(viewData.edges) ? (viewData.edges as unknown as Array<Record<string, any>>) : []) {
+      const id = typeof entry?.id === "string" ? entry.id : "";
+      const own = "from" in entry || "to" in entry || "type" in entry;
+      if (own || !registryIds.has(id)) oldShape.push(id || "?");
+      // An entry of the old shape still lends its look to a relation the registry has;
+      // one the registry does not have is not drawn and never written back.
+      if (registryIds.has(id) && !overlay.has(id)) overlay.set(id, entry);
+    }
+    if (oldShape.length > 0) {
+      issues.push({
+        kind: "edges-old-shape",
+        message:
+          `${viewFile}: «edges» вида в старой форме — ${oldShape.length} записей с from/to/type или с id вне реестра ` +
+          `(${oldShape.slice(0, 3).join(", ")}${oldShape.length > 3 ? ", …" : ""}). Теперь запись «edges» — только оформление ` +
+          `связи реестра, видимость решает правило §8.5 (CONTRACT.md §8.5, ADR_20260930-7); линии нарисованы по реестру, ` +
+          `старые записи в файл не возвращаются. Переведите проект командой «semaps migrate».`,
+      });
+    }
+    const rawEdges = (relationsRes.relations || [])
+      .filter((r) => placedIds.has(r.from) && placedIds.has(r.to) &&
+        relationShownByDefault(r, viewData.relations as any, kinds))
+      .map((r) => ({ ...r, ...pickOverlay(overlay.get(r.id)) }));
 
     // A view's own edge entries don't repeat `origin` — only the relation
     // registry does — so look it up by id to know whether this edge is
@@ -184,7 +209,7 @@ export class HttpProjectStore implements ModelStore {
         id,
         from: ve.from,
         to: ve.to,
-        type: ve.type ?? "",
+        type: ve.type ?? ve.relation ?? "",
         // Text of a relation lives in the text catalogue under its own id; a
         // generated relation has none, and its meaning is carried by its type.
         label: text?.name || text?.title || "",
@@ -256,6 +281,16 @@ export class HttpProjectStore implements ModelStore {
       `Сохранение «${target.file}» идёт через хост (semaps): этот режим только читает модель.`,
     );
   }
+}
+
+/** The own fields of a view's `edges` entry: the only ones it may carry (CONTRACT.md §8.5). */
+function pickOverlay(entry: Record<string, any> | undefined): Record<string, unknown> {
+  if (entry === undefined) return {};
+  const out: Record<string, unknown> = {};
+  for (const key of ["styleId", "override", "routing"] as const) {
+    if (entry[key] !== undefined) out[key] = entry[key];
+  }
+  return out;
 }
 
 /** Refuse a view of an older contract, naming the file and the key. */

@@ -96,8 +96,8 @@ export interface DiagramEdge {
   styleId?: string;
   /**
    * Colour, width and dash of this one edge on this view (CONTRACT.md §11.6):
-   * only the fields of `EDGE_OVERRIDE_FIELDS`. Lives in the view's own `edges`
-   * list, so setting one puts the view's edges there.
+   * only the fields of `EDGE_OVERRIDE_FIELDS`. Lives in this relation's entry of
+   * the view's `edges` overlay (ADR_20260930-7); only that entry is written.
    */
   override?: PlacementOverride;
   /**

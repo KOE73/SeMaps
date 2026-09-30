@@ -25,7 +25,25 @@ interface Snapshot {
   views: Record<string, unknown>;
   viewFiles: Record<string, string>;
   dirty: DirtySummary;
+  /** Ids of the records in the working registry that are not in the saved one (docs/API.md §3.4). */
+  unsaved?: { entity?: string[]; relation?: string[] };
+  /** What this editor keeps beside the host's snapshot; not on the wire. */
+  local?: LocalRecords;
 }
+
+/**
+ * `unsaved`: the withdrawable records, kept current by our own ops; `known`: the ids the registry
+ * had when the snapshot was read (a record outside it, sent now, is a creation); `mine`: the entities
+ * this editor created — only those are withdrawn when their block leaves the view, so a block
+ * of an agent's creation that a human takes off a view is not silently erased.
+ */
+interface LocalRecords {
+  unsaved: { entity: Set<string>; relation: Set<string> };
+  known: { entity: Set<string>; relation: Set<string> };
+  mine: Set<string>;
+}
+
+const REGISTRY_FILES = { entity: ["entities.json", "entities"], relation: ["relations.json", "relations"] } as const;
 
 const clone = <T>(v: T): T => JSON.parse(JSON.stringify(v)) as T;
 
@@ -60,6 +78,16 @@ export class HostModelStore extends HttpProjectStore {
     let snapshot = this.snapshots.get(project);
     if (!snapshot) {
       snapshot = await (await this.request(`/api/model/${encodeURIComponent(project)}`)).json() as Snapshot;
+      const idsOf = (kind: "entity" | "relation"): Set<string> => {
+        const [name, key] = REGISTRY_FILES[kind];
+        const list = (snapshot!.registry[name] as Record<string, Array<{ id?: unknown }>> | undefined)?.[key] ?? [];
+        return new Set(list.map((r) => String(r.id)));
+      };
+      snapshot.local = {
+        unsaved: { entity: new Set(snapshot.unsaved?.entity ?? []), relation: new Set(snapshot.unsaved?.relation ?? []) },
+        known: { entity: idsOf("entity"), relation: idsOf("relation") },
+        mine: new Set(),
+      };
       this.snapshots.set(project, snapshot);
     }
     const viewId = Object.entries(snapshot.viewFiles ?? {}).find(([, path]) => path === file)?.[0]
@@ -91,11 +119,24 @@ export class HostModelStore extends HttpProjectStore {
       if (!before || !view || !snapshot) return;
       const entities = (snapshot.registry["entities.json"] as EntityCatalog)?.entities ?? [];
       const relations = (snapshot.registry["relations.json"] as RelationCatalog)?.relations ?? [];
-      const ops = diffModel(before, copy, view, entities, snapshot.texts, relations);
+      const local = snapshot.local!;
+      const withdrawable = { entity: new Set([...local.unsaved.entity].filter((id) => local.mine.has(id))), relation: local.unsaved.relation };
+      let ops = diffModel(before, copy, view, entities, snapshot.texts, relations, withdrawable);
       if (!ops.length) return;
-      const response = await this.request(`/api/model/${encodeURIComponent(project)}/ops`, {
-        method: "POST", body: JSON.stringify({ client: this.client, ops }),
+      const post = (list: ModelOp[]): Promise<Response> => this.request(`/api/model/${encodeURIComponent(project)}/ops`, {
+        method: "POST", body: JSON.stringify({ client: this.client, ops: list }),
       });
+      let response: Response;
+      try {
+        response = await post(ops);
+      } catch (e) {
+        // A withdrawal the host refuses (the record is named somewhere this editor cannot see, say
+        // on another view) falls back to what a removal always was: hide the line, take the block off the view.
+        if (!ops.some((op) => op.value === null && (op.kind === "entity" || op.kind === "relation")) || !/HTTP 422/.test((e as Error).message)) throw e;
+        ops = diffModel(before, copy, view, entities, snapshot.texts, relations);
+        if (!ops.length) return;
+        response = await post(ops);
+      }
       const result = await response.json() as { dirty: DirtySummary };
       snapshot.dirty = result.dirty;
       this.applyLocal(file, ops);
@@ -116,18 +157,36 @@ export class HostModelStore extends HttpProjectStore {
         else list.push(op.value);
         view.placements = list as unknown as ViewDocument["placements"];
       } else if (op.kind === "view" && op.value) {
-        Object.assign(view, op.value);
+        // `null` removes the key, as the host applies it (docs/API.md).
+        for (const [key, value] of Object.entries(op.value)) {
+          if (value === null) delete (view as Record<string, unknown>)[key];
+          else (view as Record<string, unknown>)[key] = value;
+        }
       } else if (op.kind === "text" && op.value) {
         const doc = snapshot.texts[op.lang!] ?? { entries: {} };
         (doc.entries ??= {})[op.id] = op.value;
         snapshot.texts[op.lang!] = doc;
-      } else if (op.value && ["entity", "relation"].includes(op.kind)) {
-        const [fileName, key] = op.kind === "entity" ? ["entities.json", "entities"] : ["relations.json", "relations"];
+      } else if (op.kind === "entity" || op.kind === "relation") {
+        const [fileName, key] = REGISTRY_FILES[op.kind];
+        const local = snapshot.local!;
         const doc = (snapshot.registry[fileName] ??= {}) as Record<string, Array<Record<string, unknown>>>;
         const list = doc[key] ??= [];
         const index = list.findIndex((item) => item.id === op.id);
-        if (index >= 0) list[index] = op.value;
-        else list.push(op.value);
+        if (op.value === null) {
+          // A withdrawn creation is gone as if never made: from the registry, from the
+          // unsaved set, and with it every text under its id (the host drops them itself).
+          if (index >= 0) list.splice(index, 1);
+          local.unsaved[op.kind].delete(op.id);
+          local.mine.delete(op.id);
+          for (const doc of Object.values(snapshot.texts)) if (doc.entries) delete doc.entries[op.id];
+        } else {
+          if (!local.known[op.kind].has(op.id) && !local.unsaved[op.kind].has(op.id)) {
+            local.unsaved[op.kind].add(op.id);
+            if (op.kind === "entity") local.mine.add(op.id);
+          }
+          if (index >= 0) list[index] = op.value;
+          else list.push(op.value);
+        }
       }
     }
   }

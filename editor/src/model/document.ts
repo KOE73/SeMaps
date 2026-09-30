@@ -9,6 +9,7 @@ import type {
 import type { EntityEntry, ProjectBundle, RelationEntry } from "./wire-types.js";
 import { elementRect, isContainer } from "./types.js";
 import { entityDisplayName, textLanguageOf } from "./entityName.js";
+import { newRelationId } from "./relationId.js";
 
 /**
  * The loaded diagram: a containment tree of elements, a flat list of edges that
@@ -332,6 +333,28 @@ export class DiagramDocument {
 
   addEdge(edge: DiagramEdge): void {
     this.edges.push(edge);
+  }
+
+  /**
+   * A line drawn by hand: an authored relation of the registry and its line on
+   * this view (ADR_20260930-7 — a line exists on no view alone). Saving sends the
+   * relation and, when the type is hidden by default, the `except` entry that
+   * shows it, in one batch. Returns the new relation's id.
+   */
+  drawRelation(from: string, to: string, type: string, label: string, styleId?: string | null): string {
+    const bundle = this.bundle;
+    const taken = new Set<string>([...this.relations.map((r) => r.id), ...this.edges.map((e) => e.id)]);
+    const id = newRelationId(from, to, type, taken);
+    if (bundle) {
+      const catalog = (bundle.relations ??= { relations: [] });
+      (catalog.relations ??= []).push({ id, from, to, type, origin: "authored", status: "present" });
+    }
+    if (label !== "") this.setText(id, { name: label }, this.textLang);
+    this.addEdge({
+      id, from, to, type, label, origin: "authored",
+      ...(styleId ? { styleId } : {}),
+    });
+    return id;
   }
 
   /** Centre of an element, in model coordinates. */

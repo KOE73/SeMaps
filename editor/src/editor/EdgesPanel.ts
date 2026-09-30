@@ -351,16 +351,13 @@ export class EdgesPanel {
             this.render();
             return;
           }
+          // The registry is not this editor's to prune: a relation is taken off this
+          // view (`relations.except`), never out of `relations.json` (ADR_20260930-7).
           if (item.visible) {
             doc.removeEdge(item.id);
           }
-          const rels = doc.relations;
-          if (Array.isArray(rels)) {
-            const idx = rels.findIndex((r) => r.id === item.id);
-            if (idx >= 0) rels.splice(idx, 1);
-          }
           this.confirmingDeleteId = null;
-          (this.host as any).commit("delete-relation");
+          (this.host as any).commit("hide-edge");
           this.render();
         },
       },
@@ -512,15 +509,8 @@ export class EdgesPanel {
           on: {
             click: () => {
               if (!selectedTarget || selectedType === "") return;
-              const edgeId = `edge_${Date.now()}`;
-              doc.addEdge({
-                id: edgeId,
-                from: element.id,
-                to: selectedTarget,
-                type: selectedType,
-                label: labelInput.value,
-                ...(selectedStyle === null ? {} : { styleId: selectedStyle }),
-              });
+              // An authored relation of the registry plus its line (ADR_20260930-7).
+              doc.drawRelation(element.id, selectedTarget, selectedType, labelInput.value, selectedStyle);
               (this.host as any).commit("add-edge");
               this.render();
             },

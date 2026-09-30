@@ -249,7 +249,7 @@ export interface TextCatalog {
  * not by refusing to show the diagram.
  */
 export interface ModelIssue {
-  kind: "view-without-axis" | "override-field";
+  kind: "view-without-axis" | "override-field" | "edges-old-shape";
   /** Human-readable, shown in the editor's banner. */
   message: string;
 }
@@ -297,17 +297,18 @@ export interface ViewPlacement {
   [key: string]: unknown;
 }
 
-/** One entry of a view's own `edges` list (CONTRACT.md §8.5). */
+/**
+ * One entry of a view's own `edges` list: a reference to a relation of
+ * `relations.json` and only what this view adds to its look (CONTRACT.md §8.5,
+ * ADR_20260930-7). It says nothing about visibility, ends or type — those are
+ * the registry's and the one visibility rule's. `from`/`to`/`type` are the old
+ * shape: read as a named problem, never written.
+ */
 export interface ViewEdgePlacement {
   id: string;
-  from: string;
-  to: string;
-  type?: string;
-  label?: string;
   styleId?: string;
   /** Colour, width and dash of this one edge (§11.6); fields from `EDGE_OVERRIDE_FIELDS` only. */
   override?: PlacementOverride;
-  points?: Array<{ x: number; y: number }>;
   /** Line shape for this edge alone; see `WireEdge.routing`. */
   routing?: RoutingMode;
 }

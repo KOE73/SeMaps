@@ -117,8 +117,8 @@ export function placeAround(
 /**
  * Give the newly placed boxes the lines of their registry relations to
  * everything already on the view: a relation shows once both its ends do
- * (CONTRACT.md §8.5). A view saved with its own `edges` list would otherwise
- * never show a relation that reached the registry after that save.
+ * (CONTRACT.md §8.5). Saving works out what differs from the rule and writes it
+ * as the view's `relations.except`; nothing here writes.
  * The type's `visibility` in the dictionary and the view's `relations.default` / `except` still decide.
  */
 export function drawRelations(editor: DiagramEditor, placed: readonly string[]): void {
