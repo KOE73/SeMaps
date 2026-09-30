@@ -170,15 +170,23 @@ func loadDoc(file string) (*object, error) {
 	return o, nil
 }
 
-func saveDoc(file string, o *object) error {
+func encodeDoc(o *object) ([]byte, error) {
 	var b bytes.Buffer
 	enc := json.NewEncoder(&b)
 	enc.SetEscapeHTML(false)
 	enc.SetIndent("", "  ")
 	if err := enc.Encode(o); err != nil {
+		return nil, err
+	}
+	return b.Bytes(), nil
+}
+
+func saveDoc(file string, o *object) error {
+	b, err := encodeDoc(o)
+	if err != nil {
 		return err
 	}
-	return os.WriteFile(file, b.Bytes(), 0o644)
+	return os.WriteFile(file, b, 0o644)
 }
 
 // loadView finds a view by its id: the `id` inside wins over the file name

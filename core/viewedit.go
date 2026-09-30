@@ -491,18 +491,12 @@ func (m *Model) AddZone(view string, spec ZoneSpec, human bool, author string) (
 	if err != nil {
 		return GeomReport{}, err
 	}
-	if !strings.HasPrefix(spec.ID, "z_") || len(spec.ID) == 2 {
-		return GeomReport{}, refuse("a zone id starts with z_: %q", spec.ID)
-	}
 	if l.zones[spec.ID] != nil {
 		return GeomReport{}, refuse("zone %s already exists on %s", spec.ID, view)
 	}
 	if spec.Parent != "" {
 		if spec.Parent, err = l.id(spec.Parent); err != nil {
 			return GeomReport{}, err
-		}
-		if !l.isZone(spec.Parent) {
-			return GeomReport{}, refuse("%s is not a zone", spec.Parent)
 		}
 	}
 	z := newObject()

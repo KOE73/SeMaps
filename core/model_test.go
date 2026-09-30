@@ -63,7 +63,7 @@ func TestModelAtomicAndDiscardScopes(t *testing.T) {
 	if _, err := os.Stat(m.journalFile()); !os.IsNotExist(err) {
 		t.Fatal("partial batch journaled")
 	}
-	text := modelOp("text", "e_a", "", "ru", `{"description":{"v":"edited","origin":"authored"}}`)
+	text := modelOp("text", "e_a", "", "ru", `{"description":{"v":"edited","origin":"authored","at":"2026-09-26T00:00:00Z"}}`)
 	if _, err := m.Apply([]Op{valid, text}, "agent"); err != nil {
 		t.Fatal(err)
 	}
@@ -136,7 +136,7 @@ func TestModelKeepsLegacyEntityTextNameWhenDescriptionChanges(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	op := modelOp("text", "e_a", "", "ru", `{"name":{"v":"A","origin":"authored"},"description":{"v":"New","origin":"authored"}}`)
+	op := modelOp("text", "e_a", "", "ru", `{"name":{"v":"A","origin":"authored"},"description":{"v":"New","origin":"authored","at":"2026-09-26T00:00:00Z"}}`)
 	if _, err := m.Apply([]Op{op}, "human"); err != nil {
 		t.Fatal(err)
 	}

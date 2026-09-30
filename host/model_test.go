@@ -44,6 +44,67 @@ func TestStructuralReloadRequiresCleanModel(t *testing.T) {
 	}
 }
 
+// The editor (HTTP) and agents (MCP) create through one service and read one
+// catalog: what one writes, the other sees before Save.
+func TestCreateThroughHTTPAndMCPShareOneCatalog(t *testing.T) {
+	s, srv := hostModelFixture(t)
+	defer srv.Close()
+	c := srv.Client()
+	post := func(url, body string) int {
+		res := modelRequest(t, c, srv.URL+url, s.key, http.MethodPost, body)
+		res.Body.Close()
+		return res.StatusCode
+	}
+	if code := post("/api/projects", `{"id":"ov","title":"Overview","language":"ru"}`); code != 200 {
+		t.Fatalf("create project: %d", code)
+	}
+	if code := post("/api/projects", `{"id":"ov","title":"Again"}`); code != http.StatusConflict {
+		t.Fatalf("taken id: %d", code)
+	}
+	if code := post("/api/projects", `{"id":"Bad-Id","title":"x"}`); code != http.StatusUnprocessableEntity {
+		t.Fatalf("id outside the pattern: %d", code)
+	}
+	if code := post("/api/model/ov/views", `{"id":"v_all","axis":"axis_x","name":"Всё","language":"ru"}`); code != 200 {
+		t.Fatalf("create view: %d", code)
+	}
+	if code := post("/api/model/ov/views", `{"id":"v_all","axis":"axis_x"}`); code != http.StatusConflict {
+		t.Fatalf("taken view id: %d", code)
+	}
+	// its name is unsaved: a second view waits for Save
+	if code := post("/api/model/ov/views", `{"id":"v_two","axis":"axis_x"}`); code != http.StatusConflict {
+		t.Fatalf("view on a dirty project: %d", code)
+	}
+	if code := post("/api/model/nope/views", `{"id":"v_two","axis":"axis_x"}`); code != http.StatusNotFound {
+		t.Fatalf("view in a missing project: %d", code)
+	}
+
+	mcpSide := &mcpServer{workspace: s.workspace, models: s}
+	_, out, err := mcpSide.listProjects(nil, nil, struct{}{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	var ov *core.ProjectIndex
+	for i, p := range out.(core.WorkspaceIndex).Projects {
+		if p.ID == "ov" {
+			ov = &out.(core.WorkspaceIndex).Projects[i]
+		}
+	}
+	if ov == nil || len(ov.Views) != 1 || ov.Views[0].Names["ru"] != "Всё" {
+		t.Fatalf("MCP catalog = %+v", ov)
+	}
+	if _, _, err := mcpSide.createView(nil, nil, createViewIn{Project: "ov", ID: "v_two", Axis: "axis_x", RequestedByHuman: true}); err == nil || !strings.Contains(err.Error(), "сначала сохраните") {
+		t.Fatalf("MCP view on a dirty project: %v", err)
+	}
+	res := modelRequest(t, c, srv.URL+"/api/model/ov/save", s.key, http.MethodPost, "")
+	res.Body.Close()
+	if res.StatusCode != 200 {
+		t.Fatalf("save: %d", res.StatusCode)
+	}
+	if _, _, err := mcpSide.createView(nil, nil, createViewIn{Project: "ov", ID: "v_two", Axis: "axis_x", RequestedByHuman: true}); err != nil {
+		t.Fatalf("MCP view on a clean project: %v", err)
+	}
+}
+
 func hostModelFixture(t *testing.T) (*modelService, *httptest.Server) {
 	t.Helper()
 	ws := t.TempDir()

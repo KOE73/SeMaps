@@ -71,7 +71,7 @@ func TestMCPListsAllTools(t *testing.T) {
 		have[tl.Name] = true
 	}
 	for _, n := range []string{"list_projects", "list_views", "get_entity", "find_entities", "get_relations",
-		"get_text", "sync_preview", "doctor", "set_text", "add_relation", "add_relation_type",
+		"get_text", "sync_preview", "doctor", "set_text", "add_entity", "add_relation", "add_relation_type",
 		"set_relation_visible", "confirm_rename", "extract", "sync", "place_entities", "get_view", "move_elements", "resize_elements", "set_zone", "add_zone", "fit_zone", "align_elements",
 		"layout_guide", "render_view", "create_view", "create_project"} {
 		if !have[n] {

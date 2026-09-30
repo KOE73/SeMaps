@@ -1,12 +1,13 @@
 import type { NewProject, NewView, WorkspaceIndex, WorkspaceStore } from "./types.js";
 import { hostWriteHeaders } from "../../util/hostKey.js";
 
+/** Instant feedback in the dialogs only; the host's rule (core.ProjectIDPattern / ViewIDPattern) decides. */
 export const PROJECT_ID = /^[a-z][a-z0-9_]*$/;
 export const VIEW_ID = /^v_[a-z0-9_]+$/;
 
 type Json = Record<string, unknown>;
 
-/** Refusal the host gives when a name is taken (`create=1`, `/api/move`). */
+/** Refusal the host gives when a name is taken (create, `/api/move`). */
 export class AlreadyExistsError extends Error {}
 
 async function check(res: Response, what: string): Promise<void> {
@@ -18,13 +19,14 @@ async function check(res: Response, what: string): Promise<void> {
   if (!res.ok) throw new Error(`${what}: HTTP ${res.status} ${await res.text().catch(() => "")}`.trim());
 }
 
-async function saveJson(file: string, data: unknown, create = false): Promise<void> {
-  const res = await fetch(`/api/save?file=${encodeURIComponent(file)}${create ? "&create=1" : ""}`, {
+async function postJson(url: string, data: unknown, what: string): Promise<Json> {
+  const res = await fetch(url, {
     method: "POST",
     headers: { "Content-Type": "application/json", ...hostWriteHeaders() },
-    body: JSON.stringify(data, null, 2),
+    body: JSON.stringify(data),
   });
-  await check(res, file);
+  await check(res, what);
+  return await res.json() as Json;
 }
 
 async function move(from: string, to: string): Promise<void> {
@@ -43,9 +45,11 @@ function withLook(doc: Json, look: { icon?: string; theme?: string }): Json {
 }
 
 /**
- * The list of projects and views comes from the host (`GET /api/workspace`),
- * which walks the workspace folder; creating or renaming writes the same files
- * a person would (ADR_20260923-7, ADR_20260923-8).
+ * The catalog comes from the host (`GET /api/workspace`): which projects and
+ * views exist from disk, their titles and names from the working model — the
+ * same answer MCP `list_projects` gives. Creating goes through the host's one
+ * create path, shared with MCP (ADR_20260926); renaming moves the files
+ * (ADR_20260923-8).
  */
 export class HttpWorkspaceStore implements WorkspaceStore {
   constructor(_baseUrl: string = "./") {}
@@ -66,50 +70,22 @@ export class HttpWorkspaceStore implements WorkspaceStore {
   }
 
   async load(): Promise<WorkspaceIndex> {
-    const res = await fetch("/api/workspace");
+    const res = await fetch("/api/workspace", { cache: "no-store" });
     if (!res.ok) throw new Error(`HTTP ${res.status}`);
-    const index = (await res.json()) as WorkspaceIndex;
-    const projects = await Promise.all(index.projects.map(async (project) => {
-      if (project.error) return project;
-      const snapshot = await this.snapshot(project.id);
-      const manifest = snapshot.project;
-      return {
-        ...project,
-        title: typeof manifest.title === "string" ? manifest.title : project.title,
-        subtitle: typeof manifest.subtitle === "string" ? manifest.subtitle : undefined,
-        icon: typeof manifest.icon === "string" ? manifest.icon : undefined,
-        theme: typeof manifest.theme === "string" ? manifest.theme : undefined,
-        languages: Array.isArray(manifest.languages) ? manifest.languages as string[] : project.languages,
-        views: project.views.map((view) => ({
-          ...view,
-          names: Object.fromEntries(Object.entries(snapshot.texts).flatMap(([lang, doc]) => {
-            const name = doc.entries?.[view.id]?.name;
-            return typeof name === "string" ? [[lang, name]] : [];
-          })),
-        })),
-      };
-    }));
-    return { projects };
+    return (await res.json()) as WorkspaceIndex;
   }
 
   async createProject(p: NewProject): Promise<void> {
-    if (!PROJECT_ID.test(p.id)) throw new Error(`Недопустимый id проекта «${p.id}»`);
-    await saveJson(`projects/${p.id}/project.json`, withLook({
-      id: p.id,
-      title: p.title,
-      ...(p.subtitle ? { subtitle: p.subtitle } : {}),
-      contractVersion: 3,
-      languages: [p.language],
-    }, p), true);
+    await postJson("/api/projects", {
+      id: p.id, title: p.title, subtitle: p.subtitle, icon: p.icon, theme: p.theme, language: p.language,
+    }, p.id);
   }
 
   async createView(v: NewView): Promise<string> {
-    if (!VIEW_ID.test(v.id)) throw new Error(`Недопустимый id вида «${v.id}»`);
-    const file = `projects/${v.project}/views/${v.id}.view.json`;
-    // No `edges` key: a view without one shows the project's relations.
-    await saveJson(file, withLook({ id: v.id, project: v.project, axis: v.axis, zones: [], nodes: [] }, v), true);
-    await this.setViewName(v.project, v.language, v.id, v.name);
-    return file;
+    const created = await postJson(`/api/model/${encodeURIComponent(v.project)}/views`, {
+      id: v.id, axis: v.axis, icon: v.icon, theme: v.theme, name: v.name, language: v.language,
+    }, v.id);
+    return created.file as string;
   }
 
   async updateProject(oldId: string, p: NewProject): Promise<void> {

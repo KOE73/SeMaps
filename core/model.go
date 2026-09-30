@@ -147,7 +147,7 @@ func (m *Model) loadView(id string) (*modelView, error) {
 
 func (m *Model) loadText(lang string) (*object, error) {
 	if strings.ContainsAny(lang, `/\.`) || lang == "" {
-		return nil, refuse("invalid language %q", lang)
+		return nil, refuse("language %q: expected a code like ru or en", lang)
 	}
 	if m.loaded[lang] {
 		return m.texts[lang], nil
@@ -166,8 +166,10 @@ func (m *Model) loadText(lang string) (*object, error) {
 	return o, nil
 }
 
-// Apply validates a complete batch on a copy. No partial mutation or journal
-// line is produced when one operation fails.
+// Apply validates a complete batch on a copy — its operations, then the
+// contract rules for what the batch created or changed (rules.go,
+// ADR_20260926). No partial mutation or journal line is produced when one
+// operation or rule fails.
 func (m *Model) Apply(ops []Op, author string) ([]Ref, error) {
 	m.mu.Lock()
 	defer m.mu.Unlock()
@@ -183,6 +185,9 @@ func (m *Model) Apply(ops []Op, author string) ([]Ref, error) {
 	c := m.copy()
 	refs, err := c.apply(ops, "", true)
 	if err != nil {
+		return nil, err
+	}
+	if err := c.validate(m, ops); err != nil {
 		return nil, err
 	}
 	if err := os.MkdirAll(filepath.Dir(m.journalFile()), 0o755); err != nil {
@@ -320,11 +325,11 @@ func (m *Model) applyOne(op Op) error {
 				return refuse("no relation %s", op.ID)
 			}
 			if r.str("origin") == "code" {
-				return refuse("relation %s comes from code: it has no texts", op.ID)
+				return refuse("relation %s comes from code: it has no texts, its label is drawn from `via` (CONTRACT §4)", op.ID)
 			}
 		case strings.HasPrefix(op.ID, "c_"), strings.HasPrefix(op.ID, "rt_"), strings.HasPrefix(op.ID, "v_"), strings.HasPrefix(op.ID, "z_"):
 		default:
-			return refuse("invalid text key %q", op.ID)
+			return refuse("key %q: expected a prefix e_, c_, rt_, r_, v_ or z_ (CONTRACT §7.1)", op.ID)
 		}
 		doc, err := m.loadText(op.Lang)
 		if err != nil {
@@ -344,10 +349,10 @@ func (m *Model) applyOne(op Op) error {
 		}
 		for _, field := range entry.keys {
 			if !slices.Contains(TextFields, field) {
-				return refuse("invalid text field %q", field)
+				return refuse("field %q: allowed %s (CONTRACT §7.2)", field, strings.Join(TextFields, ", "))
 			}
 			if strings.HasPrefix(op.ID, "e_") && (field == "name" || field == "title") && len(old.vals[field]) == 0 {
-				return refuse("an entity's name lives in entities.json")
+				return refuse("an entity's name is not translated and lives in entities.json (CONTRACT §7.1)")
 			}
 		}
 		if len(old.keys) > 0 {
@@ -361,17 +366,6 @@ func (m *Model) applyOne(op Op) error {
 		return refuse("%s needs a view", op.Kind)
 	}
 	v, err := m.loadView(op.View)
-	var notFound *EditError
-	if err != nil && errors.As(err, &notFound) && op.Kind == "view" && op.ID == op.View {
-		// A view that does not exist yet is created by a `view` op that carries
-		// the whole new document, with empty `zones` and `nodes` (the shape the
-		// editor writes for a new view); it becomes a file on Save.
-		if created, cerr := m.newView(op); cerr != nil {
-			return cerr
-		} else if created {
-			return nil
-		}
-	}
 	if err != nil {
 		return err
 	}

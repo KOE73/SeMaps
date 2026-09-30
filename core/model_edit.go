@@ -57,33 +57,9 @@ func (m *Model) text(lang, key string) (*object, error) {
 	return child(entries, key)
 }
 
+// SetText writes one field as authored, at = now. What a text may be is Apply's
+// rule (ADR_20260926), the same for the editor.
 func (m *Model) SetText(lang, key, field, value, author string) error {
-	if lang == "" || strings.ContainsAny(lang, `/\.`) {
-		return refuse("language %q: expected a code like ru or en", lang)
-	}
-	if !slices.Contains(TextFields, field) {
-		return refuse("field %q: allowed %s (CONTRACT §7.2)", field, strings.Join(TextFields, ", "))
-	}
-	if strings.TrimSpace(value) == "" {
-		return refuse("empty text; there is no deleting a text")
-	}
-	switch {
-	case strings.HasPrefix(key, "e_"):
-		if field == "name" || field == "title" {
-			return refuse("an entity's name is not translated and lives in entities.json (CONTRACT §7.1)")
-		}
-	case strings.HasPrefix(key, "r_"):
-		r := m.record("relation", key)
-		if r == nil {
-			return refuse("no relation %s", key)
-		}
-		if r.str("origin") == "code" {
-			return refuse("relation %s comes from code: it has no texts, its label is drawn from `via` (CONTRACT §4)", key)
-		}
-	case strings.HasPrefix(key, "c_"), strings.HasPrefix(key, "rt_"), strings.HasPrefix(key, "v_"), strings.HasPrefix(key, "z_"):
-	default:
-		return refuse("key %q: expected a prefix e_, c_, rt_, r_, v_ or z_ (CONTRACT §7.1)", key)
-	}
 	entry, err := m.text(lang, key)
 	if err != nil {
 		return err
@@ -98,18 +74,35 @@ func (m *Model) SetText(lang, key, field, value, author string) error {
 	return err
 }
 
-func (m *Model) AddRelation(from, to, relType, author string) (string, error) {
-	ents := m.records("entity")
-	for _, e := range []string{from, to} {
-		if findByID(ents, e) == nil {
-			return "", refuse("no entity %s", e)
-		}
+// AddEntity adds an authored entity — a part of the system no extractor
+// reports (CONTRACT §3: kind app, external, database…). The id is id when
+// given, else minted from the name; an existing one is refused, not replaced.
+func (m *Model) AddEntity(id, name, kind, author string) (string, error) {
+	taken := map[string]bool{}
+	for _, e := range m.records("entity") {
+		taken[e.str("id")] = true
 	}
+	if id == "" {
+		id = mint("e_"+slug(name), taken)
+	} else if taken[id] {
+		return "", refuse("entity %s exists", id)
+	}
+	o := newObject()
+	o.set("id", id)
+	o.set("name", name)
+	o.set("kind", kind)
+	o.set("origin", "authored")
+	o.set("status", "present")
+	b, _ := o.MarshalJSON()
+	_, err := m.Apply([]Op{{Kind: "entity", ID: id, Value: b}}, author)
+	return id, err
+}
+
+// AddRelation adds an authored relation. That both ends and the type exist is
+// Apply's rule; not a self-relation and not a duplicate is the agent's policy.
+func (m *Model) AddRelation(from, to, relType, author string) (string, error) {
 	if from == to {
 		return "", refuse("a relation of an entity to itself is not drawn")
-	}
-	if findByID(m.records("relationType"), relType) == nil {
-		return "", refuse("no relation type %s; add it first (add_relation_type)", relType)
 	}
 	taken := map[string]bool{}
 	for _, r := range m.records("relation") {
@@ -131,12 +124,6 @@ func (m *Model) AddRelation(from, to, relType, author string) (string, error) {
 }
 
 func (m *Model) AddRelationType(id, visibility, styleID, author string) error {
-	if id == "" || strings.ContainsAny(id, " \t\"") {
-		return refuse("type id %q: a word without spaces", id)
-	}
-	if visibility != "" && visibility != "visible" && visibility != "hidden" {
-		return refuse("visibility %q: visible, hidden or nothing", visibility)
-	}
 	if m.record("relationType", id) != nil {
 		return refuse("type %s exists", id)
 	}
@@ -256,25 +243,10 @@ func (m *Model) PlaceEntities(viewID string, list []Placement, requestedByHuman 
 	for _, n := range nodes {
 		placed[orDefault(n.str("entity"), n.str("id"))] = true
 	}
-	zones := map[string]bool{}
-	if raw := view.vals["zones"]; len(raw) > 0 {
-		var zs []*object
-		if err := json.Unmarshal(raw, &zs); err == nil {
-			for _, z := range zs {
-				zones[z.str("id")] = true
-			}
-		}
-	}
-	ents := m.records("entity")
 	ops := make([]Op, 0, len(list))
 	for _, p := range list {
-		switch {
-		case findByID(ents, p.Entity) == nil:
-			return refuse("no entity %s", p.Entity)
-		case placed[p.Entity]:
+		if placed[p.Entity] {
 			return refuse("%s is already on %s; a placement made by someone is not moved", p.Entity, viewID)
-		case p.Zone != "" && !zones[p.Zone]:
-			return refuse("no zone %s on %s", p.Zone, viewID)
 		}
 		placed[p.Entity] = true
 		n := newObject()

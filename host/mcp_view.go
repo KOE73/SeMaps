@@ -13,6 +13,7 @@ import (
 	"fmt"
 	"math"
 	"net/url"
+	"path/filepath"
 	"strings"
 
 	"github.com/modelcontextprotocol/go-sdk/mcp"
@@ -36,7 +37,7 @@ var viewToolDescriptions = map[string]toolDescriptions{
 			"(look at the sample, decide, apply in steps, check, say what is unsaved and give the link), when `requestedByHuman` is needed, and the numbers of the canvas " +
 			"(units, grid, default and minimum sizes, caption strip, padding, gaps). Call it once before moving, resizing or placing anything. No parameters; it does not depend on the project.",
 		Full: "layout_guide returns a Markdown guide for working on a view: how to look at one (`get_view`, `render_view`), what each geometry tool does " +
-			"(`move_elements`, `resize_elements`, `set_zone`, `add_zone`, `fit_zone`, `align_elements`, `place_entities`, `create_view`, `create_project`, `save`, `discard`, `set_text`), " +
+			"(`move_elements`, `resize_elements`, `set_zone`, `add_zone`, `fit_zone`, `align_elements`, `place_entities`, `create_view`, `create_project`, `save`, `discard`, `set_text`, `add_entity`), " +
 			"the workflow (look at the sample, decide, apply in steps, check with `get_view` or `render_view`, say what is unsaved and give the link), when `requestedByHuman` is needed, " +
 			"that the host does not snap to the grid, and the numbers of the canvas (units, grid, default and minimum sizes, caption strip, padding, gaps) — the same block that heads every `get_view` answer. " +
 			"Call it once before moving, resizing or placing anything. No parameters; it does not depend on the project.",
@@ -54,16 +55,19 @@ var viewToolDescriptions = map[string]toolDescriptions{
 	"create_view": {
 		Brief: "Create a new, empty view. Only when a human explicitly asked for a new view; requestedByHuman.",
 		Standard: "create_view adds a new empty view to a project: `id` (v_ and lowercase letters, digits, underscore), `name` (its caption, in `lang`, default the project's first language), " +
-			"`axis` (default: the project's default axis). Only when a human explicitly asked for a new view: requestedByHuman must be true. The view is unsaved until `save`; the answer gives the link.",
+			"`axis` (default: the project's default axis). Only when a human explicitly asked for a new view: requestedByHuman must be true. The view is written at once and the editor lists it; its name stays unsaved until `save`. " +
+			"Refused while the project has unsaved changes. The answer gives the link.",
 		Full: "create_view adds a new empty view to a project: `project`, `id` (v_ and lowercase letters, digits, underscore; refused when taken), `name` (its caption, written in `lang`, default the project's first language; " +
-			"`names` gives several languages at once, language code to text), `axis` (default: the project's default axis; refused when neither is given). Only when a human explicitly asked for a new view: " +
-			"requestedByHuman must be true. It is an ordinary unsaved change of the shared model — `save` writes it, `discard` drops it — and the editor lists the view after the save. The answer gives the link.",
+			"`names` gives several languages at once, language code to text), `axis` (default: the project's default axis, which the view then inherits; refused when neither is given), `icon`, `theme`, " +
+			"`setDefault` (also make it the project's default view). Only when a human explicitly asked for a new view: requestedByHuman must be true. A view is a file of the project, so it is written at once " +
+			"and every open editor lists it; the caption is an ordinary unsaved change of the shared model — `save` writes it, `discard` drops it. Refused while the project has unsaved changes: save or discard them first. The answer gives the link.",
 	},
 	"create_project": {
 		Brief: "Create a new project in the workspace. Only when a human explicitly asked for a new project; requestedByHuman.",
 		Standard: "create_project creates an empty project in the workspace: `id` (lowercase letters, digits, underscore, starting with a letter; refused when taken), `title`, `language` (default ru). " +
 			"Only when a human explicitly asked for a new project: requestedByHuman must be true. Returns the project id.",
-		Full: "create_project creates an empty project in the workspace: `id` (lowercase letters, digits, underscore, starting with a letter; refused when taken), `title` (default: the id), `language` (the project's first text language, default ru). " +
+		Full: "create_project creates an empty project in the workspace: `id` (lowercase letters, digits, underscore, starting with a letter; refused when taken), `title` (default: the id), `subtitle`, `defaultAxis` (the axis of views that declare none), " +
+			"`language` (the project's first text language, default ru), `icon`, `theme`. " +
 			"Only when a human explicitly asked for a new project: requestedByHuman must be true. A project is a folder of the workspace, not a change of another project's model, so it is written at once, not held unsaved; " +
 			"the answer says so and returns the project id. Add views to it with `create_view`.",
 	},
@@ -124,6 +128,7 @@ blocks the straight line from the lower one.
 | make a zone as tight as its content (caption strip and padding), ancestors grow | `+"`fit_zone`"+` |
 | line elements up on the first one: left, right, top, bottom, width, height | `+"`align_elements`"+` |
 | put entities on a view | `+"`place_entities`"+` |
+| an entity no extractor reports (an app, an external system, a database), so that it can be placed | `+"`add_entity`"+`, then `+"`place_entities`"+` |
 | caption a zone or a view (a text under its id, field name), in every language of the project | `+"`set_text`"+` |
 | a new view or project — only when a human explicitly asked | `+"`create_view`"+`, `+"`create_project`"+` |
 | write what is unsaved / drop it — only when a human explicitly asked | `+"`save`"+`, `+"`discard`"+` |
@@ -282,43 +287,66 @@ type createViewIn struct {
 	Name             string            `json:"name,omitempty" jsonschema:"the view's caption, written in lang"`
 	Lang             string            `json:"lang,omitempty" jsonschema:"language of name; default: the project's first language"`
 	Names            map[string]string `json:"names,omitempty" jsonschema:"captions in several languages: language code to text"`
-	Axis             string            `json:"axis,omitempty" jsonschema:"default: the project's default axis"`
+	Axis             string            `json:"axis,omitempty" jsonschema:"CONTRACT §8.1; may be left out when the project has a default axis, which the view then inherits"`
+	Icon             string            `json:"icon,omitempty"`
+	Theme            string            `json:"theme,omitempty"`
+	SetDefault       bool              `json:"setDefault,omitempty" jsonschema:"also make it the project's default view"`
 	RequestedByHuman bool              `json:"requestedByHuman" jsonschema:"true only when a human explicitly asked for a new view"`
 }
 
+// service is the host's model service; without a host (tests) a private one
+// over the same workspace, so every path runs the same code.
+func (s *mcpServer) service() *modelService {
+	if s.models == nil {
+		s.models, _ = newModelService(s.workspace)
+	}
+	return s.models
+}
+
+// createView and createProject are the editor's create path (POST /api/projects,
+// POST /api/model/{project}/views, ADR_20260926) with the agent's policy in front:
+// only on a human's request.
 func (s *mcpServer) createView(_ context.Context, _ *mcp.CallToolRequest, in createViewIn) (*mcp.CallToolResult, any, error) {
 	if !in.RequestedByHuman {
 		return nil, nil, errors.New("create_view requires requestedByHuman: true, and only when a human explicitly asked for a new view")
 	}
-	m, err := s.model(in.Project)
+	dir, err := core.ProjectDir(s.workspace, s.pick(in.Project))
 	if err != nil {
 		return nil, nil, err
 	}
+	project := filepath.Base(dir)
 	names := map[string]string{}
 	for lang, name := range in.Names {
 		names[lang] = name
 	}
 	if in.Name != "" {
-		lang := in.Lang
-		if lang == "" {
-			lang = m.Languages()[0]
-		}
-		names[lang] = in.Name
+		names[in.Lang] = in.Name // an empty language is the project's first: the service resolves it
 	}
-	if err := m.CreateView(in.ID, in.Axis, names, in.RequestedByHuman, "agent"); err != nil {
+	v := core.NewView{ID: in.ID, Axis: in.Axis, Icon: in.Icon, Theme: in.Theme, SetDefault: in.SetDefault}
+	if err := s.service().createView(project, v, names, "agent"); err != nil {
 		return nil, nil, err
 	}
-	s.changed(in.Project, m)
 	link := "/app/#" + url.PathEscape(in.ID)
-	text := fmt.Sprintf("view %s created in project %s, not saved (the editor lists it after Save); review and Save: %s", in.ID, m.ProjectID(), link)
+	text := fmt.Sprintf("view %s created in project %s and written at once: %s", in.ID, project, link)
+	unsaved := false
+	for _, name := range names {
+		unsaved = unsaved || strings.TrimSpace(name) != ""
+	}
+	if unsaved {
+		text = fmt.Sprintf("view %s created in project %s; its name is not saved, review and Save: %s", in.ID, project, link)
+	}
 	return &mcp.CallToolResult{Content: []mcp.Content{&mcp.TextContent{Text: text}}},
-		map[string]any{"view": in.ID, "project": m.ProjectID(), "saved": false, "link": link}, nil
+		map[string]any{"view": in.ID, "project": project, "saved": !unsaved, "link": link}, nil
 }
 
 type createProjectIn struct {
 	ID               string `json:"id" jsonschema:"lowercase letters, digits, underscore, starting with a letter"`
-	Title            string `json:"title,omitempty" jsonschema:"default: the id"`
+	Title            string `json:"title,omitempty" jsonschema:"shown in the catalog, not translated; default: the id"`
+	Subtitle         string `json:"subtitle,omitempty"`
+	DefaultAxis      string `json:"defaultAxis,omitempty" jsonschema:"axis of the views that declare none (CONTRACT §8.1)"`
 	Language         string `json:"language,omitempty" jsonschema:"language of the project's texts: ru, en...; default ru"`
+	Icon             string `json:"icon,omitempty"`
+	Theme            string `json:"theme,omitempty"`
 	RequestedByHuman bool   `json:"requestedByHuman" jsonschema:"true only when a human explicitly asked for a new project"`
 }
 
@@ -326,13 +354,10 @@ func (s *mcpServer) createProject(_ context.Context, _ *mcp.CallToolRequest, in 
 	if !in.RequestedByHuman {
 		return nil, nil, errors.New("create_project requires requestedByHuman: true, and only when a human explicitly asked for a new project")
 	}
-	if err := core.CreateProject(s.workspace, in.ID, in.Title, in.Language); err != nil {
+	p := core.NewProject{ID: in.ID, Title: orStr(in.Title, in.ID), Subtitle: in.Subtitle, DefaultAxis: in.DefaultAxis,
+		Language: in.Language, Icon: in.Icon, Theme: in.Theme}
+	if err := s.service().createProject(p); err != nil {
 		return nil, nil, err
-	}
-	if s.models != nil {
-		if err := s.models.reload(projectReloaded{OldProject: in.ID, NewProject: in.ID}); err != nil {
-			return nil, nil, fmt.Errorf("project %s created, but the model did not load: %w", in.ID, err)
-		}
 	}
 	text := fmt.Sprintf("project %s created and written to the workspace at once (a project is a folder, not an unsaved change); add a view with create_view", in.ID)
 	return &mcp.CallToolResult{Content: []mcp.Content{&mcp.TextContent{Text: text}}},

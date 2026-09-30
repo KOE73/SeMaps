@@ -9,7 +9,7 @@ This document defines the host/backend communication contract for the SeMaps edi
 ## 1. Architectural Overview
 
 The editor operates over a project workspace containing:
-1. **Workspace index**: `GET /api/workspace` — the projects and views the host found on disk (§2.4). There is no list file.
+1. **Workspace index**: `GET /api/workspace` — the projects and views the host found on disk, with titles and names from the working model (§2.2). There is no list file.
 2. **Global Styles**: `styles.json` defining color schemes, strokes, typography, and badges.
 3. **Content templates**: `templates.json`, the named registry of block content
    templates (`CONTRACT.md` §11.2) — sits next to `styles.json`, not inside it.
@@ -56,7 +56,7 @@ The backend serves application assets and global workspace JSON. Project model r
 |---|---|---|---|
 | `/app/` | `GET` | `text/html` | Entry point for the editor application |
 | `/app/assets/*` | `GET` | `application/javascript`, `text/css` | Bundled JavaScript, CSS, and media |
-| `/api/workspace` | `GET` | `application/json` | Projects and their views, found on disk (§2.4) |
+| `/api/workspace` | `GET` | `application/json` | Projects and their views as the working model sees them (§2.2) |
 | `/styles.json` | `GET` | `application/json` | Shared style stylesheet (returns 404 if not created yet; client falls back to built-in styles) |
 | `/canvas.json` | `GET` | `application/json` | Numbers of the canvas: grid, node and zone sizes, caption strip, padding, gaps (§2.1a). Always answers: the workspace copy, else the tool's default |
 | `/templates.json` | `GET` | `application/json` | Content-template registry (404 tolerated: client falls back to the built-in `title-only` template) |
@@ -82,8 +82,10 @@ The backend serves application assets and global workspace JSON. Project model r
 The one listing a host gives. It walks `projects/*/` (a folder counts only with a `project.json`) and
 `views/*.view.json` in each; nothing else is listed, and plain directory listing stays refused
 ([`ADR_20260923-7`](adr/ADR_20260923-7_contract_projects-and-views-found-not-listed.md)).
-The editor overlays this disk index with the working manifest and text entries from
-`GET /api/model/{project}`. Unsaved titles and view names therefore appear in its catalogue.
+Which projects and views exist comes from disk: creating one is structural and written at once
+(§3.4a). What they are called and how they look — `title`, `subtitle`, `icon`, `theme`, `order`,
+`languages`, a view's `axis` and `names` — comes from the working model, unsaved edits included.
+MCP `list_projects` gives the same answer (§6); clients do not merge anything themselves.
 
 ```json
 { "projects": [
@@ -99,7 +101,7 @@ The editor overlays this disk index with the working manifest and text entries f
 - Projects and views are sorted by `order`, entries without one last, then by `id`.
 - A file that does not parse stays in the list with an `error` string instead of its fields.
 - No `projects/` folder is an empty list, not an error. Served with `Cache-Control: no-cache`.
-- Reference implementation: `core.Index` (`core/index.go`).
+- Reference implementation: `core.LiveIndex` over `core.Index` (`core/index.go`).
 
 ### 2.2a. Base URL Handling
 - The editor bundle is **not** part of the workspace. The reference host serves it at `/app/` from its own installation (`host/app/`); the workspace is served at `/`.
@@ -114,19 +116,15 @@ Serve every `.json` with `Cache-Control: no-cache` (or an equivalent validator).
 
 ## 3. Write Requirements (Save API)
 
-The backend persists project model files through `POST /api/model/{project}/save` (§3.4). `/api/save` remains for global assets and creation of a new project/view file.
+The backend persists project model files through `POST /api/model/{project}/save` (§3.4) and
+creates projects and views through §3.4a. `/api/save` remains for global assets only.
 
 ### 3.1. Save Endpoint: `POST /api/save`
 
-- **URL Pattern**: `/api/save?file=<relative_path>`; existing files under `projects/` return `410 Gone`. The only project paths permitted are `create=1` on `projects/<id>/project.json` and `projects/<id>/views/<id>.view.json`.
+- **URL Pattern**: `/api/save?file=<relative_path>`; any path under `projects/` returns `410 Gone`.
 - **Method**: `POST`
 - **Headers**: `Content-Type: application/json`, `Authorization: Bearer <host key>`
 - **Request Body**: Valid JSON payload formatted with 2-space indentation.
-
-#### Query Parameter `create`
-- `create=1`: write only if the file does not exist yet; otherwise `409 Conflict` and nothing is
-  written. The editor creates `project.json` and new views this way, so a taken id never
-  overwrites anything ([`ADR_20260923-8`](adr/ADR_20260923-8_contract_project-and-view-ids-can-change.md)).
 
 #### Query Parameter `file`
 - Contains a workspace-relative path (e.g. `projects/llm_pipeline/views/v_main.view.json`, `styles.json`, `templates.json`).
@@ -141,8 +139,7 @@ The backend persists project model files through `POST /api/model/{project}/save
 | `400 Bad Request` | Missing `file` param, invalid extension, or directory traversal attempt | Error message string |
 | `405 Method Not Allowed` | Method is not `POST` | `Method not allowed` |
 | `401 Unauthorized` | Missing or wrong host key on a write | Error text |
-| `409 Conflict` | `create=1` and the file exists | `Already exists: <file>` |
-| `410 Gone` | An existing project model file was submitted | Use project Save (§3.4) |
+| `410 Gone` | A path under `projects/` | Use §3.4 / §3.4a |
 | `500 Internal Server Error` | File system I/O error or permission failure | Error message string |
 
 ### 3.3. Security & Path Traversal Rules
@@ -182,9 +179,40 @@ The host creates `<project root>/.semaps/host.json` containing `{pid, port, key}
 
 An operation is `{kind,id,view?,lang?,value,author?}`. `kind` is `project`, `entity`, `relation`, `relationType`, `text`, `view`, `zone`, or `node`. `project` replaces the `project.json` manifest and is counted in registry dirt. `value` is the whole object; `null` removes a zone or node placement only. Registry records and the manifest cannot be removed. `text` requires `lang`; `view`, `zone`, and `node` require `view`. The host sets `author: human` on browser ops; the agent path sets `author: agent`. A changed reference is `{kind,id,view?,lang?,author}`. `dirty` is `{registry:[Ref],views:{<view-id>:[Ref]}}`, with the last author per touched object. The conflict unit is an object: later accepted replacement wins, with no field merge. The SSE event is emitted after the batch is in the journal. A view is loaded lazily when first read or changed.
 
-A `view` op for a view that does not exist yet, carrying the whole new document with empty `zones` and `nodes` (`{id, project, axis, zones:[], nodes:[]}`), creates the view in the working model: it becomes a file on Save, `discard` drops it (the MCP `create_view` uses it, §6). A `dirty` view the workspace index does not list yet is such an unsaved new view.
+Every batch is checked against the contract, whoever sends it — editor, agent, sync
+([`ADR_20260926`](adr/ADR_20260926_core_one-rule-set-for-every-writer.md), `core/rules.go`). The
+check runs on the whole batch after all its operations, so order inside a batch does not matter,
+and only on what the batch creates or changes: a new object entirely, a changed one by its changed
+fields. A new entity, relation or zone needs its prefix (`e_`, `r_`, `z_`); an entity a non-empty
+`name` and `kind`; a relation existing ends and a type from `relation-types.json`; a text field a
+value `{v, origin, at}` with a non-empty `v`; a zone's `parent` an existing zone, not itself or its
+content; a node an existing entity and, when it names one, an existing zone. Enumerations
+(`origin`, `status`, `visibility`) take only their CONTRACT values. A broken rule refuses the whole
+batch with `422`. Journal replay at startup is not checked again. What binds only the agent
+(`requestedByHuman`, not moving someone's placement, minted ids) stays in the MCP tools.
 
-Project and view creation by the editor use `/api/save?create=1`; renames use `/api/move`. These structural operations require the host key and a clean project model; when dirty, the host returns `409` with «сначала сохраните». After success it reloads the project from files and emits `projectReloaded`. Ordinary manifest edits use a `project` op and the common Save. `styles.json`, `templates.json`, and `content/` remain outside the working model.
+Renames use `/api/move`; creation uses §3.4a. These structural operations require the host key; a rename and a new view also require a clean project model — when dirty, the host returns `409` with «сначала сохраните». A rename onto a taken id is `409`, an id outside the pattern `422`. After success the host reloads the project from files and emits `projectReloaded`. Ordinary manifest edits use a `project` op and the common Save. `styles.json`, `templates.json`, and `content/` remain outside the working model.
+
+### 3.4a. Creating projects and views
+
+One create path for every client: these endpoints and the MCP tools `create_project` /
+`create_view` (§6) call the same host service, which calls `core.CreateProject` /
+`core.CreateView`. No client writes `project.json` or a view file itself.
+
+| Path | Method | Body → answer |
+|---|---|---|
+| `/api/projects` | `POST` | `{id, title, subtitle?, defaultAxis?, language?, icon?, theme?}` → `{id}`. Writes `project.json` only: no views, no entities, no extractor |
+| `/api/model/{project}/views` | `POST` | `{id, axis?, icon?, theme?, setDefault?, name?, language?}` → `{id, file}`. Writes an empty view (`zones`, `nodes`, no `edges` key: CONTRACT §8.5); `setDefault` rewrites `defaultView` in `project.json`; `name` goes into the working model as a text under the view's id in `language` (default: the project's first language), unsaved |
+
+- Ids: project `^[a-z][a-z0-9_]*$`, view `^v_[a-z0-9_]+$` (`core.ProjectIDPattern`,
+  `core.ViewIDPattern`); otherwise `422`. A project needs a non-empty `title`. A view needs
+  an `axis` unless the project has a `defaultAxis` (CONTRACT §8.1); otherwise `422`.
+- A taken id → `409`, nothing written: a create never overwrites
+  ([`ADR_20260923-8`](adr/ADR_20260923-8_contract_project-and-view-ids-can-change.md)).
+- A new view on a project with unsaved changes → `409` «сначала сохраните»; a view in a missing
+  project → `404`.
+- Both need the host key and same origin, like `/api/move`; on success the host reloads the
+  project and emits `projectReloaded` (with `newView` for a view).
 
 The editor sends operations after a completed action. Drag movement in progress remains local;
 the final placement is one `node` or `zone` operation. Incoming SSE changes are read from the
@@ -449,7 +477,7 @@ then.
   `layout_guide` says how. The host does not snap to the grid (§2.1a).
 - A new view or project only with `create_view` / `create_project` and `requestedByHuman: true`, when
   a human explicitly asked.
-- Files keep every key they had, in the order they had it. Tool edits are unsaved until `save`.
+- Files keep every key they had, in the order they had it. Tool edits are unsaved until `save`; a new project or view file is the exception (§3.4a).
 
 **Object references.** A tool that takes an object of a view takes it as `<view>#<id>`
 (`v_ops#z_undistort`; a node is named by its entity: `v_ops#e_op_crop`), or
@@ -546,13 +574,13 @@ editor's sandbox land in the same file.
 
 | Tool | Input | Answer |
 |---|---|---|
-| `list_projects` | — | `core.Index` of the workspace: projects and their views |
+| `list_projects` | — | the workspace index, the same as `GET /api/workspace` (§2.2): unsaved titles and names included |
 | `list_views` | `project?` | `{views}` |
 | `get_entity` | `id` \| `symbol` | the entity as in `entities.json` |
 | `find_entities` | `query?` (substring of name, symbol, namespace, id), `kind?`, `status?`, `limit?` = 50 | `{total, entities}` |
 | `get_relations` | `entity?`, `direction?` = `both` \| `out` \| `in`, `type?` (a prefix ending with `.` matches `holds.`), `status?`, `limit?` = 200 | `{total, relations}` |
 | `get_relation_types` | — | `{relationTypes}`: the vocabulary with `visibility` |
-| `get_view` | `view` (a view id, or a zone reference `v_ops#z_a` for that subtree only), `lang?` = `ru`, `project?` | The text answer has two parts: first the canvas block (`core.Canvas.Describe`, the same lines as in `layout_guide`: units, axes, grid and that the host does not snap, node/zone default and minimum sizes, caption strip, padding, gaps), then the data as JSON, also the structured content: `{view:{id,project,axis,relations,routing,scope?}, zones, nodes, edges, unsaved}`. `zones` nest: each has `id`, `name`, `container`, `parent`, absolute `x,y,width,height`, `styleId`, `collapsed`, `zones`, `nodes`; a node has `entity`, `name`, `kind`, `zone`, rectangle (default size when the file has none), `styleId`, `template`; `nodes` at the top are those in no zone. `edges` are the lines the view shows: its own `edges` list when it has the key, else relations by CONTRACT §8.5. `unsaved` lists the view's unsaved objects with their authors |
+| `get_view` | `view` (a view id, or a zone reference `v_ops#z_a` for that subtree only), `lang?` = `ru`, `project?` | The text answer has two parts: first the canvas block (`core.Canvas.Describe`, the same lines as in `layout_guide`: units, axes, grid and that the host does not snap, node/zone default and minimum sizes, caption strip, padding, gaps), then the data as JSON, also the structured content: `{view:{id,project,axis,axisInherited?,relations,routing,scope?}, zones, nodes, edges, unsaved}`. `axis` is the view's own, else `project.defaultAxis` with `axisInherited: true` (CONTRACT §8.1). `zones` nest: each has `id`, `name`, `container`, `parent`, absolute `x,y,width,height`, `styleId`, `collapsed`, `zones`, `nodes`; a node has `entity`, `name`, `kind`, `zone`, rectangle (default size when the file has none), `styleId`, `template`; `nodes` at the top are those in no zone. `edges` are the lines the view shows: its own `edges` list when it has the key, else relations by CONTRACT §8.5. `unsaved` lists the view's unsaved objects with their authors |
 | `layout_guide` | — | Markdown for working on a view: how to look (`get_view`, `render_view`), each view tool, the workflow (sample → decide → apply in steps → check → say what is unsaved, give the link), `requestedByHuman`, no grid snapping, and the canvas block. No JSON file format in it. Project-independent; the canvas numbers come from `canvas.json` (§2.1a) |
 | `render_view` | `project?`, `view?` \| `ref?` (`view#zone`), `rect?` (`{x,y,width,height}`), `scale?` = 1 (0.25–4), `maxSize?` = 1600 (cap 4096) | a picture from the editor open on the project, over the bridge of §3.4 (`render=1`, `POST /api/render/{id}`): an MCP `ImageContent` (`image/png`) plus a text with the problems as lines `kind: text (ids)` or `no problems found`, the model rectangle drawn (the content bounds of the view/zone, or `rect`) and a note that it is the editor's unsaved state. No editor subscribed: error «no editor is open on this project: open the view in the editor (`/app/#<view>`) and repeat»; no answer in 20 s: an error saying the editor did not answer. Read-only, no `requestedByHuman` |
 | `get_text` | `lang`, `key` | the entry of `key` in `text.<lang>.json`, `{}` when none |
@@ -568,6 +596,7 @@ editor's sandbox land in the same file.
 | Tool | Input | Effect |
 |---|---|---|
 | `set_text` | `lang`, `key`, `field` (`name`, `title`, `description`, `doc`, `fromLabel`, `toLabel`), `value` | one field, authored |
+| `add_entity` | `name`, `kind`, `id?`, `description?`, `lang?` (default: the project's first language) | authored entity (`origin: authored`, `status: present`); the id is minted from the name unless given; an existing id is refused; `description` goes as a text; what an entity may be is checked by `Apply` (§3.4) as for every writer. Place it with `place_entities` |
 | `add_relation` | `from`, `to`, `type` | authored relation; both entities and the type must exist; the id comes back |
 | `add_relation_type` | `id`, `visibility?`, `styleId?` | authored type; its name goes by `set_text` under `rt_<id>` |
 | `set_relation_visible` | `view`, `relation`, `visible` | the relation into or out of `relations.except` against the default (CONTRACT §8.5) |
@@ -585,8 +614,8 @@ editor's sandbox land in the same file.
 `elements` are zone ids, entity ids of nodes, or references `view#id`; `view` may be left out when they are references. A zone nests by its `parent`, else by a zone named in its `container`, else by the smallest zone whose rectangle holds it. Zones that hold each other are refused. There is no tool that lays zones out "like another": what should match what is the agent's judgement, made with `get_view` (eyes) and these steps (hands).
 
 Every geometry step is one batch — a bad element applies nothing — authored `agent`, and answers `{touched:[view#id…], saved:false, link}` with the link that opens the view and highlights the touched objects.
-| `create_view` | `project?`, `id` (`v_…`), `name?`, `lang?`, `names?` (language → text), `axis?` (else the project's `defaultAxis`; neither is refused), `requestedByHuman` | a new empty view as an unsaved change of the shared model (a `view` op, §3.4, plus the name texts, one batch); the editor lists it after `save`; answers `{view, project, saved:false, link}`. Only when a human explicitly asked for a new view |
-| `create_project` | `id`, `title?`, `language?` = `ru`, `requestedByHuman` | writes `projects/<id>/project.json` at once (a project is a folder, not a change of another project's model, so it cannot be unsaved; the answer says so) and returns `{project, saved:true}`; an existing id is refused. Only when a human explicitly asked for a new project |
+| `create_view` | `project?`, `id` (`v_…`), `name?`, `lang?`, `names?` (language → text), `axis?` (else the project's `defaultAxis`; neither is refused), `icon?`, `theme?`, `setDefault?`, `requestedByHuman` | a new empty view, as `POST /api/model/{project}/views` (§3.4a): the file is written at once and every open editor lists it; `name`/`names` are texts of the working model and stay unsaved. Refused while the project has unsaved changes. Answers `{view, project, saved, link}` (`saved: false` only when a name is left unsaved). Only when a human explicitly asked for a new view |
+| `create_project` | `id`, `title?` (default: the id), `subtitle?`, `defaultAxis?`, `language?` = `ru`, `icon?`, `theme?`, `requestedByHuman` | a new hand-authored project, as `POST /api/projects` (§3.4a): writes `projects/<id>/project.json` at once (a project is a folder, not a change of another project's model, so it cannot be unsaved; the answer says so) and returns `{project, saved:true}`; an existing id is refused. Only when a human explicitly asked for a new project |
 | `save` | `project?`, `requestedByHuman: true` | saves all dirty project files and clears the journal; refused without explicit human request |
 | `discard` | `project?`, `scope: registry \| view \| all`, `view?`, `requestedByHuman: true` | drops the requested unsaved changes; refused without explicit human request |
 

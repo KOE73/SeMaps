@@ -86,27 +86,62 @@ func TestCreateViewAndProject(t *testing.T) {
 	if !res.IsError || !strings.Contains(text, "already exists") {
 		t.Fatalf("second create_project: %v %s", res.IsError, text)
 	}
-	res, text = call(t, cs, "create_view", map[string]any{"project": "other", "id": "v_new", "axis": "axis_layer", "name": "New", "requestedByHuman": true})
-	if res.IsError || !strings.Contains(text, "not saved") || !strings.Contains(text, "/app/#v_new") {
-		t.Fatalf("create_view: %v %s", res.IsError, text)
-	}
-	if _, err := os.Stat(filepath.Join(ws, "projects", "other", "views", "v_new.view.json")); err == nil {
-		t.Fatal("view file exists before save")
-	}
 	res, text = call(t, cs, "create_view", map[string]any{"project": "other", "id": "v_other", "requestedByHuman": true})
 	if !res.IsError || !strings.Contains(text, "axis") {
 		t.Fatalf("no axis: %v %s", res.IsError, text)
 	}
-	if res, text = call(t, cs, "save", map[string]any{"project": "other", "requestedByHuman": true}); res.IsError {
-		t.Fatal(text)
+	res, text = call(t, cs, "create_view", map[string]any{"project": "other", "id": "v_new", "axis": "axis_layer", "name": "New", "requestedByHuman": true})
+	if res.IsError || !strings.Contains(text, "name is not saved") || !strings.Contains(text, "/app/#v_new") {
+		t.Fatalf("create_view: %v %s", res.IsError, text)
 	}
+	// the view is a file: written at once; its name is unsaved
 	data, err := os.ReadFile(filepath.Join(ws, "projects", "other", "views", "v_new.view.json"))
 	if err != nil || !strings.Contains(string(data), `"axis_layer"`) {
-		t.Fatalf("view after save: %s %v", data, err)
+		t.Fatalf("view file: %s %v", data, err)
+	}
+	_, text = call(t, cs, "list_projects", map[string]any{})
+	if !strings.Contains(text, `"v_new"`) || !strings.Contains(text, `"en":"New"`) {
+		t.Fatalf("list_projects without the unsaved name: %s", text)
+	}
+	res, text = call(t, cs, "create_view", map[string]any{"project": "other", "id": "v_two", "axis": "axis_layer", "requestedByHuman": true})
+	if !res.IsError || !strings.Contains(text, "сначала сохраните") {
+		t.Fatalf("view on a project with unsaved changes: %v %s", res.IsError, text)
+	}
+	if res, text = call(t, cs, "save", map[string]any{"project": "other", "requestedByHuman": true}); res.IsError {
+		t.Fatal(text)
 	}
 	_, text = call(t, cs, "get_text", map[string]any{"project": "other", "lang": "en", "key": "v_new"})
 	if !strings.Contains(text, "New") {
 		t.Fatalf("view name: %s", text)
+	}
+}
+
+func TestAddEntityThroughMCP(t *testing.T) {
+	cs, ws := mcpSession(t)
+	res, text := call(t, cs, "add_entity", map[string]any{"project": "p", "name": "Billing DB", "kind": "database", "description": "Holds invoices"})
+	if res.IsError || !strings.Contains(text, "e_billing_db") {
+		t.Fatalf("add_entity: %v %s", res.IsError, text)
+	}
+	_, text = call(t, cs, "get_entity", map[string]any{"project": "p", "id": "e_billing_db"})
+	if !strings.Contains(text, `"origin":"authored"`) || !strings.Contains(text, `"status":"present"`) {
+		t.Fatalf("entity: %s", text)
+	}
+	_, text = call(t, cs, "get_text", map[string]any{"project": "p", "lang": "ru", "key": "e_billing_db"})
+	if !strings.Contains(text, "Holds invoices") {
+		t.Fatalf("description: %s", text)
+	}
+	res, text = call(t, cs, "add_entity", map[string]any{"project": "p", "id": "e_billing_db", "name": "Again", "kind": "database"})
+	if !res.IsError || !strings.Contains(text, "exists") {
+		t.Fatalf("existing id: %v %s", res.IsError, text)
+	}
+	res, text = call(t, cs, "add_entity", map[string]any{"project": "p", "id": "node_1", "name": "N", "kind": "app"})
+	if !res.IsError || !strings.Contains(text, "starts with e_") {
+		t.Fatalf("id without e_: %v %s", res.IsError, text)
+	}
+	// unsaved: nothing on disk yet
+	b, _ := os.ReadFile(filepath.Join(ws, "projects", "p", "entities.json"))
+	if strings.Contains(string(b), "e_billing_db") {
+		t.Fatal("entity written before Save")
 	}
 }
 

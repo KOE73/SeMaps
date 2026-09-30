@@ -1080,7 +1080,7 @@ export class DiagramEditor implements InspectorHost, StylePanelHost, DiagramEdit
     const y = snap(at.y, canvasNumbers().grid);
 
     const node: DiagramElement = {
-      id: `node_${Date.now().toString(36)}`,
+      id: `e_${Date.now().toString(36)}`,
       kind: "node",
       type: DEFAULT_STYLE_IDS.node,
       label: "Новый блок",
@@ -1102,7 +1102,7 @@ export class DiagramEditor implements InspectorHost, StylePanelHost, DiagramEdit
     const doc = this.canvas.model;
     if (doc === null) return;
     const at = this.canvas.viewCenter();
-    const id = `zone_${Date.now().toString(36)}`;
+    const id = `z_${Date.now().toString(36)}`;
 
     const zone: DiagramElement = {
       id,

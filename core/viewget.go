@@ -7,12 +7,14 @@ import (
 )
 
 type ViewHead struct {
-	ID        string `json:"id"`
-	Project   string `json:"project"`
-	Axis      string `json:"axis,omitempty"`
-	Relations any    `json:"relations,omitempty"`
-	Routing   string `json:"routing,omitempty"`
-	Scope     string `json:"scope,omitempty"`
+	ID      string `json:"id"`
+	Project string `json:"project"`
+	Axis    string `json:"axis,omitempty"`
+	// AxisInherited: the view declares no axis, Axis is project.defaultAxis (CONTRACT §8.1).
+	AxisInherited bool   `json:"axisInherited,omitempty"`
+	Relations     any    `json:"relations,omitempty"`
+	Routing       string `json:"routing,omitempty"`
+	Scope         string `json:"scope,omitempty"`
 }
 
 type NodeInfo struct {
@@ -149,6 +151,13 @@ func (m *Model) GetView(ref, lang string) (ViewInfo, error) {
 		Zones: top, Nodes: loose, Edges: []EdgeInfo{}, Unsaved: append([]Ref{}, m.Dirty().Views[r.View]...)}
 	if top == nil {
 		out.Zones = []*ZoneInfo{}
+	}
+	if out.View.Axis == "" {
+		var manifest struct {
+			DefaultAxis string `json:"defaultAxis"`
+		}
+		_ = json.Unmarshal(m.Manifest(), &manifest)
+		out.View.Axis, out.View.AxisInherited = manifest.DefaultAxis, manifest.DefaultAxis != ""
 	}
 	if raw, ok := doc.vals["relations"]; ok {
 		_ = json.Unmarshal(raw, &out.View.Relations)

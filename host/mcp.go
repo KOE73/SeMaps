@@ -95,6 +95,15 @@ type setTextIn struct {
 	Value   string `json:"value"`
 }
 
+type addEntityIn struct {
+	Project     string `json:"project,omitempty"`
+	ID          string `json:"id,omitempty" jsonschema:"e_<name>; default: minted from name"`
+	Name        string `json:"name" jsonschema:"canonical name, not translated (CONTRACT §3)"`
+	Kind        string `json:"kind" jsonschema:"app, service, component, external, database…"`
+	Description string `json:"description,omitempty" jsonschema:"written as a text, like set_text"`
+	Lang        string `json:"lang,omitempty" jsonschema:"language of description; default: the project's first language"`
+}
+
 type addRelationIn struct {
 	Project string `json:"project,omitempty"`
 	From    string `json:"from"`
@@ -277,6 +286,7 @@ func (s *mcpServer) server() *mcp.Server {
 	mcp.AddTool(srv, read("render_view", viewToolDescriptions["render_view"].at(level)), s.renderView)
 
 	mcp.AddTool(srv, write("set_text", "Write one text field as authored, with at = now."), s.setText)
+	mcp.AddTool(srv, write("add_entity", "Add an authored entity: a part of the system no extractor reports (app, external, database…); the id is minted unless given."), s.addEntity)
 	mcp.AddTool(srv, write("add_relation", "Add an authored relation; the id is minted and returned."), s.addRelation)
 	mcp.AddTool(srv, write("add_relation_type", "Add an authored relation type."), s.addRelationType)
 	mcp.AddTool(srv, write("set_relation_visible", "Show or hide one relation on one view (relations.except)."), s.setRelationVisible)
@@ -439,7 +449,7 @@ func done(format string, a ...any) (*mcp.CallToolResult, any, error) {
 // ------------------------------------------------------------------ reading
 
 func (s *mcpServer) listProjects(_ context.Context, _ *mcp.CallToolRequest, _ struct{}) (*mcp.CallToolResult, any, error) {
-	return nil, core.Index(s.workspace), nil
+	return nil, s.service().index(), nil
 }
 
 func (s *mcpServer) listViews(_ context.Context, _ *mcp.CallToolRequest, in projectIn) (*mcp.CallToolResult, any, error) {
@@ -447,7 +457,7 @@ func (s *mcpServer) listViews(_ context.Context, _ *mcp.CallToolRequest, in proj
 	if err != nil {
 		return nil, nil, err
 	}
-	for _, p := range core.Index(s.workspace).Projects {
+	for _, p := range s.service().index().Projects {
 		if p.ID == filepath.Base(dir) {
 			return nil, map[string]any{"views": p.Views}, nil
 		}
@@ -862,6 +872,25 @@ func (s *mcpServer) setText(_ context.Context, _ *mcp.CallToolRequest, in setTex
 	}
 	s.changed(in.Project, m)
 	return done("%s.%s (%s) changed, not saved; review and Save: %s", in.Key, in.Field, in.Lang, s.reviewLink(m, in.Key))
+}
+
+func (s *mcpServer) addEntity(_ context.Context, _ *mcp.CallToolRequest, in addEntityIn) (*mcp.CallToolResult, any, error) {
+	m, err := s.model(in.Project)
+	if err != nil {
+		return nil, nil, err
+	}
+	id, err := m.AddEntity(in.ID, in.Name, in.Kind, "agent")
+	if err != nil {
+		return nil, nil, err
+	}
+	if in.Description != "" {
+		if err := m.SetText(orStr(in.Lang, m.Languages()[0]), id, "description", in.Description, "agent"); err != nil {
+			s.changed(in.Project, m)
+			return nil, nil, fmt.Errorf("%s added, its description not: %w", id, err)
+		}
+	}
+	s.changed(in.Project, m)
+	return done("%s added, not saved; place it with place_entities; review and Save: %s", id, s.reviewLink(m, id))
 }
 
 func (s *mcpServer) addRelation(_ context.Context, _ *mcp.CallToolRequest, in addRelationIn) (*mcp.CallToolResult, any, error) {

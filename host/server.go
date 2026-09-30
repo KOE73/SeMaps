@@ -456,7 +456,7 @@ func main() {
 	http.HandleFunc("/api/workspace", func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "application/json; charset=utf-8")
 		w.Header().Set("Cache-Control", "no-cache")
-		_ = json.NewEncoder(w).Encode(core.Index(absWorkspace))
+		_ = json.NewEncoder(w).Encode(models.index())
 	})
 
 	http.HandleFunc("/api/source", func(w http.ResponseWriter, r *http.Request) {
@@ -560,26 +560,9 @@ func main() {
 			return
 		}
 		rel := filepath.ToSlash(strings.TrimPrefix(strings.TrimPrefix(target, absWorkspace), string(filepath.Separator)))
-		structureProject := ""
-		structureView := ""
 		if strings.HasPrefix(rel, "projects/") {
-			parts := strings.Split(rel, "/")
-			allowedCreate := r.URL.Query().Get("create") == "1" &&
-				(len(parts) == 3 && parts[2] == "project.json" || len(parts) == 4 && parts[2] == "views" && strings.HasSuffix(parts[3], ".view.json"))
-			if !allowedCreate {
-				http.Error(w, "Project model files are saved through /api/model/{project}/save", http.StatusGone)
-				return
-			}
-			structureProject = parts[1]
-			models.structureMu.Lock()
-			defer models.structureMu.Unlock()
-			if len(parts) == 4 {
-				structureView = strings.TrimSuffix(parts[3], ".view.json")
-				if err := models.clean(structureProject); err != nil {
-					http.Error(w, "сначала сохраните: "+err.Error(), http.StatusConflict)
-					return
-				}
-			}
+			http.Error(w, "Project files: POST /api/projects, /api/model/{project}/views, /api/model/{project}/save", http.StatusGone)
+			return
 		}
 
 		body, err := io.ReadAll(r.Body)
@@ -592,31 +575,9 @@ func main() {
 			return
 		}
 
-		// `create=1`: a new project or view must not land on an existing one.
-		flags := os.O_WRONLY | os.O_CREATE | os.O_TRUNC
-		if r.URL.Query().Get("create") == "1" {
-			flags = os.O_WRONLY | os.O_CREATE | os.O_EXCL
-		}
-		f, err := os.OpenFile(target, flags, 0644)
-		if errors.Is(err, fs.ErrExist) {
-			http.Error(w, "Already exists: "+fileName, http.StatusConflict)
-			return
-		}
-		if err == nil {
-			_, err = f.Write(body)
-			if cerr := f.Close(); err == nil {
-				err = cerr
-			}
-		}
-		if err != nil {
+		if err := os.WriteFile(target, body, 0644); err != nil {
 			http.Error(w, "Failed to write file: "+err.Error(), http.StatusInternalServerError)
 			return
-		}
-		if structureProject != "" {
-			if err := models.reload(projectReloaded{OldProject: structureProject, NewProject: structureProject, NewView: structureView}); err != nil {
-				http.Error(w, "Created but model reload failed: "+err.Error(), http.StatusInternalServerError)
-				return
-			}
 		}
 
 		fmt.Printf("Saved %s (%d bytes)\n", fileName, len(body))
@@ -685,7 +646,7 @@ func main() {
 			change = projectReloaded{OldProject: projectID, NewProject: projectID, OldView: oldID, NewView: newID}
 		}
 		if moveErr != nil {
-			http.Error(w, "Failed to move: "+moveErr.Error(), http.StatusInternalServerError)
+			createError(w, moveErr)
 			return
 		}
 		if err := models.reload(change); err != nil {
