@@ -440,7 +440,7 @@ export function createBuiltinCommands(): CommandDefinition[] {
       category: "Panels",
       shortcut: "Alt+1",
       keyTip: "P1",
-      isChecked: (ctx) => ctx.panels.isOpen("properties"),
+      isChecked: (ctx) => ctx.panels.isVisible("properties"),
       execute: (ctx) => ctx.panels.toggle("properties"),
     },
     {
@@ -451,7 +451,7 @@ export function createBuiltinCommands(): CommandDefinition[] {
       category: "Panels",
       shortcut: "Alt+2",
       keyTip: "P2",
-      isChecked: (ctx) => ctx.panels.isOpen("relations"),
+      isChecked: (ctx) => ctx.panels.isVisible("relations"),
       execute: (ctx) => ctx.panels.toggle("relations"),
     },
     {
@@ -462,7 +462,7 @@ export function createBuiltinCommands(): CommandDefinition[] {
       category: "Panels",
       shortcut: "Alt+3",
       keyTip: "P3",
-      isChecked: (ctx) => ctx.panels.isOpen("filters"),
+      isChecked: (ctx) => ctx.panels.isVisible("filters"),
       execute: (ctx) => ctx.panels.toggle("filters"),
     },
     {
@@ -473,7 +473,7 @@ export function createBuiltinCommands(): CommandDefinition[] {
       category: "Panels",
       shortcut: "Alt+4",
       keyTip: "P4",
-      isChecked: (ctx) => ctx.panels.isOpen("styles"),
+      isChecked: (ctx) => ctx.panels.isVisible("styles"),
       execute: (ctx) => ctx.panels.toggle("styles"),
     },
     {
@@ -484,7 +484,7 @@ export function createBuiltinCommands(): CommandDefinition[] {
       category: "Panels",
       shortcut: "Alt+5",
       keyTip: "P5",
-      isChecked: (ctx) => ctx.panels.isOpen("catalog"),
+      isChecked: (ctx) => ctx.panels.isVisible("catalog"),
       execute: (ctx) => ctx.panels.toggle("catalog"),
     },
     {
@@ -495,7 +495,7 @@ export function createBuiltinCommands(): CommandDefinition[] {
       category: "Panels",
       shortcut: "Alt+6",
       keyTip: "P6",
-      isChecked: (ctx) => ctx.panels.isOpen("base"),
+      isChecked: (ctx) => ctx.panels.isVisible("base"),
       execute: (ctx) => ctx.panels.toggle("base"),
     },
     {
@@ -506,7 +506,7 @@ export function createBuiltinCommands(): CommandDefinition[] {
       category: "Panels",
       shortcut: "Alt+7",
       keyTip: "P7",
-      isChecked: (ctx) => ctx.panels.isOpen("neighbourhood"),
+      isChecked: (ctx) => ctx.panels.isVisible("neighbourhood"),
       execute: (ctx) => ctx.panels.toggle("neighbourhood"),
     },
 

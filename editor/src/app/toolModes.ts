@@ -17,7 +17,7 @@ import {
   graphProject,
   graphProjectOptions,
   graphShowsMissing,
-  isGraphPanelOpen,
+  isGraphPanelVisible,
   leaveGraph,
   loadGraph,
   refreshGraph,
@@ -64,7 +64,7 @@ function graphCommands(): CommandDefinition[] {
     id,
     title,
     icon,
-    isChecked: () => isGraphPanelOpen(panelId),
+    isChecked: () => isGraphPanelVisible(panelId),
     execute: () => toggleGraphPanel(panelId),
   });
   return [

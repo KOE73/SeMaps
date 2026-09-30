@@ -166,7 +166,7 @@ export const graphColorBy = (): string => viewSettings.state.colorBy;
 export const graphLayout = (): string => viewSettings.state.layout;
 export const graphFocus = (): string => viewSettings.state.focus;
 export const graphGroupBy = (): string => viewSettings.state.groupBy;
-export const isGraphPanelOpen = (id: GraphPanelId): boolean => dock?.panels.isOpen(id) ?? false;
+export const isGraphPanelVisible = (id: GraphPanelId): boolean => dock?.panels.isVisible(id) ?? false;
 
 // ---------------------------------------------------- what the ribbon does
 

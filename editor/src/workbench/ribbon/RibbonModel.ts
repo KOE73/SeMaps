@@ -80,15 +80,6 @@ export function createDefaultRibbonSpec(): RibbonSpec {
               { type: "button", command: "workspace.project.edit", size: "medium" },
             ],
           },
-          {
-            id: "catalogs",
-            get title() { return i18n.d.ribbon.groups.panels; },
-            items: [
-              { type: "button", command: "panel.base.toggle", size: "large" },
-              { type: "button", command: "panel.neighbourhood.toggle", size: "large" },
-              { type: "button", command: "panel.catalog.toggle", size: "large" },
-            ],
-          },
         ],
       },
 

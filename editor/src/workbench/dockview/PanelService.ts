@@ -163,6 +163,7 @@ export class PanelService implements IPanelService {
     }
   }
 
+  /** Shown → hide; hidden behind a tab or closed → show. Focus does not matter. */
   toggle(id: string): void {
     if (this.isVisible(id)) {
       this.close(id);
@@ -186,7 +187,7 @@ export class PanelService implements IPanelService {
 
   isVisible(id: string): boolean {
     const panel = this.dockview.getPanel(id);
-    return panel !== undefined && panel.api.isActive;
+    return panel !== undefined && panel.api.isVisible;
   }
 
   getPanel(id: string): IDockviewPanel | undefined {
