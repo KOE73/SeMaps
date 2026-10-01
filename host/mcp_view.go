@@ -167,6 +167,7 @@ blocks the straight line from the lower one.
 | put entities on a view | `+"`place_entities`"+` |
 | an entity no extractor reports (an app, an external system, a database), so that it can be placed | `+"`add_entity`"+`, then `+"`place_entities`"+` |
 | caption a view (a text under its id, field name), in every language of the project; a container is captioned by the name of its entity — for one drawn by hand a text under the entity's id, field name, which changes freely while the id stays | `+"`set_text`"+` |
+| say that a text in one language is a translation of the same text in another (`+"`from`"+` of `+"`set_text`"+` for a new one; for texts already written, authored in both languages: `+"`mark_translated`"+`, only when a human asked) | `+"`set_text`"+`, `+"`mark_translated`"+` |
 | a new view or project — only when a human explicitly asked | `+"`create_view`"+`, `+"`create_project`"+` |
 | write what is unsaved / drop it — only when a human explicitly asked | `+"`save`"+`, `+"`discard`"+` |
 

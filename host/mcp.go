@@ -94,6 +94,22 @@ type setTextIn struct {
 	Key     string `json:"key"`
 	Field   string `json:"field" jsonschema:"name, title, description, doc, fromLabel or toLabel"`
 	Value   string `json:"value"`
+	From    string `json:"from,omitempty" jsonschema:"language code: the text is written as a translation of the same field in that language (which must have it), not as authored; the source's hash is recorded, so check notices when the source changes"`
+}
+
+type markTranslatedIn struct {
+	Project          string   `json:"project,omitempty"`
+	Lang             string   `json:"lang" jsonschema:"language of the texts that become translations"`
+	From             string   `json:"from" jsonschema:"language they are translations of"`
+	Keys             []string `json:"keys,omitempty" jsonschema:"text keys (e_, r_, v_ ids); default: every key and field that has a text in both languages and is authored in lang"`
+	RequestedByHuman bool     `json:"requestedByHuman" jsonschema:"true only when a human asked for this in so many words"`
+}
+
+type setViewAxisIn struct {
+	Project          string `json:"project,omitempty"`
+	View             string `json:"view" jsonschema:"view id"`
+	Axis             string `json:"axis" jsonschema:"what the view's nesting classifies: axis_layer, axis_subsystem… (a name of your own is allowed)"`
+	RequestedByHuman bool   `json:"requestedByHuman" jsonschema:"true only when a human asked for this in so many words"`
 }
 
 type addEntityIn struct {
@@ -332,7 +348,9 @@ func (s *mcpServer) server() *mcp.Server {
 	mcp.AddTool(srv, read("layout_guide", viewToolDescriptions["layout_guide"].at(level)), s.layoutGuide)
 	mcp.AddTool(srv, read("render_view", viewToolDescriptions["render_view"].at(level)), s.renderView)
 
-	mcp.AddTool(srv, write("set_text", "Write one text field as authored, with at = now."), s.setText)
+	mcp.AddTool(srv, write("set_text", "Write one text field as authored, with at = now. With `from` (a language code) it is written as a translation of the same field in that language instead: origin translated, the source's hash recorded; refused when that language has no such text."), s.setText)
+	mcp.AddTool(srv, write("mark_translated", "Turn texts already written in `lang` into translations of the same texts in `from` (value unchanged; origin translated, the source's hash recorded), so they stop being reported as written independently. `keys` limits it to those text keys; by default every key and field that has a text in both languages and is authored in `lang`. One batch, all or nothing; unsaved until `save`. Only when a human asked: requestedByHuman. The answer lists what was marked and gives the link."), s.markTranslated)
+	mcp.AddTool(srv, write("set_view_axis", "Set a view's axis, what its nesting of blocks in containers classifies (axis_layer, axis_subsystem…). Two views of one axis must put a block in the same container; views of different axes may not. Unsaved until `save`. Only when a human asked: requestedByHuman. The answer gives the link."), s.setViewAxis)
 	mcp.AddTool(srv, write("add_entity", "Add an authored entity: a part of the system no extractor reports (a kind of get_kinds: app, external, database…); the id is minted unless given."), s.addEntity)
 	mcp.AddTool(srv, write("add_relation", "Add an authored relation; the id is minted and returned."), s.addRelation)
 	mcp.AddTool(srv, write("set_relation_visible", "Show or hide lines on one view (relations.except), one batch, all or nothing: exactly one of relations (ids) or types (relation type ids: stands for the relations of those types with both ends placed on the view right now; a one-time action, relations of the type added later follow the view's defaults). Call it once with everything, not once per relation. `list: true` also returns which relations were changed."), s.setRelationVisible)
@@ -352,7 +370,7 @@ func (s *mcpServer) server() *mcp.Server {
 	mcp.AddTool(srv, write("fit_container", "Fit a container to its content (caption strip and padding); ancestors grow if they no longer hold it. requestedByHuman."), s.fitContainer)
 	mcp.AddTool(srv, write("align_elements", "Align elements to the first one: left, right, top, bottom, width, height. requestedByHuman."), s.alignElements)
 	mcp.AddTool(srv, write("remove", viewToolDescriptions["remove"].at(level)), s.remove)
-	mcp.AddTool(srv, write("create_view",viewToolDescriptions["create_view"].at(level)), s.createView)
+	mcp.AddTool(srv, write("create_view", viewToolDescriptions["create_view"].at(level)), s.createView)
 	mcp.AddTool(srv, write("create_project", viewToolDescriptions["create_project"].at(level)), s.createProject)
 	mcp.AddTool(srv, write("save", "Save all unsaved project changes only when a human explicitly requested it."), s.save)
 	mcp.AddTool(srv, write("discard", "Discard unsaved changes only when a human explicitly requested it."), s.discard)
@@ -1049,11 +1067,53 @@ func (s *mcpServer) setText(_ context.Context, _ *mcp.CallToolRequest, in setTex
 	if err != nil {
 		return nil, nil, err
 	}
+	if in.From != "" {
+		if err := m.SetTextFrom(in.Lang, in.Key, in.Field, in.Value, in.From, "agent"); err != nil {
+			return nil, nil, err
+		}
+		s.changed(in.Project, m)
+		return done("%s.%s (%s) changed as a translation of %s, not saved; review and Save: %s", in.Key, in.Field, in.Lang, in.From, s.reviewLink(m, in.Key))
+	}
 	if err := m.SetText(in.Lang, in.Key, in.Field, in.Value, "agent"); err != nil {
 		return nil, nil, err
 	}
 	s.changed(in.Project, m)
 	return done("%s.%s (%s) changed, not saved; review and Save: %s", in.Key, in.Field, in.Lang, s.reviewLink(m, in.Key))
+}
+
+func (s *mcpServer) markTranslated(_ context.Context, _ *mcp.CallToolRequest, in markTranslatedIn) (*mcp.CallToolResult, any, error) {
+	if !in.RequestedByHuman {
+		return nil, nil, errors.New("mark_translated requires requestedByHuman: true")
+	}
+	m, err := s.model(in.Project)
+	if err != nil {
+		return nil, nil, err
+	}
+	marks, err := m.MarkTranslated(in.Lang, in.From, in.Keys, "agent")
+	if err != nil {
+		return nil, nil, err
+	}
+	s.changed(in.Project, m)
+	list := make([]string, len(marks))
+	for i, k := range marks {
+		list[i] = k.Key + "." + k.Field
+	}
+	return done("%d text(s) of %s marked as translations of %s, not saved: %s; review and Save: %s", len(marks), in.Lang, in.From, nameIDs(list, 20), s.reviewLink(m, marks[0].Key))
+}
+
+func (s *mcpServer) setViewAxis(_ context.Context, _ *mcp.CallToolRequest, in setViewAxisIn) (*mcp.CallToolResult, any, error) {
+	if !in.RequestedByHuman {
+		return nil, nil, errors.New("set_view_axis requires requestedByHuman: true")
+	}
+	m, err := s.model(in.Project)
+	if err != nil {
+		return nil, nil, err
+	}
+	if err := m.SetViewAxis(in.View, in.Axis, "agent"); err != nil {
+		return nil, nil, err
+	}
+	s.changed(in.Project, m)
+	return done("%s axis set to %s, not saved; review and Save: %s", in.View, strings.TrimSpace(in.Axis), s.reviewLink(m, in.View))
 }
 
 func (s *mcpServer) addEntity(_ context.Context, _ *mcp.CallToolRequest, in addEntityIn) (*mcp.CallToolResult, any, error) {
