@@ -43,6 +43,15 @@ export interface RouteZone {
    * matters more than a lane next to another line.
    */
   readonly lane?: boolean;
+  /**
+   * A soft preference, not an outline: it offers no grid lines of its own and
+   * is no wall for nudging. A container's interior is one — crossing it is
+   * fine, but a run that could have taken the free space between containers
+   * should.
+   */
+  readonly area?: boolean;
+  /** Priced, but no wall for nudging: a block's halo, which a lane may sit in. */
+  readonly halo?: boolean;
 }
 
 export interface RouteScene {
@@ -60,6 +69,21 @@ export const CLEARANCE = 8;
 
 /** Cost of a container's border band, per unit length. */
 const BORDER_WEIGHT = 6;
+
+/**
+ * A block's halo: a band beyond its clearance where running alongside costs
+ * extra, so a line that only passes a block keeps away from its outline
+ * instead of tracing it. Crossing the band costs its width — next to nothing.
+ */
+const HALO_WIDTH = 24;
+const HALO_WEIGHT = 1.5;
+
+/**
+ * Travel inside a container that does not hold either end, per unit length.
+ * Light on purpose: it decides between a run through someone else's container
+ * and a run of similar length through the space between containers.
+ */
+const AREA_WEIGHT = 0.5;
 
 /** Spacing between routes that end up sharing a corridor. */
 export const LANE_GAP = 10;
@@ -115,6 +139,30 @@ export function solidZone(rect: Rect, ownerId: string, clearance = CLEARANCE): R
     weight: SOLID,
     ownerId,
   };
+}
+
+/** The four bands around a solid block where hugging its outline is priced. */
+export function haloZones(rect: Rect, ownerId: string, clearance = CLEARANCE): RouteZone[] {
+  const x0 = rect.x - clearance - HALO_WIDTH;
+  const y0 = rect.y - clearance - HALO_WIDTH;
+  const w = rect.width + (clearance + HALO_WIDTH) * 2;
+  const make = (x: number, y: number, width: number, height: number): RouteZone => ({
+    rect: { x, y, width, height },
+    weight: HALO_WEIGHT,
+    ownerId,
+    halo: true,
+  });
+  return [
+    make(x0, y0, w, HALO_WIDTH),
+    make(x0, bottom(rect) + clearance, w, HALO_WIDTH),
+    make(x0, rect.y - clearance, HALO_WIDTH, rect.height + clearance * 2),
+    make(right(rect) + clearance, rect.y - clearance, HALO_WIDTH, rect.height + clearance * 2),
+  ];
+}
+
+/** A container's inside, lightly priced. */
+export function areaZone(rect: Rect, ownerId: string): RouteZone {
+  return { rect, weight: AREA_WEIGHT, ownerId, area: true };
 }
 
 /**
@@ -217,7 +265,7 @@ export function walls(zones: readonly RouteZone[]): Rect[] {
  * break a route that legitimately crosses one.
  */
 export function nudgeWalls(zones: readonly RouteZone[]): Rect[] {
-  return zones.map((z) => z.rect);
+  return zones.filter((z) => !z.area && !z.halo).map((z) => z.rect);
 }
 
 /** Whether a point sits inside any forbidden zone. */

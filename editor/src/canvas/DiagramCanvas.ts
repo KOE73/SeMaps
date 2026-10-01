@@ -32,7 +32,7 @@ import {
   filletedPath,
   polylinePath,
 } from "./routing/routers.js";
-import { borderZones, laneZones, solidZone, nudgeWalls, zonesFor, LANE_GAP, SOLID, type RouteScene, type RouteZone } from "./routing/Scene.js";
+import { areaZone, borderZones, haloZones, laneZones, solidZone, nudgeWalls, zonesFor, LANE_GAP, SOLID, type RouteScene, type RouteZone } from "./routing/Scene.js";
 import { nudgeRoutes } from "./routing/nudge.js";
 import type { ResolvedEdgeStyle } from "../model/StyleLibrary.js";
 import type { RoutingMode } from "../model/style-types.js";
@@ -1118,7 +1118,9 @@ export class DiagramCanvas {
       this.debugLayer.appendChild(r);
     };
     for (const z of scene.zones) {
-      if (z.weight === SOLID) rect(z, "rgba(220,38,38,0.10)", "rgba(220,38,38,0.7)", `нельзя: ${z.ownerId}`);
+      if (z.area) continue;
+      if (z.halo) rect(z, "rgba(234,179,8,0.06)", "rgba(234,179,8,0.35)", `около ${z.ownerId}: вес ${z.weight} вдоль`);
+      else if (z.weight === SOLID) rect(z, "rgba(220,38,38,0.10)", "rgba(220,38,38,0.7)", `нельзя: ${z.ownerId}`);
       else rect(z, "rgba(234,88,12,0.14)", "rgba(234,88,12,0.6)", `рамка ${z.ownerId}: вес ${z.weight} за единицу длины`);
     }
     for (const z of lanes) rect(z, "rgba(37,99,235,0.10)", "rgba(37,99,235,0.45)", `линия ${z.ownerId.replace(/^lane:/, "")}: вес ${z.weight} вдоль`);
@@ -1520,8 +1522,8 @@ export class DiagramCanvas {
     for (const el of doc.elements()) {
       if (ctx.isHidden(el)) continue;
       const rect = this.rendererFor(el).visibleRect(el, ctx);
-      if (isContainer(el)) zones.push(...borderZones(rect, el.id));
-      else zones.push(solidZone(rect, el.id));
+      if (isContainer(el)) zones.push(areaZone(rect, el.id), ...borderZones(rect, el.id));
+      else zones.push(solidZone(rect, el.id), ...haloZones(rect, el.id));
     }
     const scene: RouteScene = { zones };
 

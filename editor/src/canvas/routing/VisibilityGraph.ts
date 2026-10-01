@@ -249,6 +249,7 @@ function axisLines(
   const optional = new Set<number>();
   const lanes = new Set<number>();
   for (const zone of zones) {
+    if (zone.area) continue;
     const near = axis === "x" ? zone.rect.x : zone.rect.y;
     const far = axis === "x" ? right(zone.rect) : bottom(zone.rect);
     for (const v of [near - CLEARANCE / 2, far + CLEARANCE / 2]) {
@@ -288,6 +289,15 @@ function stubPoint(p: Point, side: Side, distance: number): Point {
 const enum Dir { North = 0, East = 1, South = 2, West = 3, None = 4 }
 
 /**
+ * The opposite direction. A route never turns back on itself: on a grid a
+ * U-turn only retraces a segment, and allowing it at the price of one bend let
+ * a route slip into the gap between a stub and its block and hook into the port.
+ */
+function reverse(dir: Dir): Dir {
+  return dir === Dir.None ? Dir.None : (((dir + 2) % 4) as Dir);
+}
+
+/**
  * A* over the sparse grid, with the arrival direction part of the state.
  *
  * Direction has to be in the state: without it the search cannot tell a
@@ -324,6 +334,7 @@ function search(
     const gy = node % height;
 
     for (const step of [Dir.North, Dir.East, Dir.South, Dir.West]) {
+      if (dir !== Dir.None && step === reverse(dir)) continue;
       const nx = gx + (step === Dir.East ? 1 : step === Dir.West ? -1 : 0);
       const ny = gy + (step === Dir.South ? 1 : step === Dir.North ? -1 : 0);
       if (nx < 0 || ny < 0 || nx >= xs.length || ny >= height) continue;
@@ -408,8 +419,10 @@ function searchMany(
     const node = Math.floor(key / 5);
     const dir = (key % 5) as Dir;
 
+    // Arriving at the stub travelling away from the block would mean doubling
+    // back over the stub — a hook at the arrowhead, never a route.
     const goal = goalAt.get(node);
-    if (goal) {
+    if (goal && dir !== reverse(goalDir)) {
       const total = cost + goal.cost + (dir === goalDir ? 0 : BEND_COST);
       if (total < (best.get(FINISH) ?? Infinity)) {
         best.set(FINISH, total);
@@ -422,6 +435,7 @@ function searchMany(
     const gx = Math.floor(node / height);
     const gy = node % height;
     for (const step of [Dir.North, Dir.East, Dir.South, Dir.West]) {
+      if (step === reverse(dir)) continue;
       const nx = gx + (step === Dir.East ? 1 : step === Dir.West ? -1 : 0);
       const ny = gy + (step === Dir.South ? 1 : step === Dir.North ? -1 : 0);
       if (nx < 0 || ny < 0 || nx >= xs.length || ny >= height) continue;
