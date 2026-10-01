@@ -23,7 +23,7 @@ import { dashArray, textAttrs } from "./render/textAttrs.js";
 import { marquee, resizeGuide, type ResizeGuide, resizeHandles, selectionOutline } from "./render/handles.js";
 import { UniformPortAssigner } from "./ports/assigners.js";
 import { portKey, type PortAssigner, type PortRequest } from "./ports/PortAssigner.js";
-import { BezierRouter, type EdgeRouter, type Route } from "./routing/EdgeRouter.js";
+import { BezierRouter, type EdgeRouter, type EndSide, type Route } from "./routing/EdgeRouter.js";
 import type { Slide } from "./routing/VisibilityGraph.js";
 import {
   OrthogonalRouter,
@@ -213,6 +213,17 @@ export class DiagramCanvas {
   private showOverviewShadows = false;
   /** The lines of the last repaint, as routed. */
   private lastLines: { id: string; from: string; to: string; path: string; points?: readonly Point[] }[] = [];
+  /**
+   * The sides each line's ends used in the last repaint, by edge id. Handed back
+   * to the router so keeping a side is cheaper than changing it — a line then
+   * does not jump between sides while a block is dragged (ADR_20261001-2).
+   */
+  private lastSides = new Map<string, { from: Side; to: Side }>();
+  /** The routes of the last full repaint, finished (separated), by edge id. */
+  private routeCache = new Map<string, Route>();
+  /** While a drag is on: the elements moving, their descendants included. */
+  private liveMoved: ReadonlySet<string> | null = null;
+  private frameRequest: number | null = null;
 
   /** Rubber band in model coordinates while a selection sweep is running. */
   marqueeRect: Rect | null = null;
@@ -863,8 +874,47 @@ export class DiagramCanvas {
   }
 
   notifyModelChanged(reason: string): void {
-    this.render();
+    // A drag reports more often than the screen repaints: one repaint per frame.
+    if (this.liveMoved !== null) this.renderNextFrame();
+    else this.render();
     this.events.emit("modelchange", { reason });
+  }
+
+  private renderNextFrame(): void {
+    if (this.frameRequest !== null) return;
+    this.frameRequest = requestAnimationFrame(() => {
+      this.frameRequest = null;
+      this.render();
+    });
+  }
+
+  /**
+   * A drag of these elements begins: until `endLiveMove`, a repaint lays again
+   * only the lines with an end among them (or their descendants) and keeps every
+   * other line as the last full repaint left it, without the passes that settle
+   * lines against each other. Laying the whole picture on every pointer move is
+   * what made dragging stutter; the picture is laid whole again on release.
+   */
+  beginLiveMove(ids: Iterable<string>): void {
+    if (this.liveMoved !== null || this.doc === null) return;
+    const moved = new Set<string>();
+    for (const id of ids) {
+      const el = this.doc.element(id);
+      if (el === undefined) continue;
+      moved.add(el.id);
+      for (const d of this.doc.descendants(el)) moved.add(d.id);
+    }
+    this.liveMoved = moved;
+  }
+
+  endLiveMove(): void {
+    if (this.liveMoved === null) return;
+    this.liveMoved = null;
+    if (this.frameRequest !== null) {
+      cancelAnimationFrame(this.frameRequest);
+      this.frameRequest = null;
+    }
+    this.render();
   }
 
   private stopAssetRepaint: () => void = () => {};
@@ -1070,7 +1120,8 @@ export class DiagramCanvas {
     routes: Map<string, Route>,
     lanesOf: Map<string, RouteZone[]>,
     endsOf: Map<string, { fromKey: string; from: number; toKey: string; to: number }>,
-    record: (id: string, route: Route, fromKey: string, fromSide: Side, toKey: string, toSide: Side) => void,
+    record: (id: string, route: Route) => void,
+    keysFor: (id: string, route: Route) => { fromKey: string; toKey: string },
   ): void {
     const MAX_PASSES = 3;
     const FUSE_MS = 40;
@@ -1107,10 +1158,10 @@ export class DiagramCanvas {
       return { lanes, takenNow };
     };
 
+    // A line laid again may have chosen other sides; `record` keys it by the ones it chose.
     const keep = (id: string, route: Route) => {
-      const ends = endsOf.get(id);
-      if (!ends) return;
-      record(id, route, ends.fromKey, sideOf(ends.fromKey), ends.toKey, sideOf(ends.toKey));
+      if (!endsOf.has(id)) return;
+      record(id, route);
     };
 
     /** Lay `first` then `second` from scratch; both ripped up, the rest in place. */
@@ -1124,8 +1175,9 @@ export class DiagramCanvas {
       const pa = a.points;
       if (pa && pa.length >= 2) {
         lanes.push(...laneZones(pa, `lane:${first}`));
-        pushTaken(takenNow, endsA.fromKey, along(sideOf(endsA.fromKey), pa[0]!));
-        pushTaken(takenNow, endsA.toKey, along(sideOf(endsA.toKey), pa[pa.length - 1]!));
+        const keys = keysFor(first, a);
+        pushTaken(takenNow, keys.fromKey, along(sideOf(keys.fromKey), pa[0]!));
+        pushTaken(takenNow, keys.toKey, along(sideOf(keys.toKey), pa[pa.length - 1]!));
       }
       return [a, jobB(lanes, takenNow)];
     };
@@ -1236,8 +1288,8 @@ export class DiagramCanvas {
         this.debugLayer.appendChild(svg("line", { ...tick, stroke: "#111", "stroke-width": px(2) }));
       }
     };
-    side(edge.fromRect, edge.fromSide, edge.fromSlide);
-    side(edge.toRect, edge.toSide, edge.toSlide);
+    for (const e of edge.from) side(edge.fromRect, e.side, e.slide);
+    for (const e of edge.to) side(edge.toRect, e.side, e.slide);
   }
 
   /**
@@ -1245,23 +1297,45 @@ export class DiagramCanvas {
    * rounded corners. Rectangles only — on an ellipse or a diamond a point
    * moved along the bounding side is no longer on the outline.
    */
-  private slidesFor(
+  private slideFor(
     owner: DiagramElement,
     rect: Rect,
     side: Side,
     inset: number,
-    key: "fromSlide" | "toSlide",
     taken: ReadonlyMap<string, number[]>,
-  ): Partial<Record<"fromSlide" | "toSlide", Slide>> {
+  ): Slide | undefined {
     const shape = this.styleLibrary.blockStyle(owner).shape ?? "rect";
     // A shape slides when its side is straight or it can say where its outline is.
-    if (shape !== "rect" && !this.rendererFor(owner).outlineDepth) return {};
+    if (shape !== "rect" && !this.rendererFor(owner).outlineDepth) return undefined;
     const margin = Math.max(inset, 0) + 6;
     const horizontal = side === "north" || side === "south";
     const lo = (horizontal ? rect.x : rect.y) + margin;
     const hi = (horizontal ? rect.x + rect.width : rect.y + rect.height) - margin;
-    if (!(lo <= hi)) return {};
-    return { [key]: { lo, hi, taken: taken.get(`${owner.id}#${side}`) ?? [] } };
+    if (!(lo <= hi)) return undefined;
+    return { lo, hi, taken: taken.get(`${owner.id}#${side}`) ?? [] };
+  }
+
+  /**
+   * All four sides of one end for a router that chooses (ADR_20261001-2). The
+   * parts that do not change while lines are laid again — anchor, outline depth,
+   * corner inset — are worked out once; `sides` then attaches the current
+   * occupancy to each side's slide.
+   */
+  private endSidesFor(owner: DiagramElement, rect: Rect): (taken: ReadonlyMap<string, number[]>) => EndSide[] {
+    const renderer = this.rendererFor(owner);
+    const style = this.styleLibrary.blockStyle(owner);
+    const fixed = SIDES.map((side) => {
+      const inset = renderer.cornerInset?.(side, style) ?? style.radius;
+      // A shape without straight sides gives its one point; pointAt knows where that is.
+      const port = renderer.pointAt(rect, { side, t: 0.5 });
+      const depth = depthOf(renderer, rect, side, port);
+      return { side, port, inset, ...(depth ? { depth } : {}) };
+    });
+    return (taken) =>
+      fixed.map((e) => {
+        const slide = this.slideFor(owner, rect, e.side, e.inset, taken);
+        return slide ? { ...e, slide } : e;
+      });
   }
 
   /**
@@ -1628,12 +1702,25 @@ export class DiagramCanvas {
     const order: string[] = [];
     let debugEdge: DebugEdge | null = null;
 
-    const record = (id: string, route: Route, fromKey: string, fromSide: Side, toKey: string, toSide: Side) => {
+    // Each line's owners and the sides the port assigner gave it. A router that
+    // chooses sides says which it chose; occupancy is keyed by those, not by the assigned ones.
+    const assigned = new Map<string, { fromOwner: string; toOwner: string; fromSide: Side; toSide: Side }>();
+    const sidesOf = (id: string, route: Route) => {
+      const a = assigned.get(id)!;
+      return { fromSide: route.fromSide ?? a.fromSide, toSide: route.toSide ?? a.toSide };
+    };
+    const keysFor = (id: string, route: Route) => {
+      const a = assigned.get(id)!;
+      const s = sidesOf(id, route);
+      return { fromKey: `${a.fromOwner}#${s.fromSide}`, toKey: `${a.toOwner}#${s.toSide}` };
+    };
+    const record = (id: string, route: Route) => {
       routes.set(id, route);
       const pts = route.points;
       if (!pts || pts.length < 2) return;
       const along = (side: Side, p: Point) => (side === "north" || side === "south" ? p.x : p.y);
-      endsOf.set(id, { fromKey, from: along(fromSide, pts[0]!), toKey, to: along(toSide, pts[pts.length - 1]!) });
+      const s = sidesOf(id, route);
+      endsOf.set(id, { ...keysFor(id, route), from: along(s.fromSide, pts[0]!), to: along(s.toSide, pts[pts.length - 1]!) });
       lanesOf.set(id, laneZones(pts, `lane:${id}`));
     };
 
@@ -1650,8 +1737,12 @@ export class DiagramCanvas {
       const edgeStyle = this.styleLibrary.edgeStyle(r.edge);
       const router = this.routerFor(r.edge, edgeStyle);
       const watched = this._debugRouting && this.selection?.kind === "edge" && this.selection.id === r.edge.id;
-      const fromKey = `${r.from.owner.id}#${fromSlot.side}`;
-      const toKey = `${r.to.owner.id}#${toSlot.side}`;
+      assigned.set(r.edge.id, { fromOwner: r.from.owner.id, toOwner: r.to.owner.id, fromSide: fromSlot.side, toSide: toSlot.side });
+      // The orthogonal search chooses the sides itself and is given all four of each end.
+      const searching = router.id === "orthogonal";
+      const fromSides = searching ? this.endSidesFor(r.from.owner, r.from.rect) : null;
+      const toSides = searching ? this.endSidesFor(r.to.owner, r.to.rect) : null;
+      const before = this.lastSides.get(r.edge.id);
       const fromPoint = this.rendererFor(r.from.owner).pointAt(r.from.rect, fromSlot);
       const toPoint = this.rendererFor(r.to.owner).pointAt(r.to.rect, toSlot);
       const base = {
@@ -1668,30 +1759,40 @@ export class DiagramCanvas {
       const excluded = this.exclusionsFor(r.from.owner, r.to.owner);
       const own = zonesFor(scene, excluded.ends, excluded.holders);
       const job = (lanes: readonly RouteZone[], takenNow: ReadonlyMap<string, number[]>): Route => {
-        const fromSlide = this.slidesFor(r.from.owner, r.from.rect, fromSlot.side, fromInset, "fromSlide", takenNow);
-        const toSlide = this.slidesFor(r.to.owner, r.to.rect, toSlot.side, toInset, "toSlide", takenNow);
+        const fromEnds = fromSides?.(takenNow);
+        const toEnds = toSides?.(takenNow);
+        // Without a search the assigned side is the only one, as it always was.
+        const fromSlide = fromEnds ? undefined : this.slideFor(r.from.owner, r.from.rect, fromSlot.side, fromInset, takenNow);
+        const toSlide = toEnds ? undefined : this.slideFor(r.to.owner, r.to.rect, toSlot.side, toInset, takenNow);
         if (watched) {
           debugEdge = {
             fromRect: r.from.rect, toRect: r.to.rect,
-            fromSide: fromSlot.side, toSide: toSlot.side,
-            fromSlide: fromSlide.fromSlide, toSlide: toSlide.toSlide,
+            from: fromEnds ? fromEnds.map((e) => ({ side: e.side, slide: e.slide })) : [{ side: fromSlot.side, slide: fromSlide }],
+            to: toEnds ? toEnds.map((e) => ({ side: e.side, slide: e.slide })) : [{ side: toSlot.side, slide: toSlide }],
             grid: null,
           };
         }
         return router.route({
           ...base,
           zones: [...own, ...lanesNear(lanes, r.from.rect, r.to.rect)],
-          ...fromSlide,
-          ...toSlide,
+          ...(fromSlide ? { fromSlide } : {}),
+          ...(toSlide ? { toSlide } : {}),
+          ...(fromEnds && toEnds ? { fromEnds, toEnds } : {}),
+          ...(before ? { prevFromSide: before.from, prevToSide: before.to } : {}),
           ...(watched ? { onGrid: (xs: readonly number[], ys: readonly number[]) => { if (debugEdge) debugEdge.grid = { xs, ys }; } } : {}),
         });
       };
       jobs.set(r.edge.id, job);
       order.push(r.edge.id);
 
+      // During a drag a line with no end moving keeps the route of the last full repaint.
+      const live = this.liveMoved;
+      const cached = live !== null && !live.has(r.from.owner.id) && !live.has(r.to.owner.id)
+        ? this.routeCache.get(r.edge.id)
+        : undefined;
       // First pass: in order, each line seeing only the ones before it.
-      const route = job([...lanesOf.values()].flat(), taken);
-      record(r.edge.id, route, fromKey, fromSlot.side, toKey, toSlot.side);
+      const route = cached ?? job([...lanesOf.values()].flat(), taken);
+      record(r.edge.id, route);
       const ends = endsOf.get(r.edge.id);
       if (ends) {
         pushTaken(taken, ends.fromKey, ends.from);
@@ -1702,8 +1803,18 @@ export class DiagramCanvas {
     // Later passes: lay again every line that crosses or crowds another, now
     // seeing all the others, not only the ones laid before it. The first pass
     // depends on order; this is what takes the order out of it.
-    this.rerouteConflicts(order, jobs, routes, lanesOf, endsOf, record);
-    this.separateSharedCorridors(routes, scene);
+    // Not during a drag: settling lines against each other is the expensive part,
+    // and the cached lines are already settled.
+    if (this.liveMoved === null) {
+      this.rerouteConflicts(order, jobs, routes, lanesOf, endsOf, record, keysFor);
+      this.separateSharedCorridors(routes, scene);
+      this.routeCache = new Map(routes);
+    }
+    // The sides the lines settled on: next repaint they are the cheaper ones to keep.
+    this.lastSides = new Map();
+    for (const [id, route] of routes) {
+      if (route.fromSide && route.toSide) this.lastSides.set(id, { from: route.fromSide, to: route.toSide });
+    }
     // What was drawn, kept for `routedLines`: the same routes, not a second computation.
     this.lastLines = [];
     for (const r of resolved) {
@@ -2017,12 +2128,25 @@ function depthFrom(
   side: Side,
   port: Point,
 ): Partial<Record<"fromDepth" | "toDepth", (along: number) => number>> {
+  const depth = depthOf(renderer, rect, side, port);
+  return depth ? { [key]: depth } : {};
+}
+
+/** The same for one side, as a function or nothing. */
+function depthOf(
+  renderer: ElementRenderer,
+  rect: Rect,
+  side: Side,
+  port: Point,
+): ((along: number) => number) | undefined {
   const depth = renderer.outlineDepth?.bind(renderer);
-  if (!depth) return {};
+  if (!depth) return undefined;
   const horizontal = side === "east" || side === "west";
   const at = depth(rect, side, horizontal ? port.y : port.x);
-  return { [key]: (along: number) => depth(rect, side, along) - at };
+  return (along: number) => depth(rect, side, along) - at;
 }
+
+const SIDES: readonly Side[] = ["north", "east", "south", "west"];
 
 function pushTaken(taken: Map<string, number[]>, key: string, value: number): void {
   const list = taken.get(key);
@@ -2045,9 +2169,8 @@ function lanesNear(lanes: readonly RouteZone[], a: Rect, b: Rect): RouteZone[] {
 interface DebugEdge {
   fromRect: Rect;
   toRect: Rect;
-  fromSide: Side;
-  toSide: Side;
-  fromSlide: Slide | undefined;
-  toSlide: Slide | undefined;
+  /** Every side offered to each end, with its slide range (one side when the router does not choose). */
+  from: { side: Side; slide: Slide | undefined }[];
+  to: { side: Side; slide: Slide | undefined }[];
   grid: { xs: readonly number[]; ys: readonly number[] } | null;
 }

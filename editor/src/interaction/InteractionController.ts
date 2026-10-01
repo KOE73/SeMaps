@@ -775,6 +775,8 @@ export class InteractionController {
       return;
     }
 
+    // The drag is over: the next repaint lays the whole picture again.
+    this.canvas.endLiveMove();
     if (gesture.kind === "move") {
       this.finishMove(gesture);
     }
@@ -874,6 +876,7 @@ export class InteractionController {
   }
 
   private applyMove(gesture: MoveGesture, e: MouseEvent): void {
+    this.canvas.beginLiveMove(gesture.moved.map((el) => el.id));
     const raw = this.canvas.viewport.scaleDelta(
       e.clientX - gesture.startX,
       e.clientY - gesture.startY,
@@ -976,6 +979,7 @@ export class InteractionController {
   }
 
   private applyResize(gesture: ResizeGesture, e: MouseEvent): void {
+    this.canvas.beginLiveMove([...gesture.origins.keys()].map((el) => el.id));
     const raw = this.canvas.viewport.scaleDelta(
       e.clientX - gesture.startX,
       e.clientY - gesture.startY,

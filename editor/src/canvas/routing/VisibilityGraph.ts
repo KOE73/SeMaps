@@ -1,5 +1,5 @@
 import { bottom, right } from "../../geometry/rect.js";
-import type { Point, Side } from "../../geometry/types.js";
+import type { Point, Rect, Side } from "../../geometry/types.js";
 import { CLEARANCE, segmentPenalty, type RouteZone } from "./Scene.js";
 
 /**
@@ -55,6 +55,17 @@ export interface Slide {
   readonly taken?: readonly number[];
 }
 
+/**
+ * One side an end may use: where the side's anchor lies on the outline and how
+ * far the end may slide along it. A shape without straight sides offers just
+ * the anchor (no slide).
+ */
+export interface RouteEnd {
+  readonly side: Side;
+  readonly port: Point;
+  readonly slide?: Slide;
+}
+
 export interface RouteQuery {
   readonly from: Point;
   readonly to: Point;
@@ -64,12 +75,68 @@ export interface RouteQuery {
   /** Absent: the end is the port and nothing else, as before. */
   readonly fromSlide?: Slide;
   readonly toSlide?: Slide;
+  /**
+   * Every side each end may use. When both are given the search chooses the
+   * sides too (ADR_20261001-2) and `from`/`to`/`fromSide`/`toSide` are not read.
+   */
+  readonly fromEnds?: readonly RouteEnd[];
+  readonly toEnds?: readonly RouteEnd[];
+  /** The blocks the ends belong to: a stub shortens when the other block is close in front of it. */
+  readonly fromRect?: Rect;
+  readonly toRect?: Rect;
+  /** The sides the ends had last time: any other side costs `SIDE_CHANGE_COST`. */
+  readonly prevFromSide?: Side;
+  readonly prevToSide?: Side;
   /** Debugging only: receives the grid the search ran on. */
   readonly onGrid?: (xs: readonly number[], ys: readonly number[]) => void;
 }
 
-/** What one pixel of sliding away from the assigned port costs. */
-const SLIDE_COST = 0.2;
+/** The route and the sides its two ends ended up on. */
+export interface FoundRoute {
+  readonly points: Point[];
+  readonly fromSide: Side;
+  readonly toSide: Side;
+}
+
+/**
+ * What using another side than last time costs. About a bend: enough that two
+ * nearly equal routes do not swap sides on every pixel of a drag, little enough
+ * that a clearly shorter route on another side still wins.
+ */
+const SIDE_CHANGE_COST = 30;
+
+/**
+ * What sliding an end to the far end of its side costs; in between it grows with
+ * the square of the distance from the middle, measured in half-sides.
+ *
+ * Measured per pixel, every spot between two blocks' middles cost the same, and
+ * a straight run between a narrow block and a wide one settled at the narrow
+ * block's corner. In half-sides the narrow block's end is the dearer one to
+ * move, so the line stands in its middle; between two equal blocks the square
+ * puts it in the middle of their overlap — the line a person would draw, and no
+ * rule saying so.
+ */
+const SLIDE_COST = 20;
+
+function slideCost(v: number, middle: number, span: { lo: number; hi: number }): number {
+  const half = Math.max((span.hi - span.lo) / 2, 1);
+  const t = (v - middle) / half;
+  return SLIDE_COST * t * t;
+}
+
+/**
+ * Where two ends sliding along one axis are cheapest together: the minimum of
+ * their two slide costs, kept inside the overlap. A grid line goes there, or the
+ * search could only reach the nearest spot some other reason put a line on.
+ */
+function sharedSpot(a: { port: Point; span: { lo: number; hi: number } }, b: { port: Point; span: { lo: number; hi: number } }, axis: "x" | "y"): number | null {
+  const lo = Math.max(a.span.lo, b.span.lo);
+  const hi = Math.min(a.span.hi, b.span.hi);
+  if (lo > hi) return null;
+  const wa = 1 / Math.max((a.span.hi - a.span.lo) / 2, 1) ** 2;
+  const wb = 1 / Math.max((b.span.hi - b.span.lo) / 2, 1) ** 2;
+  return clamp((a.port[axis] * wa + b.port[axis] * wb) / (wa + wb), { lo, hi });
+}
 
 /** Landing this close to a line already on the side counts as sharing its spot. */
 const TAKEN_GAP = 20;
@@ -82,9 +149,20 @@ const TAKEN_COST = 60;
  * case the caller draws something plain rather than nothing at all.
  */
 export function findRoute(query: RouteQuery): Point[] | null {
-  const { from, to, fromSide, toSide, zones } = query;
+  return searchRoute(query)?.points ?? null;
+}
+
+/** `findRoute`, and the sides the ends used — the ones given, unless the query offered several. */
+export function searchRoute(query: RouteQuery): FoundRoute | null {
+  const { from, to, fromSide, toSide } = query;
+  if (query.fromEnds?.length && query.toEnds?.length) return findChoosingRoute(query, query.fromEnds, query.toEnds);
   if (!finite(from) || !finite(to)) return null;
-  if (query.fromSlide || query.toSlide) return findSlidingRoute(query);
+  const points = query.fromSlide || query.toSlide ? findSlidingRoute(query) : findPlainRoute(query);
+  return points === null ? null : { points, fromSide, toSide };
+}
+
+function findPlainRoute(query: RouteQuery): Point[] | null {
+  const { from, to, fromSide, toSide, zones } = query;
 
   const stub = stubLength(from, to, fromSide, toSide);
   const enter = stubPoint(from, fromSide, stub);
@@ -137,9 +215,8 @@ function findSlidingRoute(query: RouteQuery): Point[] | null {
   extra[fromAxis].push(clamp(to[fromAxis], fromSpan), fromSpan.lo, fromSpan.hi);
   extra[toAxis].push(clamp(from[toAxis], toSpan), toSpan.lo, toSpan.hi);
   if (fromAxis === toAxis) {
-    const lo = Math.max(fromSpan.lo, toSpan.lo);
-    const hi = Math.min(fromSpan.hi, toSpan.hi);
-    if (lo <= hi) extra[fromAxis].push((lo + hi) / 2);
+    const spot = sharedSpot({ port: from, span: fromSpan }, { port: to, span: toSpan }, fromAxis);
+    if (spot !== null) extra[fromAxis].push(spot);
   }
 
   const xs = axisLines("x", [from.x, to.x, enter.x, exit.x, ...extra.x], zones, from, to);
@@ -147,13 +224,96 @@ function findSlidingRoute(query: RouteQuery): Point[] | null {
   query.onGrid?.(xs, ys);
   if (xs.length === 0 || ys.length === 0) return null;
 
-  const starts = endChoices(xs, ys, from, fromSide, enter, fromSpan, query.fromSlide?.taken, zones);
-  const goals = endChoices(xs, ys, to, toSide, exit, toSpan, query.toSlide?.taken, zones);
+  const starts = endChoices(xs, ys, from, fromSide, outward(fromSide), enter, fromSpan, query.fromSlide?.taken, 0, zones);
+  const goals = endChoices(xs, ys, to, toSide, inward(toSide), exit, toSpan, query.toSlide?.taken, 0, zones);
   if (starts.length === 0 || goals.length === 0) return null;
 
-  const found = searchMany(xs, ys, starts, goals, outward(fromSide), inward(toSide), zones);
+  const found = searchMany(xs, ys, starts, goals, zones);
   if (found === null) return null;
   return simplify([found.startPort, ...found.middle, found.goalPort]);
+}
+
+/**
+ * The search with every side of both ends on offer. Each side brings its own
+ * stub, its own slide range and its own direction of travel; the one search
+ * then picks the sides together with the path, by the price of the path —
+ * length, bends, zones, slide and crowding — and nothing else. A side used last
+ * time is the only thing that is cheaper than an equal one.
+ */
+function findChoosingRoute(query: RouteQuery, fromEnds: readonly RouteEnd[], toEnds: readonly RouteEnd[]): FoundRoute | null {
+  const { zones, fromRect, toRect } = query;
+  const plan = (ends: readonly RouteEnd[], own: Rect | undefined, other: Rect | undefined) =>
+    ends
+      .filter((e) => finite(e.port))
+      .map((end) => {
+        const stub = sideStub(end.port, end.side, own, other);
+        return { end, enter: stubPoint(end.port, end.side, stub), span: spanOf(end.slide, end.port, alongAxis(end.side)) };
+      });
+  const fromPlan = plan(fromEnds, fromRect, toRect);
+  const toPlan = plan(toEnds, toRect, fromRect);
+  if (fromPlan.length === 0 || toPlan.length === 0) return null;
+
+  // Lines worth having: each side's stub line, its port and slide bounds, where
+  // the other end's ports sit pulled onto this side, and the middle of an
+  // overlap when two sides slide along the same axis — the spots a straight run
+  // would use. Rounding merges the many that coincide (a top and a bottom side
+  // share their x), which is what keeps the grid within the ceiling.
+  const extra: Record<"x" | "y", number[]> = { x: [], y: [] };
+  const pull = (mine: typeof fromPlan, theirs: typeof toPlan) => {
+    for (const a of mine) {
+      const axis = alongAxis(a.end.side);
+      extra[axis].push(a.span.lo, a.span.hi);
+      for (const b of theirs) extra[axis].push(clamp(b.end.port[axis], a.span));
+    }
+  };
+  pull(fromPlan, toPlan);
+  pull(toPlan, fromPlan);
+  for (const a of fromPlan) {
+    for (const b of toPlan) {
+      const axis = alongAxis(a.end.side);
+      if (axis !== alongAxis(b.end.side)) continue;
+      const spot = sharedSpot({ port: a.end.port, span: a.span }, { port: b.end.port, span: b.span }, axis);
+      if (spot !== null) extra[axis].push(spot);
+    }
+  }
+  const stubs = [...fromPlan, ...toPlan].flatMap((p) => [p.end.port, p.enter]);
+  // The grid's bounding box covers both blocks and every stub, not just two ports.
+  const all =[...stubs, ...[fromRect, toRect].flatMap((r) => (r ? [{ x: r.x, y: r.y }, { x: right(r), y: bottom(r) }] : []))];
+  const low = { x: Math.min(...all.map((p) => p.x)), y: Math.min(...all.map((p) => p.y)) };
+  const high = { x: Math.max(...all.map((p) => p.x)), y: Math.max(...all.map((p) => p.y)) };
+
+  const xs = axisLines("x", [...stubs.map((p) => p.x), ...extra.x], zones, low, high);
+  const ys = axisLines("y", [...stubs.map((p) => p.y), ...extra.y], zones, low, high);
+  query.onGrid?.(xs, ys);
+  if (xs.length === 0 || ys.length === 0) return null;
+
+  const starts = fromPlan.flatMap((p) =>
+    endChoices(xs, ys, p.end.port, p.end.side, outward(p.end.side), p.enter, p.span, p.end.slide?.taken,
+      p.end.side === query.prevFromSide || !query.prevFromSide ? 0 : SIDE_CHANGE_COST, zones));
+  const goals = toPlan.flatMap((p) =>
+    endChoices(xs, ys, p.end.port, p.end.side, inward(p.end.side), p.enter, p.span, p.end.slide?.taken,
+      p.end.side === query.prevToSide || !query.prevToSide ? 0 : SIDE_CHANGE_COST, zones));
+  if (starts.length === 0 || goals.length === 0) return null;
+
+  // The blocks themselves are walls for the middle of the route: the end's own
+  // shapes are not in `zones` (a line must be able to leave them), and with every
+  // side on offer a route could otherwise cut straight through its own block.
+  // Not for a container that holds the other end — that line has to go inside.
+  const walls = (own: Rect | undefined, other: Rect | undefined): RouteZone[] =>
+    own && !(other && contains(own, other))
+      ? [{ rect: { x: own.x + 1, y: own.y + 1, width: Math.max(own.width - 2, 0), height: Math.max(own.height - 2, 0) }, weight: Number.POSITIVE_INFINITY, ownerId: "end" }]
+      : [];
+  const found = searchMany(xs, ys, starts, goals, [...zones, ...walls(fromRect, toRect), ...walls(toRect, fromRect)]);
+  if (found === null) return null;
+  return {
+    points: simplify([found.startPort, ...found.middle, found.goalPort]),
+    fromSide: found.startSide,
+    toSide: found.goalSide,
+  };
+}
+
+function contains(outer: Rect, inner: Rect): boolean {
+  return inner.x >= outer.x && inner.y >= outer.y && right(inner) <= right(outer) && bottom(inner) <= bottom(outer);
 }
 
 interface EndChoice {
@@ -163,6 +323,9 @@ interface EndChoice {
   readonly port: Point;
   /** Slide and crowding, before any bend. */
   readonly cost: number;
+  /** The side this choice is on, and the direction of travel through its stub (out of a start, into a goal). */
+  readonly side: Side;
+  readonly dir: Dir;
 }
 
 /** The slide range along the side, or just the port itself when the end may not slide. */
@@ -176,9 +339,12 @@ function endChoices(
   ys: readonly number[],
   port: Point,
   side: Side,
+  dir: Dir,
   stub: Point,
   span: { lo: number; hi: number },
   taken: readonly number[] | undefined,
+  /** A price every choice on this side pays: leaving the side the end had before. */
+  bias: number,
   zones: readonly RouteZone[],
 ): EndChoice[] {
   const axis = alongAxis(side);
@@ -194,7 +360,7 @@ function endChoices(
     const node = index(xs, ys, s);
     if (node === null) continue;
     const crowd = (taken ?? []).some((t) => Math.abs(t - v) < TAKEN_GAP) ? TAKEN_COST : 0;
-    out.push({ node, port: p, cost: Math.abs(v - port[axis]) * SLIDE_COST + crowd + penalty });
+    out.push({ node, port: p, side, dir, cost: slideCost(v, port[axis], span) + crowd + penalty + bias });
   }
   return out;
 }
@@ -292,6 +458,32 @@ function stubLength(from: Point, to: Point, fromSide: Side, toSide: Side): numbe
   const gap = (to.x - from.x) * out.x + (to.y - from.y) * out.y;
   if (gap <= 0) return STUB;
   return Math.min(STUB, gap / 2);
+}
+
+/**
+ * One side's step out, judged against the other block alone: the full stub,
+ * unless that block lies right in front of the side and closer than two stubs.
+ * Then the step is half the gap — the same reason as `stubLength`, but a side
+ * that may not be the one the other end uses cannot wait for the other end's
+ * port, so it looks at the block, and every side is judged by itself.
+ */
+function sideStub(port: Point, side: Side, own: Rect | undefined, other: Rect | undefined): number {
+  if (!other) return STUB;
+  const horizontal = side === "west" || side === "east";
+  // In front means the other block overlaps this block's extent across the normal.
+  const across = horizontal ? "y" : "x";
+  const lo = own ? (horizontal ? own.y : own.x) : port[across];
+  const hi = own ? (horizontal ? bottom(own) : right(own)) : port[across];
+  const otherLo = horizontal ? other.y : other.x;
+  const otherHi = horizontal ? bottom(other) : right(other);
+  if (otherLo > hi || otherHi < lo) return STUB;
+  const gap =
+    side === "east" ? other.x - port.x :
+    side === "west" ? port.x - right(other) :
+    side === "south" ? other.y - port.y :
+    port.y - bottom(other);
+  if (gap <= 0 || gap >= STUB * 2) return STUB;
+  return gap / 2;
 }
 
 function sideVector(side: Side): Point {
@@ -397,23 +589,30 @@ function searchMany(
   ys: readonly number[],
   starts: readonly EndChoice[],
   goals: readonly EndChoice[],
-  startDir: Dir,
-  goalDir: Dir,
   zones: readonly RouteZone[],
-): { startPort: Point; goalPort: Point; middle: Point[] } | null {
+): { startPort: Point; goalPort: Point; startSide: Side; goalSide: Side; middle: Point[] } | null {
   const height = ys.length;
   const at = (node: number): Point => ({ x: xs[Math.floor(node / height)]!, y: ys[node % height]! });
   const FINISH = -1;
 
-  const goalAt = new Map<number, EndChoice>();
+  // Several goals may share a node — different sides whose stubs meet — each
+  // with its own direction of arrival.
+  const goalsAt = new Map<number, EndChoice[]>();
   for (const g of goals) {
-    const had = goalAt.get(g.node);
-    if (!had || g.cost < had.cost) goalAt.set(g.node, g);
+    const list = goalsAt.get(g.node);
+    if (list) list.push(g);
+    else goalsAt.set(g.node, [g]);
   }
-  const goalPoints = [...goalAt.keys()].map(at);
-  const heuristic = (p: Point): number => {
+  const goalPoints = [...goalsAt.keys()].map(at);
+  // Looked up for every pushed node, and with goals on four sides there are many
+  // of them: the distance to the nearest goal is worked out once per node.
+  const nearest = new Float64Array(xs.length * height).fill(-1);
+  const heuristic = (node: number, p: Point): number => {
+    const known = nearest[node]!;
+    if (known >= 0) return known;
     let h = Infinity;
     for (const g of goalPoints) h = Math.min(h, Math.abs(g.x - p.x) + Math.abs(g.y - p.y));
+    nearest[node] = h;
     return h;
   };
 
@@ -421,26 +620,26 @@ function searchMany(
   const cameFrom = new Map<number, number>();
   const startOf = new Map<number, EndChoice>();
   let finishFrom: number | null = null;
+  let finishGoal: EndChoice | null = null;
   const open = new Heap();
   for (const s of starts) {
-    const key = s.node * 5 + startDir;
+    const key = s.node * 5 + s.dir;
     if (s.cost >= (best.get(key) ?? Infinity)) continue;
     best.set(key, s.cost);
     startOf.set(key, s);
-    open.push(key, s.cost, s.cost + heuristic(at(s.node)));
+    open.push(key, s.cost, s.cost + heuristic(s.node, at(s.node)));
   }
 
   while (!open.empty) {
     const { key, cost } = open.pop();
     if (key === FINISH) {
-      if (finishFrom === null) return null;
+      if (finishFrom === null || finishGoal === null) return null;
       const middle = rebuild(cameFrom, finishFrom, at);
       let first = finishFrom;
       while (cameFrom.has(first)) first = cameFrom.get(first)!;
       const start = startOf.get(first);
-      const goal = goalAt.get(Math.floor(finishFrom / 5));
-      if (!start || !goal) return null;
-      return { startPort: start.port, goalPort: goal.port, middle };
+      if (!start) return null;
+      return { startPort: start.port, goalPort: finishGoal.port, startSide: start.side, goalSide: finishGoal.side, middle };
     }
     if ((best.get(key) ?? Infinity) < cost) continue;
     const node = Math.floor(key / 5);
@@ -448,12 +647,13 @@ function searchMany(
 
     // Arriving at the stub travelling away from the block would mean doubling
     // back over the stub — a hook at the arrowhead, never a route.
-    const goal = goalAt.get(node);
-    if (goal && dir !== reverse(goalDir)) {
-      const total = cost + goal.cost + (dir === goalDir ? 0 : BEND_COST);
+    for (const goal of goalsAt.get(node) ?? []) {
+      if (dir === reverse(goal.dir)) continue;
+      const total = cost + goal.cost + (dir === goal.dir ? 0 : BEND_COST);
       if (total < (best.get(FINISH) ?? Infinity)) {
         best.set(FINISH, total);
         finishFrom = key;
+        finishGoal = goal;
         open.push(FINISH, total, total);
       }
     }
@@ -480,7 +680,7 @@ function searchMany(
 
       best.set(nextKey, nextCost);
       cameFrom.set(nextKey, key);
-      open.push(nextKey, nextCost, nextCost + heuristic(there));
+      open.push(nextKey, nextCost, nextCost + heuristic(next, there));
     }
   }
   return null;

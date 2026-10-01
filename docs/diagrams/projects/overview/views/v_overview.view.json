@@ -40,9 +40,9 @@
       "entity": "e_core",
       "parent": null,
       "x": 960,
-      "y": 280,
-      "width": 1310,
-      "height": 260,
+      "y": 270,
+      "width": 1240,
+      "height": 270,
       "override": {
         "fill": "#f5f3ff",
         "border": {
@@ -98,8 +98,8 @@
     {
       "entity": "e_agent",
       "parent": "e_clients",
-      "x": 990,
-      "y": -160,
+      "x": 1000,
+      "y": -170,
       "width": 140,
       "height": 60
     },
@@ -154,9 +154,9 @@
     {
       "entity": "e_sync",
       "parent": "e_core",
-      "x": 1750,
+      "x": 1740,
       "y": 350,
-      "width": 490,
+      "width": 440,
       "height": 60
     },
     {
@@ -234,8 +234,8 @@
     {
       "entity": "e_runs",
       "parent": "e_storage",
-      "x": 1640,
-      "y": 630,
+      "x": 1600,
+      "y": 620,
       "width": 200,
       "height": 60
     }
