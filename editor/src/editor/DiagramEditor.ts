@@ -1333,11 +1333,22 @@ export class DiagramEditor implements InspectorHost, StylePanelHost, DiagramEdit
     if (source === undefined || targets.length === 0) return;
     let drawn = 0;
     for (const target of targets) {
-      if (doc.relations.some((r) => r.from === source.id && r.to === target.id && r.type === type)) continue;
-      doc.drawRelation(source.id, target.id, type, "");
-      drawn++;
+      if (this.drawRelation(source.id, target.id, type)) drawn++;
     }
     if (drawn > 0) this.commit("add-edge");
+  }
+
+  /** One relation of `type` from one box to another (a drag from the arrow under a box), one undo step. */
+  connect(from: string, to: string, type: string): void {
+    if (this.drawRelation(from, to, type)) this.commit("add-edge");
+  }
+
+  /** False when that pair already has a relation of this type, or there is no model. */
+  private drawRelation(from: string, to: string, type: string): boolean {
+    const doc = this.canvas.model;
+    if (doc === null || doc.relations.some((r) => r.from === from && r.to === to && r.type === type)) return false;
+    doc.drawRelation(from, to, type, "");
+    return true;
   }
 
   /**

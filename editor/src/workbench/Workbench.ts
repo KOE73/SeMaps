@@ -1,6 +1,6 @@
 import { el } from "../util/dom.js";
 import { iconEl } from "../ui/icons.js";
-import { openCanvasMenu, type MenuHost } from "./menus/CanvasMenus.js";
+import { openCanvasMenu, openConnectMenu, type MenuHost } from "./menus/CanvasMenus.js";
 import { DiagramEditor, type DiagramEditorOptions } from "../editor/DiagramEditor.js";
 import { CommandRegistry } from "./commands/CommandRegistry.js";
 import { createBuiltinCommands } from "./commands/builtinCommands.js";
@@ -220,6 +220,10 @@ export class Workbench {
     };
     this.editor.canvas.events.on("contextmenu", ({ target, id, clientX, clientY }) => {
       openCanvasMenu(this.editor, menuHost, target, id, clientX, clientY);
+    });
+
+    this.editor.canvas.events.on("connect", ({ from, to, clientX, clientY }) => {
+      openConnectMenu(this.editor, from, to, clientX, clientY);
     });
 
     // Re-evaluate ribbon and commands on selection change

@@ -76,25 +76,35 @@ function pasteItem(editor: DiagramEditor): MenuItem {
  * grouped as in the Relations panel.
  */
 function connectItem(editor: DiagramEditor): MenuItem {
-  const catalog = KindCatalog.active;
-  const lang = i18n.currentLanguage;
   const source = editor.canvas.selectedElements()[0];
   return {
     label: i18n.d.canvasMenu.connect,
     icon: icons.link,
     ...(source ? { title: `${i18n.d.canvasMenu.connectFrom}: ${source.label}` } : {}),
-    submenu: () => catalog.relationGroups()
-      .filter((g) => g.types.length > 0)
-      .map((g): MenuItem => ({
-        label: catalog.groupName(g, lang),
-        submenu: () => g.types.map((type): MenuItem => ({
-          label: catalog.relationName(type.id, lang),
-          note: type.id,
-          title: catalog.relationDescription(type.id, lang),
-          onSelect: () => editor.connectSelection(type.id),
-        })),
-      })),
+    submenu: () => relationTypeItems((type) => editor.connectSelection(type)),
   };
+}
+
+/** The relation dictionary as menu entries: a submenu per group, a type in each. */
+function relationTypeItems(pick: (typeId: string) => void): MenuItem[] {
+  const catalog = KindCatalog.active;
+  const lang = i18n.currentLanguage;
+  return catalog.relationGroups()
+    .filter((g) => g.types.length > 0)
+    .map((g): MenuItem => ({
+      label: catalog.groupName(g, lang),
+      submenu: () => g.types.map((type): MenuItem => ({
+        label: catalog.relationName(type.id, lang),
+        note: type.id,
+        title: catalog.relationDescription(type.id, lang),
+        onSelect: () => pick(type.id),
+      })),
+    }));
+}
+
+/** A connection drag was dropped on a box: ask for the relation type, then draw it. */
+export function openConnectMenu(editor: DiagramEditor, from: string, to: string, clientX: number, clientY: number): void {
+  openContextMenu(relationTypeItems((type) => editor.connect(from, to, type)), clientX, clientY);
 }
 
 function blockItems(editor: DiagramEditor, host: MenuHost, el: DiagramElement): MenuItem[] {

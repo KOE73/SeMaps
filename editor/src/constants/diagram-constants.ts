@@ -97,6 +97,8 @@ export const DIAGRAM_CONFIG = {
     edgeControlsHideDelayMs: 350,
     /** Delay in ms before the edge control bubble appears: only when the mouse rests on a line, not when it crosses one */
     edgeControlsShowDelayMs: 500,
+    /** Delay in ms before the connection arrow appears under a block the mouse rests on */
+    connectHandleShowDelayMs: 500,
 
     /** Time in ms of typing inactivity before committing a text field edit to history */
     fieldEditQuietMs: 600,

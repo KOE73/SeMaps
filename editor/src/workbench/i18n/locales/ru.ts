@@ -436,6 +436,7 @@ export const ruDictionary: UiDictionary = {
     neighbourhood: "Открыть в «Окрестности»",
     connect: "Создать связь",
     connectFrom: "От первого выбранного",
+    connectDrag: "Потяните к другому элементу, чтобы создать связь",
     remove: "Удалить",
     lineShape: "Форма этой линии",
     inherited: "как у схемы",

@@ -162,6 +162,55 @@
   vector-effect: non-scaling-stroke;
 }
 
+/* ------------------------------------------------------ connection drag */
+
+/* Widths are set in model units by the canvas (px / zoom), so they stay screen-sized. */
+.semaps-connect-line {
+  stroke: #f97316;
+  stroke-linecap: round;
+  fill: none;
+}
+
+.semaps-connect-target {
+  fill: rgb(249 115 22 / 12%);
+  stroke: #f97316;
+}
+
+/* The arrow under a hovered block: placed by the canvas, fixed size at any zoom. */
+.semaps-connect-handle {
+  position: absolute;
+  z-index: 5;
+  width: 20px;
+  height: 20px;
+  /* Centred under the block, with a gap so it stays clear of the outline. */
+  margin: 6px 0 0 -10px;
+  align-items: center;
+  justify-content: center;
+  border-radius: 50%;
+  background: #f97316;
+  color: #fff;
+  box-shadow: 0 1px 4px rgb(0 0 0 / 30%);
+  cursor: crosshair;
+  user-select: none;
+  animation: semaps-connect-handle-in 0.15s ease;
+}
+
+.semaps-connect-handle:hover {
+  background: #ea580c;
+}
+
+.semaps-connect-handle .ui-icon,
+.semaps-connect-handle svg {
+  width: 14px;
+  height: 14px;
+  pointer-events: none;
+}
+
+@keyframes semaps-connect-handle-in {
+  from { opacity: 0; }
+  to { opacity: 1; }
+}
+
 /* ------------------------------------------------------- outline scaling */
 
 /* Block borders and edge lines carry their width as --sw; the viewport sets

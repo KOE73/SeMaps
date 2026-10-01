@@ -74,6 +74,8 @@ export interface CanvasEvents {
   openCodeViewer: { id: string; ref: string; label?: string };
   /** Right click on a box, a line or the empty canvas: whoever owns menus decides what to offer. */
   contextmenu: { target: "element" | "edge" | "canvas"; id: string | null; clientX: number; clientY: number };
+  /** A connection drag was released over another element: whoever owns menus asks for the relation type. */
+  connect: { from: string; to: string; clientX: number; clientY: number };
 }
 
 export interface DiagramCanvasOptions {
@@ -129,6 +131,16 @@ export class DiagramCanvas {
   private readonly overlayLayer: SVGGElement;
   /** Routing debug picture: what the search sees. Empty unless `debugRouting`. */
   private readonly debugLayer: SVGGElement;
+  /**
+   * The line and the target mark of a connection drag. Not cleared by `render`
+   * (that runs on every pointer move of other gestures), never part of a view,
+   * and out of the pointer's way so the element under it can still be hit.
+   */
+  private readonly connectLayer: SVGGElement;
+  /** The arrow offered under a hovered block; HTML so it keeps its size at any zoom. */
+  readonly connectHandleEl: HTMLElement;
+  /** The block the handle is shown for, if shown. */
+  connectHandleFor: string | null = null;
 
   /**
    * Draw what the line search sees: forbidden block zones, priced bands along
@@ -228,12 +240,15 @@ export class DiagramCanvas {
     this.overlayLayer = svg("g", { class: "semaps-layer-overlay" });
     this.debugLayer = svg("g", { class: "semaps-layer-debug", "pointer-events": "none" });
 
+    this.connectLayer = svg("g", { class: "semaps-layer-connect", "pointer-events": "none" });
+
     this.viewportGroup = svg("g", { class: "semaps-viewport" }, [
       this.zonesLayer,
       this.debugLayer,
       this.edgesLayer,
       this.nodesLayer,
       this.overlayLayer,
+      this.connectLayer,
     ]);
 
     // Held rather than inlined: gradients and arrow heads are created on demand
@@ -252,7 +267,17 @@ export class DiagramCanvas {
     host.appendChild(this.svgEl);
 
     this.viewport = new Viewport(this.viewportGroup);
-    this.viewport.changed.on("change", (state) => this.events.emit("viewport", state));
+    this.viewport.changed.on("change", (state) => {
+      // The handle sits at a screen position computed for the old pan and zoom.
+      this.hideConnectHandle();
+      this.events.emit("viewport", state);
+    });
+
+    this.connectHandleEl = document.createElement("div");
+    this.connectHandleEl.className = "semaps-connect-handle";
+    this.connectHandleEl.style.display = "none";
+    this.connectHandleEl.innerHTML = iconSvg("arrowDown");
+    host.appendChild(this.connectHandleEl);
 
     // Templates are read once; a picture arrives whenever it arrives, and the
     // frame that needed it has long been drawn. Repainting on arrival is why
@@ -771,6 +796,58 @@ export class DiagramCanvas {
     this.render();
   }
 
+  /** Below this zoom the arrow would be a speck next to a block it can hardly be told from. */
+  static readonly CONNECT_MIN_ZOOM = 0.4;
+
+  /** Offer the connection arrow just below a block's bottom side, outside its outline. */
+  showConnectHandle(id: string): void {
+    const el = this.doc?.element(id);
+    if (el === undefined || this.viewport.zoom < DiagramCanvas.CONNECT_MIN_ZOOM) return;
+    const z = this.viewport.zoom;
+    const handle = this.connectHandleEl;
+    // Screen-sized: the position follows the zoom, the size does not.
+    handle.style.left = `${this.viewport.panX + (el.x + el.width / 2) * z}px`;
+    handle.style.top = `${this.viewport.panY + (el.y + el.height) * z}px`;
+    handle.style.display = "flex";
+    this.connectHandleFor = id;
+  }
+
+  hideConnectHandle(): void {
+    this.connectHandleEl.style.display = "none";
+    this.connectHandleFor = null;
+  }
+
+  /**
+   * Draw the dashed line of a connection drag from a block's bottom middle to
+   * the pointer, and mark the block under it; `null` removes both.
+   */
+  setConnectPreview(preview: { fromId: string; to: Point; targetId: string | null } | null): void {
+    clear(this.connectLayer);
+    const from = preview === null ? undefined : this.doc?.element(preview.fromId);
+    if (preview === null || from === undefined) return;
+    const k = this.viewport.zoom || 1;
+    const target = preview.targetId === null ? undefined : this.doc?.element(preview.targetId);
+    if (target !== undefined) {
+      this.connectLayer.appendChild(svg("rect", {
+        class: "semaps-connect-target",
+        x: target.x,
+        y: target.y,
+        width: target.width,
+        height: target.height,
+        "stroke-width": 3 / k,
+      }));
+    }
+    this.connectLayer.appendChild(svg("line", {
+      class: "semaps-connect-line",
+      x1: from.x + from.width / 2,
+      y1: from.y + from.height,
+      x2: preview.to.x,
+      y2: preview.to.y,
+      "stroke-width": 2 / k,
+      "stroke-dasharray": `${6 / k},${4 / k}`,
+    }));
+  }
+
   /** Screen point (client coordinates) to model coordinates. */
   toModel(clientX: number, clientY: number): Point {
     const box = this.host.getBoundingClientRect();
@@ -798,6 +875,7 @@ export class DiagramCanvas {
     this.tooltipEl.remove();
     this.richTooltipEl.remove();
     this.edgeControlsEl.remove();
+    this.connectHandleEl.remove();
     this.svgEl.remove();
     this.events.clear();
   }
@@ -810,6 +888,8 @@ export class DiagramCanvas {
     clear(this.debugLayer);
     clear(this.nodesLayer);
     clear(this.overlayLayer);
+    // A repaint may move or remove the block the arrow hangs under.
+    this.hideConnectHandle();
     if (this.doc === null) return;
 
     const ctx = this.context();

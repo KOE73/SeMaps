@@ -22,6 +22,9 @@ const minSize = () => {
   };
 };
 
+/** How long the arrow outlives the pointer leaving the block, so it can be reached. */
+const CONNECT_HIDE_DELAY_MS = 250;
+
 interface Origin {
   readonly x: number;
   readonly y: number;
@@ -70,7 +73,15 @@ interface MarqueeGesture {
   readonly base: readonly string[];
 }
 
-type Gesture = PanGesture | MoveGesture | ResizeGesture | MarqueeGesture;
+/** Dragging from the arrow under a block to another element. */
+interface ConnectGesture {
+  readonly kind: "connect";
+  readonly fromId: string;
+  /** The element under the pointer, never the source. */
+  targetId: string | null;
+}
+
+type Gesture = PanGesture | MoveGesture | ResizeGesture | MarqueeGesture | ConnectGesture;
 
 /**
  * Turns pointer input into model changes.
@@ -91,6 +102,10 @@ export class InteractionController {
   private lastPointer = { x: 0, y: 0 };
   private currentEdgeControlId: string | null = null;
   private isOverEdgeControls = false;
+  /** The connection arrow: a pending show (and for which block) and a pending hide. */
+  private connectShowTimer: number | null = null;
+  private pendingConnectId: string | null = null;
+  private connectHideTimer: number | null = null;
 
   constructor(
     private readonly canvas: DiagramCanvas,
@@ -103,6 +118,7 @@ export class InteractionController {
     host.addEventListener("contextmenu", this.onContextMenu, { signal });
     host.addEventListener("wheel", this.onWheel, { passive: false, signal });
     host.addEventListener("mouseleave", () => {
+      this.scheduleConnectHandleHide();
       if (!this.isOverEdgeControls) {
         this.scheduleEdgeControlsHide();
         this.canvas.hideAllTooltips();
@@ -110,6 +126,7 @@ export class InteractionController {
     }, { signal });
     window.addEventListener("mousemove", this.onMouseMove, { signal });
     window.addEventListener("mouseup", this.onMouseUp, { signal });
+    window.addEventListener("keydown", this.onKeyDown, { signal });
 
     // Edge control bar events
     const edgeControls = this.canvas.edgeControlsEl;
@@ -190,8 +207,69 @@ export class InteractionController {
     }, DIAGRAM_CONFIG.interaction.edgeControlsHideDelayMs);
   }
 
+  private clearConnectTimers(): void {
+    if (this.connectShowTimer !== null) window.clearTimeout(this.connectShowTimer);
+    if (this.connectHideTimer !== null) window.clearTimeout(this.connectHideTimer);
+    this.connectShowTimer = null;
+    this.connectHideTimer = null;
+    this.pendingConnectId = null;
+  }
+
+  private scheduleConnectHandleHide(): void {
+    if (this.connectShowTimer !== null) window.clearTimeout(this.connectShowTimer);
+    this.connectShowTimer = null;
+    this.pendingConnectId = null;
+    if (this.canvas.connectHandleFor === null || this.connectHideTimer !== null) return;
+    // Grace for the pointer to travel from the block, across the gap, to the arrow.
+    this.connectHideTimer = window.setTimeout(() => {
+      this.connectHideTimer = null;
+      this.canvas.hideConnectHandle();
+    }, CONNECT_HIDE_DELAY_MS);
+  }
+
+  /**
+   * Offer the connection arrow once the pointer has rested on a block (not a
+   * container); keep it while the pointer is on the block or on the arrow.
+   */
+  private trackConnectHandle(e: MouseEvent): void {
+    const target = e.target as HTMLElement | null;
+    if (target && this.canvas.connectHandleEl.contains(target)) {
+      if (this.connectHideTimer !== null) window.clearTimeout(this.connectHideTimer);
+      this.connectHideTimer = null;
+      return;
+    }
+    const hit = hitTest(e.target);
+    const el = hit?.elementId == null ? null : this.canvas.model?.element(hit.elementId) ?? null;
+    if (el === null || isContainer(el)) {
+      this.scheduleConnectHandleHide();
+      return;
+    }
+    if (this.connectHideTimer !== null) window.clearTimeout(this.connectHideTimer);
+    this.connectHideTimer = null;
+    if (this.canvas.connectHandleFor === el.id || this.pendingConnectId === el.id) return;
+    // Another block: the old arrow goes at once, the new one waits for the pointer to rest.
+    this.canvas.hideConnectHandle();
+    if (this.connectShowTimer !== null) window.clearTimeout(this.connectShowTimer);
+    this.pendingConnectId = el.id;
+    this.connectShowTimer = window.setTimeout(() => {
+      this.connectShowTimer = null;
+      this.pendingConnectId = null;
+      if (this.gesture === null) {
+        this.canvas.connectHandleEl.title = i18n.d.canvasMenu.connectDrag;
+        this.canvas.showConnectHandle(el.id);
+      }
+    }, DIAGRAM_CONFIG.interaction.connectHandleShowDelayMs);
+  }
+
+  private readonly onKeyDown = (e: KeyboardEvent): void => {
+    if (e.key !== "Escape" || this.gesture?.kind !== "connect") return;
+    this.gesture = null;
+    this.canvas.setConnectPreview(null);
+  };
+
   destroy(): void {
     this.abort.abort();
+    this.clearConnectTimers();
     this.clearEdgeControlsHideTimer();
     this.cancelEdgeControlsShow();
     this.canvas.hideAllTooltips();
@@ -207,9 +285,16 @@ export class InteractionController {
     if (target && this.canvas.edgeControlsEl.contains(target)) {
       return;
     }
+    if (e.button === 0 && target && this.canvas.connectHandleEl.contains(target)) {
+      e.stopPropagation();
+      this.startConnect();
+      return;
+    }
     this.canvas.hideAllTooltips();
     this.canvas.hideEdgeControls();
     this.cancelEdgeControlsShow();
+    this.clearConnectTimers();
+    this.canvas.hideConnectHandle();
     this.currentEdgeControlId = null;
     this.isOverEdgeControls = false;
     if (e.button !== 0) return;
@@ -283,6 +368,26 @@ export class InteractionController {
         return;
     }
   };
+
+  private startConnect(): void {
+    const fromId = this.canvas.connectHandleFor;
+    this.clearConnectTimers();
+    this.canvas.hideConnectHandle();
+    if (fromId === null) return;
+    this.gesture = { kind: "connect", fromId, targetId: null };
+  }
+
+  /** The preview follows the pointer; the element under it, other than the source, is the target. */
+  private applyConnect(gesture: ConnectGesture, e: MouseEvent): void {
+    const hit = hitTest(e.target);
+    const id = hit?.elementId ?? null;
+    gesture.targetId = id !== null && id !== gesture.fromId && this.canvas.model?.element(id) !== undefined ? id : null;
+    this.canvas.setConnectPreview({
+      fromId: gesture.fromId,
+      to: this.canvas.toModel(e.clientX, e.clientY),
+      targetId: gesture.targetId,
+    });
+  }
 
   /**
    * Ctrl or Shift adds to the selection; a plain click replaces it. Clicking an
@@ -363,6 +468,7 @@ export class InteractionController {
   private readonly onMouseMove = (e: MouseEvent): void => {
     const gesture = this.gesture;
     if (gesture === null) {
+      this.trackConnectHandle(e);
       const target = e.target as HTMLElement | null;
       if (target && (this.canvas.edgeControlsEl.contains(target) || this.canvas.richTooltipEl.contains(target))) {
         this.isOverEdgeControls = true;
@@ -398,6 +504,9 @@ export class InteractionController {
         return;
       case "marquee":
         this.applyMarquee(gesture, e);
+        return;
+      case "connect":
+        this.applyConnect(gesture, e);
         return;
     }
   };
@@ -633,11 +742,25 @@ export class InteractionController {
     }
   }
 
-  private readonly onMouseUp = (): void => {
+  private readonly onMouseUp = (e: MouseEvent): void => {
     const gesture = this.gesture;
     this.gesture = null;
     this.host.classList.remove("is-panning");
     if (gesture === null) return;
+
+    if (gesture.kind === "connect") {
+      this.canvas.setConnectPreview(null);
+      // Released over empty space or the source: nothing to connect, nothing asked.
+      if (gesture.targetId !== null) {
+        this.canvas.events.emit("connect", {
+          from: gesture.fromId,
+          to: gesture.targetId,
+          clientX: e.clientX,
+          clientY: e.clientY,
+        });
+      }
+      return;
+    }
 
     if (gesture.kind === "pan") {
       if (!gesture.hasMoved && gesture.elementOnClick) {
