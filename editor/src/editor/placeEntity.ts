@@ -18,6 +18,40 @@ const CONTAINER_WIDTH = NEW_CONTAINER_SIZE.width;
 const CONTAINER_HEIGHT = NEW_CONTAINER_SIZE.height;
 
 /**
+ * The nearest spot at or below-right of (x, y) where a new box of this size
+ * lands on nothing. One rule for blocks and containers: the new box may touch
+ * an existing one only by lying wholly inside a container — that is nesting.
+ * Any other overlap hides one box under another, or puts a block on a frame,
+ * or makes a container swallow boxes that are not its children. The spot steps
+ * diagonally by the grid gap, so boxes inserted one after another fan out
+ * where the eye can count them.
+ */
+export function freeSpot(
+  doc: NonNullable<DiagramEditor["canvas"]["model"]>,
+  x: number,
+  y: number,
+  width: number,
+  height: number,
+): { x: number; y: number } {
+  const step = canvas().gap.node;
+  const fits = (cx: number, cy: number): boolean => {
+    for (const el of doc.elements()) {
+      const apart = cx >= el.x + el.width || cx + width <= el.x || cy >= el.y + el.height || cy + height <= el.y;
+      if (apart) continue;
+      const within = cx >= el.x && cy >= el.y && cx + width <= el.x + el.width && cy + height <= el.y + el.height;
+      if (!(el.kind === "zone" && within)) return false;
+    }
+    return true;
+  };
+  for (let i = 0; i < 200; i++) {
+    const cx = x + i * step;
+    const cy = y + i * step;
+    if (fits(cx, cy)) return { x: cx, y: cy };
+  }
+  return { x, y };
+}
+
+/**
  * The box of a registry entity at (x, y). Frame or block is the kind's to say
  * (CONTRACT.md §8.2). Its name is the display name in the current text
  * language (`entityDisplayName`); its description comes from the view's texts.
@@ -69,9 +103,16 @@ export function placeEntities(
   for (const entity of entities) {
     if (doc.element(entity.id) !== undefined || placed.includes(entity.id)) continue;
     const i = placed.length;
-    const x = at.x + (i % PER_ROW) * (cellW + GAP_X);
-    const y = at.y + Math.floor(i / PER_ROW) * (cellH + GAP_Y);
-    const box = blockFor(doc, entity, x, y);
+    const box = blockFor(doc, entity, 0, 0);
+    const { x, y } = freeSpot(
+      doc,
+      at.x + (i % PER_ROW) * (cellW + GAP_X),
+      at.y + Math.floor(i / PER_ROW) * (cellH + GAP_Y),
+      box.width,
+      box.height,
+    );
+    box.x = x;
+    box.y = y;
     doc.add(box, doc.containerAt({ x: x + box.width / 2, y: y + box.height / 2 }));
     placed.push(entity.id);
   }

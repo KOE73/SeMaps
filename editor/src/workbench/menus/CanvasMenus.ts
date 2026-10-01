@@ -5,6 +5,7 @@ import type { RoutingMode } from "../../model/style-types.js";
 import { entityOf, type DiagramEdge, type DiagramElement } from "../../model/types.js";
 import { fileRealizations, langTag, refOf } from "../../model/realizations.js";
 import { i18n } from "../i18n/I18nService.js";
+import { KindCatalog } from "../../model/KindCatalog.js";
 import { icons } from "../../ui/icons.js";
 import { t as shellStrings } from "../../shell/strings.js";
 import { openContextMenu, type MenuItem } from "./ContextMenu.js";
@@ -69,6 +70,33 @@ function pasteItem(editor: DiagramEditor): MenuItem {
 
 // ------------------------------------------------------------------ boxes
 
+/**
+ * «Create relation» over a multi-selection: the box selected first is the
+ * source, every other one a target. The type is picked from the dictionary,
+ * grouped as in the Relations panel.
+ */
+function connectItem(editor: DiagramEditor): MenuItem {
+  const catalog = KindCatalog.active;
+  const lang = i18n.currentLanguage;
+  const source = editor.canvas.selectedElements()[0];
+  return {
+    label: i18n.d.canvasMenu.connect,
+    icon: icons.link,
+    ...(source ? { title: `${i18n.d.canvasMenu.connectFrom}: ${source.label}` } : {}),
+    submenu: () => catalog.relationGroups()
+      .filter((g) => g.types.length > 0)
+      .map((g): MenuItem => ({
+        label: catalog.groupName(g, lang),
+        submenu: () => g.types.map((type): MenuItem => ({
+          label: catalog.relationName(type.id, lang),
+          note: type.id,
+          title: catalog.relationDescription(type.id, lang),
+          onSelect: () => editor.connectSelection(type.id),
+        })),
+      })),
+  };
+}
+
 function blockItems(editor: DiagramEditor, host: MenuHost, el: DiagramElement): MenuItem[] {
   const t = i18n.d.canvasMenu;
   const doc = editor.canvas.model!;
@@ -126,6 +154,8 @@ function blockItems(editor: DiagramEditor, host: MenuHost, el: DiagramElement): 
       })),
     });
   }
+
+  if (editor.canvas.selectedElements().length > 1) items.push(connectItem(editor));
 
   if (editor.canvas.selectedIds.size > 1) {
     items.push({ label: t.align, icon: icons.arrowBarToLeft, submenu: () => [

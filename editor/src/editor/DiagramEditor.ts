@@ -3,7 +3,7 @@ import { DiagramCanvas, type Selection } from "../canvas/DiagramCanvas.js";
 import type { StrokeScaling } from "../canvas/Viewport.js";
 import { canvas as canvasNumbers } from "../constants/canvas.js";
 import { layoutFreeKey } from "../util/keys.js";
-import { NEW_CONTAINER_SIZE, placeEntities } from "./placeEntity.js";
+import { NEW_CONTAINER_SIZE, freeSpot, placeEntities } from "./placeEntity.js";
 import {
   CenterPortAssigner,
   DiscretePortAssigner,
@@ -1107,8 +1107,10 @@ export class DiagramEditor implements InspectorHost, StylePanelHost, DiagramEdit
     const doc = this.canvas.model;
     if (doc === null) return;
     const at = this.canvas.viewCenter();
-    const x = snap(at.x, canvasNumbers().grid);
-    const y = snap(at.y, canvasNumbers().grid);
+    const { x, y } = freeSpot(
+      doc, snap(at.x, canvasNumbers().grid), snap(at.y, canvasNumbers().grid),
+      canvasNumbers().node.width, canvasNumbers().node.height,
+    );
 
     const node: DiagramElement = {
       id: `e_${Date.now().toString(36)}`,
@@ -1123,7 +1125,7 @@ export class DiagramEditor implements InspectorHost, StylePanelHost, DiagramEdit
       wireOrder: Number.POSITIVE_INFINITY,
     };
 
-    const target = doc.containerAt({ x: x + 95, y: y + 30 });
+    const target = doc.containerAt({ x: x + node.width / 2, y: y + node.height / 2 });
     doc.add(node, target);
     // The name of an authored entity is a text; its entity reaches the registry with the first sync.
     doc.setText(node.id, { name: node.label }, doc.textLang);
@@ -1140,8 +1142,10 @@ export class DiagramEditor implements InspectorHost, StylePanelHost, DiagramEdit
     const doc = this.canvas.model;
     if (doc === null) return;
     const at = this.canvas.viewCenter();
-    const x = snap(at.x, canvasNumbers().grid);
-    const y = snap(at.y, canvasNumbers().grid);
+    const { x, y } = freeSpot(
+      doc, snap(at.x, canvasNumbers().grid), snap(at.y, canvasNumbers().grid),
+      NEW_CONTAINER_SIZE.width, NEW_CONTAINER_SIZE.height,
+    );
 
     const container: DiagramElement = {
       id: `e_${Date.now().toString(36)}`,
@@ -1315,6 +1319,25 @@ export class DiagramEditor implements InspectorHost, StylePanelHost, DiagramEdit
     doc.drawRelation(selection.id, targetId, type, label);
     this.commit("add-edge");
     this.refreshInspector(selection);
+  }
+
+  /**
+   * Relations of one type from the box selected first to every other selected
+   * box, one undo step. A pair that already has a relation of this type is
+   * skipped rather than doubled.
+   */
+  connectSelection(type: string): void {
+    const doc = this.canvas.model;
+    if (doc === null) return;
+    const [source, ...targets] = this.canvas.selectedElements();
+    if (source === undefined || targets.length === 0) return;
+    let drawn = 0;
+    for (const target of targets) {
+      if (doc.relations.some((r) => r.from === source.id && r.to === target.id && r.type === type)) continue;
+      doc.drawRelation(source.id, target.id, type, "");
+      drawn++;
+    }
+    if (drawn > 0) this.commit("add-edge");
   }
 
   /**

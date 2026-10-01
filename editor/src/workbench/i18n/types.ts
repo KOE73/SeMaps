@@ -436,6 +436,8 @@ export interface UiDictionary {
     readonly blockStyle: string;
     readonly edgeStyle: string;
     readonly neighbourhood: string;
+    readonly connect: string;
+    readonly connectFrom: string;
     readonly remove: string;
     readonly lineShape: string;
     readonly inherited: string;

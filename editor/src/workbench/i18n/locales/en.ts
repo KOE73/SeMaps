@@ -434,6 +434,8 @@ export const enDictionary: UiDictionary = {
     blockStyle: "Edit block style",
     edgeStyle: "Edit edge style",
     neighbourhood: "Open in Neighbourhood",
+    connect: "Create relation",
+    connectFrom: "From the first selected",
     remove: "Delete",
     lineShape: "Shape of this line",
     inherited: "as the diagram",

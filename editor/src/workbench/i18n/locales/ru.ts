@@ -434,6 +434,8 @@ export const ruDictionary: UiDictionary = {
     blockStyle: "Править стиль блока",
     edgeStyle: "Править стиль связи",
     neighbourhood: "Открыть в «Окрестности»",
+    connect: "Создать связь",
+    connectFrom: "От первого выбранного",
     remove: "Удалить",
     lineShape: "Форма этой линии",
     inherited: "как у схемы",
