@@ -198,8 +198,8 @@
     },
     "e_host": {
       "name": {
-        "v": "Хост semaps.exe (host/)",
-        "at": "2026-09-30T07:27:42Z",
+        "v": "Процесс хоста (semaps.exe)",
+        "at": "2026-10-01T10:24:06Z",
         "origin": "authored"
       }
     },
