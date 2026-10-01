@@ -182,6 +182,104 @@
       "to": "e_runs",
       "type": "storage",
       "origin": "authored"
+    },
+    {
+      "id": "r_agent_mcp_json_storage",
+      "from": "e_agent",
+      "to": "e_mcp_json",
+      "type": "storage",
+      "origin": "authored"
+    },
+    {
+      "id": "r_mcp_proxy_host_json_storage",
+      "from": "e_mcp_proxy",
+      "to": "e_host_json",
+      "type": "storage",
+      "origin": "authored"
+    },
+    {
+      "id": "r_mcp_proxy_mcp_log_storage",
+      "from": "e_mcp_proxy",
+      "to": "e_mcp_log",
+      "type": "storage",
+      "origin": "authored"
+    },
+    {
+      "id": "r_mcp_proxy_host_runs",
+      "from": "e_mcp_proxy",
+      "to": "e_host",
+      "type": "runs",
+      "origin": "authored"
+    },
+    {
+      "id": "r_model_service_editor_event",
+      "from": "e_model_service",
+      "to": "e_editor",
+      "type": "event",
+      "origin": "authored"
+    },
+    {
+      "id": "r_mcp_server_mcp_settings_call",
+      "from": "e_mcp_server",
+      "to": "e_mcp_settings",
+      "type": "call",
+      "origin": "authored"
+    },
+    {
+      "id": "r_mcp_settings_semaps_file_storage",
+      "from": "e_mcp_settings",
+      "to": "e_semaps_file",
+      "type": "storage",
+      "origin": "authored"
+    },
+    {
+      "id": "r_model_service_semaps_file_storage",
+      "from": "e_model_service",
+      "to": "e_semaps_file",
+      "type": "storage",
+      "origin": "authored"
+    },
+    {
+      "id": "r_code_graph_model_call",
+      "from": "e_code_graph",
+      "to": "e_model",
+      "type": "call",
+      "origin": "authored"
+    },
+    {
+      "id": "r_watcher_runs_storage",
+      "from": "e_watcher",
+      "to": "e_runs",
+      "type": "storage",
+      "origin": "authored"
+    },
+    {
+      "id": "r_watcher_code_graph_event",
+      "from": "e_watcher",
+      "to": "e_code_graph",
+      "type": "event",
+      "origin": "authored"
+    },
+    {
+      "id": "r_http_api_defaults_call",
+      "from": "e_http_api",
+      "to": "e_defaults",
+      "type": "call",
+      "origin": "authored"
+    },
+    {
+      "id": "r_editor_editor_local_storage",
+      "from": "e_editor",
+      "to": "e_editor_local",
+      "type": "storage",
+      "origin": "authored"
+    },
+    {
+      "id": "r_host_host_json_storage",
+      "from": "e_host",
+      "to": "e_host_json",
+      "type": "storage",
+      "origin": "authored"
     }
   ]
 }

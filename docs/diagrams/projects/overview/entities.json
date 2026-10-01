@@ -144,6 +144,66 @@
       "kind": "store",
       "origin": "authored",
       "status": "present"
+    },
+    {
+      "id": "e_semaps_file",
+      "kind": "store",
+      "origin": "authored",
+      "status": "present"
+    },
+    {
+      "id": "e_mcp_json",
+      "kind": "store",
+      "origin": "authored",
+      "status": "present"
+    },
+    {
+      "id": "e_defaults",
+      "kind": "store",
+      "origin": "authored",
+      "status": "present"
+    },
+    {
+      "id": "e_host_json",
+      "kind": "store",
+      "origin": "authored",
+      "status": "present"
+    },
+    {
+      "id": "e_mcp_log",
+      "kind": "store",
+      "origin": "authored",
+      "status": "present"
+    },
+    {
+      "id": "e_mcp_settings",
+      "kind": "component",
+      "origin": "authored",
+      "status": "present"
+    },
+    {
+      "id": "e_editor_local",
+      "kind": "store",
+      "origin": "authored",
+      "status": "present"
+    },
+    {
+      "id": "e_g_memory",
+      "kind": "group",
+      "origin": "authored",
+      "status": "present"
+    },
+    {
+      "id": "e_g_git",
+      "kind": "group",
+      "origin": "authored",
+      "status": "present"
+    },
+    {
+      "id": "e_g_local",
+      "kind": "group",
+      "origin": "authored",
+      "status": "present"
     }
   ]
 }

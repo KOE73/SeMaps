@@ -271,6 +271,118 @@
         "at": "2026-10-01T06:20:20Z",
         "origin": "authored"
       }
+    },
+    "v_internals": {
+      "name": {
+        "v": "Устройство SeMaps: хранение и данные",
+        "at": "2026-10-01T08:04:18Z",
+        "origin": "authored"
+      }
+    },
+    "e_semaps_file": {
+      "name": {
+        "v": ".semaps",
+        "at": "2026-10-01T08:04:21Z",
+        "origin": "authored"
+      },
+      "description": {
+        "v": "Файл проекта (YAML): рабочее пространство, корень исходников, порт, экстракторы, настройки MCP. Читают хост, CLI и наблюдатель; пишет экран настройки.",
+        "at": "2026-10-01T08:04:21Z",
+        "origin": "authored"
+      }
+    },
+    "e_mcp_json": {
+      "name": {
+        "v": ".mcp.json",
+        "at": "2026-10-01T08:04:22Z",
+        "origin": "authored"
+      },
+      "description": {
+        "v": "Как агенту запустить semaps mcp: лежит в корне проекта.",
+        "at": "2026-10-01T08:04:22Z",
+        "origin": "authored"
+      }
+    },
+    "e_defaults": {
+      "name": {
+        "v": "Встроенные умолчания",
+        "at": "2026-10-01T08:04:24Z",
+        "origin": "authored"
+      },
+      "description": {
+        "v": "kinds, styles, canvas, templates, graph-filters внутри semaps.exe. Словарь kinds сливается с файлом пространства по записям, остальные файл пространства заменяет целиком.",
+        "at": "2026-10-01T08:04:24Z",
+        "origin": "authored"
+      }
+    },
+    "e_host_json": {
+      "name": {
+        "v": "host.json",
+        "at": "2026-10-01T08:04:25Z",
+        "origin": "authored"
+      },
+      "description": {
+        "v": ".semaps/host.json: pid, порт и ключ запущенного хоста. По нему прокси находит хост.",
+        "at": "2026-10-01T08:04:25Z",
+        "origin": "authored"
+      }
+    },
+    "e_mcp_log": {
+      "name": {
+        "v": "MCP log",
+        "at": "2026-10-01T08:04:26Z",
+        "origin": "authored"
+      },
+      "description": {
+        "v": ".semaps/logs/mcp-<дата>.jsonl: каждый вызов инструмента агентом.",
+        "at": "2026-10-01T08:04:26Z",
+        "origin": "authored"
+      }
+    },
+    "e_mcp_settings": {
+      "name": {
+        "v": "MCP settings",
+        "at": "2026-10-01T08:04:27Z",
+        "origin": "authored"
+      },
+      "description": {
+        "v": "Набор инструментов, формат и лимиты из раздела mcp файла .semaps; применяется на лету.",
+        "at": "2026-10-01T08:04:27Z",
+        "origin": "authored"
+      }
+    },
+    "e_editor_local": {
+      "name": {
+        "v": "Tab state",
+        "at": "2026-10-01T08:04:28Z",
+        "origin": "authored"
+      },
+      "description": {
+        "v": "Состояние вкладки редактора: локальная отмена и настройки в localStorage. Хосту не уходит.",
+        "at": "2026-10-01T08:04:28Z",
+        "origin": "authored"
+      }
+    },
+    "e_g_memory": {
+      "name": {
+        "v": "Память хоста (живёт, пока хост запущен)",
+        "at": "2026-10-01T08:04:35Z",
+        "origin": "authored"
+      }
+    },
+    "e_g_git": {
+      "name": {
+        "v": "На диске, в git (статика)",
+        "at": "2026-10-01T08:04:36Z",
+        "origin": "authored"
+      }
+    },
+    "e_g_local": {
+      "name": {
+        "v": "На диске, вне git (динамика)",
+        "at": "2026-10-01T08:04:38Z",
+        "origin": "authored"
+      }
     }
   }
 }
