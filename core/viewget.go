@@ -307,33 +307,21 @@ func treeOf(p *PlacementInfo) *PlacementInfo {
 
 // edgesByRule splits the relations of the registry with both ends on the view
 // into the lines the view shows and the ones it hides. What is visible is always
-// the registry's relations by CONTRACT §8.5 — the type's default or the view's,
-// and `except` flipping it. The view's own `edges` decide nothing about
-// visibility: an entry of the same id only adds its own styleId, override and
-// routing to the line.
+// the registry's relations by CONTRACT §8.5 — the view's decision for the type,
+// else the type's default in the dictionary, else the view's, and `except`
+// flipping it (relationRule, the one copy). The view's own `edges` decide
+// nothing about visibility: an entry of the same id only adds its own styleId,
+// override and routing to the line.
 func (m *Model) edgesByRule(doc *object, placed map[string]bool) (shown, hidden []EdgeInfo) {
 	own := map[string]*object{}
 	for _, e := range viewItems(doc, "edges") {
 		own[e.str("id")] = e
 	}
-	def, except := "visible", []string(nil)
-	if raw, ok := doc.vals["relations"]; ok {
-		p := newObject()
-		if json.Unmarshal(raw, p) == nil {
-			def = orDefault(p.str("default"), def)
-			if x, ok := p.vals["except"]; ok {
-				_ = json.Unmarshal(x, &except)
-			}
-		}
-	}
+	rule := m.relationRule(doc)
 	for _, r := range m.records("relation") {
 		from, to := r.str("from"), r.str("to")
 		if !placed[from] || !placed[to] {
 			continue
-		}
-		d := def
-		if v := m.kinds.RelationVisibility(relationType(r)); v != "" {
-			d = v
 		}
 		info := EdgeInfo{ID: r.str("id"), From: from, To: to, Type: relationType(r)}
 		if e := own[info.ID]; e != nil {
@@ -342,7 +330,7 @@ func (m *Model) edgesByRule(doc *object, placed map[string]bool) (shown, hidden 
 				info.Override = append(json.RawMessage(nil), raw...)
 			}
 		}
-		if (d == "visible") != slices.Contains(except, r.str("id")) {
+		if rule.visible(info.ID, info.Type) {
 			shown = append(shown, info)
 		} else {
 			hidden = append(hidden, info)

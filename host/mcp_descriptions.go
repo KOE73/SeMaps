@@ -130,11 +130,11 @@ func mentalModel(narrow bool, level string) string {
 func viewsLayer(narrow bool) string {
 	if narrow {
 		return "Views store no entities or relations: a placement references a registry entity and adds only its geometry and look; a line is a registry relation, " +
-			"drawn when both ends are placed and the rule says visible (`set_relation_visible` flips one on one view), and a view's entry for it holds only its look. " +
+			"drawn when both ends are placed and the rule says visible (`set_relation_visible` shows or hides a list, or all of a type, on one view), and a view's entry for it holds only its look. " +
 			"To make something appear, place an entity or add it to the registry (`add_entity`, `add_relation`); `get_view` with `hidden: true` lists the hidden lines. "
 	}
 	return "Views are a human's projection of part of the model and store no entities or relations of their own: a placement is a reference to a registry entity plus its own geometry and look (x, y, size, parent, style, override, template, collapsed), the name, kind and members coming from the registry; containers are placements of entities of a container kind, following an `axis`. " +
-		"A line is a registry relation, drawn when both ends are placed and the rule says visible (the type's default in the dictionary, else the view's; `set_relation_visible` flips one on one view); a view's entry for a line holds only its look and never decides visibility. " +
+		"A line is a registry relation, drawn when both ends are placed and the rule says visible (the type's default in the dictionary, else the view's; `set_relation_visible` shows or hides a list of relations, or those of given types, on one view in one call, all or nothing); a view's entry for a line holds only its look and never decides visibility. " +
 		"So to make something appear, place an entity or add it to the registry (`add_entity`, `add_relation`), never draw it on a view; a relation new in the code shows on every view with both ends. `get_view` returns the visible lines; `hidden: true` adds the hidden ones (`hiddenEdges`); a big view comes as a tree of its containers, and a container reference reads one in full. "
 }
 

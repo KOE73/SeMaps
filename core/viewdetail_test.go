@@ -101,7 +101,7 @@ func TestGetViewHiddenEdges(t *testing.T) {
 	if got.HiddenEdges == nil || len(got.HiddenEdges) != 0 || !strings.Contains(string(raw), `"hiddenEdges":[]`) {
 		t.Fatalf("nothing is hidden yet: %+v %s", got.HiddenEdges, raw)
 	}
-	if err := m.SetRelationVisible("v_main", "r_a_b_items_item", false, "human"); err != nil {
+	if _, err := m.SetRelationsVisible("v_main", []string{"r_a_b_items_item"}, false, "human"); err != nil {
 		t.Fatal(err)
 	}
 	got, _ = m.GetViewWith("v_main", ViewOptions{Hidden: true})

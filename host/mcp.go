@@ -113,10 +113,12 @@ type addRelationIn struct {
 }
 
 type visibleIn struct {
-	Project  string `json:"project,omitempty"`
-	View     string `json:"view"`
-	Relation string `json:"relation"`
-	Visible  bool   `json:"visible"`
+	Project   string   `json:"project,omitempty"`
+	View      string   `json:"view"`
+	Relations []string `json:"relations,omitempty" jsonschema:"ids of relations to show or hide on this view, at least one; all or nothing: an unknown id refuses the whole call. Exactly one of relations or types"`
+	Types     []string `json:"types,omitempty" jsonschema:"relation type ids, exact (injects, holds.one.internal…): stands for the relations of those types with both ends placed on this view right now, as if you had listed their ids; a one-time action — a relation of the type added to the registry later follows the view's defaults. Exactly one of relations or types"`
+	Visible   bool     `json:"visible" jsonschema:"true: show, false: hide; a relation already so is left as it is"`
+	List      bool     `json:"list,omitempty" jsonschema:"true: the answer also lists the relations acted on, in full (id, from -> to, type), split into changed and already so; default false"`
 }
 
 type renameIn struct {
@@ -230,7 +232,9 @@ type setRoutingIn struct {
 	Project          string   `json:"project,omitempty"`
 	View             string   `json:"view" jsonschema:"view id"`
 	Routing          *string  `json:"routing" jsonschema:"bezier, orthogonal, tree-horizontal or tree-vertical; null removes the choice"`
-	Relations        []string `json:"relations,omitempty" jsonschema:"relation ids: set the shape of only these lines on this view; without it the whole view's own routing is set"`
+	Relations        []string `json:"relations,omitempty" jsonschema:"relation ids: set the shape of only these lines on this view; without relations and types the whole view's own routing is set"`
+	Types            []string `json:"types,omitempty" jsonschema:"relation type ids, exact (injects, extends…): stands for the lines of those types with both ends placed on this view right now, as if you had listed their ids; a one-time action; not together with relations"`
+	List             bool     `json:"list,omitempty" jsonschema:"true: the answer also lists the relations whose entry was written, in full (id, from -> to, type); default false"`
 	RequestedByHuman bool     `json:"requestedByHuman" jsonschema:"true only when a human asked for this in so many words"`
 }
 
@@ -324,7 +328,7 @@ func (s *mcpServer) server() *mcp.Server {
 	mcp.AddTool(srv, write("set_text", "Write one text field as authored, with at = now."), s.setText)
 	mcp.AddTool(srv, write("add_entity", "Add an authored entity: a part of the system no extractor reports (a kind of get_kinds: app, external, database…); the id is minted unless given."), s.addEntity)
 	mcp.AddTool(srv, write("add_relation", "Add an authored relation; the id is minted and returned."), s.addRelation)
-	mcp.AddTool(srv, write("set_relation_visible", "Show or hide one relation on one view (relations.except)."), s.setRelationVisible)
+	mcp.AddTool(srv, write("set_relation_visible", "Show or hide lines on one view (relations.except), one batch, all or nothing: exactly one of relations (ids) or types (relation type ids: stands for the relations of those types with both ends placed on the view right now; a one-time action, relations of the type added later follow the view's defaults). Call it once with everything, not once per relation. `list: true` also returns which relations were changed."), s.setRelationVisible)
 	mcp.AddTool(srv, write("confirm_rename", "Answer a sync rename candidate: entity + symbol, or relation + member."), s.confirmRename)
 	mcp.AddTool(srv, write("extract", "Run the extractors of the .semaps file; returns run ids."), s.extract)
 	mcp.AddTool(srv, write("sync", "Reconcile the registry with the code (extracts first unless run is given)."), s.sync)
@@ -333,7 +337,7 @@ func (s *mcpServer) server() *mcp.Server {
 	mcp.AddTool(srv, write("resize_elements", "Set width/height of placements, not below the minimum nor, for a container, below its content. requestedByHuman."), s.resizeElements)
 	mcp.AddTool(srv, write("set_parent", "Put placements into a container (parent: its entity id), or out of any (parent: null); coordinates untouched. requestedByHuman."), s.setParent)
 	mcp.AddTool(srv, write("set_placement", "Change the look of placements already on a view: styleId, override (fill, border, header fill, icon), template, collapsed (containers only); only the fields you give change, null drops one; geometry and parent untouched. requestedByHuman."), s.setPlacement)
-	mcp.AddTool(srv, write("set_routing", "Set the shape of lines on a view: routing bezier, orthogonal, tree-horizontal or tree-vertical, null to remove the choice. Without relations it is the view's own routing; with relations (ids) only those lines' own routing on this view. The routed path is never stored. requestedByHuman."), s.setRouting)
+	mcp.AddTool(srv, write("set_routing", "Set the shape of lines on a view: routing bezier, orthogonal, tree-horizontal or tree-vertical, null to remove the choice. Without relations and types it is the view's own routing; with relations (ids) only those lines' own routing on this view; types (relation type ids) stands for the lines of those types on this view right now, one-time, as if you had listed their ids. `list: true` also returns which relations were written. The routed path is never stored. requestedByHuman."), s.setRouting)
 	mcp.AddTool(srv, write("add_container", "Place a container on a view by its entity id (required, e_<name>): an existing entity of a container kind is placed as it is (no name, no other kind); an id that does not exist yet creates an authored entity with that id, name (required) and kind (a container kind, default group) — entity and placement in one step, with a rectangle, optional parent and style. The id is never made from a name. "+
 		"With contents: true it also places what the container directly contains — its `contains` relations, one level, members that are missing left out — in a plain grid (default block size and gap, on the grid step, by name), sized to hold them; width and height are then only a minimum. "+
 		"A member of a container kind comes as an empty frame (call again for it); a member already on the view is not moved and is named in the answer; a container already on the view gets only the members it lacks, under its lowest child. "+
@@ -1082,11 +1086,81 @@ func (s *mcpServer) setRelationVisible(_ context.Context, _ *mcp.CallToolRequest
 	if err != nil {
 		return nil, nil, err
 	}
-	if err := m.SetRelationVisible(in.View, in.Relation, in.Visible, "agent"); err != nil {
+	if (len(in.Relations) == 0) == (len(in.Types) == 0) {
+		return nil, nil, errors.New("give exactly one of relations (ids) or types (relation type ids)")
+	}
+	ids, of := in.Relations, ""
+	if len(in.Types) > 0 {
+		// the selector is a one-time expansion: what is on the view now, then the same write
+		if ids, err = m.RelationsOfTypes(in.View, in.Types); err != nil {
+			return nil, nil, err
+		}
+		of = " of type " + strings.Join(in.Types, ", ")
+		if len(ids) == 0 {
+			return listedAnswer(in.List, fmt.Sprintf("no relation%s has both ends placed on %s: nothing changed (a type is matched exactly; get_relations shows the types in use)", of, in.View),
+				map[string][]core.RelationRef{"changed": {}, "already": {}})
+		}
+	}
+	res, err := m.SetRelationsVisible(in.View, ids, in.Visible, "agent")
+	if err != nil {
 		return nil, nil, err
 	}
+	lists := map[string][]core.RelationRef{"changed": m.RelationRefs(res.Changed), "already": m.RelationRefs(res.Already)}
+	if len(res.Changed) == 0 {
+		return listedAnswer(in.List, fmt.Sprintf("%d relation(s)%s on %s: nothing to change, all already visible=%v%s", len(res.Already), of, in.View, in.Visible, unplacedNote(res.Unplaced)), lists)
+	}
 	s.changed(in.Project, m)
-	return done("%s on %s: visible=%v, not saved; review and Save: %s", in.Relation, in.View, in.Visible, s.reviewLink(m, in.Relation))
+	tail := ""
+	if of != "" {
+		tail = "; relations of these types added to the registry later follow the view's defaults"
+	}
+	return listedAnswer(in.List, fmt.Sprintf("%d relation(s)%s on %s now visible=%v, %d already were so%s%s; not saved; review and Save: %s",
+		len(res.Changed), of, in.View, in.Visible, len(res.Already), unplacedNote(res.Unplaced), tail, s.reviewLink(m, in.View)), lists)
+}
+
+// listedAnswer is the text of a tool answer; with list it also carries the
+// relations the call acted on, in full, one per line `<id>  <from> -> <to>  <type>`
+// under a heading per group, and as structured content. Without list it is the
+// text alone.
+func listedAnswer(list bool, text string, groups map[string][]core.RelationRef) (*mcp.CallToolResult, any, error) {
+	if !list {
+		return done("%s", text)
+	}
+	var b strings.Builder
+	b.WriteString(text)
+	for _, name := range []string{"changed", "already", "written"} {
+		refs, ok := groups[name]
+		if !ok {
+			continue
+		}
+		fmt.Fprintf(&b, "\n%s (%d):", name, len(refs))
+		for _, r := range refs {
+			fmt.Fprintf(&b, "\n%s  %s -> %s  %s", r.ID, r.From, r.To, r.Type)
+		}
+	}
+	structured := map[string]any{}
+	for k, v := range groups {
+		structured[k] = v
+	}
+	return &mcp.CallToolResult{Content: []mcp.Content{&mcp.TextContent{Text: b.String()}}}, structured, nil
+}
+
+// unplacedNote names the relations of a set_relation_visible call that the view
+// does not draw anyway: an end is not placed on it. The setting is accepted.
+func unplacedNote(ids []string) string {
+	if len(ids) == 0 {
+		return ""
+	}
+	return "; not drawn on this view anyway because an end is not placed (setting accepted): " + nameIDs(ids, 5)
+}
+
+// nameIDs lists at most max ids and counts the rest, so a long list does not
+// fill an answer.
+func nameIDs(ids []string, max int) string {
+	if len(ids) <= max {
+		return strings.Join(ids, ", ")
+	}
+	return fmt.Sprintf("%s and %d more", strings.Join(ids[:max], ", "), len(ids)-max)
 }
 
 func (s *mcpServer) confirmRename(_ context.Context, _ *mcp.CallToolRequest, in renameIn) (*mcp.CallToolResult, any, error) {
@@ -1371,26 +1445,57 @@ func (s *mcpServer) setRouting(_ context.Context, _ *mcp.CallToolRequest, in set
 	if err != nil {
 		return nil, nil, err
 	}
-	rep, err := m.SetRouting(view, in.Routing, in.Relations, in.RequestedByHuman, "agent")
+	if len(in.Relations) > 0 && len(in.Types) > 0 {
+		return nil, nil, errors.New("give relations or types, not both: one target per call (neither: the view itself)")
+	}
+	relations, of := in.Relations, ""
+	if len(in.Types) > 0 {
+		// the selector is a one-time expansion: the lines on the view now, then the per-line write
+		if in.RequestedByHuman {
+			if relations, err = m.RelationsOfTypes(view, in.Types); err != nil {
+				return nil, nil, err
+			}
+			of = " of type " + strings.Join(in.Types, ", ")
+			if len(relations) == 0 {
+				return listedAnswer(in.List, fmt.Sprintf("no relation%s has both ends placed on %s: nothing changed (a type is matched exactly; get_relations shows the types in use)", of, view),
+					map[string][]core.RelationRef{"written": {}})
+			}
+		}
+	}
+	rep, err := m.SetRouting(view, in.Routing, relations, in.RequestedByHuman, "agent")
 	if err != nil {
 		return nil, nil, err
 	}
 	s.changed(in.Project, m)
 	link := "/app/#" + view
 	what := "the view's routing"
-	if len(in.Relations) > 0 {
+	if len(relations) > 0 {
 		link += "?highlight=" + url.QueryEscape(strings.Join(rep.Relations, ","))
-		what = fmt.Sprintf("the routing of %d line(s)", len(rep.Relations))
+		what = fmt.Sprintf("the routing of %d line(s)%s", len(rep.Relations), of)
 	}
 	value := "removed"
 	if in.Routing != nil {
 		value = "set to " + *in.Routing
 	}
 	text := fmt.Sprintf("%s %s on %s, not saved; review and Save: %s", what, value, view, link)
-	if len(rep.NotDrawn) > 0 {
-		text += fmt.Sprintf(". Accepted, but not drawn on this view now (an end is not placed, or the line is hidden): %s", strings.Join(rep.NotDrawn, ", "))
+	if of != "" {
+		text += ". A one-time action: relations of these types added to the registry later follow the view's defaults"
 	}
-	return &mcp.CallToolResult{Content: []mcp.Content{&mcp.TextContent{Text: text}}}, map[string]any{"relations": rep.Relations, "notDrawn": rep.NotDrawn, "saved": false, "link": link}, nil
+	if len(rep.NotDrawn) > 0 {
+		text += fmt.Sprintf(". Accepted, but not drawn on this view now (an end is not placed, or the line is hidden): %s", nameIDs(rep.NotDrawn, 5))
+	}
+	structured := map[string]any{"relations": rep.Relations, "notDrawn": rep.NotDrawn, "saved": false, "link": link}
+	if in.List {
+		written := m.RelationRefs(rep.Relations)
+		var b strings.Builder
+		fmt.Fprintf(&b, "%s\nwritten (%d):", text, len(written))
+		for _, r := range written {
+			fmt.Fprintf(&b, "\n%s  %s -> %s  %s", r.ID, r.From, r.To, r.Type)
+		}
+		text = b.String()
+		structured["written"] = written
+	}
+	return &mcp.CallToolResult{Content: []mcp.Content{&mcp.TextContent{Text: text}}}, structured, nil
 }
 
 func (s *mcpServer) fitContainer(_ context.Context, _ *mcp.CallToolRequest, in fitContainerIn) (*mcp.CallToolResult, any, error) {

@@ -60,6 +60,8 @@ func (m *Model) text(lang, key string) (*object, error) {
 // SetText writes one field as authored, at = now. What a text may be is Apply's
 // rule (ADR_20260926), the same for the editor.
 func (m *Model) SetText(lang, key, field, value, author string) error {
+	m.editMu.Lock()
+	defer m.editMu.Unlock()
 	op, err := m.textOp(lang, key, field, value)
 	if err != nil {
 		return err
@@ -93,6 +95,8 @@ func (m *Model) AddEntity(id, name, kind, lang, author string) (string, error) {
 	if strings.TrimSpace(name) == "" {
 		return "", refuse("name is empty")
 	}
+	m.editMu.Lock()
+	defer m.editMu.Unlock()
 	taken := map[string]bool{}
 	for _, e := range m.records("entity") {
 		taken[e.str("id")] = true
@@ -127,6 +131,8 @@ func (m *Model) AddRelation(from, to, relType, author string) (string, error) {
 	if from == to {
 		return "", refuse("a relation of an entity to itself is not drawn")
 	}
+	m.editMu.Lock()
+	defer m.editMu.Unlock()
 	taken := map[string]bool{}
 	for _, r := range m.records("relation") {
 		taken[r.str("id")] = true
@@ -146,35 +152,81 @@ func (m *Model) AddRelation(from, to, relType, author string) (string, error) {
 	return id, err
 }
 
-func (m *Model) SetRelationVisible(viewID, relationID string, visible bool, author string) error {
-	r := m.record("relation", relationID)
-	if r == nil {
-		return refuse("no relation %s", relationID)
+// VisibilityChange is what SetRelationsVisible did: the relations whose
+// visibility on the view it changed, the ones that already were as asked, and
+// those of both that the view does not draw anyway because an end of the
+// relation is not placed on it.
+type VisibilityChange struct {
+	Changed  []string `json:"changed"`
+	Already  []string `json:"already"`
+	Unplaced []string `json:"unplaced"`
+}
+
+// SetRelationsVisible makes every relation of ids visible or hidden on one view
+// — sets the state, never flips it — in one batch: an unknown relation id
+// refuses the whole call and nothing changes. A relation already in the asked
+// state stays as it is and is reported. What is visible is the type's default in
+// the dictionary, else the view's, with `relations.except` flipping it
+// (CONTRACT §8.5).
+func (m *Model) SetRelationsVisible(viewID string, ids []string, visible bool, author string) (VisibilityChange, error) {
+	out := VisibilityChange{Changed: []string{}, Already: []string{}, Unplaced: []string{}}
+	if len(ids) == 0 {
+		return out, refuse("relations: give at least one relation id")
 	}
+	m.editMu.Lock()
+	defer m.editMu.Unlock()
 	view, err := m.view(viewID)
 	if err != nil {
-		return err
+		return out, err
 	}
 	policy, err := child(view, "relations")
 	if err != nil {
-		return fmt.Errorf("%s: relations: %w", viewID, err)
+		return out, fmt.Errorf("%s: relations: %w", viewID, err)
 	}
-	def := policy.str("default")
-	if v := m.kinds.RelationVisibility(relationType(r)); v != "" {
-		def = v
-	}
-	if def == "" {
-		def = "visible"
-	}
+	rule := m.relationRule(view)
 	var except []string
 	if raw, ok := policy.vals["except"]; ok {
 		if err := json.Unmarshal(raw, &except); err != nil {
-			return fmt.Errorf("%s: relations.except: %w", viewID, err)
+			return out, fmt.Errorf("%s: relations.except: %w", viewID, err)
 		}
 	}
-	except = slices.DeleteFunc(except, func(s string) bool { return s == relationID })
-	if visible != (def == "visible") {
-		except = append(except, relationID)
+	var unknown []string
+	rels := map[string]*object{}
+	var order []string
+	for _, id := range ids {
+		if _, dup := rels[id]; dup {
+			continue
+		}
+		r := m.record("relation", id)
+		if r == nil {
+			unknown = append(unknown, id)
+			continue
+		}
+		rels[id] = r
+		order = append(order, id)
+	}
+	if len(unknown) > 0 {
+		return out, refuse("no relation %s; nothing changed", strings.Join(unknown, ", "))
+	}
+	placed := placementsOf(view)
+	for _, id := range order {
+		r := rels[id]
+		byDefault := rule.defaultVisible(relationType(r))
+		if (byDefault != slices.Contains(except, id)) == visible {
+			out.Already = append(out.Already, id)
+		} else {
+			out.Changed = append(out.Changed, id)
+			except = slices.DeleteFunc(except, func(s string) bool { return s == id })
+			if visible != byDefault {
+				except = append(except, id)
+			}
+		}
+		if placed[r.str("from")] == nil || placed[r.str("to")] == nil {
+			out.Unplaced = append(out.Unplaced, id)
+		}
+	}
+	if len(out.Changed) == 0 {
+		return out, nil
 	}
 	if except == nil {
 		except = []string{}
@@ -184,8 +236,10 @@ func (m *Model) SetRelationVisible(viewID, relationID string, visible bool, auth
 	props.set("id", viewID)
 	props.set("relations", policy)
 	b, _ := props.MarshalJSON()
-	_, err = m.Apply([]Op{{Kind: "view", ID: viewID, View: viewID, Value: b}}, author)
-	return err
+	if _, err = m.Apply([]Op{{Kind: "view", ID: viewID, View: viewID, Value: b}}, author); err != nil {
+		return VisibilityChange{Changed: []string{}, Already: []string{}, Unplaced: []string{}}, err
+	}
+	return out, nil
 }
 
 // ConfirmEntityRename points the entity's realization in code — the one entry
@@ -195,6 +249,8 @@ func (m *Model) ConfirmEntityRename(entityID, symbol, author string) error {
 	if symbol == "" {
 		return refuse("symbol is empty")
 	}
+	m.editMu.Lock()
+	defer m.editMu.Unlock()
 	e := m.record("entity", entityID)
 	if e == nil {
 		return refuse("no entity %s", entityID)
@@ -229,6 +285,8 @@ func (m *Model) ConfirmRelationRename(relationID, member, author string) error {
 	if member == "" {
 		return refuse("member is empty")
 	}
+	m.editMu.Lock()
+	defer m.editMu.Unlock()
 	r := m.record("relation", relationID)
 	if r == nil {
 		return refuse("no relation %s", relationID)
@@ -260,6 +318,8 @@ func (m *Model) PlaceEntities(viewID string, list []Placement, requestedByHuman 
 	if !requestedByHuman {
 		return refuse(needHuman)
 	}
+	m.editMu.Lock()
+	defer m.editMu.Unlock()
 	view, err := m.view(viewID)
 	if err != nil {
 		return err

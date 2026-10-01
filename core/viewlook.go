@@ -30,6 +30,8 @@ func (m *Model) SetPlacement(view string, elements []string, fields map[string]j
 	if len(fields) == 0 {
 		return GeomReport{}, refuse("give at least one of %s", strings.Join(PlacementLookFields, ", "))
 	}
+	m.editMu.Lock()
+	defer m.editMu.Unlock()
 	l, err := m.loadLayout(view)
 	if err != nil {
 		return GeomReport{}, err
@@ -79,6 +81,8 @@ func (m *Model) SetRouting(view string, routing *string, relations []string, hum
 	if routing != nil && !slices.Contains(RoutingModes, *routing) {
 		return RoutingReport{}, refuse("routing %q: one of %s, or null (CONTRACT §11.3)", *routing, strings.Join(RoutingModes, ", "))
 	}
+	m.editMu.Lock()
+	defer m.editMu.Unlock()
 	doc, err := m.view(view)
 	if err != nil {
 		return RoutingReport{}, refuse("no view %s", view)

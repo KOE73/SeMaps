@@ -141,7 +141,7 @@ func TestSetRelationVisibleFollowsTheTypesDictionaryVisibility(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if err := SetRelationVisible(ws, "", "v_main", id, true); err != nil {
+	if _, err := SetRelationsVisible(ws, "", "v_main", []string{id}, true); err != nil {
 		t.Fatal(err)
 	}
 	var v map[string]any
@@ -149,7 +149,7 @@ func TestSetRelationVisibleFollowsTheTypesDictionaryVisibility(t *testing.T) {
 	if ex := v["relations"].(map[string]any)["except"].([]any); len(ex) != 1 || ex[0] != id {
 		t.Fatalf("except %v: showing a relation of a hidden type is the exception", ex)
 	}
-	if err := SetRelationVisible(ws, "", "v_main", id, false); err != nil {
+	if _, err := SetRelationsVisible(ws, "", "v_main", []string{id}, false); err != nil {
 		t.Fatal(err)
 	}
 	readAs(t, ws, "views/main.view.json", &v)
@@ -165,14 +165,14 @@ func TestSetRelationVisibleKeepsExceptTheSmallerSide(t *testing.T) {
 		readAs(t, ws, "views/main.view.json", &v)
 		return v
 	}
-	if err := SetRelationVisible(ws, "", "v_main", "r_a_b_items_item", false); err != nil {
+	if _, err := SetRelationsVisible(ws, "", "v_main", []string{"r_a_b_items_item"}, false); err != nil {
 		t.Fatal(err)
 	}
 	ex := view()["relations"].(map[string]any)["except"].([]any)
 	if len(ex) != 1 || ex[0] != "r_a_b_items_item" {
 		t.Fatalf("except %v", ex)
 	}
-	if err := SetRelationVisible(ws, "", "v_main", "r_a_b_items_item", true); err != nil {
+	if _, err := SetRelationsVisible(ws, "", "v_main", []string{"r_a_b_items_item"}, true); err != nil {
 		t.Fatal(err)
 	}
 	v := view()
@@ -182,7 +182,8 @@ func TestSetRelationVisibleKeepsExceptTheSmallerSide(t *testing.T) {
 	if len(v["placements"].([]any)) != 2 {
 		t.Fatal("geometry touched")
 	}
-	refused(t, SetRelationVisible(ws, "", "v_none", "r_a_b_items_item", true), "no view")
+	_, err := SetRelationsVisible(ws, "", "v_none", []string{"r_a_b_items_item"}, true)
+	refused(t, err, "no view")
 }
 
 func TestConfirmRenames(t *testing.T) {

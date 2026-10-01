@@ -69,8 +69,13 @@ func AddRelation(workspace, project, from, to, relType string) (string, error) {
 	}
 	return id, m.Save()
 }
-func SetRelationVisible(workspace, project, viewID, relationID string, visible bool) error {
-	return editAndSave(workspace, project, func(m *Model) error { return m.SetRelationVisible(viewID, relationID, visible, "agent") })
+func SetRelationsVisible(workspace, project, viewID string, relationIDs []string, visible bool) (VisibilityChange, error) {
+	var out VisibilityChange
+	err := editAndSave(workspace, project, func(m *Model) (err error) {
+		out, err = m.SetRelationsVisible(viewID, relationIDs, visible, "agent")
+		return err
+	})
+	return out, err
 }
 func ConfirmEntityRename(workspace, project, entityID, symbol string) error {
 	return editAndSave(workspace, project, func(m *Model) error { return m.ConfirmEntityRename(entityID, symbol, "agent") })

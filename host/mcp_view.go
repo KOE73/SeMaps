@@ -100,7 +100,9 @@ yours; the human reviews and saves.
 A view stores no entities and no relations of its own. A placement is a reference to an entity of the registry plus its own geometry and
 look (x, y, size, parent, style, override, template, collapsed); the name, the kind and the members come from the registry. A line is a
 relation of the registry: it is drawn when both its ends are placed on the view and the rule says visible — the relation type's default
-in the dictionary, else the view's default; ` + "`set_relation_visible`" + ` flips one relation on one view. A view's own entry for a line holds only its look
+in the dictionary, else the view's default, and ` + "`relations.except`" + ` flips the result for single relations. ` + "`set_relation_visible`" + ` sets it, all or nothing, one call for many: with ` + "`relations`" + ` (ids) for the
+relations you name, or with ` + "`types`" + ` (exact type ids: ` + "`injects`" + `, ` + "`holds.one.internal`" + `…) for the relations of those types with both ends placed on the view right now — a one-time action, a relation of the type added
+to the registry later follows the view's defaults. A view's own entry for a line holds only its look
 (style, override, routing) and never decides whether the line is drawn.
 So to make something appear, place an entity (` + "`place_entities`" + `) or add it to the registry first (` + "`add_entity`" + `, ` + "`add_relation`" + `) — never "draw" it on the view. A relation
 that is new in the code shows on every view that has both ends.
@@ -143,7 +145,8 @@ blocks the straight line from the lower one.
 | put blocks or containers into a container, coordinates untouched | `+"`set_parent`"+` (parent null takes them out) |
 | add a container by the id of its entity (required): an existing entity of a container kind is placed as it is; a new id is created, with name and kind (default group); a rectangle, optional parent, style | `+"`add_container`"+` |
 | change the look of placements already on the view: style, override, template, collapsed (containers only); only the fields you give change, null drops one | `+"`set_placement`"+` |
-| change the shape of lines: the whole view's routing, or of chosen relations only | `+"`set_routing`"+` |
+| change the shape of lines: the whole view's routing, or of chosen relations (`+"`relations`"+`), or of all lines of given relation types now on the view (`+"`types`"+`) | `+"`set_routing`"+` |
+| show or hide lines on a view: chosen relations (`+"`relations`"+`) or all of given relation types now on the view (`+"`types`"+`), in one call | `+"`set_relation_visible`"+` |
 | make a container as tight as its content (caption strip and padding), ancestors grow | `+"`fit_container`"+` |
 | line elements up on the first one: left, right, top, bottom, width, height | `+"`align_elements`"+` |
 | put entities on a view | `+"`place_entities`"+` |
@@ -161,8 +164,8 @@ A line's shape is a choice of one of four modes, never a stored path:
 - `+"`tree-horizontal`"+` — a tree fan, the trunk running horizontally;
 - `+"`tree-vertical`"+` — a tree fan, the trunk running vertically.
 
-The choice is taken from the most specific place that has one: the line's own `+"`routing`"+` on this view, then the view's `+"`routing`"+`, then the style of the relation type,
-then `+"`bezier`"+`. `+"`set_routing`"+` with `+"`relations`"+` writes the first, without it the second; null removes the choice so the next place decides. The routed polyline
+The choice is taken from the most specific place that has one: the line's own `+"`routing`"+` on this view, then the view's `+"`routing`"+`, then the style of the relation type, then `+"`bezier`"+`. `+"`set_routing`"+` with `+"`relations`"+` writes the first, without it the second; with `+"`types`"+` it writes the first for the lines
+of those types that are on the view now (a one-time expansion; a line added later has none); null removes the choice so the next place decides. The routed polyline
 is never stored — it is computed from the boxes on every repaint. `+"`get_view`"+` shows the view's `+"`view.routing`"+` and a line's own `+"`routing`"+` when it has one.
 
 What is in a container is a fact of the registry (the `+"`contains`"+` relation); the grid `+"`add_container`"+` lays it out in is only a starting arrangement — a member of a container kind comes as an empty frame, and you move, resize or nest the rest as the picture needs.

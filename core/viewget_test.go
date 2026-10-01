@@ -47,7 +47,7 @@ func TestGetViewTreeAndEdgeVisibility(t *testing.T) {
 		t.Fatalf("edges = %+v", got.Edges)
 	}
 	// except flips a visible one
-	if err := m.SetRelationVisible("v_main", "r_a_b_items_item", false, "human"); err != nil {
+	if _, err := m.SetRelationsVisible("v_main", []string{"r_a_b_items_item"}, false, "human"); err != nil {
 		t.Fatal(err)
 	}
 	if got, _ = m.GetView("v_main"); len(got.Edges) != 0 {
@@ -73,7 +73,7 @@ func TestGetViewTreeAndEdgeVisibility(t *testing.T) {
 		t.Fatalf("an entry showed a hidden line: %+v", got.Edges)
 	}
 	// shown again, the line carries what its entry says
-	if err := m.SetRelationVisible("v_main", "r_a_b_items_item", true, "human"); err != nil {
+	if _, err := m.SetRelationsVisible("v_main", []string{"r_a_b_items_item"}, true, "human"); err != nil {
 		t.Fatal(err)
 	}
 	if _, err := m.Apply(edges(`[{"id":"r_a_b_items_item","styleId":"call","override":{"line":{"color":"#ff0000","dash":"4,4"}},"routing":"bezier"}]`), "human"); err != nil {
