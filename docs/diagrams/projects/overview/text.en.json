@@ -1,0 +1,263 @@
+{
+  "contractVersion": 5,
+  "language": "en",
+  "entries": {
+    "e_clients": {
+      "name": {
+        "v": "Clients",
+        "at": "2026-10-01T10:15:09Z",
+        "origin": "authored"
+      }
+    },
+    "v_overview": {
+      "name": {
+        "v": "Architecture overview",
+        "at": "2026-10-01T10:15:13Z",
+        "origin": "authored"
+      }
+    },
+    "v_internals": {
+      "name": {
+        "v": "Inside SeMaps: storage and data",
+        "at": "2026-10-01T10:15:13Z",
+        "origin": "authored"
+      }
+    },
+    "e_host": {
+      "name": {
+        "v": "Host semaps.exe (host/)",
+        "at": "2026-10-01T10:15:14Z",
+        "origin": "authored"
+      }
+    },
+    "e_core": {
+      "name": {
+        "v": "Core (core/)",
+        "at": "2026-10-01T10:15:15Z",
+        "origin": "authored"
+      }
+    },
+    "e_storage": {
+      "name": {
+        "v": "Storage",
+        "at": "2026-10-01T10:15:16Z",
+        "origin": "authored"
+      }
+    },
+    "e_extractors": {
+      "name": {
+        "v": "Extractors (extractors/)",
+        "at": "2026-10-01T10:15:17Z",
+        "origin": "authored"
+      }
+    },
+    "e_g_memory": {
+      "name": {
+        "v": "Host memory (lives while the host runs)",
+        "at": "2026-10-01T10:15:18Z",
+        "origin": "authored"
+      }
+    },
+    "e_g_git": {
+      "name": {
+        "v": "On disk, in git (static)",
+        "at": "2026-10-01T10:15:19Z",
+        "origin": "authored"
+      }
+    },
+    "e_g_local": {
+      "name": {
+        "v": "On disk, outside git (dynamic)",
+        "at": "2026-10-01T10:15:20Z",
+        "origin": "authored"
+      }
+    },
+    "e_defaults": {
+      "name": {
+        "v": "Built-in defaults",
+        "at": "2026-10-01T10:15:21Z",
+        "origin": "authored"
+      },
+      "description": {
+        "v": "kinds, styles, canvas, templates, graph-filters inside semaps.exe. The kinds dictionary merges with the workspace file by entry; the workspace file replaces the others whole.",
+        "at": "2026-10-01T10:15:47Z",
+        "origin": "authored"
+      }
+    },
+    "e_editor": {
+      "description": {
+        "v": "Browser diagram editor (TypeScript): canvas, views, styles. Reads and writes the model only through the host.",
+        "at": "2026-10-01T10:15:24Z",
+        "origin": "authored"
+      }
+    },
+    "e_agent": {
+      "description": {
+        "v": "An agent (Claude Code and others): reads the map before work and records what it built, through MCP tools.",
+        "at": "2026-10-01T10:15:25Z",
+        "origin": "authored"
+      }
+    },
+    "e_http_api": {
+      "description": {
+        "v": "/api/workspace, /api/model/*, /api/projects: the editor's entrance. Writes only with the host key.",
+        "at": "2026-10-01T10:15:26Z",
+        "origin": "authored"
+      }
+    },
+    "e_mcp_server": {
+      "description": {
+        "v": "/mcp (Streamable HTTP) in the same process: agent tools over the same model.",
+        "at": "2026-10-01T10:15:27Z",
+        "origin": "authored"
+      }
+    },
+    "e_mcp_proxy": {
+      "description": {
+        "v": "stdio proxy from .mcp.json to the host's /mcp; with no host running it starts one in the background.",
+        "at": "2026-10-01T10:15:28Z",
+        "origin": "authored"
+      }
+    },
+    "e_model_service": {
+      "description": {
+        "v": "One working model per project for all clients: creating projects and views, the live catalogue, SSE events.",
+        "at": "2026-10-01T10:15:29Z",
+        "origin": "authored"
+      }
+    },
+    "e_model": {
+      "description": {
+        "v": "The project's working state: operation batches, the journal, unsaved changes, Save and Discard.",
+        "at": "2026-10-01T10:15:30Z",
+        "origin": "authored"
+      }
+    },
+    "e_rules": {
+      "description": {
+        "v": "Checks every batch in Apply for every writer: the editor, the agent, sync (ADR_20260926).",
+        "at": "2026-10-01T10:15:32Z",
+        "origin": "authored"
+      }
+    },
+    "e_sync": {
+      "description": {
+        "v": "Reconciles the registry with extractor facts: new, missing and renamed entities and relations.",
+        "at": "2026-10-01T10:15:33Z",
+        "origin": "authored"
+      }
+    },
+    "e_check": {
+      "description": {
+        "v": "semaps check: stale texts, broken codeRefs, views without an axis.",
+        "at": "2026-10-01T10:15:34Z",
+        "origin": "authored"
+      }
+    },
+    "e_extract_csharp": {
+      "description": {
+        "v": "Roslyn: facts about the types and member relations of C# projects.",
+        "at": "2026-10-01T10:15:35Z",
+        "origin": "authored"
+      }
+    },
+    "e_extract_ts": {
+      "description": {
+        "v": "TypeScript compiler API: facts about the types and relations of TS code.",
+        "at": "2026-10-01T10:15:36Z",
+        "origin": "authored"
+      }
+    },
+    "e_extract_go": {
+      "description": {
+        "v": "Reads Go sources and prints code facts by the normative mapping table.",
+        "at": "2026-10-01T10:15:37Z",
+        "origin": "authored"
+      }
+    },
+    "e_workspace": {
+      "description": {
+        "v": "Contract files: project.json, entities, relations, texts, views. This is what goes into git.",
+        "at": "2026-10-01T10:15:38Z",
+        "origin": "authored"
+      }
+    },
+    "e_journal": {
+      "description": {
+        "v": ".semaps/work/*.jsonl: accepted but unsaved batches; they survive a host restart.",
+        "at": "2026-10-01T10:15:39Z",
+        "origin": "authored"
+      }
+    },
+    "e_source": {
+      "description": {
+        "v": "The consuming project's code: the extractors' input and the target of codeRefs.",
+        "at": "2026-10-01T10:15:40Z",
+        "origin": "authored"
+      }
+    },
+    "e_code_graph": {
+      "description": {
+        "v": "Live code graph from extractor facts: types, members, methods and calls with their places in code. Answers agents and feeds the graph page; never written to git.",
+        "at": "2026-10-01T10:15:41Z",
+        "origin": "authored"
+      }
+    },
+    "e_watcher": {
+      "description": {
+        "v": "Watches the sources of extractors with watch on and reruns them on a change, updating only the code graph.",
+        "at": "2026-10-01T10:15:42Z",
+        "origin": "authored"
+      }
+    },
+    "e_runs": {
+      "description": {
+        "v": "Extractor runs in a temp folder: facts (facts.json), log and run description. Sync and the code graph take facts from here; never in git.",
+        "at": "2026-10-01T10:15:43Z",
+        "origin": "authored"
+      }
+    },
+    "e_semaps_file": {
+      "description": {
+        "v": "Project file (YAML): workspace, source root, port, extractors, MCP settings. Read by the host, the CLI and the watcher; written by the setup screen.",
+        "at": "2026-10-01T10:15:45Z",
+        "origin": "authored"
+      }
+    },
+    "e_mcp_json": {
+      "description": {
+        "v": "How an agent starts semaps mcp; lies at the project root.",
+        "at": "2026-10-01T10:15:46Z",
+        "origin": "authored"
+      }
+    },
+    "e_host_json": {
+      "description": {
+        "v": ".semaps/host.json: pid, port and key of the running host. The proxy finds the host by it.",
+        "at": "2026-10-01T10:15:48Z",
+        "origin": "authored"
+      }
+    },
+    "e_mcp_log": {
+      "description": {
+        "v": ".semaps/logs/mcp-<date>.jsonl: every tool call by an agent.",
+        "at": "2026-10-01T10:15:49Z",
+        "origin": "authored"
+      }
+    },
+    "e_mcp_settings": {
+      "description": {
+        "v": "Tool set, format and limits from the mcp section of .semaps; applied on the fly.",
+        "at": "2026-10-01T10:15:50Z",
+        "origin": "authored"
+      }
+    },
+    "e_editor_local": {
+      "description": {
+        "v": "The editor tab's own state: local undo and settings in localStorage. Never sent to the host.",
+        "at": "2026-10-01T10:15:51Z",
+        "origin": "authored"
+      }
+    }
+  }
+}

@@ -4,7 +4,8 @@
   "contractVersion": 5,
   "defaultAxis": "axis_subsystem",
   "languages": [
-    "ru"
+    "ru",
+    "en"
   ],
   "icon": "🗺️",
   "defaultView": "v_overview"
