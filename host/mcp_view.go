@@ -23,6 +23,8 @@ import (
 
 // serverPreamble opens the server Instructions.
 const serverPreamble = "SeMaps registry of this repository. Read with list_*/get_*/find_*; write only through these tools. " +
+	"Ask these tools before searching the code as text: what a type extends or implements, who holds, calls or constructs it, what a namespace contains and where something lies come from the code graph in one call, with file:line, " +
+	"faster and in far fewer tokens than grep and reading files — then open only the lines the answer names. What a part is for and which interactions are intended come from the registry and its views, which the code alone does not tell. " +
 	"Nothing from code can be deleted, an authored entity or relation only through `remove` when a human asked; view geometry only with requestedByHuman when a human asked. " +
 	"Work on a view only through the tools, never by editing files; call `layout_guide` before you move, resize or place anything, and check the result with `get_view` and `render_view` (any view of a project an editor has open, not only the one on screen). " +
 	"`create_view` and `create_project` only when a human explicitly asked for a new view or project. "
@@ -32,12 +34,13 @@ const serverPreamble = "SeMaps registry of this repository. Read with list_*/get
 // exists now, no reference to files or repository documents, English.
 var viewToolDescriptions = map[string]toolDescriptions{
 	"layout_guide": {
-		Brief: "How to work on a view: the canvas numbers, what each view tool does, the order of work. Read it before any geometry. No parameters.",
-		Standard: "layout_guide returns a Markdown guide for working on a view: how to look at one (`get_view`, `render_view`), what each geometry tool does, the workflow " +
+		Brief: "How to work on a view: the canvas numbers, what each view tool does, recommendations for composing an architecture view, the order of work. Read it before any geometry. No parameters.",
+		Standard: "layout_guide returns a Markdown guide for working on a view: how to look at one (`get_view`, `render_view`), what each geometry tool does, recommendations for composing an architecture view (one question per view, zones as coloured containers, one direction of flow, dictionary relation types), the workflow " +
 			"(look at the sample, decide, apply in steps, check, say what is unsaved and give the link), when `requestedByHuman` is needed, and the numbers of the canvas " +
 			"(units, grid, default and minimum sizes, caption strip, padding, gaps). Call it once before moving, resizing or placing anything. No parameters; it does not depend on the project.",
 		Full: "layout_guide returns a Markdown guide for working on a view: how to look at one (`get_view`, `render_view`), what each geometry tool does " +
 			"(`move_elements`, `resize_elements`, `set_parent`, `set_placement`, `set_routing`, `add_container`, `fit_container`, `align_elements`, `place_entities`, `create_view`, `create_project`, `save`, `discard`, `set_text`, `add_entity`, `get_kinds`), " +
+			"recommendations for composing an architecture view — only habits, since systems differ (one question per view, zones as containers with a pale colour each and the same colour on every view, one direction of flow, kinds and short names, relation types from the dictionary, orthogonal lines with corridors), " +
 			"the workflow (look at the sample, decide, apply in steps, check with `get_view` or `render_view`, say what is unsaved and give the link), when `requestedByHuman` is needed, " +
 			"that the host does not snap to the grid, and the numbers of the canvas (units, grid, default and minimum sizes, caption strip, padding, gaps) — the same block that heads every `get_view` answer. " +
 			"Call it once before moving, resizing or placing anything. No parameters; it does not depend on the project.",
@@ -195,6 +198,37 @@ pass only when a person asked for exactly this. Without such a request do not wr
 The editor snaps the human's own moves to the grid step (%s); this host does not — a coordinate or size you give is written as given.
 Put positions and sizes on multiples of %s yourself, and leave the default gaps between what you place: a row of three default nodes is
 3 x %g + 2 x %g = %g wide before any container padding.
+
+## Composing an architecture view — recommendations
+
+Systems differ, and how this one is built is for the human and the code to say, not for this guide. What follows
+are habits that usually make a view readable; the project's existing views and the human's conventions come first,
+and when the purpose of a view is unclear, ask.
+
+- **A view answers one question:** what the system consists of, who calls whom, where data
+  lives, what runs as which process. Choose the level for that question — a view is not a dump of the code. Roughly
+  7 to 25 blocks read well; with more, split the question into views or collapse containers.
+- **Zones.** Group blocks into containers by what matters for the question: a process or deployment unit, a layer,
+  an owner, a trust boundary, how long data lives (in git, on disk, in memory). The kind `+"`group`"+` only gathers
+  for the eye; `+"`system`"+`, `+"`subsystem`"+`, `+"`layer`"+` and `+"`boundary`"+` also claim something — use them when the claim is true.
+- **Colour the zones.** Give each top-level zone its own pale fill with a border and caption strip of the same hue
+  (`+"`set_placement`"+`, override `+"`fill`"+`, `+"`border.color`"+`, `+"`header.fill`"+`), so the zones read at a glance while blocks
+  and lines stay readable. Keep a zone the same colour on every view of the project. Pairs that work (fill / border / caption):
+  slate #f8fafc / #cbd5e1 / #e2e8f0, blue #eff6ff / #93c5fd / #dbeafe, violet #f5f3ff / #c4b5fd / #ede9fe,
+  green #f0fdf4 / #86efac / #dcfce7, amber #fffbeb / #fde68a / #fef3c7, orange #fff7ed / #fdba74 / #ffedd5.
+- **One direction of flow.** Let the main flow read one way: the outside world (users, clients, agents) at the top
+  or left, the system in the middle, storage at the bottom, foreign systems and code at an edge. Put a block next to
+  what it talks to most, and a store under its main writer, so that lines run short and straight.
+- **Kinds and names.** Pick the kind that tells the reader what a part is (`+"`app`"+`, `+"`service`"+`, `+"`component`"+`,
+  `+"`database`"+`, `+"`store`"+`, `+"`external`"+` — see `+"`get_kinds`"+`). Names are short, since they do not wrap; say the rest in
+  the description. Write names in every language of the project (`+"`set_text`"+`).
+- **Relation types from the dictionary.** Prefer the drawn types of `+"`get_kinds`"+` (`+"`call`"+`, `+"`data-flow`"+`, `+"`event`"+`,
+  `+"`storage`"+`, `+"`runs`"+`…) to words of your own: each has its own line style, so the picture shows the kind of interaction.
+  A relation belongs to the whole project and appears on every view with both ends — state what really happens, not
+  what suits one picture, and look at the other views after adding one.
+- **Lines.** Orthogonal lines usually suit an architecture view (`+"`set_routing`"+` on the view). Leave the default gaps
+  as corridors; when a line crosses the whole view or many others, move blocks rather than accept it. `+"`render_view`"+`
+  lists lines through boxes and crossings: aim for none of the first and few of the second.
 
 ## Workflow
 
