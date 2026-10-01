@@ -2,80 +2,80 @@
   "contractVersion": 5,
   "relations": [
     {
-      "id": "r_editor_http_api_calls",
+      "id": "r_editor_http_api_call",
       "from": "e_editor",
       "to": "e_http_api",
-      "type": "calls",
+      "type": "call",
       "origin": "authored"
     },
     {
-      "id": "r_agent_mcp_proxy_calls",
+      "id": "r_agent_mcp_proxy_call",
       "from": "e_agent",
       "to": "e_mcp_proxy",
-      "type": "calls",
+      "type": "call",
       "origin": "authored"
     },
     {
-      "id": "r_mcp_proxy_mcp_server_calls",
+      "id": "r_mcp_proxy_mcp_server_call",
       "from": "e_mcp_proxy",
       "to": "e_mcp_server",
-      "type": "calls",
+      "type": "call",
       "origin": "authored"
     },
     {
-      "id": "r_http_api_model_service_calls",
+      "id": "r_http_api_model_service_call",
       "from": "e_http_api",
       "to": "e_model_service",
-      "type": "calls",
+      "type": "call",
       "origin": "authored"
     },
     {
-      "id": "r_mcp_server_model_service_calls",
+      "id": "r_mcp_server_model_service_call",
       "from": "e_mcp_server",
       "to": "e_model_service",
-      "type": "calls",
+      "type": "call",
       "origin": "authored"
     },
     {
-      "id": "r_model_service_model_calls",
+      "id": "r_model_service_model_call",
       "from": "e_model_service",
       "to": "e_model",
-      "type": "calls",
+      "type": "call",
       "origin": "authored"
     },
     {
-      "id": "r_model_rules_calls",
+      "id": "r_model_rules_call",
       "from": "e_model",
       "to": "e_rules",
-      "type": "calls",
+      "type": "call",
       "origin": "authored"
     },
     {
-      "id": "r_model_journal_writes",
+      "id": "r_model_journal_storage",
       "from": "e_model",
       "to": "e_journal",
-      "type": "writes",
+      "type": "storage",
       "origin": "authored"
     },
     {
-      "id": "r_model_workspace_writes",
+      "id": "r_model_workspace_storage",
       "from": "e_model",
       "to": "e_workspace",
-      "type": "writes",
+      "type": "storage",
       "origin": "authored"
     },
     {
-      "id": "r_mcp_server_sync_calls",
+      "id": "r_mcp_server_sync_call",
       "from": "e_mcp_server",
       "to": "e_sync",
-      "type": "calls",
+      "type": "call",
       "origin": "authored"
     },
     {
-      "id": "r_sync_model_writes",
+      "id": "r_sync_model_call",
       "from": "e_sync",
       "to": "e_model",
-      "type": "writes",
+      "type": "call",
       "origin": "authored"
     },
     {
@@ -93,24 +93,94 @@
       "origin": "authored"
     },
     {
-      "id": "r_extract_csharp_source_reads",
+      "id": "r_sync_extract_go_runs",
+      "from": "e_sync",
+      "to": "e_extract_go",
+      "type": "runs",
+      "origin": "authored"
+    },
+    {
+      "id": "r_extract_csharp_source_storage",
       "from": "e_extract_csharp",
       "to": "e_source",
-      "type": "reads",
+      "type": "storage",
       "origin": "authored"
     },
     {
-      "id": "r_extract_ts_source_reads",
+      "id": "r_extract_ts_source_storage",
       "from": "e_extract_ts",
       "to": "e_source",
-      "type": "reads",
+      "type": "storage",
       "origin": "authored"
     },
     {
-      "id": "r_check_workspace_reads",
+      "id": "r_extract_go_source_storage",
+      "from": "e_extract_go",
+      "to": "e_source",
+      "type": "storage",
+      "origin": "authored"
+    },
+    {
+      "id": "r_check_workspace_storage",
       "from": "e_check",
       "to": "e_workspace",
-      "type": "reads",
+      "type": "storage",
+      "origin": "authored"
+    },
+    {
+      "id": "r_watcher_source_storage",
+      "from": "e_watcher",
+      "to": "e_source",
+      "type": "storage",
+      "origin": "authored"
+    },
+    {
+      "id": "r_watcher_extractors_runs",
+      "from": "e_watcher",
+      "to": "e_extractors",
+      "type": "runs",
+      "origin": "authored"
+    },
+    {
+      "id": "r_http_api_code_graph_call",
+      "from": "e_http_api",
+      "to": "e_code_graph",
+      "type": "call",
+      "origin": "authored"
+    },
+    {
+      "id": "r_mcp_server_code_graph_call",
+      "from": "e_mcp_server",
+      "to": "e_code_graph",
+      "type": "call",
+      "origin": "authored"
+    },
+    {
+      "id": "r_mcp_server_editor_call",
+      "from": "e_mcp_server",
+      "to": "e_editor",
+      "type": "call",
+      "origin": "authored"
+    },
+    {
+      "id": "r_extractors_runs_storage",
+      "from": "e_extractors",
+      "to": "e_runs",
+      "type": "storage",
+      "origin": "authored"
+    },
+    {
+      "id": "r_sync_runs_storage",
+      "from": "e_sync",
+      "to": "e_runs",
+      "type": "storage",
+      "origin": "authored"
+    },
+    {
+      "id": "r_code_graph_runs_storage",
+      "from": "e_code_graph",
+      "to": "e_runs",
+      "type": "storage",
       "origin": "authored"
     }
   ]

@@ -120,6 +120,30 @@
       "kind": "group",
       "origin": "authored",
       "status": "present"
+    },
+    {
+      "id": "e_extract_go",
+      "kind": "app",
+      "origin": "authored",
+      "status": "present"
+    },
+    {
+      "id": "e_code_graph",
+      "kind": "component",
+      "origin": "authored",
+      "status": "present"
+    },
+    {
+      "id": "e_watcher",
+      "kind": "component",
+      "origin": "authored",
+      "status": "present"
+    },
+    {
+      "id": "e_runs",
+      "kind": "store",
+      "origin": "authored",
+      "status": "present"
     }
   ]
 }
