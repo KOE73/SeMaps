@@ -387,7 +387,8 @@ func TestOverview(t *testing.T) {
 	if got := js(t, kinds, "relationGroups", 0, "types", 0); got != `{"id":"calls","visibility":"visible","name":{"ru":"вызывает"}}` {
 		t.Errorf("calls: %s", got)
 	}
-	if !anyContains(rep.WorkspaceNotes, "тип связи «runs» → kinds.json, группа relations.project: типа нет в словаре; visibility не задана → visible; name.ru «запускает»") {
+	// runs is in the dictionary since ADR_20261001's day: the project's own entry replaces it whole.
+	if !anyContains(rep.WorkspaceNotes, "тип связи «runs» → kinds.json, группа relations.project: запись словаря по умолчанию заменена целиком") {
 		t.Errorf("notes: %v", rep.WorkspaceNotes)
 	}
 }

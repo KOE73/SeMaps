@@ -375,6 +375,17 @@
       "label": { "color": "#7e22ce", "weight": 600 }
     },
     {
+      "id": "runs",
+      "name": "Запуск процесса",
+      "appliesTo": "edge",
+      "forKinds": ["runs"],
+      "description": "Часть запускает другую отдельным процессом.",
+      "family": "flow",
+      "line": { "color": "#16a34a", "width": 1.8 },
+      "target": { "shape": "arrow", "size": 8 },
+      "label": { "color": "#15803d", "weight": 600 }
+    },
+    {
       "id": "depends",
       "name": "Зависимость между модулями",
       "appliesTo": "edge",

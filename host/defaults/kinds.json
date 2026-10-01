@@ -289,6 +289,8 @@
           "description": { "ru": "Одна часть сообщает о событии, не зная, кто слушает.", "en": "One part announces an event without knowing who listens." } },
         { "id": "storage", "name": { "ru": "хранит", "en": "stores" },
           "description": { "ru": "Часть читает или пишет данные в хранилище.", "en": "A part reads or writes data in a store." } },
+        { "id": "runs", "name": { "ru": "запускает", "en": "runs" },
+          "description": { "ru": "Одна часть запускает другую как отдельный процесс и не ждёт ответа как от вызова.", "en": "One part starts another as a separate process, rather than calling it for an answer." } },
         { "id": "security", "name": { "ru": "допуск", "en": "access" },
           "description": { "ru": "Единственный род связи, который вправе отказать.", "en": "The one kind of relation that may refuse." } },
         { "id": "realizes", "name": { "ru": "реализует (как замысел)", "en": "realizes" },
