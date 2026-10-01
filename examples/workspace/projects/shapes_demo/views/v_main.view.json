@@ -61,7 +61,7 @@
       "collapsed": false
     },
     {
-      "entity": "actor_user",
+      "entity": "e_actor_user",
       "parent": "e_zone_human",
       "styleId": "actor",
       "x": 80,
@@ -70,7 +70,7 @@
       "height": 130
     },
     {
-      "entity": "uc_edit",
+      "entity": "e_uc_edit",
       "parent": "e_zone_human",
       "styleId": "usecase",
       "x": 100,
@@ -79,7 +79,7 @@
       "height": 80
     },
     {
-      "entity": "stage_compile",
+      "entity": "e_stage_compile",
       "parent": "e_zone_machine",
       "styleId": "stage",
       "x": 420,
@@ -88,7 +88,7 @@
       "height": 70
     },
     {
-      "entity": "dec_valid",
+      "entity": "e_dec_valid",
       "parent": "e_zone_machine",
       "styleId": "decision",
       "x": 420,
@@ -97,7 +97,7 @@
       "height": 120
     },
     {
-      "entity": "pic_model",
+      "entity": "e_pic_model",
       "parent": "e_zone_machine",
       "styleId": "concept",
       "template": "picture",
@@ -107,7 +107,7 @@
       "height": 160
     },
     {
-      "entity": "cls_template",
+      "entity": "e_cls_template",
       "parent": "e_zone_storage",
       "styleId": "class.detail",
       "x": 830,
@@ -116,7 +116,7 @@
       "height": 150
     },
     {
-      "entity": "tbl_templates",
+      "entity": "e_tbl_templates",
       "parent": "e_zone_storage",
       "styleId": "table",
       "x": 830,
@@ -125,7 +125,7 @@
       "height": 105
     },
     {
-      "entity": "store_assets",
+      "entity": "e_store_assets",
       "parent": "e_zone_storage",
       "styleId": "store",
       "x": 860,

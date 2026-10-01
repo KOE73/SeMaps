@@ -14,7 +14,11 @@ long they stay true**, not by topic.
 | `docs/adr/` | `ADR_` | decisions: what was chosen and why, including what was rejected | **never edited** |
 | `docs/plans/` | `PLAN_` | work plans, with a status line | edited as work proceeds, closed when done |
 | `docs/ideas/` | `IDEA_` | ideas, "would be nice" notes | become a plan or die |
-| `docs/reviews/` | date | outside-eye audits of the code (see below) | **never edited** |
+| `docs/diagrams/` | — | SeMaps' own map: a workspace of the project itself (`projects/overview`), edited in the editor, not by hand | edited with the code it draws |
+| `docs/images/` | — | pictures for `README.md` and the docs (screenshots of the map, promo) | replaced when the thing pictured changes |
+
+`docs/reviews/` (date prefix, outside-eye audits of the code, see below) is **not in the repository
+yet**; the folder is created by the first review.
 
 File name: `GENRE_YYYYMMDD_zone_short-name.md`. Two documents on one day → `YYYYMMDD-2`.
 

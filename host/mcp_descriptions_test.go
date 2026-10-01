@@ -31,7 +31,7 @@ func paramNames(v any) map[string]bool {
 }
 
 // TestMCPGraphToolsPerSet: `one` registers exactly get_graph/find_node/graph_formats;
-// `narrow` registers exactly the ten narrow tools and NOT get_graph/graph_formats
+// `narrow` registers exactly the nine narrow tools and NOT get_graph/graph_formats
 // (step 2/3/4).
 func TestMCPGraphToolsPerSet(t *testing.T) {
 	for _, tc := range []struct {

@@ -50,7 +50,7 @@
         "origin": "authored"
       }
     },
-    "uc_edit": {
+    "e_uc_edit": {
       "name": {
         "v": "Править содержимое блока",
         "at": "2026-09-30T07:27:32Z",
@@ -62,7 +62,7 @@
         "origin": "authored"
       }
     },
-    "dec_valid": {
+    "e_dec_valid": {
       "name": {
         "v": "Текст разобрался?",
         "at": "2026-09-30T07:27:32Z",
@@ -74,7 +74,7 @@
         "origin": "authored"
       }
     },
-    "cls_template": {
+    "e_cls_template": {
       "name": {
         "v": "TemplateLibrary",
         "at": "2026-09-30T07:27:32Z",
@@ -132,35 +132,35 @@
         "origin": "authored"
       }
     },
-    "actor_user": {
+    "e_actor_user": {
       "name": {
         "v": "Владелец схемы",
         "at": "2026-09-30T07:27:32Z",
         "origin": "authored"
       }
     },
-    "tbl_templates": {
+    "e_tbl_templates": {
       "name": {
         "v": "templates.json",
         "at": "2026-09-30T07:27:32Z",
         "origin": "authored"
       }
     },
-    "store_assets": {
+    "e_store_assets": {
       "name": {
         "v": "content/",
         "at": "2026-09-30T07:27:32Z",
         "origin": "authored"
       }
     },
-    "stage_compile": {
+    "e_stage_compile": {
       "name": {
         "v": "Компиляция",
         "at": "2026-09-30T07:27:32Z",
         "origin": "authored"
       }
     },
-    "pic_model": {
+    "e_pic_model": {
       "name": {
         "v": "Модель",
         "at": "2026-09-30T07:27:32Z",

@@ -242,8 +242,8 @@ func main() {
 	var workspaceDir, sourceDir string
 	var noBrowser, dropUntyped bool
 	flag.IntVar(&port, "port", 8777, "Port to listen on; the next free one is taken if busy")
-	flag.StringVar(&workspaceDir, "workspace", "", "Workspace directory (default: found upward from the current directory)")
-	flag.StringVar(&sourceDir, "source-root", "", "Directory the code[].ref paths resolve against (default: the repository root above the workspace)")
+	flag.StringVar(&workspaceDir, "workspace", "", "Workspace directory, used instead of a *.semaps project file (default: the workspace of the *.semaps file found upward from the current directory)")
+	flag.StringVar(&sourceDir, "source-root", "", "Directory the code[].ref paths resolve against (default: source_root of the *.semaps file, i.e. the project root; with --workspace and no *.semaps: the repository root above the workspace)")
 	var here bool
 	flag.BoolVar(&noBrowser, "no-browser", false, "Do not open a browser")
 	flag.BoolVar(&here, "here", false, "Run the server in this console instead of a new window")
@@ -270,7 +270,7 @@ func main() {
 		flag.BoolVar(&sync.noRenames, "no-renames", false, "Treat rename candidates as one entity gone and one new")
 	}
 	flag.Usage = func() {
-		fmt.Fprintln(os.Stderr, "usage: semaps [flags] [dir | file.semaps]\n       semaps check [flags] [dir | file.semaps]\n       semaps migrate [--dry-run] [--drop-untyped-styles] [dir | file.semaps]\n       semaps sync [--extractor <id>] [--run <id> | --facts <file.json>] [flags] [dir | file.semaps]\n       semaps extract [--extractor <id>] [dir | file.semaps]\n       semaps doctor [dir | file.semaps]\n       semaps mcp [--project <id>] [dir | file.semaps]\n\nWith no arguments, finds a *.semaps project file upward from the current directory.\n`check` reports stale texts, views without an axis, broken code[].ref and the like;\nexit code 1 when anything is found.\n`sync` reconciles entities.json and relations.json with extractor facts; without\n--facts it runs the extractors listed in the .semaps file. `extract` only runs them;\n`doctor` shows which extractors and runtimes are found;\n`migrate` rewrites the workspace of a project of an older contract to the current one, in place,\nand prints what it did and what a human must decide (idempotent; --dry-run writes nothing);\n`mcp` serves the registry as MCP tools on stdio (docs/API.md §6). Flags go\nbefore the project argument. `semaps sync --help` lists its flags.")
+		fmt.Fprintln(os.Stderr, "usage: semaps [flags] [dir | file.semaps]\n       semaps check [flags] [dir | file.semaps]\n       semaps migrate [--dry-run] [--drop-untyped-styles] [dir | file.semaps]\n       semaps sync [--extractor <id>] [--run <id> | --facts <file.json>] [flags] [dir | file.semaps]\n       semaps extract [--extractor <id>] [dir | file.semaps]\n       semaps doctor [dir | file.semaps]\n       semaps mcp [--project <id>] [dir | file.semaps]\n       semaps install\n\nWith no arguments, finds a *.semaps project file upward from the current directory.\n`check` reports stale texts, views without an axis, broken code[].ref and the like;\nexit code 1 when anything is found.\n`sync` reconciles entities.json and relations.json with extractor facts; without\n--facts it runs the extractors listed in the .semaps file. `extract` only runs them;\n`doctor` shows which extractors and runtimes are found;\n`migrate` rewrites the workspace of a project of an older contract to the current one, in place,\nand prints what it did and what a human must decide (idempotent; --dry-run writes nothing);\n`mcp` serves the registry as MCP tools on stdio (docs/API.md §6);\n`install` (Windows) copies the exe to a stable folder, adds it to PATH and registers *.semaps. Flags go\nbefore the project argument. `semaps sync --help` lists its flags.")
 		flag.PrintDefaults()
 	}
 	flag.Parse()

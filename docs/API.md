@@ -55,18 +55,21 @@ The backend serves application assets and global workspace JSON. Project model r
 | `/app/` | `GET` | `text/html` | Entry point for the editor application |
 | `/app/assets/*` | `GET` | `application/javascript`, `text/css` | Bundled JavaScript, CSS, and media |
 | `/api/workspace` | `GET` | `application/json` | Projects and their views as the working model sees them (§2.2) |
-| `/styles.json` | `GET` | `application/json` | Shared style stylesheet (returns 404 if not created yet; client falls back to built-in styles) |
+| `/styles.json` | `GET` | `application/json` | Shared style stylesheet: the workspace copy, else the tool's default (`host/defaults/styles.json`); saving writes the workspace copy, which then overrides the default |
 | `/canvas.json` | `GET` | `application/json` | Numbers of the canvas: grid, block and container sizes, caption strip, padding, gaps (§2.1a). Always answers: the workspace copy, else the tool's default |
 | `/kinds.json` | `GET` | `application/json` | The **workspace** dictionary supplement, as written (404 when the workspace has none). It does not replace the default: the merged dictionary is `/api/kinds` (§2.1b) |
 | `/api/kinds` | `GET` | `application/json` | The dictionary — the tool's default with the workspace `kinds.json` added — §2.1b |
-| `/templates.json` | `GET` | `application/json` | Content-template registry (404 tolerated: client falls back to the built-in `title-only` template) |
-| `/content/index.json` | `GET` | `application/json` | Asset manifest for `@Asset` (404 tolerated: the picker is simply empty) |
+| `/templates.json` | `GET` | `application/json` | Content-template registry: the workspace copy, else the tool's default (`host/defaults/templates.json`) |
+| `/graph-filters.json` | `GET` | `application/json` | Filters of the code-graph page: the workspace copy, else the tool's default (`host/defaults/graph-filters.json`) |
+| `/content/index.json` | `GET` | `application/json` | Asset manifest for `@Asset`: the workspace copy, else the tool's default (`host/defaults/content/`) |
 | `/content/<file>.svg` | `GET` | `image/svg+xml` | An individual asset file named by the manifest; served as ordinary static content, no per-file endpoint |
 | `/projects/<project_id>/project.json` | `GET` | `application/json` | Project manifest |
 | `/projects/<project_id>/entities.json` | `GET` | `application/json` | Catalog of all entities |
 | `/projects/<project_id>/relations.json` | `GET` | `application/json` | Catalog of all relations |
 | `/projects/<project_id>/text.<lang>.json` | `GET` | `application/json` | Localized strings (e.g. `text.ru.json`) |
 | `/projects/<project_id>/views/<view_id>.view.json` | `GET` | `application/json` | Axis, placement & geometry layout |
+| `/api/source?file=<ref>` | `GET`, `HEAD` | `text/plain` | A source file as is, `file` being a `code[].ref` resolved against the source root (`source_root` of the `.semaps` file, §4). `HEAD` answers the size only. `400` without `file`, `403` when the path leaves the source root, `404` when it is not a file |
+| `/api/source/check` | `GET`, `POST` | `application/json` | Which source files exist: `GET ?file=<ref>` or `POST` with a JSON array of refs → `{"<ref>": true \| false}`; a ref outside the source root is `false`. Read-only, needs no key |
 
 There is no `containers.json`: a container is an entity of a container kind (`CONTRACT.md` §6, §8.2). There is no `relation-types.json` either: a relation type is a string on the relation and the dictionary describes it (`CONTRACT.md` §5, §6). A workspace that still has either is refused by the loader and by `semaps check` and rewritten by `semaps migrate`.
 
@@ -178,9 +181,9 @@ the default view reference, and text keys as needed. It then reloads the model a
 
 ### 3.4. Working model API
 
-The running host owns one in-memory `core.Model` per project. Contract files stay unchanged until Save. Every accepted batch is appended to `<project root>/.semaps/work/<project>.jsonl`; startup replays it. A project-wide Save writes dirty files in contract v5 format (two spaces, no HTML escaping, existing key order), then clears the journal. Discard reloads the selected scope from files and rewrites the journal for remaining edits. There is no host Undo or field merge.
+The running host owns one in-memory `core.Model` per project. Contract files stay unchanged until Save. Every accepted batch is appended to the work journal `<workspace>/.semaps/work/<project>.jsonl` (inside the workspace, which may lie below the project root); startup replays it. A project-wide Save writes dirty files in contract v5 format (two spaces, no HTML escaping, existing key order), then clears the journal. Discard reloads the selected scope from files and rewrites the journal for remaining edits. There is no host Undo or field merge.
 
-The host creates `<project root>/.semaps/host.json` containing `{pid, port, key}`. The key is also embedded as `<meta name="semaps-key" content="…">` in `/app/` HTML. Every mutating endpoint requires `Authorization: Bearer <key>` and the existing same-origin check; missing/wrong key returns `401`. This includes `/api/save`, `/api/move`, and the tool API writes. `.semaps/` is never served as workspace static content. The host listens on localhost.
+Separately, the host creates `<project root>/.semaps/host.json` (the folder next to the `.semaps` project file, not the workspace's) containing `{pid, port, key}`. The key is also embedded as `<meta name="semaps-key" content="…">` in `/app/` HTML. Every mutating endpoint requires `Authorization: Bearer <key>` and the existing same-origin check; missing/wrong key returns `401`. This includes `/api/save`, `/api/move`, and the tool API writes. `.semaps/` is never served as workspace static content. Both `.semaps/` folders (the project root's, with `host.json` and the logs, and the workspace's, with the journal) carry their own `.gitignore` containing `*`, written when the host first writes into them. The host listens on localhost.
 
 | Path | Method | Response / effect |
 |---|---|---|
@@ -301,6 +304,7 @@ semaps sync [--extractor <id>] [--run <id>] [--dry-run] [--no-renames] [flags] [
 semaps sync --facts <file.json | -> [--project <id>] [--dry-run] [--no-renames] [flags] [dir | file.semaps]
 semaps extract [--extractor <id>] [dir | file.semaps]
 semaps doctor [dir | file.semaps]
+semaps mcp [--project <id>] [dir | file.semaps]
 semaps install
 ```
 
@@ -558,12 +562,15 @@ rule comes back as a tool error (`isError: true`) whose text names the rule. Not
 then.
 
 **Promises.**
-- `id`s are minted by `core`, never passed in: `r_<from>_<to>_<type>` for an authored relation,
-  `_2` on collision.
+- `id`s are minted by `core` unless the tool takes one: `r_<from>_<to>_<type>` for an authored
+  relation, `_2` on collision; `add_entity` takes an optional `id` (an existing one is refused) and
+  `add_container` names the existing `entity` it frames.
 - Texts are written `origin: authored`, `at` = now in UTC; `from`/`fromHash` of a translation go.
   A relation with `origin: code` takes no text (CONTRACT §4); a `name` text is taken only by an
   authored entity (CONTRACT §7.1) — an entity from code has its name in `entities.json`.
-- **Nothing is deleted**: there is no tool for it.
+- **Nothing from code is deleted.** `remove` deletes authored records only, on a human's request
+  (`requestedByHuman`), and the deletion is unsaved; `discard` drops unsaved changes, also on a
+  human's request.
 - Geometry of a view is written only by `place_entities` and the geometry tools below with
   `requestedByHuman: true`, and an entity already on the view is refused, not moved (CONTRACT §8.2
   p. 3). An agent works on the canvas **only through these tools**, never by editing files;
@@ -589,7 +596,7 @@ reject anything else.
 
 `mcp.tools`:
 - `one` (default) — `get_graph`, `find_node`, `graph_formats`, as described below.
-- `narrow` — ten single-purpose tools instead of `get_graph`, each with one required `name`
+- `narrow` — nine single-purpose tools instead of `get_graph`, each with one required `name`
   (a node name, or an id from `find_node`), an optional `depth` (default `1`) and the usual
   optional `project`; `get_graph` and `graph_formats` are not offered in this set (`find_node`
   is, in both sets). Each is a thin wrapper over the exact same walk `get_graph` uses, with
@@ -619,7 +626,7 @@ the node the walk came from; asking about a type lifts its methods' calls up to 
 writing a property counts as a `calls` edge; a cut answer says so in its first line; a plain name
 is enough for `around`/`name` — are said ONCE, in the server's own `Instructions`
 (`serverInstructions`, `PLAN_20260928-7` step 4: the `narrow` set exists for small models, and
-repeating that explanation in each of its ten tools defeated the point), not in every tool's own
+repeating that explanation in each of its nine tools defeated the point), not in every tool's own
 description. `Instructions` is given to a client once, at initialisation, and the Go SDK gives no
 way to change it on a live `*mcp.Server` — so the host keeps a small pool of them instead of one
 (`mcpServerPool`, `host/mcp_http.go`). A change of `mcp.tools`/`mcp.description` (PUT
@@ -660,7 +667,7 @@ project` (`explainArgumentErrors`, `host/mcp_errors.go`, read from the server's 
 `tools/list`). An error of the tool itself gets no such line.
 
 **Log.** Every tool call — the tool, its arguments, time, the error if any — is a JSON line in
-`<project root>/.semaps/logs/mcp-<date>.jsonl` (kept 14 days; the folder carries its own
+`<project root>/.semaps/logs/mcp-<date>.jsonl` (kept 14 days; like every `.semaps/` folder it carries its own
   `.gitignore`), and a short line on stderr, which clients keep in their server logs. Calls from the
 editor's sandbox land in the same file.
 
@@ -675,11 +682,11 @@ editor's sandbox land in the same file.
 | `get_relations` | `entity?`, `direction?` = `both` \| `out` \| `in`, `type?` (a prefix ending with `.` matches `holds.`), `status?`, `limit?` = 200 | `{total, relations}` |
 | `get_kinds` | `lang?` = `ru`, `project?` | The dictionary (§2.1b) in one language: `{groups:[{id,name,description?,kinds:[{id,name,description?,container,style?}]}], relationGroups:[{id,name,description?,types:[{id,name,description?,style?,visibility?}]}], unknown:{kinds, relationTypes}}`. `container: true` marks a kind whose entity is a frame that holds other placements; `style` is the base style of a kind or relation type (empty: the style whose id is the type, `CONTRACT.md` §11.5); `visibility` is a relation type's default on a view that decided nothing (absent: the view decides, `CONTRACT.md` §8.5). `unknown` lists the kinds of the project's entities and the types of its relations that the dictionary lacks. The agent reads it before `add_entity`, `add_container` and `add_relation` to choose a kind or type that exists; a type of its own it adds by writing an entry into the workspace `kinds.json` (there is no tool for that) |
 | `get_view` | `view` (a view id, or a container reference `v_ops#e_a` for that subtree only), `detail?` (`full` \| `tree`), `hidden?` = `false`, `project?` | The text answer has two parts: first the canvas block (`core.Canvas.Describe`, the same lines as in `layout_guide`: units, axes, grid and that the host does not snap, block/container default and minimum sizes, caption strip, padding, gaps), then the data as JSON, given **once**: there is no `structuredContent` copy of it. `{view:{id,project,detail,axis,axisInherited?,relations,routing,scope?}, placements, edges \| lines, hiddenEdges?, unsaved}`. **`detail`**: `full` — every placement nested in its container and `edges`, the list of visible lines; `tree` — containers only, nested, each with its rectangle and `blocks` (how many non-container placements lie directly in it), the blocks that lie in no container in full, and `lines` (the number of visible lines) instead of `edges`. Without `detail` the size of the scope (the whole view, or the referenced container's subtree, its own placement included) decides: `full` up to `DefaultMcpViewFullMax` = 60 placements (`host/projectfile.go`, a constant, not a `.semaps` setting), else `tree` — and then the **first line** of the text answer says so and how to see more (a container reference `view#e_x` reads that container in full, `detail: "full"` forces everything), as a cut `get_graph` answer does. A `detail` that was asked for is never replaced. A container reference works with both details. **`hidden: true`** adds `hiddenEdges`: the relations with both ends placed (a line touching the scope, for a container reference) that the rule below hides, each in the shape of an `edges` entry — `core.Model.edgesByRule` splits the relations into shown and hidden with one copy of the rule; without `hidden` the key is absent. `axis` is the view's own, else `project.defaultAxis` with `axisInherited: true` (CONTRACT §8.1). `placements` is a tree: each has `entity`, `name`, `kind` (of its entity), `container` (the kind is a container kind), `parent` (`null` at the top), absolute rectangle `x,y,width,height` (default size when the file has none), `styleId`, `override`, `template`, `collapsed`; a container also has `children` (its placements, nested the same way; `[]` when it holds nothing). `edges` are the lines the view shows, each `{id,from,to,type,styleId?,override?,routing?}`: always the registry's relations by CONTRACT §8.5 (both ends placed, the type's dictionary visibility else `view.relations.default`, `view.relations.except` flipping it), with `styleId`, `override`, `routing` from the view's `edges` entry of the same id when there is one. A hidden relation is not in `edges`: `hidden: true` lists it in `hiddenEdges`; `view.relations` holds the view's own `default` and `except`. `unsaved` lists the view's unsaved objects with their authors |
-| `layout_guide` | — | Markdown for working on a view: how to look (`get_view`, `render_view`), each view tool, the workflow (sample → decide → apply in steps → check → say what is unsaved, give the link), `requestedByHuman`, no grid snapping, and the canvas block. No JSON file format in it. Project-independent; the canvas numbers come from `canvas.json` (§2.1a) |
+| `layout_guide` | — | Markdown for working on a view: how to look (`get_view`, `render_view`), each view tool, recommendations for composing an architecture view (habits only: one question per view, zones as coloured containers, one direction of flow, kinds and short names, dictionary relation types, orthogonal lines with corridors), the workflow (sample → decide → apply in steps → check → say what is unsaved, give the link), `requestedByHuman`, no grid snapping, and the canvas block. No JSON file format in it. Project-independent; the canvas numbers come from `canvas.json` (§2.1a) |
 | `render_view` | `project?`, `view?` \| `ref?` (`view#entity`), `rect?` (`{x,y,width,height}`), `scale?` = 1 (0.25–4), `maxSize?` = 1600 (cap 4096) | a picture of any view of the project (not only the one on the human's screen) from an editor open on the project, over the bridge of §3.4 (`render=1`, `POST /api/render/{id}`): an MCP `ImageContent` (`image/png`) plus a text with the problems as lines `kind: text (ids)` or `no problems found`, the model rectangle the editor reports having drawn (margin included) and the scale in pixels per model unit, and a note that it is the editor's unsaved state. No editor subscribed: error «no editor is open on this project: open the editor on the project (`/app/#<view>`) and repeat»; no answer in 20 s: an error saying the editor did not answer. Read-only, no `requestedByHuman` |
 | `get_text` | `lang`, `key` | the entry of `key` in `text.<lang>.json`, `{}` when none |
 | `doctor` | — | `{extractors, extractorsOK, findings}`: `semaps doctor` and `semaps check` |
-| `get_graph` | `project?`, `missing?`, `level?`, `kinds?`, `around?`, `follow?`, `depth?` (a number 1–5, or the string `all` along inheritance relations only — `depth` is `any` in the schema and described there), `fanout?`, `container?`, `fields?`, `limit?`, `listCap?`, `format?`, `template?` | Same parameters and order of filters as `GET /api/graph/{project}` (§5), with differences forced by the tool's typed JSON schema rather than a query string: `missing` is a plain boolean (default `false`); `follow` is a list of strings, not a comma string, defaulting to `DefaultFollow` when omitted/`null`; `fields` is a list of strings, from `members`, `via`, `position`, `memberLines`, `dynamic` — omitted/`null` is the default (`via,position,dynamic`), an explicit empty list (`[]`) is none, the same "absent vs empty" distinction §5 makes with `fields=`. `dynamic` is a node's marks of blind spots, below. `around` accepts a name as well as an id (part 2): an ambiguous name is a tool error listing the candidates, an unresolved one names the nearest matches, a hidden-as-missing one says so. A `json`/`json-compact` `format` is returned both as the tool's text content (the same bytes) and as `structuredContent`: `{nodes, edges, facts, stats, truncated, fullNodes?, fullEdges?}`. Any other format, or a `template`, is text content only, no `structuredContent`. Without `around` or `container`, the node list is cut to `limit` and `truncated: true` is reported alongside `fullNodes`/`fullEdges`, the untruncated counts — an agent asking for a whole project's graph never gets it all by accident. `around`/`container` bound the answer themselves and are never truncated. `limit` and `listCap`, when omitted/`0`, default to the `.semaps` `mcp.limit`/`mcp.list_cap` settings (`200`/`50` unless changed, `PLAN_20260928-7` step 2); given, they win over the setting. `format`, when omitted, defaults to the `.semaps` `mcp.format` setting (`core.DefaultToolFormat`, `"facts"` unless changed) — call `graph_formats` to see the alternatives, or pass `template` for a shape of your own. |
+| `get_graph` | `project?`, `missing?`, `level?`, `kinds?`, `around?`, `lift?`, `follow?`, `depth?` (a number 1–5, or the string `all` along inheritance relations only — `depth` is `any` in the schema and described there), `fanout?`, `container?`, `fields?`, `limit?`, `listCap?`, `format?`, `template?` | Same parameters and order of filters as `GET /api/graph/{project}` (§5), with differences forced by the tool's typed JSON schema rather than a query string: `missing` is a plain boolean (default `false`); `lift` is `types` or `none`, with the default of `GET /api/graph/{project}`; `follow` is a list of strings, not a comma string, defaulting to `DefaultFollow` when omitted/`null`; `fields` is a list of strings, from `members`, `via`, `position`, `memberLines`, `dynamic` — omitted/`null` is the default (`via,position,dynamic`), an explicit empty list (`[]`) is none, the same "absent vs empty" distinction §5 makes with `fields=`. `dynamic` is a node's marks of blind spots, below. `around` accepts a name as well as an id (part 2): an ambiguous name is a tool error listing the candidates, an unresolved one names the nearest matches, a hidden-as-missing one says so. A `json`/`json-compact` `format` is returned both as the tool's text content (the same bytes) and as `structuredContent`: `{nodes, edges, facts, stats, truncated, fullNodes?, fullEdges?}`. Any other format, or a `template`, is text content only, no `structuredContent`. Without `around` or `container`, the node list is cut to `limit` and `truncated: true` is reported alongside `fullNodes`/`fullEdges`, the untruncated counts — an agent asking for a whole project's graph never gets it all by accident. `around`/`container` bound the answer themselves and are never truncated. `limit` and `listCap`, when omitted/`0`, default to the `.semaps` `mcp.limit`/`mcp.list_cap` settings (`200`/`50` unless changed, `PLAN_20260928-7` step 2); given, they win over the setting. `format`, when omitted, defaults to the `.semaps` `mcp.format` setting (`core.DefaultToolFormat`, `"facts"` unless changed) — call `graph_formats` to see the alternatives, or pass `template` for a shape of your own. |
 | `graph_formats` | — | `{formats, relations, terms, defaultFollow, template, defaults}`, the same shape as `GET /api/graph-formats` (§5) |
 | `find_node` | `project?`, `q`, `limit?` = 50 | `{candidates: [{id, kind, file?, line?}]}`: substring search (part 2) over node names/ids, the same as `GET /api/graph/{project}/find` |
 | `who_extends`, `what_it_extends`, `who_holds`, `what_it_holds`, `who_calls`, `what_it_calls`, `where_created`, `what_is_inside`, `where_it_lies` (`mcp.tools: narrow` only) | `name` (a node name or id), `depth?` = 1, `project?` | the identical text answer `get_graph` would give with `around: name` and this tool's fixed `follow` (see the table above) — same defaults, same format |

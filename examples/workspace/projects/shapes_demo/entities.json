@@ -1,21 +1,21 @@
 {
   "entities": [
     {
-      "id": "actor_user",
+      "id": "e_actor_user",
       "kind": "external",
       "origin": "authored",
       "status": "present",
       "members": []
     },
     {
-      "id": "uc_edit",
+      "id": "e_uc_edit",
       "kind": "usecase",
       "origin": "authored",
       "status": "present",
       "members": []
     },
     {
-      "id": "cls_template",
+      "id": "e_cls_template",
       "kind": "class",
       "origin": "authored",
       "status": "present",
@@ -58,7 +58,7 @@
       ]
     },
     {
-      "id": "tbl_templates",
+      "id": "e_tbl_templates",
       "kind": "database",
       "origin": "authored",
       "status": "present",
@@ -81,28 +81,28 @@
       ]
     },
     {
-      "id": "store_assets",
+      "id": "e_store_assets",
       "kind": "database",
       "origin": "authored",
       "status": "present",
       "members": []
     },
     {
-      "id": "dec_valid",
+      "id": "e_dec_valid",
       "kind": "decision",
       "origin": "authored",
       "status": "present",
       "members": []
     },
     {
-      "id": "stage_compile",
+      "id": "e_stage_compile",
       "kind": "stage",
       "origin": "authored",
       "status": "present",
       "members": []
     },
     {
-      "id": "pic_model",
+      "id": "e_pic_model",
       "kind": "concept",
       "origin": "authored",
       "status": "present",

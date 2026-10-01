@@ -5,7 +5,7 @@ package main
 // PLAN_20260928-7 step 4). Written out in full as plain strings, not
 // assembled from fragments, so a person can read and edit exactly what an
 // agent will receive. Only the graph tools (get_graph, find_node,
-// graph_formats, and the ten narrow tools) have levels; every other tool of
+// graph_formats, and the nine narrow tools) have levels; every other tool of
 // the server (list_projects, get_entity, set_text, ...) keeps the single
 // description given at mcp.AddTool in host/mcp.go.
 //
@@ -91,9 +91,9 @@ const narrowTrapsHelp = "Traps found in practice: " +
 // get_graph's own parameters (`around`, `follow`, `lift`, `fanout`);
 // `narrow`'s does not, since those tools have none of them. This is where
 // "how to read a line" and "the traps" live now — said once here, not
-// repeated in ten tool descriptions (PLAN_20260928-7 step 4, the narrow set
+// repeated in nine tool descriptions (PLAN_20260928-7 step 4, the narrow set
 // existing for small models, whose standard level cost 3x the general tool
-// because the same explanation was repeated in each of its ten tools).
+// because the same explanation was repeated in each of its nine tools).
 func serverInstructions(toolsSet, level string) string {
 	return mentalModel(toolsSet == "narrow", level) + " " + serverInstructionsBody(toolsSet, level)
 }
@@ -243,7 +243,7 @@ var graphToolDescriptions = map[string]toolDescriptions{
 // to build its three description levels without repeating, in every tool,
 // what get_graph's own description already says once (PLAN_20260928-7 step
 // 4: the narrow set exists for small models, and repeating the same long
-// explanation in each of its ten tools defeats that purpose — how to read a
+// explanation in each of its nine tools defeats that purpose — how to read a
 // line and the traps live in the server's instructions instead, see
 // serverInstructions above). Brief is one sentence naming what the tool
 // lists; Line1/Line2 are the first two lines a one-hop example call would
