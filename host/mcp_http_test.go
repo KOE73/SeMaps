@@ -26,7 +26,7 @@ func TestMCPHTTPSettingsChangeReachesNewSessionsInstructionsToo(t *testing.T) {
 	defer fixture.Close()
 	mux := http.NewServeMux()
 	box := newMcpSettingsBox(mcpSettings{Tools: "one", Description: "standard"})
-	registerMCPHTTP(mux, project{Root: models.workspace}, models.workspace, models.workspace, models, nil, box)
+	registerMCPHTTP(mux, project{Root: models.workspace}, models.workspace, models.workspace, models, nil, box, nil)
 	srv := httptest.NewServer(mux)
 	defer srv.Close()
 
@@ -98,7 +98,7 @@ func TestMCPHTTPUsesLiveModelAndRequiresHumanSave(t *testing.T) {
 	models, fixture := hostModelFixture(t)
 	defer fixture.Close()
 	mux := http.NewServeMux()
-	registerMCPHTTP(mux, project{Root: models.workspace}, models.workspace, models.workspace, models, nil, nil)
+	registerMCPHTTP(mux, project{Root: models.workspace}, models.workspace, models.workspace, models, nil, nil, nil)
 	srv := httptest.NewServer(mux)
 	defer srv.Close()
 	res, err := srv.Client().Post(srv.URL+"/mcp", "application/json", strings.NewReader(`{}`))

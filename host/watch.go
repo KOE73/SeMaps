@@ -34,6 +34,9 @@ var alwaysSkipDirs = map[string]bool{
 var watchExtensions = map[string]map[string]bool{
 	"csharp":     extSet(".cs", ".csproj", ".sln", ".props", ".targets"),
 	"typescript": extSet(".ts", ".tsx", ".mts", ".cts", ".js", ".jsx"),
+	// Entries may also be whole file names (go.mod, go.sum): relevantChange
+	// tries the base name as well as the extension.
+	"go": extSet(".go", "go.mod", "go.sum"),
 }
 
 func extSet(exts ...string) map[string]bool {
@@ -53,7 +56,7 @@ func relevantChange(language, path string) bool {
 		return true
 	}
 	base := filepath.Base(path)
-	if exts[strings.ToLower(filepath.Ext(base))] {
+	if exts[strings.ToLower(filepath.Ext(base))] || exts[strings.ToLower(base)] {
 		return true
 	}
 	if language == "typescript" {
@@ -165,6 +168,7 @@ type fileWatcher struct {
 
 	mu      sync.Mutex
 	timer   *time.Timer
+	armed   bool // the quiet-period timer is set: a watch run is about to start
 	running bool
 	pending bool
 	stopped bool
@@ -261,6 +265,7 @@ func (w *fileWatcher) scheduleRun() {
 	if w.stopped {
 		return
 	}
+	w.armed = true
 	if w.timer == nil {
 		w.timer = time.AfterFunc(w.quiet, w.fire)
 	} else {
@@ -273,6 +278,7 @@ func (w *fileWatcher) scheduleRun() {
 // follows the one in flight, never a run per change.
 func (w *fileWatcher) fire() {
 	w.mu.Lock()
+	w.armed = false
 	if w.stopped {
 		w.mu.Unlock()
 		return
@@ -347,6 +353,8 @@ func newWatchManager(runs *runStore) *watchManager {
 // per entry with `watch: true`, none for --workspace (proj.File == "", the
 // caller simply never constructs a manager then) or a project with no such
 // entry. Cheap enough to call on every settings change instead of diffing.
+// It starts no run: a watcher sees only changes made while it runs, and what
+// happened before is for graph_status and the `extract` tool to show and fix.
 func (m *watchManager) Reload(proj project) {
 	m.mu.Lock()
 	defer m.mu.Unlock()
@@ -365,6 +373,31 @@ func (m *watchManager) Reload(proj project) {
 		}
 		m.watchers[e.ID] = w
 	}
+}
+
+// watchState is what graph_status says of one entry's watcher.
+type watchState struct {
+	// Watching: a watcher is active for the entry (`watch: true` and started).
+	Watching bool `json:"watching"`
+	// RunPending: a change was seen and a watch run has not started yet (the
+	// quiet period is running, or one more run waits for the run in flight).
+	RunPending bool `json:"runPending"`
+}
+
+// state reports the watcher of entry `id`; the zero value when there is none.
+func (m *watchManager) state(id string) watchState {
+	if m == nil {
+		return watchState{}
+	}
+	m.mu.Lock()
+	w := m.watchers[id]
+	m.mu.Unlock()
+	if w == nil {
+		return watchState{}
+	}
+	w.mu.Lock()
+	defer w.mu.Unlock()
+	return watchState{Watching: true, RunPending: w.armed || w.pending}
 }
 
 // Stop tears down every watcher; called once, on host shutdown.
