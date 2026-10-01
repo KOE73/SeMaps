@@ -37,6 +37,14 @@ export interface RouteRequest {
    */
   readonly fromSlide?: Slide;
   readonly toSlide?: Slide;
+  /**
+   * Where the outline really is, for a shape whose side is not straight: how
+   * much deeper the outline lies at a coordinate along the side than at the
+   * port the end was given (`from`/`to` are already on the outline there). A
+   * sliding end keeps the port's depth; this moves it onto the outline.
+   */
+  readonly fromDepth?: (along: number) => number;
+  readonly toDepth?: (along: number) => number;
   /** Debugging only: a searching router hands over the grid it searched. */
   readonly onGrid?: (xs: readonly number[], ys: readonly number[]) => void;
 }

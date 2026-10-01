@@ -1254,7 +1254,8 @@ export class DiagramCanvas {
     taken: ReadonlyMap<string, number[]>,
   ): Partial<Record<"fromSlide" | "toSlide", Slide>> {
     const shape = this.styleLibrary.blockStyle(owner).shape ?? "rect";
-    if (shape !== "rect") return {};
+    // A shape slides when its side is straight or it can say where its outline is.
+    if (shape !== "rect" && !this.rendererFor(owner).outlineDepth) return {};
     const margin = Math.max(inset, 0) + 6;
     const horizontal = side === "north" || side === "south";
     const lo = (horizontal ? rect.x : rect.y) + margin;
@@ -1304,16 +1305,16 @@ export class DiagramCanvas {
    * shared scene rather than rebuilding it, so the scene stays one thing built
    * once (ADR_20260903 §2.8).
    */
-  private exclusionsFor(from: DiagramElement, to: DiagramElement): Set<string> {
-    const ids = new Set<string>();
+  /** The edge's own two shapes, and the containers holding either of them. */
+  private exclusionsFor(from: DiagramElement, to: DiagramElement): { ends: Set<string>; holders: Set<string> } {
+    const ends = new Set([from.id, to.id]);
+    const holders = new Set<string>();
     for (const start of [from, to]) {
-      let cursor: DiagramElement | null = start;
-      while (cursor !== null) {
-        ids.add(cursor.id);
-        cursor = cursor.parent;
+      for (let cursor = start.parent; cursor !== null; cursor = cursor.parent) {
+        if (!ends.has(cursor.id)) holders.add(cursor.id);
       }
     }
-    return ids;
+    return { ends, holders };
   }
 
   /**
@@ -1602,7 +1603,12 @@ export class DiagramCanvas {
     for (const el of doc.elements()) {
       if (ctx.isHidden(el)) continue;
       const rect = this.rendererFor(el).visibleRect(el, ctx);
-      if (isContainer(el)) zones.push(areaZone(rect, el.id), ...borderZones(rect, el.id));
+      // A container gets the blocks' halo outside its frame too: pricing its inside pushes a
+      // route out, and without the halo it would settle tracing the frame from outside.
+      if (isContainer(el)) {
+        const header = this.styleLibrary.blockStyle(el).header?.height ?? 0;
+        zones.push(areaZone(rect, el.id), ...borderZones(rect, el.id, header), ...haloZones(rect, el.id));
+      }
       else zones.push(solidZone(rect, el.id), ...haloZones(rect, el.id));
     }
     const scene: RouteScene = { zones };
@@ -1646,16 +1652,21 @@ export class DiagramCanvas {
       const watched = this._debugRouting && this.selection?.kind === "edge" && this.selection.id === r.edge.id;
       const fromKey = `${r.from.owner.id}#${fromSlot.side}`;
       const toKey = `${r.to.owner.id}#${toSlot.side}`;
+      const fromPoint = this.rendererFor(r.from.owner).pointAt(r.from.rect, fromSlot);
+      const toPoint = this.rendererFor(r.to.owner).pointAt(r.to.rect, toSlot);
       const base = {
-        from: this.rendererFor(r.from.owner).pointAt(r.from.rect, fromSlot),
-        to: this.rendererFor(r.to.owner).pointAt(r.to.rect, toSlot),
+        from: fromPoint,
+        to: toPoint,
+        ...depthFrom("fromDepth", this.rendererFor(r.from.owner), r.from.rect, fromSlot.side, fromPoint),
+        ...depthFrom("toDepth", this.rendererFor(r.to.owner), r.to.rect, toSlot.side, toPoint),
         fromSide: fromSlot.side, toSide: toSlot.side,
         fromRect: r.from.rect, toRect: r.to.rect,
         fromInset, toInset,
         fromMarkerOffset: getMarkerOffset(edgeStyle.source.shape, edgeStyle.source.size ?? DIAGRAM_CONFIG.routing.defaultMarkerSize),
         toMarkerOffset: getMarkerOffset(edgeStyle.target.shape, edgeStyle.target.size ?? DIAGRAM_CONFIG.routing.defaultMarkerSize),
       };
-      const own = zonesFor(scene, this.exclusionsFor(r.from.owner, r.to.owner));
+      const excluded = this.exclusionsFor(r.from.owner, r.to.owner);
+      const own = zonesFor(scene, excluded.ends, excluded.holders);
       const job = (lanes: readonly RouteZone[], takenNow: ReadonlyMap<string, number[]>): Route => {
         const fromSlide = this.slidesFor(r.from.owner, r.from.rect, fromSlot.side, fromInset, "fromSlide", takenNow);
         const toSlide = this.slidesFor(r.to.owner, r.to.rect, toSlot.side, toInset, "toSlide", takenNow);
@@ -1992,6 +2003,25 @@ function crosses(p: Point, q: Point, r: Point, t: Point): boolean {
 
 function overlap(a1: number, a2: number, b1: number, b2: number): number {
   return Math.min(Math.max(a1, a2), Math.max(b1, b2)) - Math.max(Math.min(a1, a2), Math.min(b1, b2));
+}
+
+/**
+ * The route request's depth for one end: how much deeper the shape's outline
+ * lies at a coordinate along the side than at the port it was given. Nothing for
+ * a shape whose side is the outline.
+ */
+function depthFrom(
+  key: "fromDepth" | "toDepth",
+  renderer: ElementRenderer,
+  rect: Rect,
+  side: Side,
+  port: Point,
+): Partial<Record<"fromDepth" | "toDepth", (along: number) => number>> {
+  const depth = renderer.outlineDepth?.bind(renderer);
+  if (!depth) return {};
+  const horizontal = side === "east" || side === "west";
+  const at = depth(rect, side, horizontal ? port.y : port.x);
+  return { [key]: (along: number) => depth(rect, side, along) - at };
 }
 
 function pushTaken(taken: Map<string, number[]>, key: string, value: number): void {

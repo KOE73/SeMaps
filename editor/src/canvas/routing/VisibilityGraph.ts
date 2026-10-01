@@ -86,8 +86,9 @@ export function findRoute(query: RouteQuery): Point[] | null {
   if (!finite(from) || !finite(to)) return null;
   if (query.fromSlide || query.toSlide) return findSlidingRoute(query);
 
-  const enter = stubPoint(from, fromSide, STUB);
-  const exit = stubPoint(to, toSide, STUB);
+  const stub = stubLength(from, to, fromSide, toSide);
+  const enter = stubPoint(from, fromSide, stub);
+  const exit = stubPoint(to, toSide, stub);
 
   const xs = axisLines("x", [from.x, to.x, enter.x, exit.x], zones, from, to);
   const ys = axisLines("y", [from.y, to.y, enter.y, exit.y], zones, from, to);
@@ -121,8 +122,9 @@ export function findRoute(query: RouteQuery): Point[] | null {
  */
 function findSlidingRoute(query: RouteQuery): Point[] | null {
   const { from, to, fromSide, toSide, zones } = query;
-  const enter = stubPoint(from, fromSide, STUB);
-  const exit = stubPoint(to, toSide, STUB);
+  const stub = stubLength(from, to, fromSide, toSide);
+  const enter = stubPoint(from, fromSide, stub);
+  const exit = stubPoint(to, toSide, stub);
   const fromAxis = alongAxis(fromSide);
   const toAxis = alongAxis(toSide);
 
@@ -274,6 +276,31 @@ function round(v: number): number {
 
 function finite(p: Point): boolean {
   return Number.isFinite(p.x) && Number.isFinite(p.y);
+}
+
+/**
+ * How far both ends step out before they may turn: the full stub, unless the
+ * two sides face each other closer than two stubs. Then each takes half the gap,
+ * so the stubs meet instead of passing each other — passed stubs leave a goal
+ * behind the start, and a route that may not double back can only reach it by a
+ * loop. A gap of 20 between two blocks is one straight line, not four bends.
+ */
+function stubLength(from: Point, to: Point, fromSide: Side, toSide: Side): number {
+  const out = sideVector(fromSide);
+  const back = sideVector(toSide);
+  if (out.x !== -back.x || out.y !== -back.y) return STUB;
+  const gap = (to.x - from.x) * out.x + (to.y - from.y) * out.y;
+  if (gap <= 0) return STUB;
+  return Math.min(STUB, gap / 2);
+}
+
+function sideVector(side: Side): Point {
+  switch (side) {
+    case "north": return { x: 0, y: -1 };
+    case "south": return { x: 0, y: 1 };
+    case "west": return { x: -1, y: 0 };
+    case "east": return { x: 1, y: 0 };
+  }
 }
 
 function stubPoint(p: Point, side: Side, distance: number): Point {

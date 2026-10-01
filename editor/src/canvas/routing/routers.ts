@@ -237,6 +237,27 @@ function usable(p: Point, fallback: Point): Point {
 }
 
 /**
+ * Both ends moved in along their sides' normals onto the real outline (the
+ * request's depths). The last segment runs along that normal, so the line stays
+ * square to the side; only its length changes.
+ */
+function landOnOutline(points: Point[], req: RouteRequest): Point[] {
+  if (points.length < 2 || (!req.fromDepth && !req.toDepth)) return points;
+  const out = [...points];
+  const sink = (i: number, side: Side, depth: ((along: number) => number) | undefined) => {
+    if (!depth) return;
+    const p = out[i]!;
+    const d = depth(isHorizontal(side) ? p.y : p.x);
+    if (!Number.isFinite(d) || d === 0) return;
+    const n = sideVector(side);
+    out[i] = { x: p.x - n.x * d, y: p.y - n.y * d };
+  };
+  sink(0, req.fromSide, req.fromDepth);
+  sink(out.length - 1, req.toSide, req.toDepth);
+  return out;
+}
+
+/**
  * The mode that routes properly: a search over the scene, priced by length,
  * bends and the zones it passes through.
  */
@@ -255,7 +276,10 @@ export class OrthogonalRouter implements EdgeRouter {
       ...(req.toSlide ? { toSlide: req.toSlide } : {}),
       ...(req.onGrid ? { onGrid: req.onGrid } : {}),
     });
-    const points = searched ?? simplify(ladder(pFrom, req.fromSide, pTo, req.toSide));
+    const points = landOnOutline(
+      searched ?? simplify(ladder(pFrom, req.fromSide, pTo, req.toSide)),
+      req,
+    );
     // The search may have slid the ends along their sides; labels follow the real ends.
     const start = points[0] ?? pFrom;
     const end = points[points.length - 1] ?? pTo;

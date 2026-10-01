@@ -52,6 +52,8 @@ export interface RouteZone {
   readonly area?: boolean;
   /** Priced, but no wall for nudging: a block's halo, which a lane may sit in. */
   readonly halo?: boolean;
+  /** The band straddling a container's outline. */
+  readonly frame?: boolean;
 }
 
 export interface RouteScene {
@@ -174,7 +176,7 @@ export function areaZone(rect: Rect, ownerId: string): RouteZone {
  * what a per-length price on a narrow band discourages while leaving a
  * perpendicular crossing almost free.
  */
-export function borderZones(rect: Rect, ownerId: string, clearance = CLEARANCE): RouteZone[] {
+export function borderZones(rect: Rect, ownerId: string, header = 0, clearance = CLEARANCE): RouteZone[] {
   const band = clearance * 2;
   const r = right(rect);
   const b = bottom(rect);
@@ -182,6 +184,7 @@ export function borderZones(rect: Rect, ownerId: string, clearance = CLEARANCE):
     rect: { x, y, width, height },
     weight: BORDER_WEIGHT,
     ownerId,
+    frame: true,
   });
 
   return [
@@ -189,6 +192,9 @@ export function borderZones(rect: Rect, ownerId: string, clearance = CLEARANCE):
     make(rect.x - clearance, b - clearance, rect.width + band, band),
     make(rect.x - clearance, rect.y - clearance, band, rect.height + band),
     make(r - clearance, rect.y - clearance, band, rect.height + band),
+    // The caption strip reads as part of the frame: a line running along it
+    // crosses the title, so it is priced like the outline — crossing it is fine.
+    ...(header > clearance ? [make(rect.x, rect.y + clearance, rect.width, header - clearance)] : []),
   ];
 }
 
@@ -199,9 +205,17 @@ export function borderZones(rect: Rect, ownerId: string, clearance = CLEARANCE):
  * and an edge's own shapes — plus every container that holds one of its ends —
  * simply drop out of it. Without that an edge could not leave its own block.
  */
-export function zonesFor(scene: RouteScene, exclude: ReadonlySet<string>): readonly RouteZone[] {
-  if (exclude.size === 0) return scene.zones;
-  return scene.zones.filter((z) => !exclude.has(z.ownerId));
+export function zonesFor(
+  scene: RouteScene,
+  exclude: ReadonlySet<string>,
+  holders: ReadonlySet<string> = new Set(),
+): readonly RouteZone[] {
+  if (exclude.size === 0 && holders.size === 0) return scene.zones;
+  // A container holding an end is entered, so its inside is free — but its
+  // frame still is not a path: crossing the band once costs the same for every
+  // route, running along it is what the band is there to price.
+  return scene.zones.filter((z) =>
+    !exclude.has(z.ownerId) && (!holders.has(z.ownerId) || z.frame === true || z.halo === true));
 }
 
 /** Whether a point falls inside a rectangle, edges included. */
