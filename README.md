@@ -87,10 +87,10 @@ code graph.
 
 | | Text search | Code graph |
 |---|---|---|
-| agent tokens | 96.5k | 70.6k (−27%) |
-| tool calls | 14 | 1 |
-| time | 51 s | 33 s |
-| completeness | everything found; some callers by inference | all but one of nine construction sites; callers from facts |
+| agent tokens | 96.5k | 69.4k (−28%) |
+| tool calls | 14 | 2 |
+| time | 51 s | 32 s |
+| completeness | everything found; some callers by inference | everything found, callers from facts; one count mis-added over a correct list |
 
 The agent tokens include its fixed part — the system prompt and tool descriptions — which is the
 same for both, so the difference in the work itself is larger. It is one run on one project, not a
