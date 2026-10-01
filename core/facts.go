@@ -90,7 +90,7 @@ type Edge struct {
 	// (docs/EXTRACTOR.md §3).
 	Line int    `json:"line,omitempty"`
 	File string `json:"file,omitempty"`
-	// Lines lists every place of a `calls` edge inside the calling method,
+	// Lines lists every place of a `calls` or `constructs` edge inside the calling method,
 	// sorted ascending (ADR_20260928-4 §3); Line above is the first of them.
 	// Not part of the edge's sort order or identity.
 	Lines []int `json:"lines,omitempty"`

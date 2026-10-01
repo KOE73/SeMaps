@@ -35,6 +35,29 @@ func TestBuildGraphPresenceBoth(t *testing.T) {
 	}
 }
 
+// Two constructions of the same type in one method are one edge with both
+// lines; building the graph must keep every one of them, not only the first.
+func TestBuildGraphKeepsEverySiteLine(t *testing.T) {
+	m := graphModel(t, `{"entities":[]}`, `{"relations":[]}`)
+	facts := &Facts{Language: "csharp", Root: ".", Symbols: []Symbol{
+		{ID: "A.F", Kind: "type", NativeKind: "class", Name: "F", File: "src/F.cs"},
+		{ID: "A.C", Kind: "type", NativeKind: "class", Name: "C", File: "src/C.cs"},
+	}, Edges: []Edge{
+		{From: "A.F", To: "A.C", Kind: "constructs", Line: 51, Lines: []int{51, 69}},
+		{From: "A.F", To: "A.C", Kind: "calls", Line: 12, Lines: []int{12, 30}},
+	}}
+	g, err := BuildGraph([]FactsSource{{Extractor: "csharp", Facts: facts}}, m)
+	if err != nil {
+		t.Fatalf("BuildGraph: %v", err)
+	}
+	want := map[string][]int{"constructs": {51, 69}, "calls": {12, 30}}
+	for _, e := range g.Edges {
+		if lines, ok := want[e.Kind]; ok && !reflect.DeepEqual(e.Lines, lines) {
+			t.Errorf("%s edge lines = %v, want %v", e.Kind, e.Lines, lines)
+		}
+	}
+}
+
 func TestBuildGraphPresenceCodeOnly(t *testing.T) {
 	m := graphModel(t, `{"entities":[]}`, `{"relations":[]}`)
 	facts := &Facts{Language: "csharp", Root: ".", Symbols: []Symbol{
