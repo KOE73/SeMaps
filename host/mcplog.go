@@ -12,6 +12,8 @@ import (
 	"time"
 
 	"github.com/modelcontextprotocol/go-sdk/mcp"
+
+	"semaps/core"
 )
 
 // The log of `semaps mcp` calls: one JSON line per tool call in
@@ -92,10 +94,7 @@ func writeLog(dir string, at time.Time, e mcpLogEntry) {
 		return
 	}
 	// .semaps/ is machine state: keep it out of git without touching the repo's .gitignore.
-	ignore := filepath.Join(filepath.Dir(dir), ".gitignore")
-	if _, err := os.Stat(ignore); err != nil {
-		_ = os.WriteFile(ignore, []byte("*\n"), 0o644)
-	}
+	core.EnsureSelfIgnore(filepath.Dir(dir))
 	f, err := os.OpenFile(filepath.Join(dir, "mcp-"+at.Format("2006-01-02")+".jsonl"), os.O_CREATE|os.O_APPEND|os.O_WRONLY, 0o644)
 	if err != nil {
 		return

@@ -112,6 +112,15 @@ func (m *Model) journalFile() string {
 	return filepath.Join(m.workspace, ".semaps", "work", m.project+".jsonl")
 }
 
+// ensureJournalDir creates <workspace>/.semaps/work and makes .semaps ignore itself.
+func (m *Model) ensureJournalDir() error {
+	if err := os.MkdirAll(filepath.Dir(m.journalFile()), 0o755); err != nil {
+		return err
+	}
+	EnsureSelfIgnore(filepath.Join(m.workspace, ".semaps"))
+	return nil
+}
+
 func cloneObject(o *object) *object {
 	b, _ := o.MarshalJSON()
 	c := newObject()
@@ -208,7 +217,7 @@ func (m *Model) Apply(ops []Op, author string) ([]Ref, error) {
 	if err := c.validate(m, ops); err != nil {
 		return nil, err
 	}
-	if err := os.MkdirAll(filepath.Dir(m.journalFile()), 0o755); err != nil {
+	if err := m.ensureJournalDir(); err != nil {
 		return nil, err
 	}
 	f, err := os.OpenFile(m.journalFile(), os.O_CREATE|os.O_APPEND|os.O_WRONLY, 0o644)
@@ -618,7 +627,7 @@ func (m *Model) Discard(scope, view string) error {
 			}
 		}
 	}
-	if err := os.MkdirAll(filepath.Dir(m.journalFile()), 0o755); err != nil {
+	if err := m.ensureJournalDir(); err != nil {
 		return err
 	}
 	var b bytes.Buffer

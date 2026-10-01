@@ -275,8 +275,9 @@ func (s *modelService) hostFile(root string, port int) error {
 	if err := os.MkdirAll(filepath.Dir(path), 0o700); err != nil {
 		return err
 	}
+	core.EnsureSelfIgnore(filepath.Dir(path))
 	b, _ := json.Marshal(struct {
-		PID  int    `json:"pid"`
+		PID int    `json:"pid"`
 		Port int    `json:"port"`
 		Key  string `json:"key"`
 	}{os.Getpid(), port, s.key})
