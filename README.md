@@ -184,6 +184,13 @@ TypeScript when `npm` is), then runs the same `install`.
 
 Check: open a new console and type `semaps --help`.
 
+> **Proven on Windows.** Every release has Linux and macOS (arm64) builds, and they pass the tests
+> in CI on Linux, but they have not been tried in real work with the editor. There is no installer
+> there: unpack the archive and put `semaps` with its `extractors/` folder on your `PATH` yourself.
+> On macOS the binary is not signed, so remove the quarantine first:
+> `xattr -d com.apple.quarantine semaps`. The server runs in the current terminal, and the browser
+> opens through `xdg-open` or `open`. If you try it, please tell us how it went.
+
 **Extractors** sit in the same folder (`extractors\csharp`, `extractors\typescript`,
 `extractors\go`). Each needs its language's runtime: .NET for C#, Node 24+ for TypeScript, Go for Go
 (it reads packages through `go list`). `semaps doctor` in a project says what is found and what is
