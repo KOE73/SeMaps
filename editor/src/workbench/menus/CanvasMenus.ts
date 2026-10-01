@@ -85,21 +85,38 @@ function connectItem(editor: DiagramEditor): MenuItem {
   };
 }
 
-/** The relation dictionary as menu entries: a submenu per group, a type in each. */
+/**
+ * The groups the extractor writes. Drawing one of those by hand is the
+ * exception, so they go last, behind submenus. Every other group — the
+ * dictionary's diagram relations and a workspace's own `relations.project`,
+ * where `call`, `data-flow` and `storage` may live after a migration — is what
+ * a person draws, and comes first, open.
+ */
+const CODE_GROUPS: ReadonlySet<string> = new Set(["relations.structure", "relations.members"]);
+
+/**
+ * The relation dictionary as menu entries: the hand-drawn types at the top,
+ * then a separator, then a submenu for each code group.
+ */
 function relationTypeItems(pick: (typeId: string) => void): MenuItem[] {
   const catalog = KindCatalog.active;
   const lang = i18n.currentLanguage;
-  return catalog.relationGroups()
-    .filter((g) => g.types.length > 0)
+  const typeItem = (id: string): MenuItem => ({
+    label: catalog.relationName(id, lang),
+    note: id,
+    title: catalog.relationDescription(id, lang),
+    onSelect: () => pick(id),
+  });
+  const groups = catalog.relationGroups().filter((g) => g.types.length > 0);
+  const hand = groups.filter((g) => !CODE_GROUPS.has(g.id)).flatMap((g) => g.types.map((type) => typeItem(type.id)));
+  const code = groups
+    .filter((g) => CODE_GROUPS.has(g.id))
     .map((g): MenuItem => ({
       label: catalog.groupName(g, lang),
-      submenu: () => g.types.map((type): MenuItem => ({
-        label: catalog.relationName(type.id, lang),
-        note: type.id,
-        title: catalog.relationDescription(type.id, lang),
-        onSelect: () => pick(type.id),
-      })),
+      submenu: () => g.types.map((type) => typeItem(type.id)),
     }));
+  if (hand.length === 0 || code.length === 0) return [...hand, ...code];
+  return [...hand, { kind: "separator" }, ...code];
 }
 
 /** A connection drag was dropped on a box: ask for the relation type, then draw it. */
