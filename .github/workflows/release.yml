@@ -12,11 +12,11 @@ permissions:
 
 jobs:
   release:
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
 
-      - uses: actions/setup-node@v4
+      - uses: actions/setup-node@v7
         with:
           node-version: 24
           cache: npm
@@ -26,7 +26,7 @@ jobs:
         working-directory: editor
         run: npm ci && npm run build:app
 
-      - uses: actions/setup-go@v5
+      - uses: actions/setup-go@v7
         with:
           go-version-file: go.mod
 
@@ -40,7 +40,7 @@ jobs:
           GOOS=linux   GOARCH=amd64 go build -trimpath -ldflags "-s -w" -o out/semaps-linux-amd64 ./host
           GOOS=darwin  GOARCH=arm64 go build -trimpath -ldflags "-s -w" -o out/semaps-darwin-arm64 ./host
 
-      - uses: actions/setup-dotnet@v4
+      - uses: actions/setup-dotnet@v6
         with:
           dotnet-version: 10.0.x
 
@@ -79,7 +79,7 @@ jobs:
             (cd pkg && zip -qr "../out/$name.zip" "$name")
           done
 
-      - uses: softprops/action-gh-release@v2
+      - uses: softprops/action-gh-release@v3
         with:
           files: out/*
           generate_release_notes: true
