@@ -1070,14 +1070,18 @@ export class DiagramEditor implements InspectorHost, StylePanelHost, DiagramEdit
     // The library is rebuilt, not mutated, so a style deleted since the
     // snapshot comes back and one added since it goes away. Everything holding
     // a library must therefore read it through `this.styles`, never cache it.
-    this.styleLibrary = StyleLibrary.parse(state.styles);
+    // Only a step that really changed a style marks the styles dirty: undoing a
+    // model edit must not make the next save write the whole library into the
+    // workspace, where it would hide every later default.
+    const stylesChanged = JSON.stringify(state.styles) !== JSON.stringify(this.styleLibrary.serialize());
+    if (stylesChanged) this.styleLibrary = StyleLibrary.parse(state.styles);
     const doc = parseDocument(state.doc, this.styleLibrary);
     this.canvas.setStyles(this.styleLibrary);
     this.canvas.replaceModel(doc);
     this.renderTags();
 
     this.markDirty();
-    this.markStylesDirty();
+    if (stylesChanged) this.markStylesDirty();
     this.styleList.setActive(this.styleEditor.openId);
     this.styleEditor.render();
     this.syncToolbar(this.canvas.selected);
