@@ -61,7 +61,11 @@ files for the same answer costs many calls and far more tokens, and still misses
 another name. So ask the graph first and open only the lines it names; ask the registry and views
 (`get_relations`, `get_view`) for what the code does not say — what a part is for and which
 interactions are intended. The graph is what the code looks like now (the latest extractor run,
-never stored); the registry is the authored model in git. The server's own instructions tell every
+never stored); the registry is the authored model in git. On a 623-file C# project, four such
+questions took an agent 14 tool calls and 96.5k tokens with grep and reads, and 1 call and 70.6k
+tokens with the graph (one run; see the README). The graph is only as fresh as the latest extractor
+run: with `watch` off, run `extract` before relying on it, or a question about calls may come back
+empty because that run predates them. The server's own instructions tell every
 agent this; a consuming project that wants it in its own agent rules (`AGENTS.md`, `CLAUDE.md`) can
 add:
 

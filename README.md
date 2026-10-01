@@ -79,6 +79,25 @@ pasted onto a view: that is a quick way from code to an architecture picture.
 > The code graph has been proven in real work on C# only. Extractors for TypeScript and Go exist,
 > but the graph on them has not been tried on real projects yet.
 
+**A measurement: the graph against text search.** A C# project (NeuroModFlowNet.ONNX, 623 files),
+four questions about the code: the subclasses of a base class two levels down, who holds a context
+object and through which member, where it is constructed, who calls its methods. Two identical
+agents (Claude Sonnet): one answered only with grep and file reads, the other through the SeMaps
+code graph.
+
+| | Text search | Code graph |
+|---|---|---|
+| agent tokens | 96.5k | 70.6k (−27%) |
+| tool calls | 14 | 1 |
+| time | 51 s | 33 s |
+| completeness | everything found; some callers by inference | all but one of nine construction sites; callers from facts |
+
+The agent tokens include its fixed part — the system prompt and tool descriptions — which is the
+same for both, so the difference in the work itself is larger. It is one run on one project, not a
+study. And the graph helps only while its facts are fresh: in a first run the latest extractor run
+predated call extraction, and the graph could not answer two of the questions. Keep `watch: true` on
+the extractor, or run extraction before the work.
+
 ### Human and agent in one model
 
 The editor and the agents work on one working model in the host. What the model accepted shows in
