@@ -398,9 +398,9 @@ change to `tools`/`description` rebuilds the MCP server's graph tool list in pla
 connected session) — an already-open session sees the new list once its client re-lists tools
 (the SDK gives no way to change *which tools a session is mid-call with* without that
 notification round-trip); a brand new session always gets the current set and level from its
-first `tools/list`. `semaps mcp`'s stdio proxy copies the remote tool list once, at startup, and
-does not watch for a later change — an agent using it needs its session restarted (`semaps mcp`
-started again) to pick up a `tools`/`description` change (`PLAN_20260928-7` step 4).
+first `tools/list`. `semaps mcp`'s stdio proxy follows the change itself (§6, «The proxy keeps its
+tool list alive»): it receives that notification, re-lists and announces the new list to the agent
+(`PLAN_20260928-7` step 4). A change of `Instructions` still reaches only a new session.
 
 ### Resolution order
 
@@ -531,6 +531,27 @@ file upward from the current directory. stdout is only the protocol; diagnostics
 All MCP reads and writes use the host's live `core.Model`. Writes are journaled and visible to
 subscribers; contract files change only on `save`.
 
+**The proxy keeps its tool list alive** (`host/mcp_proxy.go`). The agent's session lives as long as
+the agent; the host may be restarted with a newer build (new tools, changed schemas, another port)
+or change its tools while running (`PUT /api/setup`). The proxy therefore does not copy the tool
+list once:
+- it holds the local server's tools equal to the host's: after every (re)connect, on the host's
+  `notifications/tools/list_changed` (it opens the standalone SSE stream for it) and after a
+  refused call, it re-lists the host's tools and, for every tool that is new or whose description,
+  schemas or annotations differ, calls `AddTool` on the local server, and `RemoveTools` for one the
+  host no longer has; the Go SDK then sends `notifications/tools/list_changed` to the agent
+  (debounced; the server advertises `tools.listChanged` from the start). Nothing is touched, hence
+  nothing sent, while the lists agree;
+- a call that does not reach the host (connection refused, session unknown to a restarted host)
+  reconnects — `.semaps/host.json` is read again, the host is started when none answers, so a new
+  port is found — re-lists the tools and retries the call once. When the host answers with an
+  error, it goes to the agent as it is, after the list was refreshed: a call made with a stale
+  schema is refused by the new host, and the next one is made against the new list;
+- `Instructions` are fixed at `initialize` in MCP and are not changed: a client that wants the
+  newest ones starts a new session. A client that ignores `list_changed` keeps its old list until
+  it lists again (its calls still work through the proxy, and a refused stale call refreshes the
+  proxy's side).
+
 The tools are thin: every rule of writing is a function of `core/` (`core/edit.go`), and a broken
 rule comes back as a tool error (`isError: true`) whose text names the rule. Nothing was written
 then.
@@ -606,8 +627,8 @@ its graph tools rebuilt in place, exactly as before (`RemoveTools`/`AddTool`, `l
 so an already-connected session sees the new tool list as soon as it next asks for it, still with
 the `Instructions` it was given at `initialize`; and a brand new `*mcp.Server` is built, with the
 new `Instructions` baked in, and becomes the one handed to every session that connects from this
-point on — the stdio proxy included, the next time it starts `semaps mcp` (it copies the tool
-list once at startup and does not watch for a later change, as before). The pool keeps only the
+point on — the stdio proxy included when it reconnects (it re-lists tools after every reconnect and
+on `list_changed`, §6; the `Instructions` of an agent session already open stay as they were). The pool keeps only the
 most recent 8 servers (the SDK gives no way to learn a server's last session has closed, so there
 is no way to prune it sooner); a session open on a server older than that keeps stale
 `Instructions` and stops getting tool-list rebuilds. The texts are written out in full in
