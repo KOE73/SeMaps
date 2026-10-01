@@ -241,5 +241,10 @@
     }
   ],
   "routing": "orthogonal",
-  "edges": []
+  "edges": [],
+  "relations": {
+    "except": [
+      "r_extractors_code_graph_data_flow"
+    ]
+  }
 }

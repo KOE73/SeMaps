@@ -204,6 +204,24 @@
       "kind": "group",
       "origin": "authored",
       "status": "present"
+    },
+    {
+      "id": "e_human",
+      "kind": "actor",
+      "origin": "authored",
+      "status": "present"
+    },
+    {
+      "id": "e_map",
+      "kind": "store",
+      "origin": "authored",
+      "status": "present"
+    },
+    {
+      "id": "e_semaps",
+      "kind": "system",
+      "origin": "authored",
+      "status": "present"
     }
   ]
 }

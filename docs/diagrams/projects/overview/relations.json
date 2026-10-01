@@ -280,6 +280,41 @@
       "to": "e_host_json",
       "type": "storage",
       "origin": "authored"
+    },
+    {
+      "id": "r_human_editor_call",
+      "from": "e_human",
+      "to": "e_editor",
+      "type": "call",
+      "origin": "authored"
+    },
+    {
+      "id": "r_editor_map_storage",
+      "from": "e_editor",
+      "to": "e_map",
+      "type": "storage",
+      "origin": "authored"
+    },
+    {
+      "id": "r_mcp_server_map_storage",
+      "from": "e_mcp_server",
+      "to": "e_map",
+      "type": "storage",
+      "origin": "authored"
+    },
+    {
+      "id": "r_extractors_code_graph_data_flow",
+      "from": "e_extractors",
+      "to": "e_code_graph",
+      "type": "data-flow",
+      "origin": "authored"
+    },
+    {
+      "id": "r_code_graph_map_call",
+      "from": "e_code_graph",
+      "to": "e_map",
+      "type": "call",
+      "origin": "authored"
     }
   ]
 }

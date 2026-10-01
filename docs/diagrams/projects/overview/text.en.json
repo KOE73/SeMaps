@@ -89,6 +89,11 @@
         "v": "Browser diagram editor (TypeScript): canvas, views, styles. Reads and writes the model only through the host.",
         "at": "2026-10-01T10:15:24Z",
         "origin": "authored"
+      },
+      "name": {
+        "v": "Editor (Browser)",
+        "at": "2026-10-01T10:57:55Z",
+        "origin": "authored"
       }
     },
     "e_agent": {
@@ -256,6 +261,44 @@
       "description": {
         "v": "The editor tab's own state: local undo and settings in localStorage. Never sent to the host.",
         "at": "2026-10-01T10:15:51Z",
+        "origin": "authored"
+      }
+    },
+    "v_glance": {
+      "name": {
+        "v": "SeMaps at a glance",
+        "at": "2026-10-01T10:45:51Z",
+        "origin": "authored"
+      }
+    },
+    "e_human": {
+      "name": {
+        "v": "Human",
+        "at": "2026-10-01T10:46:05Z",
+        "origin": "authored"
+      },
+      "description": {
+        "v": "An architect or developer: draws and reads views in the editor, asks the agent, saves and commits.",
+        "at": "2026-10-01T10:46:06Z",
+        "origin": "authored"
+      }
+    },
+    "e_map": {
+      "name": {
+        "v": "Map: registry and views",
+        "at": "2026-10-01T10:46:07Z",
+        "origin": "authored"
+      },
+      "description": {
+        "v": "The shared model: registry entities and relations and the views over them. One for the human and the agent, kept in git.",
+        "at": "2026-10-01T10:46:08Z",
+        "origin": "authored"
+      }
+    },
+    "e_semaps": {
+      "name": {
+        "v": "SeMaps",
+        "at": "2026-10-01T10:46:29Z",
         "origin": "authored"
       }
     }
