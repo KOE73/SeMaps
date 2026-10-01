@@ -163,6 +163,7 @@ export function createDefaultRibbonSpec(): RibbonSpec {
               { type: "toggle", command: "panel.changes.toggle", size: "small" },
               { type: "toggle", command: "panel.base.toggle", size: "small" },
               { type: "toggle", command: "panel.neighbourhood.toggle", size: "small" },
+              { type: "toggle", command: "panel.routing.toggle", size: "small" },
               { type: "separator" },
               { type: "button", command: "workspace.layout.reset", size: "small" },
             ],

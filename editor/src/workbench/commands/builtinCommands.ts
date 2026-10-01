@@ -511,6 +511,16 @@ export function createBuiltinCommands(): CommandDefinition[] {
       isChecked: (ctx) => ctx.panels.isVisible("neighbourhood"),
       execute: (ctx) => ctx.panels.toggle("neighbourhood"),
     },
+    {
+      id: "panel.routing.toggle",
+      get title() { return i18n.d.panels.routing.title; },
+      get description() { return i18n.d.commands.toggleRouting.desc; },
+      icon: icons.compass,
+      category: "Panels",
+      keyTip: "P9",
+      isChecked: (ctx) => ctx.panels.isVisible("routing"),
+      execute: (ctx) => ctx.panels.toggle("routing"),
+    },
 
     // ------------------------------------------------------------ Workspace
     {

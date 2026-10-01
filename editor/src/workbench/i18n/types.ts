@@ -91,6 +91,7 @@ export interface UiDictionary {
     readonly toggleNeighbourhood: { readonly title: string; readonly desc: string };
     readonly toggleCatalog: { readonly title: string; readonly desc: string };
     readonly toggleChanges: { readonly title: string; readonly desc: string };
+    readonly toggleRouting: { readonly title: string; readonly desc: string };
     readonly resetLayout: { readonly title: string; readonly desc: string };
     readonly portsSet: { readonly title: string; readonly desc: string };
     readonly alignLeft: { readonly title: string; readonly desc: string };
@@ -131,6 +132,26 @@ export interface UiDictionary {
       readonly hintDragBlock: string;
       readonly hintCollapseContainer: string;
       readonly showChanges: string;
+    };
+    /** The line-routing tuning panel; `params` is keyed by the parameters of `canvas/routing/tuning.ts`. */
+    readonly routing: {
+      readonly title: string;
+      readonly hint: string;
+      readonly showZones: string;
+      readonly resetAll: string;
+      readonly reset: string;
+      readonly defaultIs: string;
+      readonly groups: Readonly<Record<"zones" | "lanes" | "search", string>>;
+      readonly params: Readonly<Record<string, string>>;
+      readonly previewTitle: string;
+      readonly previewBlock: string;
+      readonly previewGap: string;
+      readonly previewContainer: string;
+      readonly legendClearance: string;
+      readonly legendHalo: string;
+      readonly legendBorder: string;
+      readonly legendCaption: string;
+      readonly legendOverlap: string;
     };
     readonly changes: {
       readonly title: string;

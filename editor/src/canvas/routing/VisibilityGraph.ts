@@ -1,6 +1,7 @@
 import { bottom, right } from "../../geometry/rect.js";
 import type { Point, Rect, Side } from "../../geometry/types.js";
-import { CLEARANCE, segmentPenalty, type RouteZone } from "./Scene.js";
+import { segmentPenalty, type RouteZone } from "./Scene.js";
+import { routingTuning } from "./tuning.js";
 
 /**
  * Finding an orthogonal route as a search, not as a pile of special cases.
@@ -21,11 +22,10 @@ import { CLEARANCE, segmentPenalty, type RouteZone } from "./Scene.js";
  *   route that jumps on every drag is worse than a route that is merely long.
  */
 
-/** What a turn costs, in units of length. Bends read as complexity. */
-const BEND_COST = 40;
-
-/** How far a route leaves a port before it is allowed to turn. */
-const STUB = 14;
+/*
+ * The costs — a bend, the stub off a port, sliding, changing side, sharing a
+ * spot — live in `routingTuning` (./tuning.ts), read at call time.
+ */
 
 /** Grid lines further than this from the pair's bounding box do not help. */
 const SEARCH_MARGIN = 240;
@@ -84,7 +84,7 @@ export interface RouteQuery {
   /** The blocks the ends belong to: a stub shortens when the other block is close in front of it. */
   readonly fromRect?: Rect;
   readonly toRect?: Rect;
-  /** The sides the ends had last time: any other side costs `SIDE_CHANGE_COST`. */
+  /** The sides the ends had last time: any other side costs `routingTuning.sideChangeCost`. */
   readonly prevFromSide?: Side;
   readonly prevToSide?: Side;
   /** Debugging only: receives the grid the search ran on. */
@@ -99,15 +99,8 @@ export interface FoundRoute {
 }
 
 /**
- * What using another side than last time costs. About a bend: enough that two
- * nearly equal routes do not swap sides on every pixel of a drag, little enough
- * that a clearly shorter route on another side still wins.
- */
-const SIDE_CHANGE_COST = 30;
-
-/**
- * What sliding an end to the far end of its side costs; in between it grows with
- * the square of the distance from the middle, measured in half-sides.
+ * The slide cost grows with the square of the distance from the middle,
+ * measured in half-sides (`routingTuning.slideCost` at the far end).
  *
  * Measured per pixel, every spot between two blocks' middles cost the same, and
  * a straight run between a narrow block and a wide one settled at the narrow
@@ -116,12 +109,10 @@ const SIDE_CHANGE_COST = 30;
  * puts it in the middle of their overlap — the line a person would draw, and no
  * rule saying so.
  */
-const SLIDE_COST = 20;
-
 function slideCost(v: number, middle: number, span: { lo: number; hi: number }): number {
   const half = Math.max((span.hi - span.lo) / 2, 1);
   const t = (v - middle) / half;
-  return SLIDE_COST * t * t;
+  return routingTuning.slideCost * t * t;
 }
 
 /**
@@ -137,12 +128,6 @@ function sharedSpot(a: { port: Point; span: { lo: number; hi: number } }, b: { p
   const wb = 1 / Math.max((b.span.hi - b.span.lo) / 2, 1) ** 2;
   return clamp((a.port[axis] * wa + b.port[axis] * wb) / (wa + wb), { lo, hi });
 }
-
-/** Landing this close to a line already on the side counts as sharing its spot. */
-const TAKEN_GAP = 20;
-
-/** What sharing a spot costs: more than a bend, so a second line takes the next free spot. */
-const TAKEN_COST = 60;
 
 /**
  * The polyline through the ports, or null when nothing gets through — in which
@@ -289,10 +274,10 @@ function findChoosingRoute(query: RouteQuery, fromEnds: readonly RouteEnd[], toE
 
   const starts = fromPlan.flatMap((p) =>
     endChoices(xs, ys, p.end.port, p.end.side, outward(p.end.side), p.enter, p.span, p.end.slide?.taken,
-      p.end.side === query.prevFromSide || !query.prevFromSide ? 0 : SIDE_CHANGE_COST, zones));
+      p.end.side === query.prevFromSide || !query.prevFromSide ? 0 : routingTuning.sideChangeCost, zones));
   const goals = toPlan.flatMap((p) =>
     endChoices(xs, ys, p.end.port, p.end.side, inward(p.end.side), p.enter, p.span, p.end.slide?.taken,
-      p.end.side === query.prevToSide || !query.prevToSide ? 0 : SIDE_CHANGE_COST, zones));
+      p.end.side === query.prevToSide || !query.prevToSide ? 0 : routingTuning.sideChangeCost, zones));
   if (starts.length === 0 || goals.length === 0) return null;
 
   // The blocks themselves are walls for the middle of the route: the end's own
@@ -359,7 +344,7 @@ function endChoices(
     if (penalty === null) continue;
     const node = index(xs, ys, s);
     if (node === null) continue;
-    const crowd = (taken ?? []).some((t) => Math.abs(t - v) < TAKEN_GAP) ? TAKEN_COST : 0;
+    const crowd = (taken ?? []).some((t) => Math.abs(t - v) < routingTuning.takenGap) ? routingTuning.takenCost : 0;
     out.push({ node, port: p, side, dir, cost: slideCost(v, port[axis], span) + crowd + penalty + bias });
   }
   return out;
@@ -420,7 +405,8 @@ function axisLines(
     if (zone.area) continue;
     const near = axis === "x" ? zone.rect.x : zone.rect.y;
     const far = axis === "x" ? right(zone.rect) : bottom(zone.rect);
-    for (const v of [near - CLEARANCE / 2, far + CLEARANCE / 2]) {
+    const half = routingTuning.clearance / 2;
+    for (const v of [near - half, far + half]) {
       const r = round(v);
       if (r >= lo && r <= hi && !required.has(r)) (zone.lane ? lanes : optional).add(r);
     }
@@ -454,10 +440,11 @@ function finite(p: Point): boolean {
 function stubLength(from: Point, to: Point, fromSide: Side, toSide: Side): number {
   const out = sideVector(fromSide);
   const back = sideVector(toSide);
-  if (out.x !== -back.x || out.y !== -back.y) return STUB;
+  const stub = routingTuning.stub;
+  if (out.x !== -back.x || out.y !== -back.y) return stub;
   const gap = (to.x - from.x) * out.x + (to.y - from.y) * out.y;
-  if (gap <= 0) return STUB;
-  return Math.min(STUB, gap / 2);
+  if (gap <= 0) return stub;
+  return Math.min(stub, gap / 2);
 }
 
 /**
@@ -468,7 +455,8 @@ function stubLength(from: Point, to: Point, fromSide: Side, toSide: Side): numbe
  * port, so it looks at the block, and every side is judged by itself.
  */
 function sideStub(port: Point, side: Side, own: Rect | undefined, other: Rect | undefined): number {
-  if (!other) return STUB;
+  const stub = routingTuning.stub;
+  if (!other) return stub;
   const horizontal = side === "west" || side === "east";
   // In front means the other block overlaps this block's extent across the normal.
   const across = horizontal ? "y" : "x";
@@ -476,13 +464,13 @@ function sideStub(port: Point, side: Side, own: Rect | undefined, other: Rect | 
   const hi = own ? (horizontal ? bottom(own) : right(own)) : port[across];
   const otherLo = horizontal ? other.y : other.x;
   const otherHi = horizontal ? bottom(other) : right(other);
-  if (otherLo > hi || otherHi < lo) return STUB;
+  if (otherLo > hi || otherHi < lo) return stub;
   const gap =
     side === "east" ? other.x - port.x :
     side === "west" ? port.x - right(other) :
     side === "south" ? other.y - port.y :
     port.y - bottom(other);
-  if (gap <= 0 || gap >= STUB * 2) return STUB;
+  if (gap <= 0 || gap >= stub * 2) return stub;
   return gap / 2;
 }
 
@@ -564,7 +552,7 @@ function search(
       if (penalty === null) continue;
 
       const length = Math.abs(there.x - here.x) + Math.abs(there.y - here.y);
-      const turn = dir === Dir.None || dir === step ? 0 : BEND_COST;
+      const turn = dir === Dir.None || dir === step ? 0 : routingTuning.bendCost;
       const nextCost = cost + length + penalty + turn;
       const nextKey = next * 5 + step;
       if (nextCost >= (best.get(nextKey) ?? Infinity)) continue;
@@ -649,7 +637,7 @@ function searchMany(
     // back over the stub — a hook at the arrowhead, never a route.
     for (const goal of goalsAt.get(node) ?? []) {
       if (dir === reverse(goal.dir)) continue;
-      const total = cost + goal.cost + (dir === goal.dir ? 0 : BEND_COST);
+      const total = cost + goal.cost + (dir === goal.dir ? 0 : routingTuning.bendCost);
       if (total < (best.get(FINISH) ?? Infinity)) {
         best.set(FINISH, total);
         finishFrom = key;
@@ -673,7 +661,7 @@ function searchMany(
       if (penalty === null) continue;
 
       const length = Math.abs(there.x - here.x) + Math.abs(there.y - here.y);
-      const turn = dir === step ? 0 : BEND_COST;
+      const turn = dir === step ? 0 : routingTuning.bendCost;
       const nextCost = cost + length + penalty + turn;
       const nextKey = next * 5 + step;
       if (nextCost >= (best.get(nextKey) ?? Infinity)) continue;

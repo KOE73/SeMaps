@@ -25,7 +25,7 @@ export interface PanelLayoutIds {
 
 const EDITOR_IDS: PanelLayoutIds = {
   centerId: "diagram",
-  rightIds: ["properties", "relations", "filters", "styles", "base", "neighbourhood"],
+  rightIds: ["properties", "relations", "filters", "styles", "base", "neighbourhood", "routing"],
 };
 
 export class PanelService implements IPanelService {

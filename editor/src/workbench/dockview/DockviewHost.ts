@@ -13,6 +13,7 @@ import {
   ChangesPanel,
   BasePanel,
   NeighbourhoodPanel,
+  RoutingPanel,
 } from "../panels/index.js";
 import { i18n } from "../i18n/I18nService.js";
 
@@ -106,6 +107,7 @@ export class DockviewHost {
       templates: i18n.d.panels.templates.title,
       base: i18n.d.panels.base.title,
       neighbourhood: i18n.d.panels.neighbourhood.title,
+      routing: i18n.d.panels.routing.title,
     };
 
     for (const [id, title] of Object.entries(titles)) {
@@ -195,6 +197,15 @@ export class DockviewHost {
       minWidth: 100,
       minHeight: 80,
       createRenderer: () => new NeighbourhoodPanel(this.editor),
+    });
+
+    // Not in the default layout: the ribbon's «Разводка линий» opens it beside the right-hand panels.
+    this.panelService.register({
+      id: "routing",
+      get title() { return i18n.d.panels.routing.title; },
+      minWidth: 100,
+      minHeight: 80,
+      createRenderer: () => new RoutingPanel(this.editor),
     });
   }
 

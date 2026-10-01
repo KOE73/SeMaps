@@ -2652,3 +2652,22 @@ textarea {
 .changes-author { font-size: 11px; padding: 1px 6px; border-radius: 8px; flex: none; }
 .changes-row.author-human .changes-author { background: rgb(59 130 246 / 15%); }
 .changes-row.author-agent .changes-author { background: rgb(224 168 59 / 22%); }
+
+/* «Разводка линий»: the router's constants, live, with a picture of the zones */
+.routing-panel { width: 100%; height: 100%; overflow-y: auto; background: var(--panel); }
+.routing-body { padding: calc(8px * var(--ui-space)); display: flex; flex-direction: column; gap: calc(8px * var(--ui-space)); }
+.routing-hint { color: var(--muted); font-size: 12px; }
+.routing-head { display: flex; align-items: center; justify-content: space-between; gap: 6px; }
+.routing-zones { display: flex; align-items: center; gap: 6px; font-size: 13px; }
+.routing-svg { width: 100%; height: auto; display: block; }
+.routing-legend { display: flex; flex-wrap: wrap; gap: 4px 10px; font-size: 11px; color: var(--muted); }
+.routing-legend-item { display: inline-flex; align-items: center; gap: 4px; }
+.routing-legend-item i { width: 10px; height: 10px; border: 1px solid; display: inline-block; }
+.routing-group { display: flex; flex-direction: column; gap: calc(6px * var(--ui-space)); }
+.routing-row { display: grid; grid-template-columns: 1fr auto; gap: 1px 8px; }
+.routing-label { grid-column: 1 / -1; font-size: 12px; }
+.routing-controls { display: flex; align-items: center; gap: 6px; min-width: 0; }
+.routing-range { flex: 1; min-width: 0; }
+.routing-number { width: 58px; }
+.routing-default { justify-self: end; font-size: 11px; color: var(--muted); }
+.routing-reset:disabled { opacity: 0.35; }
