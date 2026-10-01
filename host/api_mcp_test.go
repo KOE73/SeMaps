@@ -65,7 +65,7 @@ func TestMCPCallRecordsTheWire(t *testing.T) {
 	}
 	api := &toolAPI{file: file, workspace: filepath.Join(dir, "ws"), models: models}
 	mux := http.NewServeMux()
-	registerMCPHTTP(mux, project{Root: dir}, api.workspace, dir, models, nil, nil)
+	registerMCPHTTP(mux, project{Root: dir}, api.workspace, dir, models, nil, nil, nil)
 	mux.HandleFunc("POST /api/mcp/call", api.callMCP)
 	srv := httptest.NewServer(mux)
 	defer srv.Close()

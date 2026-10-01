@@ -23,6 +23,7 @@ type graphService struct {
 	proj     project
 	models   *modelService
 	settings *mcpSettingsBox // list_cap/limit defaults, live (step 2)
+	watch    *watchManager   // for the status; nil with --workspace and in tests
 
 	mu   sync.Mutex
 	prev map[string]*core.Graph // project id -> the last graph built for it
@@ -46,6 +47,12 @@ type graphFactsInfo struct {
 	// that anyway (PLAN_20260928-4_host_watch-sources.md step 2).
 	LastRun       string `json:"lastRun,omitempty"`
 	LastRunFailed bool   `json:"lastRunFailed,omitempty"`
+	// AgeSeconds is how long ago the run Run finished. Warnings are what is
+	// known to be out of date in these facts (graph_fresh.go): edge kinds the
+	// .semaps entry asks for that the run did not have, settings changed
+	// since, sources newer than the run, a newer run that failed, no run at all.
+	AgeSeconds int      `json:"ageSeconds,omitempty"`
+	Warnings   []string `json:"warnings,omitempty"`
 }
 
 // sources finds, for every extractor of the .semaps file that feeds
@@ -73,7 +80,9 @@ func sourcesFor(proj project, projectID string) ([]core.FactsSource, []graphFact
 		}
 		all := runs.list(e.ID)
 		if len(all) == 0 {
-			continue // never run: nothing to say about it yet
+			// Never run: the graph has no facts from this extractor, and says so.
+			facts = append(facts, graphFactsInfo{Extractor: e.ID, Language: e.Language, Warnings: []string{"no run yet, the graph has no facts from it; run `extract`, see `graph_status`"}})
+			continue
 		}
 		info := graphFactsInfo{Extractor: e.ID, Language: e.Language, LastRun: all[0].ID, LastRunFailed: all[0].State == "failed"}
 		for _, r := range all {
@@ -86,7 +95,12 @@ func sourcesFor(proj project, projectID string) ([]core.FactsSource, []graphFact
 			}
 			sources = append(sources, core.FactsSource{Extractor: e.ID, Facts: f})
 			info.Run, info.Finished = r.ID, r.Finished.UTC().Format(time.RFC3339)
+			info.AgeSeconds = max(0, int(nowFunc().Sub(r.Finished).Seconds()))
+			info.Warnings = runWarnings(e, r, f.EdgeKinds, all[0])
 			break
+		}
+		if info.Run == "" {
+			info.Warnings = []string{"no successful run, the graph has no facts from it; run `extract`, see `graph_status`"}
 		}
 		facts = append(facts, info)
 	}
@@ -158,6 +172,7 @@ func (g *graphService) remember(project string) {
 func (g *graphService) register(mux *http.ServeMux) {
 	mux.HandleFunc("GET /api/graph/{project}", g.guard(g.serve))
 	mux.HandleFunc("GET /api/graph/{project}/find", g.guard(g.serveFind))
+	mux.HandleFunc("GET /api/graph/{project}/status", g.guard(g.serveStatus))
 	mux.HandleFunc("GET /api/graph/{project}/groups", g.guard(g.serveGroups))
 	mux.HandleFunc("GET /api/graph-formats", g.serveFormats)
 }
@@ -487,6 +502,9 @@ func (g *graphService) serve(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	w.Header().Set("Content-Type", mediaType)
+	if strings.HasPrefix(mediaType, "text/") {
+		body = withFreshness(body, facts) // a JSON answer carries `facts` itself
+	}
 	_, _ = w.Write(body)
 }
 
@@ -517,13 +535,13 @@ func (g *graphService) serveGroups(w http.ResponseWriter, r *http.Request) {
 
 func (g *graphService) serveFind(w http.ResponseWriter, r *http.Request) {
 	project := r.PathValue("project")
-	graph, _, err := g.build(project)
+	graph, facts, err := g.build(project)
 	if err != nil {
 		modelError(w, err)
 		return
 	}
 	limit, _ := strconv.Atoi(r.URL.Query().Get("limit"))
-	writeJSON(w, map[string]any{"candidates": core.FindNodes(graph, r.URL.Query().Get("q"), limit)})
+	writeJSON(w, map[string]any{"candidates": core.FindNodes(graph, r.URL.Query().Get("q"), limit), "facts": facts})
 }
 
 // defaultLift is `lift`'s default when the parameter is absent

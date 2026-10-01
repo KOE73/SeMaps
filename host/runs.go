@@ -10,6 +10,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"slices"
 	"sort"
 	"strings"
 	"sync"
@@ -40,7 +41,12 @@ type runInfo struct {
 	// Trigger says who started the run: "watch" for one started by
 	// host/watch.go on its own; empty for a person or an agent
 	// (PLAN_20260928-4_host_watch-sources.md step 2).
-	Trigger  string    `json:"trigger,omitempty"`
+	Trigger string `json:"trigger,omitempty"`
+	// Edges are the optional edge kinds the entry asked for (`edges:` of the
+	// .semaps file) when the run started: graph answers and graph_status
+	// compare them with what the entry asks for now. Runs from before this
+	// field, and runs that asked for none, have none.
+	Edges    []string  `json:"edges,omitempty"`
 	Started  time.Time `json:"started"`
 	Finished time.Time `json:"finished,omitzero"`
 	Seconds  float64   `json:"seconds,omitempty"`
@@ -150,7 +156,7 @@ func (s *runStore) start(proj project, e extractorConf, echo io.Writer, trigger 
 	info := &runInfo{
 		ID:        now.Format("20060102-150405") + "-" + strings.ToLower(e.ID),
 		Extractor: e.ID, Project: e.Project, Language: e.Language,
-		Command: args, Trigger: trigger, Started: now, State: "running",
+		Command: args, Trigger: trigger, Edges: slices.Clone(e.Edges), Started: now, State: "running",
 	}
 	if !validRunID(info.ID) {
 		info.ID = now.Format("20060102-150405-000000000")

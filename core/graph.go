@@ -93,8 +93,8 @@ type GraphEdge struct {
 	Type string `json:"type"` // relation type as the registry names it: holds.many, injects, extends…
 	Via  *Via   `json:"via,omitempty"`
 	Line int    `json:"line,omitempty"` // where the edge comes from, in File or in the file of `from`
-	// Lines: every call site's line, ascending, for a `calls` edge that
-	// folds several calls to the same target from the same method into one
+	// Lines: every site's line, ascending, for a `calls` or `constructs` edge
+	// that folds several sites of the same target in the same method into one
 	// edge (ADR_20260928-4 §3). Nil for every other kind; Line is always
 	// Lines[0] when Lines is set.
 	Lines    []int  `json:"lines,omitempty"`
@@ -237,7 +237,7 @@ func BuildGraph(sources []FactsSource, model *Model) (*Graph, error) {
 			if (e.Kind == "holds" || e.Kind == "uses") && e.Via != nil {
 				relType = deriveRelationType(e.Kind, e.Via)
 			}
-			ge := GraphEdge{From: from, To: to, Kind: e.Kind, Type: relType, Via: e.Via, Line: e.Line, File: e.File, Presence: "code"}
+			ge := GraphEdge{From: from, To: to, Kind: e.Kind, Type: relType, Via: e.Via, Line: e.Line, Lines: e.Lines, File: e.File, Presence: "code"}
 
 			fromEnt, toEnt := entityBySymbol[[2]string{src.Facts.Language, e.From}], entityBySymbol[[2]string{src.Facts.Language, e.To}]
 			if fromEnt != nil && toEnt != nil {

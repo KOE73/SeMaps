@@ -38,6 +38,9 @@ type mcpServer struct {
 	// step 2) — nil in tests that build an mcpServer directly, in which case
 	// getGraph falls back to the file's own defaults.
 	settings *mcpSettingsBox
+	// watch: the watchers, for graph_status; nil where there are none
+	// (`semaps mcp` on stdio, --workspace, tests).
+	watch *watchManager
 }
 
 // mcpSettingsNow: s.settings.Get(), or the plain defaults when s.settings is
@@ -154,6 +157,11 @@ type renameIn struct {
 
 type extractIn struct {
 	Extractor string `json:"extractor,omitempty" jsonschema:"extractor id from the .semaps file; default: all"`
+	Wait      bool   `json:"wait,omitempty" jsonschema:"return when the runs have finished (with their state), not as soon as they have started"`
+}
+
+type graphStatusIn struct {
+	Project string `json:"project,omitempty"`
 }
 
 type syncIn struct {
@@ -339,6 +347,7 @@ func (s *mcpServer) server() *mcp.Server {
 	mcp.AddTool(srv, read("get_text", "Text entry of a key in one language."), s.getText)
 	mcp.AddTool(srv, read("get_view", getViewDescription), s.getView)
 	mcp.AddTool(srv, read("doctor", "Extractors and runtimes found, and the model check of the workspace."), s.doctor)
+	mcp.AddTool(srv, read("graph_status", "Whether the live code graph can be trusted: per extractor of the .semaps file that feeds the project — its newest run (state, start, finish, age, who started it), the run the graph's facts come from, the edge kinds the entry asks for against those the facts have (`edgesMissing`), whether a watcher is on (`watching`) and a watch run waits (`runPending`). With `edgesMissing` or an old run, call `extract` with `wait: true`."), s.graphStatus)
 	mcp.AddTool(srv, read("sync_preview", "What sync would change, writing nothing (= semaps sync --dry-run)."), s.syncPreview)
 	s.registerGraphTools(srv, settings.Tools, settings.Description)
 	// The view tools carry description levels like the graph tools do
@@ -355,7 +364,7 @@ func (s *mcpServer) server() *mcp.Server {
 	mcp.AddTool(srv, write("add_relation", "Add an authored relation; the id is minted and returned."), s.addRelation)
 	mcp.AddTool(srv, write("set_relation_visible", "Show or hide lines on one view (relations.except), one batch, all or nothing: exactly one of relations (ids) or types (relation type ids: stands for the relations of those types with both ends placed on the view right now; a one-time action, relations of the type added later follow the view's defaults). Call it once with everything, not once per relation. `list: true` also returns which relations were changed."), s.setRelationVisible)
 	mcp.AddTool(srv, write("confirm_rename", "Answer a sync rename candidate: entity + symbol, or relation + member."), s.confirmRename)
-	mcp.AddTool(srv, write("extract", "Run the extractors of the .semaps file; returns run ids."), s.extract)
+	mcp.AddTool(srv, write("extract", "Start the extractors of the .semaps file and refresh the live code graph from them (nothing in the registry changes); returns the run ids at once. `wait: true` returns when the runs have finished, with each run's state, time and error. A graph answer's `facts:` line and warnings say when to call it; `graph_status` shows the runs."), s.extract)
 	mcp.AddTool(srv, write("sync", "Reconcile the registry with the code (extracts first unless run is given)."), s.sync)
 	mcp.AddTool(srv, write("place_entities", "Put entities on a view. Only when a human asked for it: requestedByHuman."), s.placeEntities)
 	mcp.AddTool(srv, write("move_elements", "Move placements by dx/dy or to x/y; a container goes with everything inside it. Only when a human asked: requestedByHuman."), s.moveElements)
@@ -1010,7 +1019,7 @@ func (s *mcpServer) getGraph(_ context.Context, _ *mcp.CallToolRequest, in getGr
 		structured["truncated"] = truncated
 		return &mcp.CallToolResult{Content: []mcp.Content{&mcp.TextContent{Text: string(body)}}}, structured, nil
 	}
-	return &mcp.CallToolResult{Content: []mcp.Content{&mcp.TextContent{Text: string(body)}}}, nil, nil
+	return &mcp.CallToolResult{Content: []mcp.Content{&mcp.TextContent{Text: string(withFreshness(body, facts))}}}, nil, nil
 }
 
 // findNode is find_node (part 2): a plain substring search over names and
@@ -1020,12 +1029,12 @@ func (s *mcpServer) findNode(_ context.Context, _ *mcp.CallToolRequest, in findN
 	if err != nil {
 		return nil, nil, err
 	}
-	sources, _ := sourcesFor(s.proj, m.ProjectID())
+	sources, facts := sourcesFor(s.proj, m.ProjectID())
 	graph, err := core.BuildGraph(sources, m)
 	if err != nil {
 		return nil, nil, err
 	}
-	return nil, map[string]any{"candidates": core.FindNodes(graph, in.Q, in.Limit)}, nil
+	return nil, map[string]any{"candidates": core.FindNodes(graph, in.Q, in.Limit), "facts": facts}, nil
 }
 
 // graphFormats is graph_formats: the same list GET /api/graph-formats gives,
@@ -1316,16 +1325,56 @@ func (s *mcpServer) runs(id string) ([]*runInfo, error) {
 	return out, nil
 }
 
+// extract starts every selected extractor at once; with `wait` it returns
+// when all have finished, and then says how each ended — a failed run is data
+// here (state, error), not a tool error, so one failure does not hide the
+// other runs.
 func (s *mcpServer) extract(_ context.Context, _ *mcp.CallToolRequest, in extractIn) (*mcp.CallToolResult, any, error) {
-	runs, err := s.runs(in.Extractor)
+	list, err := selectExtractors(s.proj, in.Extractor)
 	if err != nil {
 		return nil, nil, err
 	}
-	out := make([]map[string]string, len(runs))
-	for i, r := range runs {
-		out[i] = map[string]string{"run": r.ID, "extractor": r.Extractor, "project": r.Project}
+	store := newRunStore(s.proj.File)
+	store.onFinish = s.onRunFinish
+	var infos []*runInfo
+	var dones []<-chan struct{}
+	for _, e := range list {
+		info, done, err := store.start(s.proj, e, os.Stderr, "")
+		if err != nil {
+			return nil, nil, fmt.Errorf("%s: %w", e.ID, err)
+		}
+		infos, dones = append(infos, info), append(dones, done)
+	}
+	out := make([]map[string]any, len(infos))
+	for i, info := range infos {
+		if in.Wait {
+			<-dones[i]
+			if fresh, err := store.get(info.ID); err == nil {
+				info = fresh
+			}
+		}
+		row := map[string]any{"run": info.ID, "extractor": info.Extractor, "project": info.Project, "state": info.State}
+		if info.State != "running" {
+			row["seconds"] = info.Seconds
+			if info.Error != "" {
+				row["error"] = info.Error
+			}
+			if info.Stats != nil {
+				row["symbols"], row["edges"] = info.Stats.Symbols, info.Stats.Edges
+			}
+		}
+		out[i] = row
 	}
 	return nil, map[string]any{"runs": out}, nil
+}
+
+// graphStatus is graph_status (graph_status.go).
+func (s *mcpServer) graphStatus(_ context.Context, _ *mcp.CallToolRequest, in graphStatusIn) (*mcp.CallToolResult, any, error) {
+	m, err := s.model(in.Project)
+	if err != nil {
+		return nil, nil, err
+	}
+	return nil, map[string]any{"extractors": graphStatus(s.proj, m.ProjectID(), s.watch)}, nil
 }
 
 func (s *mcpServer) reconcile(in syncIn, dryRun bool) (*mcp.CallToolResult, any, error) {

@@ -56,9 +56,10 @@ const factsLineHelp = "A line of the default `facts` answer reads: " +
 	"`via <node>` (from step 2 on) names the node(s) this line was reached through."
 
 const trapsHelp = "Traps found in practice: " +
+	"a text answer starts with a `facts:` line (which extractor run its facts come from, how old) and a `warning:` line when the facts are known to lack what the project file asks for, such as `calls` edges — then an empty `called-by` means nothing: call `extract` with `wait: true` (`graph_status` shows the runs); " +
 	"asking about a TYPE shows the calls made by its own methods, folded up to the type (`lift=types`, the default) — do not pass `lift=none` for a type, or its methods' calls disappear from the answer with no explanation; " +
 	"reading or writing a property counts as a `calls` edge, the same as calling a method — nothing marks it apart; " +
-	"an answer that was cut (by `limit`, `fanout` or `list_cap`) says so in its FIRST line, so check the first line before trusting a count; " +
+	"an answer that was cut (by `limit`, `fanout` or `list_cap`) says so at the top, in the line after the `facts:` lines, so check it before trusting a count; " +
 	"`fanout` cuts neighbours per node per relation and what is cut does not come back in a later part of the same answer — ask again with a larger `fanout`; " +
 	"a plain name is enough for `around` (`find_node`'s id is not required) — an ambiguous name lists candidates, an unresolved one lists near matches; " +
 	"a method carrying a `{dynamic: create @57}` mark means something happens at that line the graph cannot see (reflection-based creation or invocation) — read the code at that line, the graph has no edge for it."
@@ -77,9 +78,10 @@ const narrowFactsLineHelp = "A line of the default answer reads: " +
 	"`via <node>` (from the second hop on) names the node this line was reached through."
 
 const narrowTrapsHelp = "Traps found in practice: " +
+	"an answer starts with a `facts:` line (run, age) and a `warning:` line when the facts lack what the project file asks for (e.g. `calls`): an empty answer then means nothing — `extract` with `wait: true`, see `graph_status`; " +
 	"asking about a TYPE shows the calls made by its own methods, folded up to the type by default — expect short, summarized lines, not one per method; " +
 	"reading or writing a property counts as a call, the same as calling a method — nothing marks it apart; " +
-	"an answer that was cut says so in its FIRST line, so check the first line before trusting a count; " +
+	"an answer that was cut says so at the top, in the line after the `facts:` lines, so check it before trusting a count; " +
 	"a plain name is usually enough for a tool's `name` — an ambiguous name lists candidates, an unresolved one lists near matches; " +
 	"a method carrying a `{dynamic: create @57}` mark means something happens at that line the graph cannot see (reflection-based creation or invocation) — read the code at that line, the graph has no edge for it."
 
@@ -161,10 +163,10 @@ func serverInstructionsBody(toolsSet, level string) string {
 var instructionsBrief = map[string]string{
 	"one": "SeMaps keeps a live graph of this codebase: types, methods, and how they relate — extends, holds, calls, constructs, contains, and more. " +
 		"A plain name is usually enough to find a node; you rarely need its full id. " +
-		"When an answer is cut, its first line says so and how to see more.",
+		"When an answer is cut, the top of it says so and how to see more.",
 	"narrow": "SeMaps keeps a live graph of this codebase: types and methods and how they relate. " +
 		"A plain name is usually enough for `name`. " +
-		"A cut answer says so in its first line.",
+		"A cut answer says so at the top.",
 }
 
 var instructionsStandard = map[string]string{
@@ -177,7 +179,7 @@ var instructionsStandard = map[string]string{
 // template language, none of which the `narrow` tools have a parameter for.
 const oneOnlyFullAddendum = "Relation vocabulary (name / inverse): extends/extended-by, implements/implemented-by, overrides/overridden-by, holds/held-by, uses/used-by, injects/injected-into, calls/called-by, constructs/constructed-by, depends/depended-on-by, contains/inside. " +
 	"`lift=types` (the default when asking about a type) merges the method-level edges between two types into one type-level relation, adding `fromMethods`/`toMethods`; `lift=none` leaves edges on the methods that made them. " +
-	"`fanout` caps how many neighbours one node contributes per relation per step; a cut is reported in the answer's first line and does not come back in the same answer. " +
+	"`fanout` caps how many neighbours one node contributes per relation per step; a cut is reported at the top of the answer and does not come back in the same answer. " +
 	"The template language shapes an answer of your own: `{macro}` inserts a value or nothing; `[...]` drops an empty optional group whole; `{relations: TEMPLATE | SEPARATOR}` repeats TEMPLATE once per relation, joined by SEPARATOR. " +
 	"Call graph_formats for the full macro dictionary and worked examples."
 
@@ -210,7 +212,7 @@ var graphToolDescriptions = map[string]toolDescriptions{
 			"in which namespace and assembly does X lie → `{\"around\":\"X\"}`. " +
 			"Relation vocabulary (name / inverse): extends / extended-by (a type extends its base type); implements / implemented-by (a type or method implements an interface or interface method); overrides / overridden-by (a method overrides a base virtual method); holds / held-by (a field/property/parameter holds a value of the target type, any cardinality; holds.many / held-by.many narrows to cardinality many); uses / used-by (a member's type refers to the target other than by holding or injecting it); injects / injected-into (a constructor parameter injects the target type); calls / called-by (a method calls another, or reads/writes a property); constructs / constructed-by (a method constructs the target type with `new`); depends / depended-on-by (a module-level dependency); contains / inside (a namespace/assembly/type contains a member). " +
 			"`lift`: `types` merges every method-level edge between the methods of two types into one type-level relation, adding `×N`, `fromMethods`, `toMethods` on it (capped at 5 names then '+N'); `none` leaves edges on the methods that made them, which is required to see a specific method's own calls/constructs. " +
-			"`fanout` (walk parameter, alongside `depth`): caps how many neighbours one node contributes per relation per step; 0 (default) is unlimited; a cut is reported in the answer's first line and does not come back in the same answer. " +
+			"`fanout` (walk parameter, alongside `depth`): caps how many neighbours one node contributes per relation per step; 0 (default) is unlimited; a cut is reported at the top of the answer and does not come back in the same answer. " +
 			"`container`/`limit`/`listCap` as above. " +
 			"Answer formats: `facts` (compact text, one line per node, the default), `lines` (text, one line per relation), `tree` (text, indented walk from `around`, requires `around`), `locations` (tab-separated file:line rows), `json` and `json-compact` (structured, also returned as structuredContent). Call graph_formats for the exact list with each format's own template and the full relation table. " +
 			"Name resolution (`around` as a name, not an id): resolved by id first, then by name, case-insensitively as a last resort; an ambiguous name answers `{\"error\":\"ambiguous\",\"candidates\":[...]}` instead of picking one; an unresolved name is a tool error naming the nearest matches; a name that only resolves case-insensitively, or through a method's short signature rather than its id, adds a one-line notice at the top of the answer saying so. A node hidden because its entity/relation has status `missing` needs `missing:true` to be reachable at all. " +

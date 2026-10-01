@@ -67,8 +67,8 @@ func (p *mcpServerPool) onSettingsChange(s *mcpServer) func(mcpSettings) {
 	}
 }
 
-func registerMCPHTTP(mux *http.ServeMux, proj project, workspace, sourceRoot string, models *modelService, onRunFinish func(*runInfo), settings *mcpSettingsBox) {
-	s := &mcpServer{proj: proj, workspace: workspace, sourceRoot: sourceRoot, models: models, onRunFinish: onRunFinish, settings: settings}
+func registerMCPHTTP(mux *http.ServeMux, proj project, workspace, sourceRoot string, models *modelService, onRunFinish func(*runInfo), settings *mcpSettingsBox, watch *watchManager) {
+	s := &mcpServer{proj: proj, workspace: workspace, sourceRoot: sourceRoot, models: models, onRunFinish: onRunFinish, settings: settings, watch: watch}
 	root := proj.Root
 	if root == "" {
 		root = filepath.Dir(workspace)

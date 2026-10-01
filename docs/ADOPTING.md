@@ -61,7 +61,16 @@ files for the same answer costs many calls and far more tokens, and still misses
 another name. So ask the graph first and open only the lines it names; ask the registry and views
 (`get_relations`, `get_view`) for what the code does not say — what a part is for and which
 interactions are intended. The graph is what the code looks like now (the latest extractor run,
-never stored); the registry is the authored model in git. The server's own instructions tell every
+never stored); the registry is the authored model in git. On a 623-file C# project, four such
+questions took an agent 14 tool calls and 96.5k tokens with grep and reads, and 2 calls and 69.4k
+tokens with the graph (one run; see the README). The graph is only as fresh as the latest extractor
+run, and every graph answer says so: a first line `facts: run <extractor> <time>, <age> old`, and a
+`warning:` line when that run's facts lack an edge kind the `.semaps` entry asks for (an `edges:`
+list that gained `calls` after the last run, say), so an empty `called-by` is not mistaken for
+"nobody calls this". Then `extract` with `wait: true` refreshes it in one call, and `graph_status`
+shows each extractor's runs and whether a watcher is on. Nothing runs by itself except a watcher on
+a source change (`watch: true`): not at host start, not when the `.semaps` file changes. The
+server's own instructions tell every
 agent this; a consuming project that wants it in its own agent rules (`AGENTS.md`, `CLAUDE.md`) can
 add:
 
@@ -136,8 +145,10 @@ writes the facts of that run.
 - Exit code: `--dry-run` gives 1 when anything would change — use it in CI next to `semaps check`.
   Without it, 1 means something is left for a human (`неоднозначно`, `переименование?`) or the
   registry contradicts itself (`сломано`, nothing written); 2 is a usage mistake.
-- `watch: true` only refreshes the live code graph; it never touches the registry, sync stays a
-  deliberate step. The editor's graph page (`/app/#graph`) shows that graph laid out by algorithm and
+- `watch: true` only refreshes the live code graph, on a change of a source file made while the host
+  runs (for `go`: `*.go`, `go.mod`, `go.sum`); it never touches the registry, sync stays a
+  deliberate step. It does not catch up on changes made while the host was down or after a changed
+  `edges:`/`include:` — the graph answer's `facts:` line and `warning:` show that, `extract` fixes it. The editor's graph page (`/app/#graph`) shows that graph laid out by algorithm and
   follows it live; it writes nothing.
 - **A registry from before member relations.** Old `references` between types and modules become
   `missing` at the first sync, with `holds`/`uses`/`injects` and `depends` appearing next to them —
