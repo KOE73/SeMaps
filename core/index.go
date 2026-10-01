@@ -101,13 +101,8 @@ func indexProject(dir, id string) ProjectIndex {
 		_ = readJSON(filepath.Join(dir, "text."+lang+".json"), &cat)
 		names[lang] = map[string]string{}
 		for key, record := range cat.Entries {
-			if v, ok := record.field("name"); ok {
-				names[lang][key] = v.V
-			} else if raw, ok := record["name"]; ok {
-				var s string // v2 catalogue: a bare string
-				if json.Unmarshal(raw, &s) == nil {
-					names[lang][key] = s
-				}
+			if name := record.name(); name != "" {
+				names[lang][key] = name
 			}
 		}
 	}
@@ -147,6 +142,88 @@ func indexProject(dir, id string) ProjectIndex {
 		return less(a.Order, a.ID, b.Order, b.ID)
 	})
 	return p
+}
+
+// LiveIndex is Index as the working model sees it: which projects and views
+// exist comes from disk (a structural change is written at once), what they
+// are called and how they look comes from the model, unsaved edits included.
+// A project whose model does not load keeps its disk entry.
+func LiveIndex(workspace string, model func(id string) (*Model, error)) WorkspaceIndex {
+	index := Index(workspace)
+	for i := range index.Projects {
+		p := &index.Projects[i]
+		if p.Error != "" {
+			continue
+		}
+		if m, err := model(p.ID); err == nil {
+			m.overlay(p)
+		}
+	}
+	sort.SliceStable(index.Projects, func(i, j int) bool {
+		a, b := index.Projects[i], index.Projects[j]
+		return less(a.Order, a.ID, b.Order, b.ID)
+	})
+	return index
+}
+
+func (m *Model) overlay(p *ProjectIndex) {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	var manifest struct {
+		listed
+		Title     string   `json:"title"`
+		Subtitle  string   `json:"subtitle"`
+		Languages []string `json:"languages"`
+	}
+	b, _ := m.manifest.MarshalJSON()
+	if json.Unmarshal(b, &manifest) == nil {
+		p.Title = orDefault(manifest.Title, p.ID)
+		p.Subtitle, p.Icon, p.Theme, p.Order = manifest.Subtitle, manifest.Icon, manifest.Theme, manifest.Order
+		if len(manifest.Languages) > 0 {
+			p.Languages = manifest.Languages
+		}
+	}
+	for i := range p.Views {
+		v := &p.Views[i]
+		if loaded := m.views[v.ID]; loaded != nil {
+			var doc struct {
+				listed
+				Axis string `json:"axis"`
+			}
+			b, _ := loaded.doc.MarshalJSON()
+			if json.Unmarshal(b, &doc) == nil {
+				v.Axis, v.Icon, v.Theme, v.Order = doc.Axis, doc.Icon, doc.Theme, doc.Order
+			}
+		}
+		v.Names = map[string]string{}
+		for _, lang := range p.Languages {
+			texts, err := m.loadText(lang)
+			if err != nil {
+				continue
+			}
+			var cat map[string]textRecord
+			if json.Unmarshal(texts.vals["entries"], &cat) != nil {
+				continue
+			}
+			if name := cat[v.ID].name(); name != "" {
+				v.Names[lang] = name
+			}
+		}
+	}
+	sort.SliceStable(p.Views, func(i, j int) bool {
+		a, b := p.Views[i], p.Views[j]
+		return less(a.Order, a.ID, b.Order, b.ID)
+	})
+}
+
+// name reads a text entry's name, a value with provenance (CONTRACT §7.3). A
+// bare string is the shape of contract 2: it is not read, `semaps check`
+// names it.
+func (r textRecord) name() string {
+	if v, ok := r.field("name"); ok {
+		return v.V
+	}
+	return ""
 }
 
 // less orders by `order` where given, entries without one after, then by id.

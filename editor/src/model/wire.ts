@@ -1,5 +1,3 @@
-import { area, center, containsPoint, containsRect } from "../geometry/rect.js";
-import type { Rect } from "../geometry/types.js";
 import { DiagramDocument } from "./document.js";
 import type { StyleLibrary } from "./StyleLibrary.js";
 import type {
@@ -8,20 +6,21 @@ import type {
   DiagramMetadata,
   DiagramView,
 } from "./types.js";
-import { elementRect } from "./types.js";
 import type {
   WireDocument,
   WireEdge,
-  WireNode,
+  WirePlacement,
   WireView,
-  WireZone,
 } from "./wire-types.js";
+import { EDGE_OVERRIDE_FIELDS, OVERRIDE_FIELDS, serializeOverride } from "./override.js";
 
 /**
- * The only place that knows the JSON contract.
+ * The only place that knows the editor's document shape.
  *
- * Everything above works with `DiagramDocument`. When the contract changes
- * (docs/CONTRACT_V2.md), this file changes and nothing else does.
+ * Everything above works with `DiagramDocument`. The loader (`ProjectStore`)
+ * turns a view file into a `WireDocument` — one array of placements, each
+ * knowing whether it is a container and which container it lies in — and this
+ * file turns that into the element tree and back.
  */
 
 const rawViews = new WeakMap<DiagramView, WireView>();
@@ -29,27 +28,27 @@ const rawViews = new WeakMap<DiagramView, WireView>();
 // ------------------------------------------------------------------ parsing
 
 /**
- * @param styles When given, inline zone colours are migrated into it and the
- *   elements come back wearing a `styleId`. When omitted, inline colours are
- *   left alone in `raw` and ride through a save untouched — so a caller with no
- *   style library can still open and re-save a model without damaging it.
+ * @param _styles Kept for callers that pass the live library; nothing is
+ *   migrated into it any more.
  */
-export function parseDocument(wire: WireDocument, styles?: StyleLibrary): DiagramDocument {
-  const zones = wire.zones ?? [];
-  const nodes = wire.nodes ?? [];
+export function parseDocument(wire: WireDocument, _styles?: StyleLibrary): DiagramDocument {
+  // A document of an older contract had two arrays; it is named, not read (ADR_20260927-3).
+  for (const key of ["zones", "nodes"] as const) {
+    if (key in (wire as Record<string, unknown>)) {
+      throw new Error(
+        `Документ в старой форме: ключ «${key}». Вид контракта 5 — один массив «placements» ` +
+          `(CONTRACT.md §8.2, ADR_20260927-6).`,
+      );
+    }
+  }
 
-  const zoneElements = zones.map((z, i) => zoneToElement(z, i, styles));
-  const nodeElements = nodes.map((n, i) => nodeToElement(n, i));
-
-  linkZoneHierarchy(zoneElements);
-  linkNodes(nodeElements, zoneElements, nodes);
-
-  const roots = [...zoneElements, ...nodeElements].filter((el) => el.parent === null);
+  const elements = (wire.placements ?? []).map((p, i) => placementToElement(p, i));
+  linkParents(elements, wire.placements ?? []);
 
   return new DiagramDocument({
     metadata: parseMetadata(wire),
     views: (wire.views ?? []).map(parseView),
-    roots,
+    roots: elements.filter((el) => el.parent === null),
     edges: (wire.edges ?? []).map(parseEdge),
     raw: wire as unknown as Record<string, unknown>,
   });
@@ -64,7 +63,7 @@ function parseView(w: WireView): DiagramView {
   const view: DiagramView = {
     id: w.id,
     name: w.name ?? w.id,
-    icon: w.icon ?? "🔹",
+    icon: w.icon ?? "",
     description: w.description ?? "",
     highlightZones: w.highlightZones ?? [],
     highlightNodes: w.highlightNodes ?? [],
@@ -86,6 +85,7 @@ function parseEdge(w: WireEdge): DiagramEdge {
     ...(w.origin === "code" || w.toLabel === undefined ? {} : { toLabel: w.toLabel }),
     type: w.type ?? "call",
     ...(w.styleId === undefined ? {} : { styleId: w.styleId }),
+    ...(w.override === undefined ? {} : { override: w.override }),
     ...(w.origin === undefined ? {} : { origin: w.origin }),
     // The *choice* of line shape travels; the polyline it produces never does
     // (ADR_20260903 §2.7).
@@ -93,155 +93,63 @@ function parseEdge(w: WireEdge): DiagramEdge {
   };
 }
 
-function zoneToElement(z: WireZone, order: number, _styles?: StyleLibrary): DiagramElement {
-  const styleId = z.styleId;
-
+function placementToElement(p: WirePlacement, order: number): DiagramElement {
   return {
-    id: z.id,
-    kind: "zone",
-    type: z.type ?? "boundary",
-    label: z.name ?? z.id,
-    ...(z.semanticId === undefined ? {} : { semanticId: z.semanticId }),
-    tags: z.tags ?? [],
-    metadata: z.metadata ?? {},
-    ...(styleId === undefined ? {} : { styleId }),
-    x: z.x,
-    y: z.y,
-    width: z.width,
-    height: z.height,
+    id: p.id,
+    kind: p.container ? "zone" : "node",
+    type: p.type ?? "",
+    label: p.label ?? p.id,
+    tags: p.tags ?? [],
+    metadata: p.metadata ?? {},
+    ...(p.styleId === undefined ? {} : { styleId: p.styleId }),
+    ...(p.override === undefined ? {} : { override: p.override }),
+    x: p.x,
+    y: p.y,
+    width: p.width,
+    height: p.height,
     parent: null,
     children: [],
     wireOrder: order,
-    raw: z as unknown as Record<string, unknown>,
-  };
-}
-
-
-
-function nodeToElement(n: WireNode, order: number): DiagramElement {
-  return {
-    id: n.id,
-    kind: "node",
-    type: n.type ?? "component",
-    label: n.label ?? n.id,
-    tags: n.tags ?? [],
-    metadata: n.metadata ?? {},
-    ...(n.styleId === undefined ? {} : { styleId: n.styleId }),
-    x: n.x,
-    y: n.y,
-    width: n.width,
-    height: n.height,
-    parent: null,
-    children: [],
-    wireOrder: order,
-    raw: n as unknown as Record<string, unknown>,
+    raw: p as unknown as Record<string, unknown>,
   };
 }
 
 /**
- * Nest zones inside zones by strict geometric containment (R-CONT-02).
- *
- * The innermost enclosing zone wins, decided by area rather than by array
- * order. Zones with identical rectangles do not nest, which keeps the relation
- * acyclic without a separate cycle check.
+ * Nest placements by their declared `parent` (CONTRACT.md §8.2): nesting is
+ * written down, never read from geometry. A parent that is not a container
+ * placement on this view, or that would close a cycle, is not followed — the
+ * placement stays at the top, where it is at least visible.
  */
-function linkZoneHierarchy(zones: DiagramElement[]): void {
-  for (const zone of zones) {
-    const r = elementRect(zone);
-    let best: DiagramElement | null = null;
-    for (const candidate of zones) {
-      if (candidate === zone) continue;
-      const cr = elementRect(candidate);
-      if (area(cr) <= area(r)) continue;
-      if (!containsRect(cr, r)) continue;
-      if (best === null || area(cr) < area(elementRect(best))) best = candidate;
-    }
-    if (best !== null) {
-      zone.parent = best;
-      best.children.push(zone);
-    }
-  }
-}
-
-/**
- * Attach nodes to zones.
- *
- * A declared `zone` that names an existing zone wins; otherwise the innermost
- * zone containing the node's centre does (R-CONT-01). Under the old
- * implementation the geometric branch resolved by first match over the zone
- * array, so for nested zones the winner depended on array order — that is D-04,
- * and choosing by area is its fix.
- */
-function linkNodes(nodes: DiagramElement[], zones: DiagramElement[], wire: WireNode[]): void {
-  const byId = new Map(zones.map((z) => [z.id, z]));
-
-  nodes.forEach((node, i) => {
-    const declared = wire[i]?.zone;
-    let parent: DiagramElement | null =
-      declared === undefined || declared === null ? null : byId.get(declared) ?? null;
-
-    if (parent === null) {
-      parent = innermostContaining(zones, center(elementRect(node)));
-    }
-
-    if (parent !== null) {
-      node.parent = parent;
-      parent.children.push(node);
-    }
-
-    node.origin = {
-      zoneDeclared: wire[i] !== undefined && "zone" in wire[i]!,
-      parentId: parent?.id ?? null,
-    };
+function linkParents(elements: DiagramElement[], wire: readonly WirePlacement[]): void {
+  const byId = new Map(elements.map((el) => [el.id, el]));
+  elements.forEach((el, i) => {
+    const declared = wire[i]?.parent;
+    if (declared === undefined || declared === null) return;
+    const parent = byId.get(declared);
+    if (parent === undefined || parent.kind !== "zone" || parent === el) return;
+    for (let p: DiagramElement | null = parent; p !== null; p = p.parent) if (p === el) return;
+    el.parent = parent;
+    parent.children.push(el);
   });
-}
-
-function innermostContaining(
-  zones: readonly DiagramElement[],
-  point: { x: number; y: number },
-): DiagramElement | null {
-  let best: DiagramElement | null = null;
-  let bestArea = Number.POSITIVE_INFINITY;
-  for (const zone of zones) {
-    const r: Rect = elementRect(zone);
-    if (!containsPoint(r, point)) continue;
-    const a = area(r);
-    if (a < bestArea) {
-      best = zone;
-      bestArea = a;
-    }
-  }
-  return best;
 }
 
 // --------------------------------------------------------------- serializing
 
 export function serializeDocument(doc: DiagramDocument): WireDocument {
-  const zones: Array<{ order: number; value: WireZone }> = [];
-  const nodes: Array<{ order: number; value: WireNode }> = [];
+  const placements = [...doc.elements()]
+    .map((el) => ({ order: el.wireOrder, value: elementToPlacement(el) }))
+    .sort((a, b) => a.order - b.order)
+    .map((p) => p.value);
 
-  for (const el of doc.elements()) {
-    if (el.kind === "zone") {
-      zones.push({ order: el.wireOrder, value: elementToZone(el) });
-    } else {
-      nodes.push({ order: el.wireOrder, value: elementToNode(el) });
-    }
-  }
-
-  const byOrder = (a: { order: number }, b: { order: number }): number => a.order - b.order;
-  zones.sort(byOrder);
-  nodes.sort(byOrder);
-
-  const out: WireDocument = {
-    // Unknown top-level keys ($schema, version, generator stamps) ride along.
-    ...doc.raw,
+  const { placements: _drop, ...rest } = doc.raw as WireDocument;
+  return {
+    // Unknown top-level keys ($schema, version, the loader's bundle) ride along.
+    ...rest,
     metadata: { ...doc.metadata },
     views: doc.views.map(serializeView),
-    zones: zones.map((z) => z.value),
-    nodes: nodes.map((n) => n.value),
+    placements,
     edges: doc.edges.map(serializeEdge),
   };
-  return out;
 }
 
 function serializeView(view: DiagramView): WireView {
@@ -266,70 +174,34 @@ function serializeEdge(edge: DiagramEdge): WireEdge {
   }
   out.type = edge.type;
   if (edge.styleId !== undefined) out.styleId = edge.styleId;
+  const override = serializeOverride(EDGE_OVERRIDE_FIELDS, edge.override);
+  if (override !== undefined) out.override = override;
   if (edge.origin !== undefined) out.origin = edge.origin;
   if (edge.routing !== undefined) out.routing = edge.routing;
   return out;
 }
 
-function elementToZone(el: DiagramElement): WireZone {
-  const raw = (el.raw ?? {}) as Partial<WireZone>;
-  const out: WireZone = {
+function elementToPlacement(el: DiagramElement): WirePlacement {
+  const raw = (el.raw ?? {}) as Partial<WirePlacement>;
+  const out: WirePlacement = {
     ...raw,
     id: el.id,
-    name: el.label,
-    type: el.type,
-    x: round(el.x),
-    y: round(el.y),
-    width: round(el.width),
-    height: round(el.height),
-  };
-  if (el.semanticId !== undefined) out.semanticId = el.semanticId;
-  if (el.tags.length > 0) out.tags = el.tags;
-  else delete out.tags;
-
-  if (el.styleId !== undefined) {
-    out.styleId = el.styleId;
-  }
-
-  // An element that never carried metadata does not acquire an empty object
-  // just by being opened.
-  if (Object.keys(el.metadata).length > 0 || "metadata" in raw) out.metadata = el.metadata;
-  else delete out.metadata;
-  return out;
-}
-
-function elementToNode(el: DiagramElement): WireNode {
-  const raw = (el.raw ?? {}) as Partial<WireNode>;
-  const out: WireNode = {
-    ...raw,
-    id: el.id,
+    container: el.kind === "zone",
     label: el.label,
     type: el.type,
+    parent: el.parent !== null && el.parent.kind === "zone" ? el.parent.id : null,
     x: round(el.x),
     y: round(el.y),
     width: round(el.width),
     height: round(el.height),
   };
-  // Containment is expressed on the wire only for nodes, and only as a hint;
-  // zone nesting stays geometric because contract v1 has no field for it.
-  //
-  // The field is written when the file already had it, or when the parent has
-  // actually changed since load. A node that relied on geometry and was never
-  // moved keeps relying on it, so opening a model and saving it produces no
-  // diff at all.
-  const parentId = el.parent !== null && el.parent.kind === "zone" ? el.parent.id : null;
-  const origin = el.origin;
-  const moved = origin === undefined || origin.parentId !== parentId;
-  if (origin?.zoneDeclared === true || moved) {
-    out.zone = parentId;
-  } else {
-    delete out.zone;
-  }
-
   if (el.tags.length > 0) out.tags = el.tags;
   else delete out.tags;
   if (el.styleId !== undefined) out.styleId = el.styleId;
   else delete out.styleId;
+  const override = serializeOverride(OVERRIDE_FIELDS, el.override);
+  if (override !== undefined) out.override = override;
+  else delete out.override;
   // An element that never carried metadata does not acquire an empty object
   // just by being opened.
   if (Object.keys(el.metadata).length > 0 || "metadata" in raw) out.metadata = el.metadata;

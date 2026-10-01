@@ -1,0 +1,29 @@
+{
+  "contractVersion": 3,
+  "relations": [
+    {
+      "id": "r_onnxmodel_session_holds",
+      "from": "e_onnxmodel",
+      "to": "e_session",
+      "type": "holds.one",
+      "origin": "code",
+      "status": "present",
+      "via": {
+        "member": "session",
+        "memberKind": "field",
+        "modifiers": ["private", "readonly"],
+        "text": "OnnxSession",
+        "cardinality": "one"
+      },
+      "evidence": [{ "codeRef": "src/NeuroModFlowNet.ONNX/OnnxModel.cs", "symbol": "NeuroModFlowNet.ONNX.OnnxModel" }]
+    },
+    {
+      "id": "r_graphbuilder_onnxmodel_depends",
+      "from": "e_graphbuilder",
+      "to": "e_onnxmodel",
+      "type": "depends",
+      "origin": "code",
+      "status": "present"
+    }
+  ]
+}

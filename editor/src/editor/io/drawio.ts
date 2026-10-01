@@ -1,6 +1,7 @@
 import type { DiagramDocument } from "../../model/document.js";
 import type { DiagramElement } from "../../model/types.js";
 import { FALLBACK_BLOCK, FALLBACK_EDGE } from "../../model/StyleLibrary.js";
+import { fileRealizations, refOf } from "../../model/realizations.js";
 import type {
   Paint,
   ResolvedBlockStyle,
@@ -75,7 +76,7 @@ export function exportDrawio(doc: DiagramDocument, styles?: StyleLibrary): strin
     );
     parts.push(geometry(x, y, el.width, el.height));
     parts.push(
-      `          <Object type="${attr(el.type)}" codeRef="${attr(codeRef(el))}"` +
+      `          <Object type="${attr(el.type)}" codeRef="${attr(firstFile(el))}"` +
         ` tags="${attr(el.tags.join(","))}" as="data" />`,
     );
     parts.push("        </mxCell>");
@@ -129,8 +130,9 @@ function solid(p: Paint): string {
   return p.kind === "solid" ? p.color : p.stops[0]?.color ?? "#ffffff";
 }
 
-function codeRef(el: DiagramElement): string {
-  return typeof el.metadata.codeRef === "string" ? el.metadata.codeRef : "";
+/** draw.io has one `codeRef` attribute: the first realization's file. */
+function firstFile(el: DiagramElement): string {
+  return refOf(fileRealizations(el.metadata)[0]);
 }
 
 /**

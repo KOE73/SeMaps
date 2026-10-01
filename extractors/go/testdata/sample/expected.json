@@ -1,0 +1,1243 @@
+{
+  "language": "go",
+  "root": "testdata/sample",
+  "edgeKinds": [
+    "contains",
+    "depends",
+    "extends",
+    "holds",
+    "implements",
+    "uses"
+  ],
+  "symbols": [
+    {
+      "id": "example.com/sample/model",
+      "kind": "module",
+      "nativeKind": "package",
+      "name": "model",
+      "file": "model/model.go",
+      "line": 3
+    },
+    {
+      "id": "example.com/sample/model.Admin",
+      "kind": "type",
+      "nativeKind": "struct",
+      "name": "Admin",
+      "namespace": "example.com/sample/model",
+      "file": "model/model.go",
+      "line": 59,
+      "visibility": "exported",
+      "members": [
+        {
+          "kind": "field",
+          "name": "Base",
+          "type": "Base",
+          "visibility": "exported",
+          "note": "embedded"
+        },
+        {
+          "kind": "field",
+          "name": "Name",
+          "type": "string",
+          "visibility": "exported"
+        },
+        {
+          "kind": "field",
+          "name": "Owner",
+          "type": "*Item",
+          "visibility": "exported"
+        },
+        {
+          "kind": "field",
+          "name": "Items",
+          "type": "[]Item",
+          "visibility": "exported"
+        },
+        {
+          "kind": "field",
+          "name": "Fixed",
+          "type": "[2]Item",
+          "visibility": "exported"
+        },
+        {
+          "kind": "field",
+          "name": "ByID",
+          "type": "map[string]*Item",
+          "visibility": "exported"
+        },
+        {
+          "kind": "field",
+          "name": "ByKey",
+          "type": "map[Key]int",
+          "visibility": "exported"
+        },
+        {
+          "kind": "field",
+          "name": "Events",
+          "type": "chan Event",
+          "visibility": "exported"
+        },
+        {
+          "kind": "field",
+          "name": "OnDone",
+          "type": "func(Item) error",
+          "visibility": "exported"
+        },
+        {
+          "kind": "field",
+          "name": "Next",
+          "type": "func() (Item, error)",
+          "visibility": "exported"
+        },
+        {
+          "kind": "field",
+          "name": "Nested",
+          "type": "map[Key][]Item",
+          "visibility": "exported"
+        },
+        {
+          "kind": "field",
+          "name": "status",
+          "type": "Status",
+          "visibility": "unexported"
+        },
+        {
+          "kind": "field",
+          "name": "Details",
+          "type": "struct{Last Item}",
+          "visibility": "exported"
+        }
+      ]
+    },
+    {
+      "id": "example.com/sample/model.Base",
+      "kind": "type",
+      "nativeKind": "struct",
+      "name": "Base",
+      "namespace": "example.com/sample/model",
+      "file": "model/model.go",
+      "line": 6,
+      "visibility": "exported",
+      "members": [
+        {
+          "kind": "field",
+          "name": "ID",
+          "type": "string",
+          "visibility": "exported"
+        }
+      ]
+    },
+    {
+      "id": "example.com/sample/model.Batch",
+      "kind": "type",
+      "nativeKind": "slice",
+      "name": "Batch",
+      "namespace": "example.com/sample/model",
+      "file": "model/model.go",
+      "line": 56,
+      "visibility": "exported",
+      "members": []
+    },
+    {
+      "id": "example.com/sample/model.Box",
+      "kind": "type",
+      "nativeKind": "struct",
+      "name": "Box",
+      "namespace": "example.com/sample/model",
+      "file": "model/model.go",
+      "line": 68,
+      "visibility": "exported",
+      "members": [
+        {
+          "kind": "field",
+          "name": "V",
+          "type": "T",
+          "visibility": "exported"
+        }
+      ]
+    },
+    {
+      "id": "example.com/sample/model.Default",
+      "kind": "value",
+      "nativeKind": "var",
+      "name": "Default",
+      "namespace": "example.com/sample/model",
+      "file": "model/model.go",
+      "line": 36,
+      "visibility": "exported"
+    },
+    {
+      "id": "example.com/sample/model.Event",
+      "kind": "type",
+      "nativeKind": "struct",
+      "name": "Event",
+      "namespace": "example.com/sample/model",
+      "file": "model/model.go",
+      "line": 20,
+      "visibility": "exported",
+      "members": [
+        {
+          "kind": "field",
+          "name": "At",
+          "type": "int64",
+          "visibility": "exported"
+        }
+      ]
+    },
+    {
+      "id": "example.com/sample/model.HandlerFunc",
+      "kind": "type",
+      "nativeKind": "func",
+      "name": "HandlerFunc",
+      "namespace": "example.com/sample/model",
+      "file": "model/model.go",
+      "line": 62,
+      "visibility": "exported",
+      "members": []
+    },
+    {
+      "id": "example.com/sample/model.Item",
+      "kind": "type",
+      "nativeKind": "struct",
+      "name": "Item",
+      "namespace": "example.com/sample/model",
+      "file": "model/model.go",
+      "line": 11,
+      "visibility": "exported",
+      "members": [
+        {
+          "kind": "field",
+          "name": "Name",
+          "type": "string",
+          "visibility": "exported"
+        },
+        {
+          "kind": "field",
+          "name": "Price",
+          "type": "int",
+          "visibility": "exported"
+        }
+      ]
+    },
+    {
+      "id": "example.com/sample/model.ItemAlias",
+      "kind": "type",
+      "nativeKind": "alias",
+      "name": "ItemAlias",
+      "namespace": "example.com/sample/model",
+      "file": "model/model.go",
+      "line": 65,
+      "visibility": "exported"
+    },
+    {
+      "id": "example.com/sample/model.Key",
+      "kind": "type",
+      "nativeKind": "string",
+      "name": "Key",
+      "namespace": "example.com/sample/model",
+      "file": "model/model.go",
+      "line": 17,
+      "visibility": "exported",
+      "members": []
+    },
+    {
+      "id": "example.com/sample/model.MaxItems",
+      "kind": "value",
+      "nativeKind": "const",
+      "name": "MaxItems",
+      "namespace": "example.com/sample/model",
+      "file": "model/model.go",
+      "line": 33,
+      "visibility": "exported"
+    },
+    {
+      "id": "example.com/sample/model.Status",
+      "kind": "type",
+      "nativeKind": "int",
+      "name": "Status",
+      "namespace": "example.com/sample/model",
+      "file": "model/model.go",
+      "line": 25,
+      "visibility": "exported",
+      "members": [
+        {
+          "kind": "value",
+          "name": "StatusNew",
+          "type": "0",
+          "visibility": "exported"
+        },
+        {
+          "kind": "value",
+          "name": "StatusDone",
+          "type": "1",
+          "visibility": "exported"
+        }
+      ]
+    },
+    {
+      "id": "example.com/sample/model.StatusDone",
+      "kind": "value",
+      "nativeKind": "const",
+      "name": "StatusDone",
+      "namespace": "example.com/sample/model",
+      "file": "model/model.go",
+      "line": 29,
+      "visibility": "exported"
+    },
+    {
+      "id": "example.com/sample/model.StatusNew",
+      "kind": "value",
+      "nativeKind": "const",
+      "name": "StatusNew",
+      "namespace": "example.com/sample/model",
+      "file": "model/model.go",
+      "line": 28,
+      "visibility": "exported"
+    },
+    {
+      "id": "example.com/sample/model.User",
+      "kind": "type",
+      "nativeKind": "struct",
+      "name": "User",
+      "namespace": "example.com/sample/model",
+      "file": "model/model.go",
+      "line": 39,
+      "visibility": "exported",
+      "members": [
+        {
+          "kind": "field",
+          "name": "Base",
+          "type": "Base",
+          "visibility": "exported",
+          "note": "embedded"
+        },
+        {
+          "kind": "field",
+          "name": "Name",
+          "type": "string",
+          "visibility": "exported"
+        },
+        {
+          "kind": "field",
+          "name": "Owner",
+          "type": "*Item",
+          "visibility": "exported"
+        },
+        {
+          "kind": "field",
+          "name": "Items",
+          "type": "[]Item",
+          "visibility": "exported"
+        },
+        {
+          "kind": "field",
+          "name": "Fixed",
+          "type": "[2]Item",
+          "visibility": "exported"
+        },
+        {
+          "kind": "field",
+          "name": "ByID",
+          "type": "map[string]*Item",
+          "visibility": "exported"
+        },
+        {
+          "kind": "field",
+          "name": "ByKey",
+          "type": "map[Key]int",
+          "visibility": "exported"
+        },
+        {
+          "kind": "field",
+          "name": "Events",
+          "type": "chan Event",
+          "visibility": "exported"
+        },
+        {
+          "kind": "field",
+          "name": "OnDone",
+          "type": "func(Item) error",
+          "visibility": "exported"
+        },
+        {
+          "kind": "field",
+          "name": "Next",
+          "type": "func() (Item, error)",
+          "visibility": "exported"
+        },
+        {
+          "kind": "field",
+          "name": "Nested",
+          "type": "map[Key][]Item",
+          "visibility": "exported"
+        },
+        {
+          "kind": "field",
+          "name": "status",
+          "type": "Status",
+          "visibility": "unexported"
+        },
+        {
+          "kind": "field",
+          "name": "Details",
+          "type": "struct{Last Item}",
+          "visibility": "exported"
+        }
+      ]
+    },
+    {
+      "id": "example.com/sample/store",
+      "kind": "module",
+      "nativeKind": "package",
+      "name": "store",
+      "file": "store/store.go",
+      "line": 2
+    },
+    {
+      "id": "example.com/sample/store.Any",
+      "kind": "interface",
+      "nativeKind": "interface",
+      "name": "Any",
+      "namespace": "example.com/sample/store",
+      "file": "store/store.go",
+      "line": 30,
+      "visibility": "exported",
+      "members": []
+    },
+    {
+      "id": "example.com/sample/store.Log",
+      "kind": "type",
+      "nativeKind": "struct",
+      "name": "Log",
+      "namespace": "example.com/sample/store",
+      "file": "store/store.go",
+      "line": 61,
+      "visibility": "exported",
+      "members": [
+        {
+          "kind": "field",
+          "name": "lines",
+          "type": "[]string",
+          "visibility": "unexported"
+        },
+        {
+          "kind": "method",
+          "name": "Flush",
+          "type": "func(w io.Writer) error",
+          "visibility": "exported",
+          "note": "pointer receiver"
+        },
+        {
+          "kind": "method",
+          "name": "Write",
+          "type": "func(p []byte) (int, error)",
+          "visibility": "exported",
+          "note": "pointer receiver"
+        }
+      ]
+    },
+    {
+      "id": "example.com/sample/store.MemStore",
+      "kind": "type",
+      "nativeKind": "struct",
+      "name": "MemStore",
+      "namespace": "example.com/sample/store",
+      "file": "store/store.go",
+      "line": 33,
+      "visibility": "exported",
+      "members": [
+        {
+          "kind": "field",
+          "name": "items",
+          "type": "[]model.Item",
+          "visibility": "unexported"
+        },
+        {
+          "kind": "field",
+          "name": "boxed",
+          "type": "model.Box[model.Item]",
+          "visibility": "unexported"
+        },
+        {
+          "kind": "method",
+          "name": "Clone",
+          "type": "func() *MemStore",
+          "visibility": "exported",
+          "note": "pointer receiver"
+        },
+        {
+          "kind": "method",
+          "name": "Read",
+          "type": "func() model.Item",
+          "visibility": "exported"
+        },
+        {
+          "kind": "method",
+          "name": "Write",
+          "type": "func(item model.Item) error",
+          "visibility": "exported",
+          "note": "pointer receiver"
+        }
+      ]
+    },
+    {
+      "id": "example.com/sample/store.NewMemStore",
+      "kind": "function",
+      "nativeKind": "function",
+      "name": "NewMemStore",
+      "namespace": "example.com/sample/store",
+      "file": "store/store.go",
+      "line": 51,
+      "visibility": "exported"
+    },
+    {
+      "id": "example.com/sample/store.NotFound",
+      "kind": "type",
+      "nativeKind": "struct",
+      "name": "NotFound",
+      "namespace": "example.com/sample/store",
+      "file": "store/store.go",
+      "line": 75,
+      "visibility": "exported",
+      "members": [
+        {
+          "kind": "method",
+          "name": "Error",
+          "type": "func() string",
+          "visibility": "exported"
+        }
+      ]
+    },
+    {
+      "id": "example.com/sample/store.ReadWriter",
+      "kind": "interface",
+      "nativeKind": "interface",
+      "name": "ReadWriter",
+      "namespace": "example.com/sample/store",
+      "file": "store/store.go",
+      "line": 21,
+      "visibility": "exported",
+      "members": []
+    },
+    {
+      "id": "example.com/sample/store.Reader",
+      "kind": "interface",
+      "nativeKind": "interface",
+      "name": "Reader",
+      "namespace": "example.com/sample/store",
+      "file": "store/store.go",
+      "line": 11,
+      "visibility": "exported",
+      "members": [
+        {
+          "kind": "method",
+          "name": "Read",
+          "type": "func() model.Item",
+          "visibility": "exported"
+        }
+      ]
+    },
+    {
+      "id": "example.com/sample/store.Source",
+      "kind": "interface",
+      "nativeKind": "interface",
+      "name": "Source",
+      "namespace": "example.com/sample/store",
+      "file": "store/store.go",
+      "line": 27,
+      "visibility": "exported",
+      "members": [
+        {
+          "kind": "method",
+          "name": "Read",
+          "type": "func() model.Item",
+          "visibility": "exported"
+        }
+      ]
+    },
+    {
+      "id": "example.com/sample/store.Split",
+      "kind": "function",
+      "nativeKind": "function",
+      "name": "Split",
+      "namespace": "example.com/sample/store",
+      "file": "store/store.go",
+      "line": 56,
+      "visibility": "exported"
+    },
+    {
+      "id": "example.com/sample/store.Writer",
+      "kind": "interface",
+      "nativeKind": "interface",
+      "name": "Writer",
+      "namespace": "example.com/sample/store",
+      "file": "store/store.go",
+      "line": 16,
+      "visibility": "exported",
+      "members": [
+        {
+          "kind": "method",
+          "name": "Write",
+          "type": "func(item model.Item) error",
+          "visibility": "exported"
+        }
+      ]
+    }
+  ],
+  "edges": [
+    {
+      "from": "example.com/sample/model",
+      "to": "example.com/sample/model.Admin",
+      "kind": "contains"
+    },
+    {
+      "from": "example.com/sample/model",
+      "to": "example.com/sample/model.Base",
+      "kind": "contains"
+    },
+    {
+      "from": "example.com/sample/model",
+      "to": "example.com/sample/model.Batch",
+      "kind": "contains"
+    },
+    {
+      "from": "example.com/sample/model",
+      "to": "example.com/sample/model.Box",
+      "kind": "contains"
+    },
+    {
+      "from": "example.com/sample/model",
+      "to": "example.com/sample/model.Default",
+      "kind": "contains"
+    },
+    {
+      "from": "example.com/sample/model",
+      "to": "example.com/sample/model.Event",
+      "kind": "contains"
+    },
+    {
+      "from": "example.com/sample/model",
+      "to": "example.com/sample/model.HandlerFunc",
+      "kind": "contains"
+    },
+    {
+      "from": "example.com/sample/model",
+      "to": "example.com/sample/model.Item",
+      "kind": "contains"
+    },
+    {
+      "from": "example.com/sample/model",
+      "to": "example.com/sample/model.ItemAlias",
+      "kind": "contains"
+    },
+    {
+      "from": "example.com/sample/model",
+      "to": "example.com/sample/model.Key",
+      "kind": "contains"
+    },
+    {
+      "from": "example.com/sample/model",
+      "to": "example.com/sample/model.MaxItems",
+      "kind": "contains"
+    },
+    {
+      "from": "example.com/sample/model",
+      "to": "example.com/sample/model.Status",
+      "kind": "contains"
+    },
+    {
+      "from": "example.com/sample/model",
+      "to": "example.com/sample/model.StatusDone",
+      "kind": "contains"
+    },
+    {
+      "from": "example.com/sample/model",
+      "to": "example.com/sample/model.StatusNew",
+      "kind": "contains"
+    },
+    {
+      "from": "example.com/sample/model",
+      "to": "example.com/sample/model.User",
+      "kind": "contains"
+    },
+    {
+      "from": "example.com/sample/model.Admin",
+      "to": "example.com/sample/model.User",
+      "kind": "holds",
+      "native": "underlying",
+      "via": {
+        "member": "Admin",
+        "memberKind": "self",
+        "modifiers": [
+          "public"
+        ],
+        "text": "User",
+        "cardinality": "one"
+      }
+    },
+    {
+      "from": "example.com/sample/model.Batch",
+      "to": "example.com/sample/model.Item",
+      "kind": "holds",
+      "native": "underlying",
+      "via": {
+        "member": "Batch",
+        "memberKind": "self",
+        "modifiers": [
+          "public"
+        ],
+        "text": "[]Item",
+        "path": [
+          "item"
+        ],
+        "cardinality": "many"
+      }
+    },
+    {
+      "from": "example.com/sample/model.Default",
+      "to": "example.com/sample/model.Item",
+      "kind": "uses",
+      "via": {
+        "member": "Default",
+        "memberKind": "self",
+        "text": "Item",
+        "cardinality": "one"
+      }
+    },
+    {
+      "from": "example.com/sample/model.HandlerFunc",
+      "to": "example.com/sample/model.Item",
+      "kind": "uses",
+      "native": "signature",
+      "via": {
+        "member": "HandlerFunc",
+        "memberKind": "self",
+        "text": "func(in Item) Status",
+        "path": [
+          "arg:0"
+        ],
+        "cardinality": "one"
+      }
+    },
+    {
+      "from": "example.com/sample/model.HandlerFunc",
+      "to": "example.com/sample/model.Status",
+      "kind": "uses",
+      "native": "signature",
+      "via": {
+        "member": "HandlerFunc",
+        "memberKind": "self",
+        "text": "func(in Item) Status",
+        "path": [
+          "result"
+        ],
+        "cardinality": "one"
+      }
+    },
+    {
+      "from": "example.com/sample/model.ItemAlias",
+      "to": "example.com/sample/model.Item",
+      "kind": "uses",
+      "native": "alias",
+      "via": {
+        "member": "ItemAlias",
+        "memberKind": "self",
+        "text": "Item",
+        "cardinality": "one"
+      }
+    },
+    {
+      "from": "example.com/sample/model.StatusDone",
+      "to": "example.com/sample/model.Status",
+      "kind": "uses",
+      "via": {
+        "member": "StatusDone",
+        "memberKind": "self",
+        "text": "Status",
+        "cardinality": "one"
+      }
+    },
+    {
+      "from": "example.com/sample/model.StatusNew",
+      "to": "example.com/sample/model.Status",
+      "kind": "uses",
+      "via": {
+        "member": "StatusNew",
+        "memberKind": "self",
+        "text": "Status",
+        "cardinality": "one"
+      }
+    },
+    {
+      "from": "example.com/sample/model.User",
+      "to": "example.com/sample/model.Base",
+      "kind": "holds",
+      "native": "embed",
+      "via": {
+        "member": "Base",
+        "memberKind": "field",
+        "modifiers": [
+          "public"
+        ],
+        "text": "Base",
+        "cardinality": "one"
+      }
+    },
+    {
+      "from": "example.com/sample/model.User",
+      "to": "example.com/sample/model.Event",
+      "kind": "holds",
+      "native": "field",
+      "via": {
+        "member": "Events",
+        "memberKind": "field",
+        "modifiers": [
+          "public"
+        ],
+        "text": "chan Event",
+        "path": [
+          "item"
+        ],
+        "cardinality": "many",
+        "deferred": true
+      }
+    },
+    {
+      "from": "example.com/sample/model.User",
+      "to": "example.com/sample/model.Item",
+      "kind": "holds",
+      "native": "field",
+      "via": {
+        "member": "ByID",
+        "memberKind": "field",
+        "modifiers": [
+          "public"
+        ],
+        "text": "map[string]*Item",
+        "path": [
+          "value"
+        ],
+        "cardinality": "keyed"
+      }
+    },
+    {
+      "from": "example.com/sample/model.User",
+      "to": "example.com/sample/model.Item",
+      "kind": "holds",
+      "native": "field",
+      "via": {
+        "member": "Details",
+        "memberKind": "field",
+        "modifiers": [
+          "public"
+        ],
+        "text": "struct{Last Item}",
+        "path": [
+          "field:Last"
+        ],
+        "cardinality": "one"
+      }
+    },
+    {
+      "from": "example.com/sample/model.User",
+      "to": "example.com/sample/model.Item",
+      "kind": "holds",
+      "native": "field",
+      "via": {
+        "member": "Fixed",
+        "memberKind": "field",
+        "modifiers": [
+          "public"
+        ],
+        "text": "[2]Item",
+        "path": [
+          "item"
+        ],
+        "cardinality": "many"
+      }
+    },
+    {
+      "from": "example.com/sample/model.User",
+      "to": "example.com/sample/model.Item",
+      "kind": "holds",
+      "native": "field",
+      "via": {
+        "member": "Items",
+        "memberKind": "field",
+        "modifiers": [
+          "public"
+        ],
+        "text": "[]Item",
+        "path": [
+          "item"
+        ],
+        "cardinality": "many"
+      }
+    },
+    {
+      "from": "example.com/sample/model.User",
+      "to": "example.com/sample/model.Item",
+      "kind": "holds",
+      "native": "field",
+      "via": {
+        "member": "Nested",
+        "memberKind": "field",
+        "modifiers": [
+          "public"
+        ],
+        "text": "map[Key][]Item",
+        "path": [
+          "value",
+          "item"
+        ],
+        "cardinality": "keyed"
+      }
+    },
+    {
+      "from": "example.com/sample/model.User",
+      "to": "example.com/sample/model.Item",
+      "kind": "holds",
+      "native": "field",
+      "via": {
+        "member": "Next",
+        "memberKind": "field",
+        "modifiers": [
+          "public"
+        ],
+        "text": "func() (Item, error)",
+        "path": [
+          "result:0"
+        ],
+        "cardinality": "one",
+        "deferred": true
+      }
+    },
+    {
+      "from": "example.com/sample/model.User",
+      "to": "example.com/sample/model.Item",
+      "kind": "holds",
+      "native": "field",
+      "via": {
+        "member": "OnDone",
+        "memberKind": "field",
+        "modifiers": [
+          "public"
+        ],
+        "text": "func(Item) error",
+        "path": [
+          "arg:0"
+        ],
+        "cardinality": "one",
+        "deferred": true
+      }
+    },
+    {
+      "from": "example.com/sample/model.User",
+      "to": "example.com/sample/model.Item",
+      "kind": "holds",
+      "native": "field",
+      "via": {
+        "member": "Owner",
+        "memberKind": "field",
+        "modifiers": [
+          "public"
+        ],
+        "text": "*Item",
+        "cardinality": "one"
+      }
+    },
+    {
+      "from": "example.com/sample/model.User",
+      "to": "example.com/sample/model.Key",
+      "kind": "holds",
+      "native": "field",
+      "via": {
+        "member": "ByKey",
+        "memberKind": "field",
+        "modifiers": [
+          "public"
+        ],
+        "text": "map[Key]int",
+        "path": [
+          "key"
+        ],
+        "cardinality": "keyed"
+      }
+    },
+    {
+      "from": "example.com/sample/model.User",
+      "to": "example.com/sample/model.Key",
+      "kind": "holds",
+      "native": "field",
+      "via": {
+        "member": "Nested",
+        "memberKind": "field",
+        "modifiers": [
+          "public"
+        ],
+        "text": "map[Key][]Item",
+        "path": [
+          "key"
+        ],
+        "cardinality": "keyed"
+      }
+    },
+    {
+      "from": "example.com/sample/model.User",
+      "to": "example.com/sample/model.Status",
+      "kind": "holds",
+      "native": "field",
+      "via": {
+        "member": "status",
+        "memberKind": "field",
+        "modifiers": [
+          "private"
+        ],
+        "text": "Status",
+        "cardinality": "one"
+      }
+    },
+    {
+      "from": "example.com/sample/store",
+      "to": "example.com/sample/model",
+      "kind": "depends"
+    },
+    {
+      "from": "example.com/sample/store",
+      "to": "example.com/sample/store.Any",
+      "kind": "contains"
+    },
+    {
+      "from": "example.com/sample/store",
+      "to": "example.com/sample/store.Log",
+      "kind": "contains"
+    },
+    {
+      "from": "example.com/sample/store",
+      "to": "example.com/sample/store.MemStore",
+      "kind": "contains"
+    },
+    {
+      "from": "example.com/sample/store",
+      "to": "example.com/sample/store.NewMemStore",
+      "kind": "contains"
+    },
+    {
+      "from": "example.com/sample/store",
+      "to": "example.com/sample/store.NotFound",
+      "kind": "contains"
+    },
+    {
+      "from": "example.com/sample/store",
+      "to": "example.com/sample/store.ReadWriter",
+      "kind": "contains"
+    },
+    {
+      "from": "example.com/sample/store",
+      "to": "example.com/sample/store.Reader",
+      "kind": "contains"
+    },
+    {
+      "from": "example.com/sample/store",
+      "to": "example.com/sample/store.Source",
+      "kind": "contains"
+    },
+    {
+      "from": "example.com/sample/store",
+      "to": "example.com/sample/store.Split",
+      "kind": "contains"
+    },
+    {
+      "from": "example.com/sample/store",
+      "to": "example.com/sample/store.Writer",
+      "kind": "contains"
+    },
+    {
+      "from": "example.com/sample/store.MemStore",
+      "to": "example.com/sample/model.Box",
+      "kind": "holds",
+      "native": "field",
+      "via": {
+        "member": "boxed",
+        "memberKind": "field",
+        "modifiers": [
+          "private"
+        ],
+        "text": "model.Box[model.Item]",
+        "cardinality": "one"
+      }
+    },
+    {
+      "from": "example.com/sample/store.MemStore",
+      "to": "example.com/sample/model.Item",
+      "kind": "holds",
+      "native": "field",
+      "via": {
+        "member": "boxed",
+        "memberKind": "field",
+        "modifiers": [
+          "private"
+        ],
+        "text": "model.Box[model.Item]",
+        "path": [
+          "arg:0"
+        ],
+        "cardinality": "one"
+      }
+    },
+    {
+      "from": "example.com/sample/store.MemStore",
+      "to": "example.com/sample/model.Item",
+      "kind": "holds",
+      "native": "field",
+      "via": {
+        "member": "items",
+        "memberKind": "field",
+        "modifiers": [
+          "private"
+        ],
+        "text": "[]model.Item",
+        "path": [
+          "item"
+        ],
+        "cardinality": "many"
+      }
+    },
+    {
+      "from": "example.com/sample/store.MemStore",
+      "to": "example.com/sample/model.Item",
+      "kind": "uses",
+      "via": {
+        "member": "Read",
+        "memberKind": "return",
+        "text": "model.Item",
+        "cardinality": "one"
+      }
+    },
+    {
+      "from": "example.com/sample/store.MemStore",
+      "to": "example.com/sample/model.Item",
+      "kind": "uses",
+      "via": {
+        "member": "Write.item",
+        "memberKind": "parameter",
+        "text": "model.Item",
+        "cardinality": "one"
+      }
+    },
+    {
+      "from": "example.com/sample/store.MemStore",
+      "to": "example.com/sample/store.ReadWriter",
+      "kind": "implements",
+      "native": "methodset.ptr"
+    },
+    {
+      "from": "example.com/sample/store.MemStore",
+      "to": "example.com/sample/store.Reader",
+      "kind": "implements",
+      "native": "methodset"
+    },
+    {
+      "from": "example.com/sample/store.MemStore",
+      "to": "example.com/sample/store.Source",
+      "kind": "implements",
+      "native": "methodset"
+    },
+    {
+      "from": "example.com/sample/store.MemStore",
+      "to": "example.com/sample/store.Writer",
+      "kind": "implements",
+      "native": "methodset.ptr"
+    },
+    {
+      "from": "example.com/sample/store.NewMemStore",
+      "to": "example.com/sample/model.Item",
+      "kind": "uses",
+      "via": {
+        "member": "extra",
+        "memberKind": "parameter",
+        "text": "...model.Item",
+        "path": [
+          "item"
+        ],
+        "cardinality": "many"
+      }
+    },
+    {
+      "from": "example.com/sample/store.NewMemStore",
+      "to": "example.com/sample/model.Item",
+      "kind": "uses",
+      "via": {
+        "member": "seed",
+        "memberKind": "parameter",
+        "text": "[]model.Item",
+        "path": [
+          "item"
+        ],
+        "cardinality": "many"
+      }
+    },
+    {
+      "from": "example.com/sample/store.NewMemStore",
+      "to": "example.com/sample/store.MemStore",
+      "kind": "uses",
+      "via": {
+        "member": "NewMemStore",
+        "memberKind": "return",
+        "text": "*MemStore",
+        "cardinality": "one"
+      }
+    },
+    {
+      "from": "example.com/sample/store.ReadWriter",
+      "to": "example.com/sample/store.Reader",
+      "kind": "extends",
+      "native": "embed"
+    },
+    {
+      "from": "example.com/sample/store.ReadWriter",
+      "to": "example.com/sample/store.Writer",
+      "kind": "extends",
+      "native": "embed"
+    },
+    {
+      "from": "example.com/sample/store.Source",
+      "to": "example.com/sample/store.Reader",
+      "kind": "extends",
+      "native": "underlying"
+    },
+    {
+      "from": "example.com/sample/store.Split",
+      "to": "example.com/sample/model.Batch",
+      "kind": "uses",
+      "via": {
+        "member": "Split.#0",
+        "memberKind": "return",
+        "text": "model.Batch",
+        "cardinality": "one"
+      }
+    },
+    {
+      "from": "example.com/sample/store.Split",
+      "to": "example.com/sample/model.Status",
+      "kind": "uses",
+      "via": {
+        "member": "Split.#1",
+        "memberKind": "return",
+        "text": "model.Status",
+        "cardinality": "one"
+      }
+    },
+    {
+      "from": "example.com/sample/store.Split",
+      "to": "example.com/sample/model.User",
+      "kind": "uses",
+      "via": {
+        "member": "u",
+        "memberKind": "parameter",
+        "text": "model.User",
+        "cardinality": "one"
+      }
+    }
+  ]
+}

@@ -1,4 +1,5 @@
-import { paint } from "../model/StyleLibrary.js";
+import { paint, StyleLibrary } from "../model/StyleLibrary.js";
+import { KindCatalog } from "../model/KindCatalog.js";
 import type {
   Endpoint,
   Paint,
@@ -18,6 +19,8 @@ import type {
   WireText,
 } from "../model/style-types.js";
 import { el, replaceChildren } from "../util/dom.js";
+import { iconEl } from "../ui/icons.js";
+import { iconPicker } from "../ui/iconPicker.js";
 import {
   colorField,
   field,
@@ -83,7 +86,7 @@ export class StyleEditor {
       replaceChildren(
         this.mount,
         el("div", { class: "inspector-empty" }, [
-          el("p", { class: "inspector-empty-icon", text: "🎨" }),
+          el("p", { class: "inspector-empty-icon" }, [iconEl("palette", "ui-icon-lg")]),
           el("p", {
             text: i18n.d.panels.styles.emptyEditor,
           }),
@@ -93,14 +96,16 @@ export class StyleEditor {
     }
 
     const target: StyleTarget = style.appliesTo ?? "block";
+    // Blocks and containers are both boxes; only an edge is drawn differently.
+    const box = target !== "edge";
     replaceChildren(
       this.mount,
       this.headerSection(style, target),
-      target === "block" ? this.blockFillSection(style) : null,
-      target === "block" ? this.blockBorderSection(style) : this.edgeLineSection(style),
-      target === "block" ? this.blockTextSection(style) : this.edgeLabelSection(style),
-      target === "block" ? this.iconSection(style) : null,
-      target === "block" ? this.headerBandSection(style) : null,
+      box ? this.blockFillSection(style) : null,
+      box ? this.blockBorderSection(style) : this.edgeLineSection(style),
+      box ? this.blockTextSection(style) : this.edgeLabelSection(style),
+      box ? this.iconSection(style) : null,
+      target === "container" ? this.headerBandSection(style) : null,
       target === "edge" ? this.endsSection(style) : null,
       target === "edge" ? this.familySection(style) : null,
     );
@@ -165,8 +170,8 @@ export class StyleEditor {
       if (id === null) return;
       replaceChildren(
         host,
-        target === "block"
-          ? blockPreview(this.host.styles.resolveBlock(id))
+        target !== "edge"
+          ? blockPreview(this.host.styles.resolveBlock(id), { container: target === "container" })
           : edgePreview(this.host.styles.resolveEdge(id)),
       );
     };
@@ -263,6 +268,7 @@ export class StyleEditor {
           },
         }),
       ),
+      this.kindsField(style, target),
       field(
         i18n.d.panels.styles.basedOnField,
         select(parents, style.basedOn ?? "", (next) => {
@@ -276,6 +282,58 @@ export class StyleEditor {
           );
         }),
       ),
+    ]);
+  }
+
+  /**
+   * «Для типов»: the types this style belongs to (`forKinds`) — entity kinds
+   * for a block or container, relation types for an edge. Required for every
+   * style but the three fallbacks (CONTRACT.md §11.5), never inherited. What is
+   * wrong is said under the field as the person types: no type at all, a type
+   * outside the dictionary, a type of the other sort.
+   */
+  private kindsField(style: WireStyle, target: StyleTarget): HTMLElement {
+    const t = i18n.d.panels.styles;
+    const exempt = StyleLibrary.isFallback(style.id);
+    const catalog = KindCatalog.active;
+    const problems = el("div", { class: "style-error", hidden: true });
+
+    const check = (kinds: readonly string[]): void => {
+      const lines: string[] = [];
+      if (!exempt && kinds.length === 0) lines.push(t.kindsRequired);
+      const outside = kinds.filter((k) => (target === "edge" ? catalog.lookupRelation(k) : catalog.lookup(k)) === undefined);
+      if (outside.length > 0) lines.push(i18n.format(t.kindsNotInCatalog, { kinds: outside.join(", ") }));
+      // A container style names container kinds, a block style the others; an edge style has one sort of type.
+      const wrong = target === "edge" ? [] : kinds.filter((k) => catalog.lookup(k) !== undefined && catalog.isContainer(k) !== (target === "container"));
+      if (wrong.length > 0) lines.push(i18n.format(t.kindsWrongSort, { kinds: wrong.join(", ") }));
+      problems.textContent = lines.join(" ");
+      problems.hidden = lines.length === 0;
+    };
+    check(style.forKinds ?? []);
+
+    const input = el("input", {
+      type: "text",
+      value: (style.forKinds ?? []).join(", "),
+      placeholder: t.kindsPlaceholder,
+      title: target === "edge" ? t.kindsHintEdge : t.kindsHint,
+      disabled: exempt,
+      on: {
+        input: (e) => {
+          const kinds = (e.target as HTMLInputElement).value
+            .split(",")
+            .map((k) => k.trim())
+            .filter((k) => k !== "");
+          check(kinds);
+          this.patch((d) => {
+            d.forKinds = kinds;
+          });
+        },
+      },
+    });
+    return el("div", { class: "field" }, [
+      el("span", { class: "field-label", text: t.kindsField, title: target === "edge" ? t.kindsHintEdge : t.kindsHint }),
+      input,
+      problems,
     ]);
   }
 
@@ -301,16 +359,17 @@ export class StyleEditor {
     const doc = this.host.canvas.model;
     let byType = 0;
     if (doc !== null) {
+      // Wearing it as the base style of their type: the dictionary or the id names it, not the element.
       for (const element of doc.elements()) {
-        if (element.styleId === undefined && element.type === style.id) byType += 1;
+        if (element.styleId === undefined && lib.blockStyleIdFor(element) === style.id) byType += 1;
       }
       for (const edge of doc.edges) {
-        if (edge.styleId === undefined && edge.type === style.id) byType += 1;
+        if (edge.styleId === undefined && lib.edgeStyleIdFor(edge) === style.id) byType += 1;
       }
     }
     if (byType > 0) {
       const ok = window.confirm(
-        `Элементов, которые сейчас берут этот стиль по совпадению type = «${style.id}»: ${byType}.\n` +
+        `Объектов, которые сейчас носят этот стиль как базовый стиль своего типа: ${byType}.\n` +
           `После переименования они вернутся к стилю по умолчанию.\n\nПереименовать всё равно?`,
       );
       if (!ok) return;
@@ -396,11 +455,20 @@ export class StyleEditor {
     const inherited = this.inheritedBlock(style);
     return this.section(i18n.d.panels.styles.iconSection, false, [
       el("div", { class: "grid-2" }, [
-        optionalTextField(i18n.d.panels.styles.glyphField, style.icon?.glyph, inherited.icon.glyph, (v) => {
-          this.patch((d) => {
-            d.icon = { ...d.icon, glyph: v };
-          });
-        }),
+        // The icon is a registry key chosen from the set, never typed as an emoji.
+        field(
+          i18n.d.panels.styles.glyphField,
+          iconPicker({
+            value: style.icon?.glyph,
+            inherited: inherited.icon.glyph,
+            allowClear: true,
+            onChange: (v) => {
+              this.patch((d) => {
+                d.icon = { ...d.icon, glyph: v };
+              });
+            },
+          }),
+        ),
         optionalBoolField(i18n.d.panels.styles.showField, style.icon?.show, inherited.icon.show, (v) => {
           this.patch((d) => {
             d.icon = { ...d.icon, show: v };
@@ -619,7 +687,6 @@ export class StyleEditor {
         ),
         el("button", {
           class: "btn btn-small full",
-          text: "＋ Добавить стоп",
           on: {
             click: () => {
               this.patch(
@@ -639,7 +706,7 @@ export class StyleEditor {
               );
             },
           },
-        }),
+        }, [iconEl("plus"), "Добавить стоп"]),
       );
     }
 
@@ -718,7 +785,6 @@ export class StyleEditor {
       }),
       el("button", {
         class: "btn-icon danger",
-        text: "✕",
         title: "Удалить стоп",
         // Two stops is the floor: with fewer the library ignores the gradient
         // entirely and falls back, so removing one more would blank the fill
@@ -736,7 +802,7 @@ export class StyleEditor {
             );
           },
         },
-      }),
+      }, [iconEl("close")]),
     ]);
   }
 
@@ -1052,6 +1118,7 @@ function prune(style: WireStyle): void {
   }
 
   if (style.tags !== undefined && style.tags.length === 0) delete style.tags;
+  if (style.forKinds !== undefined && style.forKinds.length === 0) delete style.forKinds;
 }
 
 function stripUndefined(bag: Record<string, unknown>): void {

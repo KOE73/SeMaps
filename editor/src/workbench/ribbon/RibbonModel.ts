@@ -16,7 +16,7 @@ export function createDefaultRibbonSpec(): RibbonSpec {
             get title() { return i18n.d.ribbon.groups.creation; },
             items: [
               { type: "button", command: "diagram.block.add", size: "large" },
-              { type: "button", command: "diagram.zone.add", size: "large" },
+              { type: "button", command: "diagram.container.add", size: "large" },
             ],
           },
           {
@@ -24,6 +24,7 @@ export function createDefaultRibbonSpec(): RibbonSpec {
             get title() { return i18n.d.ribbon.groups.edit; },
             items: [
               { type: "button", command: "edit.delete", size: "medium" },
+              { type: "button", command: "edit.paste", size: "medium" },
             ],
           },
           {
@@ -66,7 +67,7 @@ export function createDefaultRibbonSpec(): RibbonSpec {
             get title() { return i18n.d.ribbon.groups.creation; },
             items: [
               { type: "button", command: "diagram.block.add", size: "large" },
-              { type: "button", command: "diagram.zone.add", size: "large" },
+              { type: "button", command: "diagram.container.add", size: "large" },
             ],
           },
           {
@@ -77,15 +78,6 @@ export function createDefaultRibbonSpec(): RibbonSpec {
               { type: "button", command: "workspace.view.new", size: "large" },
               { type: "button", command: "workspace.view.edit", size: "medium" },
               { type: "button", command: "workspace.project.edit", size: "medium" },
-            ],
-          },
-          {
-            id: "catalogs",
-            get title() { return i18n.d.ribbon.groups.panels; },
-            items: [
-              { type: "button", command: "panel.base.toggle", size: "large" },
-              { type: "button", command: "panel.neighbourhood.toggle", size: "large" },
-              { type: "button", command: "panel.catalog.toggle", size: "large" },
             ],
           },
         ],
@@ -115,13 +107,6 @@ export function createDefaultRibbonSpec(): RibbonSpec {
                 getValue: () => localStorage.getItem("semaps.ports") || "uniform",
               },
               { type: "toggle", command: "view.edges.toggleStructure", size: "medium" },
-            ],
-          },
-          {
-            id: "model",
-            get title() { return i18n.d.ribbon.groups.file; },
-            items: [
-              { type: "button", command: "file.code.toggle", size: "medium" },
             ],
           },
         ],
@@ -175,8 +160,10 @@ export function createDefaultRibbonSpec(): RibbonSpec {
               { type: "toggle", command: "panel.filters.toggle", size: "small" },
               { type: "toggle", command: "panel.styles.toggle", size: "small" },
               { type: "toggle", command: "panel.catalog.toggle", size: "small" },
+              { type: "toggle", command: "panel.changes.toggle", size: "small" },
               { type: "toggle", command: "panel.base.toggle", size: "small" },
               { type: "toggle", command: "panel.neighbourhood.toggle", size: "small" },
+              { type: "toggle", command: "panel.routing.toggle", size: "small" },
               { type: "separator" },
               { type: "button", command: "workspace.layout.reset", size: "small" },
             ],

@@ -1,6 +1,8 @@
 # editor — `@semaps/editor`
 
-Canvas and editor, TypeScript. Fixed coordinates, no auto-layout.
+Canvas and editor, TypeScript. Diagrams have fixed coordinates, no auto-layout; the separate
+code graph page (`/app/#graph`) is laid out by algorithm on purpose
+(`docs/adr/ADR_20260928-2_editor_graph-is-a-separate-form.md`).
 
 ```
 npm ci

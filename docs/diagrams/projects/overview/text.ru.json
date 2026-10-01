@@ -1,0 +1,426 @@
+{
+  "contractVersion": 5,
+  "language": "ru",
+  "entries": {
+    "v_overview": {
+      "name": {
+        "v": "Общая архитектура",
+        "at": "2026-09-26T08:49:15Z",
+        "origin": "authored"
+      }
+    },
+    "e_editor": {
+      "name": {
+        "v": "Editor",
+        "at": "2026-09-30T07:27:42Z",
+        "origin": "authored"
+      },
+      "description": {
+        "v": "Браузерный редактор схем (TypeScript): холст, виды, стили. Модель читает и пишет только через хост.",
+        "at": "2026-09-26T09:39:30Z",
+        "origin": "authored"
+      }
+    },
+    "e_agent": {
+      "name": {
+        "v": "Coding agent",
+        "at": "2026-09-30T07:27:42Z",
+        "origin": "authored"
+      },
+      "description": {
+        "v": "Агент (Claude Code и др.): читает карту перед работой и записывает, что построил, — через MCP-инструменты.",
+        "at": "2026-09-26T09:39:30Z",
+        "origin": "authored"
+      }
+    },
+    "e_http_api": {
+      "name": {
+        "v": "HTTP API",
+        "at": "2026-09-30T07:27:42Z",
+        "origin": "authored"
+      },
+      "description": {
+        "v": "/api/workspace, /api/model/*, /api/projects — вход редактора. Запись только с ключом хоста.",
+        "at": "2026-09-26T09:39:30Z",
+        "origin": "authored"
+      }
+    },
+    "e_mcp_server": {
+      "name": {
+        "v": "MCP server",
+        "at": "2026-09-30T07:27:42Z",
+        "origin": "authored"
+      },
+      "description": {
+        "v": "/mcp (Streamable HTTP) в том же процессе: инструменты агента поверх той же модели.",
+        "at": "2026-09-26T09:39:30Z",
+        "origin": "authored"
+      }
+    },
+    "e_mcp_proxy": {
+      "name": {
+        "v": "semaps mcp",
+        "at": "2026-09-30T07:27:42Z",
+        "origin": "authored"
+      },
+      "description": {
+        "v": "stdio-прокси из .mcp.json к /mcp хоста; нет хоста — поднимает его в фоне.",
+        "at": "2026-09-26T09:39:30Z",
+        "origin": "authored"
+      }
+    },
+    "e_model_service": {
+      "name": {
+        "v": "Model service",
+        "at": "2026-09-30T07:27:42Z",
+        "origin": "authored"
+      },
+      "description": {
+        "v": "Одна рабочая модель на проект для всех клиентов: создание проектов и видов, живой каталог, события SSE.",
+        "at": "2026-09-26T09:39:30Z",
+        "origin": "authored"
+      }
+    },
+    "e_model": {
+      "name": {
+        "v": "Model",
+        "at": "2026-09-30T07:27:42Z",
+        "origin": "authored"
+      },
+      "description": {
+        "v": "Рабочее состояние проекта: пакеты операций, журнал, несохранённое, Save и Discard.",
+        "at": "2026-09-26T09:39:30Z",
+        "origin": "authored"
+      }
+    },
+    "e_rules": {
+      "name": {
+        "v": "Contract rules",
+        "at": "2026-09-30T07:27:42Z",
+        "origin": "authored"
+      },
+      "description": {
+        "v": "Проверка каждого пакета в Apply для всех писателей: редактора, агента, сверки (ADR_20260926).",
+        "at": "2026-09-26T09:39:30Z",
+        "origin": "authored"
+      }
+    },
+    "e_sync": {
+      "name": {
+        "v": "Sync",
+        "at": "2026-09-30T07:27:42Z",
+        "origin": "authored"
+      },
+      "description": {
+        "v": "Сверка реестра с фактами экстракторов: новые, пропавшие, переименованные сущности и связи.",
+        "at": "2026-09-26T09:39:30Z",
+        "origin": "authored"
+      }
+    },
+    "e_check": {
+      "name": {
+        "v": "Check",
+        "at": "2026-09-30T07:27:42Z",
+        "origin": "authored"
+      },
+      "description": {
+        "v": "semaps check: протухшие тексты, битые codeRef, виды без оси.",
+        "at": "2026-09-26T09:39:30Z",
+        "origin": "authored"
+      }
+    },
+    "e_extract_csharp": {
+      "name": {
+        "v": "C# extractor",
+        "at": "2026-09-30T07:27:42Z",
+        "origin": "authored"
+      },
+      "description": {
+        "v": "Roslyn: факты о типах и членских связях C#-проектов.",
+        "at": "2026-09-26T09:39:30Z",
+        "origin": "authored"
+      }
+    },
+    "e_extract_ts": {
+      "name": {
+        "v": "TypeScript extractor",
+        "at": "2026-09-30T07:27:42Z",
+        "origin": "authored"
+      },
+      "description": {
+        "v": "TypeScript compiler API: факты о типах и связях TS-кода.",
+        "at": "2026-09-26T09:39:30Z",
+        "origin": "authored"
+      }
+    },
+    "e_workspace": {
+      "name": {
+        "v": "Workspace files",
+        "at": "2026-09-30T07:27:42Z",
+        "origin": "authored"
+      },
+      "description": {
+        "v": "Файлы контракта v3: project.json, entities, relations, texts, views. Это и идёт в git.",
+        "at": "2026-09-26T09:39:30Z",
+        "origin": "authored"
+      }
+    },
+    "e_journal": {
+      "name": {
+        "v": "Work journal",
+        "at": "2026-09-30T07:27:42Z",
+        "origin": "authored"
+      },
+      "description": {
+        "v": ".semaps/work/*.jsonl: принятые, но не сохранённые пакеты; переживают перезапуск хоста.",
+        "at": "2026-09-26T09:39:30Z",
+        "origin": "authored"
+      }
+    },
+    "e_source": {
+      "name": {
+        "v": "Source code",
+        "at": "2026-09-30T07:27:42Z",
+        "origin": "authored"
+      },
+      "description": {
+        "v": "Код проекта-потребителя: вход экстракторов и цель codeRef.",
+        "at": "2026-09-26T09:39:30Z",
+        "origin": "authored"
+      }
+    },
+    "e_clients": {
+      "name": {
+        "v": "Клиенты",
+        "at": "2026-09-30T07:27:42Z",
+        "origin": "authored"
+      }
+    },
+    "e_host": {
+      "name": {
+        "v": "Процесс хоста (semaps.exe)",
+        "at": "2026-10-01T10:24:06Z",
+        "origin": "authored"
+      }
+    },
+    "e_core": {
+      "name": {
+        "v": "Ядро (core/)",
+        "at": "2026-09-30T07:27:42Z",
+        "origin": "authored"
+      }
+    },
+    "e_storage": {
+      "name": {
+        "v": "Хранение",
+        "at": "2026-09-30T07:27:42Z",
+        "origin": "authored"
+      }
+    },
+    "e_extractors": {
+      "name": {
+        "v": "Экстракторы (extractors/)",
+        "at": "2026-09-30T07:27:42Z",
+        "origin": "authored"
+      }
+    },
+    "e_extract_go": {
+      "name": {
+        "v": "Go extractor",
+        "at": "2026-10-01T06:13:55Z",
+        "origin": "authored"
+      },
+      "description": {
+        "v": "Читает исходники на Go и печатает факты о коде по нормативной таблице соответствий.",
+        "at": "2026-10-01T06:13:55Z",
+        "origin": "authored"
+      }
+    },
+    "e_code_graph": {
+      "name": {
+        "v": "Code graph",
+        "at": "2026-10-01T06:13:56Z",
+        "origin": "authored"
+      },
+      "description": {
+        "v": "Живой граф кода из фактов экстракторов: типы, члены, методы и вызовы, с местами в коде. Отвечает агентам на вопросы и кормит страницу графа; в git не пишется.",
+        "at": "2026-10-01T06:13:56Z",
+        "origin": "authored"
+      }
+    },
+    "e_watcher": {
+      "name": {
+        "v": "Source watcher",
+        "at": "2026-10-01T06:13:57Z",
+        "origin": "authored"
+      },
+      "description": {
+        "v": "Следит за исходниками экстракторов с включённым watch и при изменении перезапускает их, обновляя только граф кода.",
+        "at": "2026-10-01T06:13:57Z",
+        "origin": "authored"
+      }
+    },
+    "e_runs": {
+      "name": {
+        "v": "Extractor runs",
+        "at": "2026-10-01T06:20:20Z",
+        "origin": "authored"
+      },
+      "description": {
+        "v": "Прогоны экстракторов во временной папке: факты (facts.json), лог и описание прогона. Отсюда берут факты сверка и граф кода; в git не попадает.",
+        "at": "2026-10-01T06:20:20Z",
+        "origin": "authored"
+      }
+    },
+    "v_internals": {
+      "name": {
+        "v": "Устройство SeMaps: хранение и данные",
+        "at": "2026-10-01T08:04:18Z",
+        "origin": "authored"
+      }
+    },
+    "e_semaps_file": {
+      "name": {
+        "v": ".semaps",
+        "at": "2026-10-01T08:04:21Z",
+        "origin": "authored"
+      },
+      "description": {
+        "v": "Файл проекта (YAML): рабочее пространство, корень исходников, порт, экстракторы, настройки MCP. Читают хост, CLI и наблюдатель; пишет экран настройки.",
+        "at": "2026-10-01T08:04:21Z",
+        "origin": "authored"
+      }
+    },
+    "e_mcp_json": {
+      "name": {
+        "v": ".mcp.json",
+        "at": "2026-10-01T08:04:22Z",
+        "origin": "authored"
+      },
+      "description": {
+        "v": "Как агенту запустить semaps mcp: лежит в корне проекта.",
+        "at": "2026-10-01T08:04:22Z",
+        "origin": "authored"
+      }
+    },
+    "e_defaults": {
+      "name": {
+        "v": "Встроенные умолчания",
+        "at": "2026-10-01T08:04:24Z",
+        "origin": "authored"
+      },
+      "description": {
+        "v": "kinds, styles, canvas, templates, graph-filters внутри semaps.exe. Словарь kinds сливается с файлом пространства по записям, остальные файл пространства заменяет целиком.",
+        "at": "2026-10-01T08:04:24Z",
+        "origin": "authored"
+      }
+    },
+    "e_host_json": {
+      "name": {
+        "v": "host.json",
+        "at": "2026-10-01T08:04:25Z",
+        "origin": "authored"
+      },
+      "description": {
+        "v": ".semaps/host.json: pid, порт и ключ запущенного хоста. По нему прокси находит хост.",
+        "at": "2026-10-01T08:04:25Z",
+        "origin": "authored"
+      }
+    },
+    "e_mcp_log": {
+      "name": {
+        "v": "MCP log",
+        "at": "2026-10-01T08:04:26Z",
+        "origin": "authored"
+      },
+      "description": {
+        "v": ".semaps/logs/mcp-<дата>.jsonl: каждый вызов инструмента агентом.",
+        "at": "2026-10-01T08:04:26Z",
+        "origin": "authored"
+      }
+    },
+    "e_mcp_settings": {
+      "name": {
+        "v": "MCP settings",
+        "at": "2026-10-01T08:04:27Z",
+        "origin": "authored"
+      },
+      "description": {
+        "v": "Набор инструментов, формат и лимиты из раздела mcp файла .semaps; применяется на лету.",
+        "at": "2026-10-01T08:04:27Z",
+        "origin": "authored"
+      }
+    },
+    "e_editor_local": {
+      "name": {
+        "v": "Tab state",
+        "at": "2026-10-01T08:04:28Z",
+        "origin": "authored"
+      },
+      "description": {
+        "v": "Состояние вкладки редактора: локальная отмена и настройки в localStorage. Хосту не уходит.",
+        "at": "2026-10-01T08:04:28Z",
+        "origin": "authored"
+      }
+    },
+    "e_g_memory": {
+      "name": {
+        "v": "Память хоста (живёт, пока хост запущен)",
+        "at": "2026-10-01T08:04:35Z",
+        "origin": "authored"
+      }
+    },
+    "e_g_git": {
+      "name": {
+        "v": "На диске, в git (статика)",
+        "at": "2026-10-01T08:04:36Z",
+        "origin": "authored"
+      }
+    },
+    "e_g_local": {
+      "name": {
+        "v": "На диске, вне git (динамика)",
+        "at": "2026-10-01T08:04:38Z",
+        "origin": "authored"
+      }
+    },
+    "v_glance": {
+      "name": {
+        "v": "SeMaps в одной картинке",
+        "at": "2026-10-01T10:45:51Z",
+        "origin": "authored"
+      }
+    },
+    "e_human": {
+      "name": {
+        "v": "Человек",
+        "at": "2026-10-01T10:45:58Z",
+        "origin": "authored"
+      },
+      "description": {
+        "v": "Архитектор или разработчик: рисует и читает схемы в редакторе, просит агента, сохраняет и коммитит.",
+        "at": "2026-10-01T10:45:58Z",
+        "origin": "authored"
+      }
+    },
+    "e_map": {
+      "name": {
+        "v": "Карта: реестр и схемы",
+        "at": "2026-10-01T10:46:00Z",
+        "origin": "authored"
+      },
+      "description": {
+        "v": "Общая модель: сущности и связи реестра и схемы поверх них. Одна для человека и агента, хранится в git.",
+        "at": "2026-10-01T10:46:00Z",
+        "origin": "authored"
+      }
+    },
+    "e_semaps": {
+      "name": {
+        "v": "SeMaps",
+        "at": "2026-10-01T10:46:09Z",
+        "origin": "authored"
+      }
+    }
+  }
+}

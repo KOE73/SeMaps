@@ -1,0 +1,352 @@
+{
+  "contractVersion": 5,
+  "relations": [
+    {
+      "id": "r_editor_http_api_call",
+      "from": "e_editor",
+      "to": "e_http_api",
+      "type": "call",
+      "origin": "authored"
+    },
+    {
+      "id": "r_agent_mcp_proxy_call",
+      "from": "e_agent",
+      "to": "e_mcp_proxy",
+      "type": "call",
+      "origin": "authored"
+    },
+    {
+      "id": "r_mcp_proxy_mcp_server_call",
+      "from": "e_mcp_proxy",
+      "to": "e_mcp_server",
+      "type": "call",
+      "origin": "authored"
+    },
+    {
+      "id": "r_http_api_model_service_call",
+      "from": "e_http_api",
+      "to": "e_model_service",
+      "type": "call",
+      "origin": "authored"
+    },
+    {
+      "id": "r_mcp_server_model_service_call",
+      "from": "e_mcp_server",
+      "to": "e_model_service",
+      "type": "call",
+      "origin": "authored"
+    },
+    {
+      "id": "r_model_service_model_call",
+      "from": "e_model_service",
+      "to": "e_model",
+      "type": "call",
+      "origin": "authored"
+    },
+    {
+      "id": "r_model_rules_call",
+      "from": "e_model",
+      "to": "e_rules",
+      "type": "call",
+      "origin": "authored"
+    },
+    {
+      "id": "r_model_journal_storage",
+      "from": "e_model",
+      "to": "e_journal",
+      "type": "storage",
+      "origin": "authored"
+    },
+    {
+      "id": "r_model_workspace_storage",
+      "from": "e_model",
+      "to": "e_workspace",
+      "type": "storage",
+      "origin": "authored"
+    },
+    {
+      "id": "r_mcp_server_sync_call",
+      "from": "e_mcp_server",
+      "to": "e_sync",
+      "type": "call",
+      "origin": "authored"
+    },
+    {
+      "id": "r_sync_model_call",
+      "from": "e_sync",
+      "to": "e_model",
+      "type": "call",
+      "origin": "authored"
+    },
+    {
+      "id": "r_sync_extract_csharp_runs",
+      "from": "e_sync",
+      "to": "e_extract_csharp",
+      "type": "runs",
+      "origin": "authored"
+    },
+    {
+      "id": "r_sync_extract_ts_runs",
+      "from": "e_sync",
+      "to": "e_extract_ts",
+      "type": "runs",
+      "origin": "authored"
+    },
+    {
+      "id": "r_sync_extract_go_runs",
+      "from": "e_sync",
+      "to": "e_extract_go",
+      "type": "runs",
+      "origin": "authored"
+    },
+    {
+      "id": "r_extract_csharp_source_storage",
+      "from": "e_extract_csharp",
+      "to": "e_source",
+      "type": "storage",
+      "origin": "authored"
+    },
+    {
+      "id": "r_extract_ts_source_storage",
+      "from": "e_extract_ts",
+      "to": "e_source",
+      "type": "storage",
+      "origin": "authored"
+    },
+    {
+      "id": "r_extract_go_source_storage",
+      "from": "e_extract_go",
+      "to": "e_source",
+      "type": "storage",
+      "origin": "authored"
+    },
+    {
+      "id": "r_check_workspace_storage",
+      "from": "e_check",
+      "to": "e_workspace",
+      "type": "storage",
+      "origin": "authored"
+    },
+    {
+      "id": "r_watcher_source_storage",
+      "from": "e_watcher",
+      "to": "e_source",
+      "type": "storage",
+      "origin": "authored"
+    },
+    {
+      "id": "r_watcher_extractors_runs",
+      "from": "e_watcher",
+      "to": "e_extractors",
+      "type": "runs",
+      "origin": "authored"
+    },
+    {
+      "id": "r_http_api_code_graph_call",
+      "from": "e_http_api",
+      "to": "e_code_graph",
+      "type": "call",
+      "origin": "authored"
+    },
+    {
+      "id": "r_mcp_server_code_graph_call",
+      "from": "e_mcp_server",
+      "to": "e_code_graph",
+      "type": "call",
+      "origin": "authored"
+    },
+    {
+      "id": "r_mcp_server_editor_call",
+      "from": "e_mcp_server",
+      "to": "e_editor",
+      "type": "call",
+      "origin": "authored"
+    },
+    {
+      "id": "r_extractors_runs_storage",
+      "from": "e_extractors",
+      "to": "e_runs",
+      "type": "storage",
+      "origin": "authored"
+    },
+    {
+      "id": "r_sync_runs_storage",
+      "from": "e_sync",
+      "to": "e_runs",
+      "type": "storage",
+      "origin": "authored"
+    },
+    {
+      "id": "r_code_graph_runs_storage",
+      "from": "e_code_graph",
+      "to": "e_runs",
+      "type": "storage",
+      "origin": "authored"
+    },
+    {
+      "id": "r_agent_mcp_json_storage",
+      "from": "e_agent",
+      "to": "e_mcp_json",
+      "type": "storage",
+      "origin": "authored"
+    },
+    {
+      "id": "r_mcp_proxy_host_json_storage",
+      "from": "e_mcp_proxy",
+      "to": "e_host_json",
+      "type": "storage",
+      "origin": "authored"
+    },
+    {
+      "id": "r_mcp_proxy_mcp_log_storage",
+      "from": "e_mcp_proxy",
+      "to": "e_mcp_log",
+      "type": "storage",
+      "origin": "authored"
+    },
+    {
+      "id": "r_mcp_proxy_host_runs",
+      "from": "e_mcp_proxy",
+      "to": "e_host",
+      "type": "runs",
+      "origin": "authored"
+    },
+    {
+      "id": "r_model_service_editor_event",
+      "from": "e_model_service",
+      "to": "e_editor",
+      "type": "event",
+      "origin": "authored"
+    },
+    {
+      "id": "r_mcp_server_mcp_settings_call",
+      "from": "e_mcp_server",
+      "to": "e_mcp_settings",
+      "type": "call",
+      "origin": "authored"
+    },
+    {
+      "id": "r_mcp_settings_semaps_file_storage",
+      "from": "e_mcp_settings",
+      "to": "e_semaps_file",
+      "type": "storage",
+      "origin": "authored"
+    },
+    {
+      "id": "r_model_service_semaps_file_storage",
+      "from": "e_model_service",
+      "to": "e_semaps_file",
+      "type": "storage",
+      "origin": "authored"
+    },
+    {
+      "id": "r_code_graph_model_call",
+      "from": "e_code_graph",
+      "to": "e_model",
+      "type": "call",
+      "origin": "authored"
+    },
+    {
+      "id": "r_watcher_runs_storage",
+      "from": "e_watcher",
+      "to": "e_runs",
+      "type": "storage",
+      "origin": "authored"
+    },
+    {
+      "id": "r_watcher_code_graph_event",
+      "from": "e_watcher",
+      "to": "e_code_graph",
+      "type": "event",
+      "origin": "authored"
+    },
+    {
+      "id": "r_http_api_defaults_call",
+      "from": "e_http_api",
+      "to": "e_defaults",
+      "type": "call",
+      "origin": "authored"
+    },
+    {
+      "id": "r_editor_editor_local_storage",
+      "from": "e_editor",
+      "to": "e_editor_local",
+      "type": "storage",
+      "origin": "authored"
+    },
+    {
+      "id": "r_host_host_json_storage",
+      "from": "e_host",
+      "to": "e_host_json",
+      "type": "storage",
+      "origin": "authored"
+    },
+    {
+      "id": "r_human_editor_call",
+      "from": "e_human",
+      "to": "e_editor",
+      "type": "call",
+      "origin": "authored"
+    },
+    {
+      "id": "r_editor_map_storage",
+      "from": "e_editor",
+      "to": "e_map",
+      "type": "storage",
+      "origin": "authored"
+    },
+    {
+      "id": "r_mcp_server_map_storage",
+      "from": "e_mcp_server",
+      "to": "e_map",
+      "type": "storage",
+      "origin": "authored"
+    },
+    {
+      "id": "r_extractors_code_graph_data_flow",
+      "from": "e_extractors",
+      "to": "e_code_graph",
+      "type": "data-flow",
+      "origin": "authored"
+    },
+    {
+      "id": "r_code_graph_map_call",
+      "from": "e_code_graph",
+      "to": "e_map",
+      "type": "call",
+      "origin": "authored"
+    },
+    {
+      "id": "r_code_graph_mcp_server_data_flow",
+      "from": "e_code_graph",
+      "to": "e_mcp_server",
+      "type": "data-flow",
+      "origin": "authored",
+      "status": "present"
+    },
+    {
+      "id": "r_mcp_proxy_agent_data_flow",
+      "from": "e_mcp_proxy",
+      "to": "e_agent",
+      "type": "data-flow",
+      "origin": "authored",
+      "status": "present"
+    },
+    {
+      "id": "r_mcp_server_mcp_proxy_data_flow",
+      "from": "e_mcp_server",
+      "to": "e_mcp_proxy",
+      "type": "data-flow",
+      "origin": "authored",
+      "status": "present"
+    },
+    {
+      "id": "r_code_graph_editor_data_flow",
+      "from": "e_code_graph",
+      "to": "e_editor",
+      "type": "data-flow",
+      "origin": "authored",
+      "status": "present"
+    }
+  ]
+}

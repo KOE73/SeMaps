@@ -8,12 +8,22 @@ import { Role, hitTest, type RoleHit } from "./roles.js";
 import { renderMarkdown } from "../editor/doc/MarkdownRenderer.js";
 import { SourceCodeService } from "../editor/code/SourceCodeService.js";
 import { DIAGRAM_CONFIG } from "../constants/diagram-constants.js";
+import { canvas } from "../constants/canvas.js";
+import { KindCatalog } from "../model/KindCatalog.js";
+import { langTag, realizationsOf, refOf } from "../model/realizations.js";
 import { i18n } from "../workbench/i18n/I18nService.js";
+import { iconSvg } from "../ui/icons.js";
 
-const MIN_SIZE = {
-  zone: DIAGRAM_CONFIG.container.minSize,
-  node: DIAGRAM_CONFIG.node.minSize,
-} as const;
+const minSize = () => {
+  const c = canvas();
+  return {
+    container: { width: c.container.minWidth, height: c.container.minHeight },
+    node: { width: c.node.minWidth, height: c.node.minHeight },
+  };
+};
+
+/** How long the arrow outlives the pointer leaving the block, so it can be reached. */
+const CONNECT_HIDE_DELAY_MS = 250;
 
 interface Origin {
   readonly x: number;
@@ -63,7 +73,15 @@ interface MarqueeGesture {
   readonly base: readonly string[];
 }
 
-type Gesture = PanGesture | MoveGesture | ResizeGesture | MarqueeGesture;
+/** Dragging from the arrow under a block to another element. */
+interface ConnectGesture {
+  readonly kind: "connect";
+  readonly fromId: string;
+  /** The element under the pointer, never the source. */
+  targetId: string | null;
+}
+
+type Gesture = PanGesture | MoveGesture | ResizeGesture | MarqueeGesture | ConnectGesture;
 
 /**
  * Turns pointer input into model changes.
@@ -84,6 +102,10 @@ export class InteractionController {
   private lastPointer = { x: 0, y: 0 };
   private currentEdgeControlId: string | null = null;
   private isOverEdgeControls = false;
+  /** The connection arrow: a pending show (and for which block) and a pending hide. */
+  private connectShowTimer: number | null = null;
+  private pendingConnectId: string | null = null;
+  private connectHideTimer: number | null = null;
 
   constructor(
     private readonly canvas: DiagramCanvas,
@@ -96,6 +118,7 @@ export class InteractionController {
     host.addEventListener("contextmenu", this.onContextMenu, { signal });
     host.addEventListener("wheel", this.onWheel, { passive: false, signal });
     host.addEventListener("mouseleave", () => {
+      this.scheduleConnectHandleHide();
       if (!this.isOverEdgeControls) {
         this.scheduleEdgeControlsHide();
         this.canvas.hideAllTooltips();
@@ -103,6 +126,7 @@ export class InteractionController {
     }, { signal });
     window.addEventListener("mousemove", this.onMouseMove, { signal });
     window.addEventListener("mouseup", this.onMouseUp, { signal });
+    window.addEventListener("keydown", this.onKeyDown, { signal });
 
     // Edge control bar events
     const edgeControls = this.canvas.edgeControlsEl;
@@ -183,8 +207,69 @@ export class InteractionController {
     }, DIAGRAM_CONFIG.interaction.edgeControlsHideDelayMs);
   }
 
+  private clearConnectTimers(): void {
+    if (this.connectShowTimer !== null) window.clearTimeout(this.connectShowTimer);
+    if (this.connectHideTimer !== null) window.clearTimeout(this.connectHideTimer);
+    this.connectShowTimer = null;
+    this.connectHideTimer = null;
+    this.pendingConnectId = null;
+  }
+
+  private scheduleConnectHandleHide(): void {
+    if (this.connectShowTimer !== null) window.clearTimeout(this.connectShowTimer);
+    this.connectShowTimer = null;
+    this.pendingConnectId = null;
+    if (this.canvas.connectHandleFor === null || this.connectHideTimer !== null) return;
+    // Grace for the pointer to travel from the block, across the gap, to the arrow.
+    this.connectHideTimer = window.setTimeout(() => {
+      this.connectHideTimer = null;
+      this.canvas.hideConnectHandle();
+    }, CONNECT_HIDE_DELAY_MS);
+  }
+
+  /**
+   * Offer the connection arrow once the pointer has rested on a block (not a
+   * container); keep it while the pointer is on the block or on the arrow.
+   */
+  private trackConnectHandle(e: MouseEvent): void {
+    const target = e.target as HTMLElement | null;
+    if (target && this.canvas.connectHandleEl.contains(target)) {
+      if (this.connectHideTimer !== null) window.clearTimeout(this.connectHideTimer);
+      this.connectHideTimer = null;
+      return;
+    }
+    const hit = hitTest(e.target);
+    const el = hit?.elementId == null ? null : this.canvas.model?.element(hit.elementId) ?? null;
+    if (el === null || isContainer(el)) {
+      this.scheduleConnectHandleHide();
+      return;
+    }
+    if (this.connectHideTimer !== null) window.clearTimeout(this.connectHideTimer);
+    this.connectHideTimer = null;
+    if (this.canvas.connectHandleFor === el.id || this.pendingConnectId === el.id) return;
+    // Another block: the old arrow goes at once, the new one waits for the pointer to rest.
+    this.canvas.hideConnectHandle();
+    if (this.connectShowTimer !== null) window.clearTimeout(this.connectShowTimer);
+    this.pendingConnectId = el.id;
+    this.connectShowTimer = window.setTimeout(() => {
+      this.connectShowTimer = null;
+      this.pendingConnectId = null;
+      if (this.gesture === null) {
+        this.canvas.connectHandleEl.title = i18n.d.canvasMenu.connectDrag;
+        this.canvas.showConnectHandle(el.id);
+      }
+    }, DIAGRAM_CONFIG.interaction.connectHandleShowDelayMs);
+  }
+
+  private readonly onKeyDown = (e: KeyboardEvent): void => {
+    if (e.key !== "Escape" || this.gesture?.kind !== "connect") return;
+    this.gesture = null;
+    this.canvas.setConnectPreview(null);
+  };
+
   destroy(): void {
     this.abort.abort();
+    this.clearConnectTimers();
     this.clearEdgeControlsHideTimer();
     this.cancelEdgeControlsShow();
     this.canvas.hideAllTooltips();
@@ -200,9 +285,16 @@ export class InteractionController {
     if (target && this.canvas.edgeControlsEl.contains(target)) {
       return;
     }
+    if (e.button === 0 && target && this.canvas.connectHandleEl.contains(target)) {
+      e.stopPropagation();
+      this.startConnect();
+      return;
+    }
     this.canvas.hideAllTooltips();
     this.canvas.hideEdgeControls();
     this.cancelEdgeControlsShow();
+    this.clearConnectTimers();
+    this.canvas.hideConnectHandle();
     this.currentEdgeControlId = null;
     this.isOverEdgeControls = false;
     if (e.button !== 0) return;
@@ -277,6 +369,26 @@ export class InteractionController {
     }
   };
 
+  private startConnect(): void {
+    const fromId = this.canvas.connectHandleFor;
+    this.clearConnectTimers();
+    this.canvas.hideConnectHandle();
+    if (fromId === null) return;
+    this.gesture = { kind: "connect", fromId, targetId: null };
+  }
+
+  /** The preview follows the pointer; the element under it, other than the source, is the target. */
+  private applyConnect(gesture: ConnectGesture, e: MouseEvent): void {
+    const hit = hitTest(e.target);
+    const id = hit?.elementId ?? null;
+    gesture.targetId = id !== null && id !== gesture.fromId && this.canvas.model?.element(id) !== undefined ? id : null;
+    this.canvas.setConnectPreview({
+      fromId: gesture.fromId,
+      to: this.canvas.toModel(e.clientX, e.clientY),
+      targetId: gesture.targetId,
+    });
+  }
+
   /**
    * Ctrl or Shift adds to the selection; a plain click replaces it. Clicking an
    * element that is already part of a multi-selection keeps the group, so that
@@ -346,9 +458,9 @@ export class InteractionController {
       this.canvas.hideAllTooltips();
       const doc = this.canvas.model;
       const el = doc?.element(hit.elementId);
-      const codeRef = typeof el?.metadata?.codeRef === "string" ? el.metadata.codeRef.trim() : "";
-      if (codeRef) {
-        this.canvas.events.emit("openCodeViewer", { id: hit.elementId, codeRef, label: el?.label });
+      const ref = fileAtPointer(e.target);
+      if (ref) {
+        this.canvas.events.emit("openCodeViewer", { id: hit.elementId, ref, label: el?.label });
       }
     }
   };
@@ -356,6 +468,7 @@ export class InteractionController {
   private readonly onMouseMove = (e: MouseEvent): void => {
     const gesture = this.gesture;
     if (gesture === null) {
+      this.trackConnectHandle(e);
       const target = e.target as HTMLElement | null;
       if (target && (this.canvas.edgeControlsEl.contains(target) || this.canvas.richTooltipEl.contains(target))) {
         this.isOverEdgeControls = true;
@@ -392,6 +505,9 @@ export class InteractionController {
       case "marquee":
         this.applyMarquee(gesture, e);
         return;
+      case "connect":
+        this.applyConnect(gesture, e);
+        return;
     }
   };
 
@@ -425,17 +541,15 @@ export class InteractionController {
       if (hit.edgeId) {
         const edge = doc.edge(targetId);
         if (edge) {
-          const fromEl = doc.element(edge.from);
-          const toEl = doc.element(edge.to);
-          const fromName = doc.getText(edge.from, lang)?.name || fromEl?.label || edge.from;
-          const toName = doc.getText(edge.to, lang)?.name || toEl?.label || edge.to;
-          name = `${fromName} ➔ ${toName}`;
+          const fromName = doc.entityName(edge.from, lang);
+          const toName = doc.entityName(edge.to, lang);
+          name = `${fromName} → ${toName}`;
           kind = edge.type || "RELATION";
         }
       } else if (hit.elementId) {
         const el = doc.element(targetId);
         if (el) {
-          name = doc.getText(el.id, lang)?.name || el.label || el.id;
+          name = doc.entityName(el.id, lang);
           kind = el.type || (isContainer(el) ? "ZONE" : "NODE");
         }
       }
@@ -469,9 +583,9 @@ export class InteractionController {
     // 1b. Hover on CodeView Button -> Show Rich Code Tooltip immediately
     if (hit.role === Role.CodeView && hit.elementId !== null) {
       const el = doc.element(hit.elementId);
-      const codeRef = typeof el?.metadata?.codeRef === "string" ? el.metadata.codeRef.trim() : "";
-      if (codeRef) {
-        this.showCodePreviewTooltip(codeRef, el?.label || hit.elementId, e.clientX, e.clientY);
+      const ref = fileAtPointer(e.target);
+      if (ref) {
+        this.showCodePreviewTooltip(ref, el?.label || hit.elementId, e.clientX, e.clientY);
         return;
       }
     }
@@ -481,10 +595,11 @@ export class InteractionController {
       const el = doc.element(hit.elementId);
       if (el) {
         const text = doc.getText(el.id, lang);
-        const name = text?.name || text?.title || el.label || el.id;
+        const name = el.label || el.id;
         const desc = text?.description || (typeof el.metadata?.description === "string" ? el.metadata.description : "");
-        const codeRef = typeof el.metadata?.codeRef === "string" ? el.metadata.codeRef : "";
-        const kind = el.type || (isContainer(el) ? "Zone" : "Component");
+        const codeLines = realizationsOf(el.metadata).map((r) =>
+          [langTag(r), r.symbol ?? "", refOf(r)].filter(Boolean).join("  ") + (r.status === "missing" ? `  · ${i18n.d.panels.properties.codeMissing}` : ""));
+        const kind = KindCatalog.active.name(el.type, i18n.currentLanguage);
 
         let content = `<div class="semaps-tooltip-header">
           <span>${escapeHtml(name)}</span>
@@ -494,8 +609,8 @@ export class InteractionController {
         if (desc) {
           content += `<div class="semaps-tooltip-body">${escapeHtml(desc)}</div>`;
         }
-        if (codeRef) {
-          content += `<div class="semaps-tooltip-coderef">${escapeHtml(codeRef)}</div>`;
+        for (const line of codeLines) {
+          content += `<div class="semaps-tooltip-coderef">${escapeHtml(line)}</div>`;
         }
 
         this.canvas.showTooltip(content, e.clientX, e.clientY);
@@ -508,15 +623,13 @@ export class InteractionController {
       const edgeId = hit.edgeId;
       const edge = doc.edge(edgeId);
       if (edge) {
-        const fromEl = doc.element(edge.from);
-        const toEl = doc.element(edge.to);
-        const fromName = doc.getText(edge.from, lang)?.name || fromEl?.label || edge.from;
-        const toName = doc.getText(edge.to, lang)?.name || toEl?.label || edge.to;
+        const fromName = doc.entityName(edge.from, lang);
+        const toName = doc.entityName(edge.to, lang);
         const text = doc.getText(edge.id, lang);
         const desc = text?.description || edge.label || "";
 
         let content = `<div class="semaps-tooltip-header">
-          <span>${escapeHtml(fromName)} ➔ ${escapeHtml(toName)}</span>
+          <span>${escapeHtml(fromName)} →${escapeHtml(toName)}</span>
           <span class="semaps-tooltip-kind">${escapeHtml(edge.type)}</span>
         </div>`;
         if (desc) {
@@ -544,17 +657,15 @@ export class InteractionController {
     const edge = doc.edge(edgeId);
     if (!edge) return;
     const lang = this.canvas.dataLang || "ru";
-    const fromEl = doc.element(edge.from);
-    const toEl = doc.element(edge.to);
-    const fromName = doc.getText(edge.from, lang)?.name || fromEl?.label || edge.from;
-    const toName = doc.getText(edge.to, lang)?.name || toEl?.label || edge.to;
+    const fromName = doc.entityName(edge.from, lang);
+    const toName = doc.entityName(edge.to, lang);
     const text = doc.getText(edge.id, lang);
     const desc = text?.description || edge.label || "";
     const docText = text?.doc || "";
     const docMd = docText ? renderMarkdown(docText) : "";
 
     let content = `<div class="semaps-rich-doc-tooltip-head">
-      <span class="semaps-rich-doc-tooltip-title">${escapeHtml(fromName)} ➔ ${escapeHtml(toName)}</span>
+      <span class="semaps-rich-doc-tooltip-title">${escapeHtml(fromName)} →${escapeHtml(toName)}</span>
       <span class="semaps-doc-kind-badge">${escapeHtml(edge.type || "RELATION")}</span>
     </div>`;
     if (desc) {
@@ -575,19 +686,19 @@ export class InteractionController {
   }
 
   private async showCodePreviewTooltip(
-    codeRef: string,
+    ref: string,
     label: string,
     x: number,
     y: number,
   ): Promise<void> {
-    const langLabel = SourceCodeService.getLanguageLabel(codeRef);
+    const langLabel = SourceCodeService.getLanguageLabel(ref);
     const initialHtml = `
       <div class="semaps-rich-code-tooltip-head">
-        <span style="font-weight: 700;">💻 ${escapeHtml(label)}</span>
-        <span class="semaps-rich-code-tooltip-path" title="${escapeHtml(codeRef)}">${escapeHtml(codeRef)}</span>
+        <span style="font-weight: 700;"><span class="ui-icon">${iconSvg("code")}</span> ${escapeHtml(label)}</span>
+        <span class="semaps-rich-code-tooltip-path" title="${escapeHtml(ref)}">${escapeHtml(ref)}</span>
       </div>
       <div class="semaps-rich-code-tooltip-body">
-        <div style="color: #888; padding: 8px;">⏳ Загрузка фрагмента кода...</div>
+        <div style="color: #888; padding: 8px;"><span class="ui-icon">${iconSvg("hourglass")}</span> Загрузка фрагмента кода...</div>
       </div>
       <div class="semaps-rich-code-tooltip-foot">
         <span>Клик — открыть полный просмотрщик</span>
@@ -598,11 +709,11 @@ export class InteractionController {
     this.canvas.showRichTooltip(initialHtml, x, y);
 
     try {
-      const preview = await SourceCodeService.getPreview(codeRef, 12);
+      const preview = await SourceCodeService.getPreview(ref, 12);
       const content = `
         <div class="semaps-rich-code-tooltip-head">
-          <span style="font-weight: 700;">💻 ${escapeHtml(label)}</span>
-          <span class="semaps-rich-code-tooltip-path" title="${escapeHtml(codeRef)}">${escapeHtml(codeRef)}</span>
+          <span style="font-weight: 700;"><span class="ui-icon">${iconSvg("code")}</span> ${escapeHtml(label)}</span>
+          <span class="semaps-rich-code-tooltip-path" title="${escapeHtml(ref)}">${escapeHtml(ref)}</span>
         </div>
         <div class="semaps-rich-code-tooltip-body">
           ${preview.snippetHtml}
@@ -616,11 +727,11 @@ export class InteractionController {
     } catch (err: any) {
       const content = `
         <div class="semaps-rich-code-tooltip-head">
-          <span style="font-weight: 700;">💻 ${escapeHtml(label)}</span>
-          <span class="semaps-rich-code-tooltip-path" title="${escapeHtml(codeRef)}">${escapeHtml(codeRef)}</span>
+          <span style="font-weight: 700;"><span class="ui-icon">${iconSvg("code")}</span> ${escapeHtml(label)}</span>
+          <span class="semaps-rich-code-tooltip-path" title="${escapeHtml(ref)}">${escapeHtml(ref)}</span>
         </div>
         <div class="semaps-rich-code-tooltip-body">
-          <div style="color: #f87171; padding: 8px;">⚠️ ${escapeHtml(err?.message || "Файл недоступен")}</div>
+          <div style="color: #f87171; padding: 8px;"><span class="ui-icon">${iconSvg("alert")}</span> ${escapeHtml(err?.message || "Файл недоступен")}</div>
         </div>
         <div class="semaps-rich-code-tooltip-foot">
           <span>Клик — открыть просмотрщик</span>
@@ -631,11 +742,25 @@ export class InteractionController {
     }
   }
 
-  private readonly onMouseUp = (): void => {
+  private readonly onMouseUp = (e: MouseEvent): void => {
     const gesture = this.gesture;
     this.gesture = null;
     this.host.classList.remove("is-panning");
     if (gesture === null) return;
+
+    if (gesture.kind === "connect") {
+      this.canvas.setConnectPreview(null);
+      // Released over empty space or the source: nothing to connect, nothing asked.
+      if (gesture.targetId !== null) {
+        this.canvas.events.emit("connect", {
+          from: gesture.fromId,
+          to: gesture.targetId,
+          clientX: e.clientX,
+          clientY: e.clientY,
+        });
+      }
+      return;
+    }
 
     if (gesture.kind === "pan") {
       if (!gesture.hasMoved && gesture.elementOnClick) {
@@ -650,6 +775,8 @@ export class InteractionController {
       return;
     }
 
+    // The drag is over: the next repaint lays the whole picture again.
+    this.canvas.endLiveMove();
     if (gesture.kind === "move") {
       this.finishMove(gesture);
     }
@@ -749,6 +876,7 @@ export class InteractionController {
   }
 
   private applyMove(gesture: MoveGesture, e: MouseEvent): void {
+    this.canvas.beginLiveMove(gesture.moved.map((el) => el.id));
     const raw = this.canvas.viewport.scaleDelta(
       e.clientX - gesture.startX,
       e.clientY - gesture.startY,
@@ -851,14 +979,15 @@ export class InteractionController {
   }
 
   private applyResize(gesture: ResizeGesture, e: MouseEvent): void {
+    this.canvas.beginLiveMove([...gesture.origins.keys()].map((el) => el.id));
     const raw = this.canvas.viewport.scaleDelta(
       e.clientX - gesture.startX,
       e.clientY - gesture.startY,
     );
     const step = this.canvas.gridStep;
     const min = gesture.single !== null && isContainer(gesture.single)
-      ? MIN_SIZE.zone
-      : MIN_SIZE.node;
+      ? minSize().container
+      : minSize().node;
 
     const next = resizeRect(gesture.bounds, gesture.dir, raw.x, raw.y, min, step);
 
@@ -1008,6 +1137,12 @@ function escapeHtml(s: string): string {
     .replace(/>/g, "&gt;")
     .replace(/"/g, "&quot;")
     .replace(/'/g, "&#039;");
+}
+
+/** The file of the code button under the pointer (`data-code-ref`, one button per realization), if any. */
+function fileAtPointer(target: EventTarget | null): string {
+  const node = target instanceof Element ? target.closest("[data-code-ref]") : null;
+  return node?.getAttribute("data-code-ref")?.trim() ?? "";
 }
 
 export type { RoleHit };

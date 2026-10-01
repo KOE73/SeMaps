@@ -48,9 +48,14 @@ jobs:
         working-directory: extractors/csharp
         run: dotnet test
 
-      # Extractors ship beside semaps (ADR_20260924-3 §1). Both are portable:
+      - name: Test the Go extractor
+        working-directory: extractors/go
+        run: go vet ./... && go test ./...
+
+      # Extractors ship beside semaps (ADR_20260924-3 §1). Two are portable:
       # the C# one as a framework-dependent dll (`dotnet` runs it), the
       # TypeScript one as its dist plus its runtime dependency (node runs it).
+      # The Go one is a native binary, built per platform when packing.
       - name: Stage the extractors
         run: |
           dotnet publish extractors/csharp/src/SeMaps.Extract.CSharp -c Release -p:UseAppHost=false -o stage/extractors/csharp
@@ -63,11 +68,14 @@ jobs:
 
       - name: One archive per platform — semaps with its extractors
         run: |
-          for bin in semaps.exe semaps-linux-amd64 semaps-darwin-arm64; do
+          for target in semaps.exe:windows:amd64 semaps-linux-amd64:linux:amd64 semaps-darwin-arm64:darwin:arm64; do
+            IFS=: read -r bin goos goarch <<< "$target"
             name="${bin%.exe}"; [ "$bin" = semaps.exe ] && name=semaps-windows-amd64
+            ext=""; [ "$goos" = windows ] && ext=.exe
             rm -rf "pkg/$name" && mkdir -p "pkg/$name"
             cp "out/$bin" "pkg/$name/"
             cp -r stage/extractors "pkg/$name/extractors"
+            GOOS=$goos GOARCH=$goarch go build -C extractors/go -trimpath -ldflags "-s -w" -o "$PWD/pkg/$name/extractors/go/semaps-extract-go$ext" .
             (cd pkg && zip -qr "../out/$name.zip" "$name")
           done
 

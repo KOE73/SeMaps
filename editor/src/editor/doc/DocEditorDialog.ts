@@ -3,6 +3,11 @@ import { layoutFreeKey } from "../../util/keys.js";
 import { i18n } from "../../workbench/i18n/I18nService.js";
 import { renderMarkdown } from "./MarkdownRenderer.js";
 import { isContainer } from "../../model/types.js";
+import { KindCatalog } from "../../model/KindCatalog.js";
+import { iconEl, iconSvg, type IconName } from "../../ui/icons.js";
+
+/** A toolbar label that is a Tabler icon (the label is set as HTML). */
+const tbIcon = (name: IconName): string => `<span class="ui-icon">${iconSvg(name)}</span>`;
 
 export type DocTargetKind = "node" | "zone" | "edge";
 
@@ -46,7 +51,7 @@ export class DocEditorDialog {
 
     const icon = document.createElement("span");
     icon.className = "semaps-doc-title-icon";
-    icon.textContent = "📄";
+    icon.appendChild(iconEl("doc"));
 
     this.titleEl = document.createElement("span");
     this.titleEl.className = "semaps-doc-title-text";
@@ -76,7 +81,7 @@ export class DocEditorDialog {
 
     const closeBtn = document.createElement("button");
     closeBtn.className = "semaps-doc-close-btn";
-    closeBtn.textContent = "✕";
+    closeBtn.appendChild(iconEl("close"));
     closeBtn.title = i18n.d.common.close;
     closeBtn.onclick = () => this.close();
 
@@ -138,14 +143,14 @@ export class DocEditorDialog {
       createTbBtn("<i>I</i>", d.tbItalic, () => this.insertMarkdown("*", "*", "текст")),
       createTbBtn("<b>H</b>", d.tbHeading, () => this.insertMarkdown("### ", "", "Заголовок")),
       sep(),
-      createTbBtn("🔗", d.tbLink, () => this.insertMarkdown("[", "](https://...)", "ссылка")),
+      createTbBtn(tbIcon("link"), d.tbLink, () => this.insertMarkdown("[", "](https://...)", "ссылка")),
       createTbBtn("<code>`</code>", d.tbCode, () => this.insertMarkdown("`", "`", "code")),
       createTbBtn("<code>{ }</code>", d.tbCodeBlock, () => this.insertMarkdown("```\n", "\n```", "code")),
       sep(),
       createTbBtn("• list", d.tbList, () => this.insertMarkdown("- ", "", "пункт списка")),
       createTbBtn("1. list", d.tbNumList, () => this.insertMarkdown("1. ", "", "пункт списка")),
-      createTbBtn("❝", d.tbQuote, () => this.insertMarkdown("> ", "", "цитата")),
-      createTbBtn("📊", d.tbTable, () =>
+      createTbBtn(tbIcon("quote"), d.tbQuote, () => this.insertMarkdown("> ", "", "цитата")),
+      createTbBtn(tbIcon("table"), d.tbTable, () =>
         this.insertMarkdown(
           "| Параметр | Описание |\n|---|---|\n| Поле 1 | Значение 1 |\n",
           "",
@@ -252,7 +257,7 @@ export class DocEditorDialog {
   }
 
   /**
-   * Open the editor for a given entity, zone, or edge.
+   * Open the editor for a given entity, container, or edge.
    */
   open(targetId: string, kind?: DocTargetKind, preferredLang?: string): void {
     this.currentTargetId = targetId;
@@ -315,18 +320,14 @@ export class DocEditorDialog {
     if (this.currentKind === "edge") {
       const edge = doc.edge(this.currentTargetId);
       if (edge) {
-        const fromEl = doc.element(edge.from);
-        const toEl = doc.element(edge.to);
-        const fromName = doc.getText(edge.from, this.currentLang)?.name || fromEl?.label || edge.from;
-        const toName = doc.getText(edge.to, this.currentLang)?.name || toEl?.label || edge.to;
-        titleText = `${fromName} ➔ ${toName}`;
+        titleText = `${doc.entityName(edge.from, this.currentLang)} → ${doc.entityName(edge.to, this.currentLang)}`;
         kindText = edge.type || "RELATION";
       }
     } else {
       const el = doc.element(this.currentTargetId);
       if (el) {
-        titleText = el.label || el.id;
-        kindText = el.type || (isContainer(el) ? "ZONE" : "NODE");
+        titleText = doc.entityName(el.id, this.currentLang);
+        kindText = KindCatalog.active.name(el.type, i18n.currentLanguage) || (isContainer(el) ? "CONTAINER" : "NODE");
       }
     }
 

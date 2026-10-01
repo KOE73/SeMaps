@@ -1,4 +1,6 @@
 import { el, replaceChildren } from "../util/dom.js";
+import { iconEl } from "../ui/icons.js";
+import { iconElByKey } from "../ui/kindIcons.js";
 import type { DiagramEditor } from "./DiagramEditor.js";
 import { i18n } from "../workbench/i18n/I18nService.js";
 
@@ -41,7 +43,7 @@ export class FiltersPanel {
           },
         },
         [
-          el("span", { text: "🏛" }),
+          el("span", {}, [iconEl("bank")]),
           el("span", { text: i18n.d.panels.filters.defaultView }),
         ]
       ),
@@ -60,7 +62,7 @@ export class FiltersPanel {
             },
           },
           [
-            el("span", { text: v.icon || "🔹" }),
+            iconElByKey(v.icon),
             el("span", { text: v.name || v.id }),
           ]
         );
@@ -174,7 +176,7 @@ export class FiltersPanel {
             },
           },
         }),
-        el("span", { text: `🔗 ${i18n.d.panels.relations.implementsType}, ${i18n.d.panels.relations.extendsType}, ${i18n.d.panels.relations.composesType}` }),
+        el("span", {}, [iconEl("link"), ` ${i18n.d.panels.filters.structureEdges}`]),
       ]),
     ]);
     sections.push(relationsSection);

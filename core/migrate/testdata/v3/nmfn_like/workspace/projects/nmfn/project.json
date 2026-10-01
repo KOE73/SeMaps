@@ -1,0 +1,21 @@
+{
+  "id": "nmfn",
+  "title": "NeuroModFlowNet.ONNX",
+  "subtitle": "Сборки src/*",
+  "contractVersion": 3,
+  "defaultView": "v_assemblies",
+  "defaultAxis": "axis_assembly",
+  "languages": [
+    "ru",
+    "en"
+  ],
+  "views": [
+    "v_assemblies"
+  ],
+  "sources": {
+    "include": [
+      "src"
+    ]
+  },
+  "icon": "rocket"
+}

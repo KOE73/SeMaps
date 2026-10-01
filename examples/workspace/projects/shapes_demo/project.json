@@ -6,7 +6,7 @@
   "languages": [
     "ru"
   ],
-  "icon": "🧪",
-  "contractVersion": 3,
+  "icon": "flask",
+  "contractVersion": 5,
   "defaultAxis": "axis_subsystem"
 }

@@ -64,6 +64,8 @@ export class StylesPanel implements IContentRenderer {
         this.openStyle(id);
       },
       notify: (msg) => editor.notify(msg),
+      applyKindAndStyle: (ids, kind, styleId) => editor.applyKindAndStyle(ids, kind, styleId),
+      applyRelationTypeAndStyle: (ids, type, styleId) => editor.applyRelationTypeAndStyle(ids, type, styleId),
     };
 
     this.styleList = new StyleList(this.styleListMount, host);
@@ -74,6 +76,9 @@ export class StylesPanel implements IContentRenderer {
     };
 
     this.bindResizer();
+
+    // The panel can be built (and shown) before the host's styles and dictionary have arrived.
+    editor.libraryEvents.on("loaded", () => this.render());
 
     i18n.onLanguageChange(() => {
       this.render();

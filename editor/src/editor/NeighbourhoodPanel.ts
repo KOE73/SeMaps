@@ -1,4 +1,6 @@
 import { el, replaceChildren } from "../util/dom.js";
+import { iconEl } from "../ui/icons.js";
+import { kindIconEl } from "../ui/kindIcons.js";
 import { i18n } from "../workbench/i18n/I18nService.js";
 import { entityOf } from "../model/types.js";
 import type { EntityEntry, RelationEntry } from "../model/wire-types.js";
@@ -90,7 +92,7 @@ export class NeighbourhoodPanel {
       replaceChildren(
         this.body,
         el("div", { class: "inspector-empty" }, [
-          el("p", { class: "inspector-empty-icon", text: "🕸️" }),
+          el("p", { class: "inspector-empty-icon" }, [iconEl("hierarchy2", "ui-icon-lg")]),
           el("p", { text: t.empty }),
         ]),
       );
@@ -109,21 +111,21 @@ export class NeighbourhoodPanel {
     const t = i18n.d.panels.neighbourhood;
     const types = this.presentTypes();
 
-    const chip = (label: string, active: boolean, title: string, onClick: () => void): HTMLElement =>
+    // A relation type ("holds.many") shows the icon of its edge kind ("holds").
+    const chip = (label: string, active: boolean, title: string, onClick: () => void, edgeKind?: string): HTMLElement =>
       el("button", {
         type: "button",
         class: `kind-chip${active ? " is-active" : ""}`,
         title,
         on: { click: onClick },
-      }, [el("span", { text: label })]);
+      }, [edgeKind !== undefined ? kindIconEl("edge", edgeKind.split(".")[0]) : null, el("span", { text: label })]);
 
     const pin = el("button", {
       type: "button",
       class: `nb-pin${this.pinned ? " is-active" : ""}`,
-      text: "📌",
       title: this.pinned ? t.unpin : t.pin,
       on: { click: () => { this.pinned = !this.pinned; this.render(); } },
-    });
+    }, [iconEl("pin")]);
 
     const dirChip = (dir: Dir, label: string, title: string) =>
       chip(label, this.dirs.has(dir), title, () => {
@@ -146,7 +148,7 @@ export class NeighbourhoodPanel {
             if (this.hiddenTypes.has(type)) this.hiddenTypes.delete(type);
             else this.hiddenTypes.add(type);
             this.render();
-          }),
+          }, type),
         ),
       ]),
       el("div", { class: "kind-chips" }, [
@@ -183,9 +185,9 @@ export class NeighbourhoodPanel {
       el("button", {
         type: "button",
         class: "nb-twisty",
-        text: isOpen ? "▾" : "▸",
         on: { click: () => this.toggle(key) },
-      }),
+      }, [iconEl(isOpen ? "chevronDown" : "chevronRight")]),
+      kindIconEl("edge", g.type.split(".")[0]),
       el("span", {
         class: "nb-group-label",
         text: this.groupLabel(g),
@@ -201,7 +203,7 @@ export class NeighbourhoodPanel {
             title: t.addGroup,
             on: { click: () => this.place(unplaced) },
           })
-        : el("span", { class: "nb-placed", text: "✓", title: t.allPlaced }),
+        : el("span", { class: "nb-placed", title: t.allPlaced }, [iconEl("check")]),
     ]);
   }
 
@@ -230,24 +232,23 @@ export class NeighbourhoodPanel {
         ? el("button", {
             type: "button",
             class: "nb-twisty",
-            text: isOpen ? "▾" : "▸",
             on: { click: (ev) => { ev.stopPropagation(); this.toggle(path, e.id); } },
-          })
+          }, [iconEl(isOpen ? "chevronDown" : "chevronRight")])
         : el("span", { class: "nb-twisty" }),
+      kindIconEl("symbol", e.kind),
       el("span", { class: "nb-name", text: this.name(e) }),
       el("span", { class: "mono muted nb-kind", text: e.kind }),
-      cycle ? el("span", { class: "nb-cycle", text: "↺", title: t.cycle }) : null,
+      cycle ? el("span", { class: "nb-cycle", title: t.cycle }, [iconEl("refresh")]) : null,
       !isRoot
         ? el("button", {
             type: "button",
             class: "nb-reroot",
-            text: "⤴",
             title: t.reroot,
             on: { click: (ev) => { ev.stopPropagation(); this.setRoot(e.id); } },
-          })
+          }, [iconEl("focus2")])
         : null,
       placed
-        ? el("span", { class: "nb-placed", text: "✓", title: t.placed })
+        ? el("span", { class: "nb-placed", title: t.placed }, [iconEl("check")])
         : el("button", {
             type: "button",
             class: "nb-add",
@@ -337,7 +338,7 @@ export class NeighbourhoodPanel {
 
   private name(e: EntityEntry): string {
     const doc = this.editor.canvas.model;
-    return doc ? nameOf(doc, e) : e.name;
+    return doc ? nameOf(doc, e) : e.name ?? e.id;
   }
 
   private isPlaced(id: string): boolean {

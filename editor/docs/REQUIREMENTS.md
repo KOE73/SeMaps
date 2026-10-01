@@ -77,7 +77,7 @@ x, y         number    top-left corner, model coordinates
 width        number
 height       number
 tags         string[]
-metadata     object    type (subtitle text), description, codeRef, responsibilities[]
+metadata     object    type (subtitle text), description, code[] (realizations), responsibilities[]
 ```
 
 `metadata.type` is a free-text subtitle and is **not** the same field as `type`.
@@ -117,6 +117,10 @@ relative coordinates (R-IO-07).
 The editor never computes or adjusts a position that a human or a generator
 authored. Coordinates change only as the direct result of a drag or resize
 gesture. This is the founding constraint of the whole tool.
+
+Scope: this rule is about diagrams (`views/`), where a human or generator authored the
+placement. The code graph page (§20) has no authored placement to protect and lays itself out
+by algorithm on purpose — `docs/adr/ADR_20260928-2_editor_graph-is-a-separate-form.md`.
 
 ## 3. Catalog (`R-CAT`)
 
@@ -466,8 +470,9 @@ or resize. For edges it shows `FROM … TO …` instead.
 ### R-INSP-04 — Editable fields
 
 Caption (`label` for nodes, `name` for zones), semantic type, description
-(`metadata.description`) and code reference (`metadata.codeRef`). Caption and
-type edits re-render the canvas immediately.
+(`metadata.description`); the entity's code realizations (`metadata.code[]`) are
+listed read-only, one code button each. Caption and type edits re-render the
+canvas immediately.
 
 ### R-INSP-05 — Type vocabulary
 
@@ -598,7 +603,7 @@ Exports a `.drawio` (mxGraph) document in which:
 - nodes become child cells of their declared zone, with coordinates converted
   from absolute to **zone-relative**;
 - edges become orthogonal `mxCell` edges;
-- semantics (`type`, `semanticId`, `tags`, `codeRef`) are carried in an
+- semantics (`type`, `semanticId`, `tags`, `codeRef` — the first realization's file) are carried in an
   `<Object as="data">` child so the meaning survives the round trip;
 - the file downloads with a name derived from the model title.
 
@@ -889,3 +894,55 @@ Deliberately absent, and to remain absent through the migration:
 - collaboration, comments, presence;
 - model validation and schema enforcement;
 - generation of models — that belongs to the layout generator.
+
+## 20. Code graph page (`R-GRAPH`)
+
+The graph mode (`/app/#graph`), separate from the diagram canvas above — shows the live code
+graph (`GET /api/graph/{project}`) as nodes and edges, laid out by algorithm. Covers only what
+is implemented; see `docs/adr/ADR_20260928-2_editor_graph-is-a-separate-form.md` for why this
+page is exempt from R-MODEL-08.
+
+### R-GRAPH-01 — Algorithmic layout only
+
+Node positions are computed by the chosen layout (force, by folder, by namespace, by community,
+by container) and never hand-authored or persisted to the workspace. Recomputing a layout is an
+explicit action (the "Restart layout" button); nothing recomputes it on its own.
+
+### R-GRAPH-02 — Colouring and grouping, not geometry
+
+The model (containers) and code/model presence are shown through colour, a legend and filters,
+never through node position.
+
+### R-GRAPH-03 — Live follow
+
+While the mode is open for a project, the page subscribes to `/api/events?project=<id>` and, on
+an event carrying a `graph` field, refetches the same graph query and applies the difference to
+the displayed graph in place: gone nodes/edges are dropped, new nodes are placed near the
+average position of their already-placed neighbours (or the centre, with a small random offset)
+and new edges are added, changed nodes/edges get their data replaced. A node that stays keeps
+its coordinates. The subscription closes when the mode is left, the project changes, or the page
+is re-rendered. Events that arrive while a refetch is already in flight coalesce into one more
+refetch.
+
+### R-GRAPH-04 — Selection and camera survive an update
+
+A live update never resets the camera. If the selected node is gone, the selection and its panel
+are cleared; otherwise both are left alone.
+
+### R-GRAPH-05 — Missing entities are opt-in
+
+A "show missing" checkbox (off by default) refetches with `missing=1`. While it is off and the
+API reports `stats.hiddenMissing` as nonzero, the hidden counts are shown next to the checkbox.
+
+### R-GRAPH-06 — A failed watch run does not hide the graph
+
+When `facts[].lastRunFailed` is true for an extractor, the page shows a notice that its newest
+run failed and the graph is showing the facts of the run before it, with a link to the
+Extractors page. The graph itself keeps showing the last good facts, exactly as the API
+provides them.
+
+### R-GRAPH-07 — Writes nothing
+
+The graph page never calls a write endpoint; the only mutation this page's toolbar produces
+anywhere in the editor is the `watch` switch on the Extractors page (§ R-GRAPH is otherwise
+read-only).

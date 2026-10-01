@@ -1,0 +1,53 @@
+{
+  "contractVersion": 3,
+  "relations": [
+    {
+      "id": "r_user_edits",
+      "from": "actor_user",
+      "to": "uc_edit",
+      "type": "call",
+      "origin": "authored",
+      "status": "present"
+    },
+    {
+      "id": "r_edit_compiles",
+      "from": "uc_edit",
+      "to": "stage_compile",
+      "type": "data-flow",
+      "origin": "authored",
+      "status": "present"
+    },
+    {
+      "id": "r_compile_decides",
+      "from": "stage_compile",
+      "to": "dec_valid",
+      "type": "data-flow",
+      "origin": "authored",
+      "status": "present"
+    },
+    {
+      "id": "r_library_reads",
+      "from": "cls_template",
+      "to": "tbl_templates",
+      "type": "storage",
+      "origin": "authored",
+      "status": "present"
+    },
+    {
+      "id": "r_library_compiles",
+      "from": "cls_template",
+      "to": "stage_compile",
+      "type": "call",
+      "origin": "authored",
+      "status": "present"
+    },
+    {
+      "id": "r_assets_feed",
+      "from": "store_assets",
+      "to": "pic_model",
+      "type": "storage",
+      "origin": "authored",
+      "status": "present"
+    }
+  ]
+}

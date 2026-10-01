@@ -1,0 +1,57 @@
+{
+  "contractVersion": 3,
+  "language": "en",
+  "entries": {
+    "c_onnx": {
+      "name": {
+        "v": "ONNX assembly",
+        "at": "2026-09-01T10:00:00Z",
+        "origin": "translated",
+        "from": "ru",
+        "fromHash": "a3f19c00"
+      },
+      "description": {
+        "v": "Assembly with the model and the session.",
+        "at": "2026-09-01T10:00:00Z",
+        "origin": "translated",
+        "from": "ru",
+        "fromHash": "a3f19c01"
+      }
+    },
+    "c_graph": {
+      "name": {
+        "v": "Graph",
+        "at": "2026-09-01T10:00:00Z",
+        "origin": "authored"
+      }
+    },
+    "c_onnx_core": {
+      "name": {
+        "v": "ONNX core",
+        "at": "2026-09-01T10:00:00Z",
+        "origin": "authored"
+      }
+    },
+    "z_deco": {
+      "name": {
+        "v": "Decoration",
+        "at": "2026-09-01T10:00:00Z",
+        "origin": "authored"
+      }
+    },
+    "e_session": {
+      "description": {
+        "v": "Model execution session.",
+        "at": "2026-09-01T10:00:00Z",
+        "origin": "authored"
+      }
+    },
+    "v_assemblies": {
+      "name": {
+        "v": "Assemblies <&>",
+        "at": "2026-09-01T10:00:00Z",
+        "origin": "authored"
+      }
+    }
+  }
+}

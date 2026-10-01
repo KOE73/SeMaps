@@ -76,7 +76,7 @@ func runExtract(proj project, id string) ([]*runInfo, int) {
 	code := 0
 	for _, e := range list {
 		fmt.Printf("== %s (%s)\n", e.ID, e.Language)
-		info, done, err := store.start(proj, e, os.Stderr)
+		info, done, err := store.start(proj, e, os.Stderr, "")
 		if err != nil {
 			fmt.Fprintf(os.Stderr, "semaps extract: %s: %v\n", e.ID, err)
 			code = 1

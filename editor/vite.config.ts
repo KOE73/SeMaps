@@ -31,6 +31,14 @@ export default defineConfig(({ mode }) => {
 
     server: {
       port: 5177,
+      // The built-in style sheet is imported from host/defaults/styles.json,
+      // one file shared with the Go host; the dev server must be allowed to read it.
+      fs: {
+        allow: [
+          fileURLToPath(new URL(".", import.meta.url)),
+          fileURLToPath(new URL("../host/defaults", import.meta.url)),
+        ],
+      },
       proxy: {
         // Saving and source lookup are the host's job (host/server.go).
         "/api": {

@@ -1,4 +1,5 @@
 import { el } from "../util/dom.js";
+import { graphFilterConfig, loadGraphFilterConfig } from "./graph/filterConfig.js";
 import { toolApi, type ExtractorView, type RunInfo, type Setup, type SyncResult } from "../shell/api.js";
 import { fmt, t } from "../shell/strings.js";
 
@@ -29,6 +30,7 @@ export async function loadExtractors(inner: HTMLElement): Promise<void> {
     .then((r) => r.json() as Promise<{ projects?: ProjectRef[] }>)
     .then((w) => w.projects ?? [])
     .catch(() => []);
+  await loadGraphFilterConfig();
   render(inner, setup);
 }
 
@@ -95,7 +97,9 @@ function extractorCard(e: ExtractorView, inner: HTMLElement): HTMLElement {
   const include = el("input", { value: listValue(e.include), placeholder: t.listHint });
   const exclude = el("input", { value: listValue(e.exclude), placeholder: t.listHint });
 
-  const edgeKinds = ["holds", "uses", "injects"];
+  // What an extractor can be told to print: graph-filters.json `extractorEdgeKinds`
+  // (`calls` is the graph's, switched on in its own panel, so it is not offered here).
+  const edgeKinds = graphFilterConfig().extractorEdgeKinds.filter((k) => !graphFilterConfig().callKinds.includes(k));
   const edgeChecks: Record<string, HTMLInputElement> = {};
   const edgeCheckboxes: HTMLElement[] = [];
   for (const kind of edgeKinds) {
@@ -104,6 +108,9 @@ function extractorCard(e: ExtractorView, inner: HTMLElement): HTMLElement {
     edgeChecks[kind] = cb;
     edgeCheckboxes.push(el("label", { class: "tool-check" }, [cb, kind]));
   }
+
+  const watchCb = el("input", { type: "checkbox" }) as HTMLInputElement;
+  watchCb.checked = e.watch;
 
   const formRows = [
     el("label", { text: t.language }),
@@ -118,6 +125,8 @@ function extractorCard(e: ExtractorView, inner: HTMLElement): HTMLElement {
     exclude,
     el("label", { text: t.edgeKinds }),
     el("div", { class: "tool-checks" }, edgeCheckboxes),
+    el("label", { text: t.watch }),
+    el("div", {}, [el("label", { class: "tool-check" }, [watchCb, t.watch]), el("p", { class: "tool-hint" }, [t.watchHint])]),
   ];
   if (e.command) {
     const cmd = el("input", { value: e.command });
@@ -138,6 +147,7 @@ function extractorCard(e: ExtractorView, inner: HTMLElement): HTMLElement {
         include: parseList(include.value),
         exclude: parseList(exclude.value),
         edges: edges.length > 0 ? edges : undefined,
+        watch: watchCb.checked,
       });
       render(inner, next);
     } catch (err) {
@@ -220,10 +230,11 @@ async function followRun(run: RunInfo, panel: HTMLElement): Promise<void> {
 
 function showRun(run: RunInfo, panel: HTMLElement, logText: string): void {
   const when = new Date(run.started).toLocaleString();
+  const triggerSuffix = run.trigger === "watch" ? ` · ${t.runTriggerWatch}` : "";
   const head =
     run.state === "done" && run.stats
-      ? `${t.lastRun}: ${when} · ${run.stats.symbols} ${t.symbols}, ${run.stats.edges} ${t.edges} · ${run.seconds ?? 0}s`
-      : `${t.lastRun}: ${when} · ${run.state === "failed" ? t.failed : run.state}`;
+      ? `${t.lastRun}: ${when} · ${run.stats.symbols} ${t.symbols}, ${run.stats.edges} ${t.edges} · ${run.seconds ?? 0}s${triggerSuffix}`
+      : `${t.lastRun}: ${when} · ${run.state === "failed" ? t.failed : run.state}${triggerSuffix}`;
   const children: (HTMLElement | null)[] = [el("p", { class: "tool-muted", text: head })];
   if (run.error) children.push(el("p", { class: "tool-error", text: run.error }));
   if (run.stats) {

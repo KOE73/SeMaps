@@ -11,26 +11,32 @@ import (
 )
 
 // editWorkspace: one project with two entities, a code relation with via, a
-// type and a view with one node.
+// view with one node, and a kinds.json with one container kind and two relation
+// types: holds.many, visible, and secret, hidden.
 func editWorkspace(t *testing.T) string {
 	t.Helper()
 	ws := t.TempDir()
 	dir := filepath.Join(ws, "projects", "p")
 	files := map[string]string{
-		"project.json": `{"id":"p"}`,
+		"project.json": `{"id":"p","contractVersion":5}`,
+		"../../kinds.json": `{"groups":[{"id":"t","name":{"ru":"т"},"kinds":[{"id":"group","name":{"ru":"группа"},"container":true}]}],
+  "relationGroups":[{"id":"r","name":{"ru":"р"},"types":[
+    {"id":"holds.many","visibility":"visible","name":{"ru":"держит много"}},
+    {"id":"secret","visibility":"hidden","name":{"ru":"тайная"}}]}]}`,
 		"entities.json": `{"entities":[
-  {"id":"e_a","name":"A","kind":"class","origin":"code","symbol":"N.A"},
-  {"id":"e_b","name":"B","kind":"class","origin":"code","symbol":"N.B"},
-  {"id":"e_x","name":"X","kind":"app","origin":"authored"}]}`,
-		"relations.json": `{"contractVersion":3,"relations":[
+  {"id":"e_a","name":"A","kind":"class","origin":"code","code":[{"lang":"csharp","symbol":"N.A"}]},
+  {"id":"e_b","name":"B","kind":"class","origin":"code","code":[{"lang":"csharp","symbol":"N.B"}]},
+  {"id":"e_x","kind":"app","origin":"authored"},
+  {"id":"e_core","kind":"group","origin":"authored"}]}`,
+		"text.ru.json": `{"contractVersion":5,"language":"ru","entries":{
+  "e_x":{"name":{"v":"X","at":"2026-09-24T00:00:00Z","origin":"authored"}},
+  "e_core":{"name":{"v":"Core","at":"2026-09-24T00:00:00Z","origin":"authored"}}}}`,
+		"relations.json": `{"contractVersion":5,"relations":[
   {"id":"r_a_b_items_item","from":"e_a","to":"e_b","type":"holds.many","origin":"code","status":"present",
-   "via":{"member":"items","path":["item"],"cardinality":"many","mutability":"mutable"}}]}`,
-		"relation-types.json": `{"contractVersion":3,"relationTypes":[
-  {"id":"holds.many","origin":"code","visibility":"visible"},
-  {"id":"call","origin":"authored"}]}`,
+   "evidence":[{"lang":"csharp","symbol":"N.A","via":{"member":"items","path":["item"],"cardinality":"many","mutability":"mutable"}}]}]}`,
 		"views/main.view.json": `{"id":"v_main","project":"p","axis":"axis_layer","relations":{"default":"visible"},
-  "zones":[{"id":"z_core","container":null,"x":0,"y":0,"width":500,"height":500}],
-  "nodes":[{"entity":"e_a","zone":null,"x":10,"y":20}]}`,
+  "placements":[{"entity":"e_core","parent":null,"x":0,"y":0,"width":500,"height":500},
+   {"entity":"e_a","parent":null,"x":10,"y":20}]}`,
 	}
 	for name, body := range files {
 		p := filepath.Join(dir, filepath.FromSlash(name))
@@ -64,7 +70,7 @@ func TestSetTextWritesAuthoredValueAndDropsTranslation(t *testing.T) {
 	now = func() time.Time { return time.Date(2026, 9, 24, 10, 0, 0, 0, time.UTC) }
 	defer func() { now = func() time.Time { return time.Now().UTC() } }()
 	file := filepath.Join(ws, "projects", "p", "text.ru.json")
-	os.WriteFile(file, []byte(`{"contractVersion":3,"language":"ru","entries":{"e_a":{"doc":{"v":"old","origin":"translated","from":"en","fromHash":"1"}}}}`), 0o644)
+	os.WriteFile(file, []byte(`{"contractVersion":5,"language":"ru","entries":{"e_a":{"doc":{"v":"old","origin":"translated","from":"en","fromHash":"1"}}}}`), 0o644)
 
 	if err := SetText(ws, "", "ru", "e_a", "description", "Держит B."); err != nil {
 		t.Fatal(err)
@@ -84,7 +90,7 @@ func TestSetTextWritesAuthoredValueAndDropsTranslation(t *testing.T) {
 		t.Fatalf("doc keeps its translation: %v", doc.Entries["e_a"]["doc"])
 	}
 	// A new language file is created.
-	if err := SetText(ws, "", "en", "rt_call", "name", "call"); err != nil {
+	if err := SetText(ws, "", "en", "v_main", "name", "Main"); err != nil {
 		t.Fatal(err)
 	}
 }
@@ -95,6 +101,7 @@ func TestSetTextRefusals(t *testing.T) {
 	refused(t, SetText(ws, "", "ru", "e_a", "name", "x"), "not translated")
 	refused(t, SetText(ws, "", "ru", "e_a", "note", "x"), "field")
 	refused(t, SetText(ws, "", "ru", "q_a", "name", "x"), "prefix")
+	refused(t, SetText(ws, "", "ru", "rt_call", "name", "x"), "prefix") // a relation type is named by the dictionary
 	refused(t, SetText(ws, "", "ru", "e_a", "doc", "  "), "empty")
 }
 
@@ -108,28 +115,47 @@ func TestAddRelationMintsIDAndChecksEnds(t *testing.T) {
 	refused(t, err, "already")
 	_, err = AddRelation(ws, "", "e_a", "e_nope", "call")
 	refused(t, err, "no entity")
-	_, err = AddRelation(ws, "", "e_a", "e_b", "flows")
-	refused(t, err, "no relation type")
+	_, err = AddRelation(ws, "", "e_a", "e_b", "two words")
+	refused(t, err, "a word without spaces")
+	// the set of types is open: a type the dictionary does not know is a type
+	if _, err = AddRelation(ws, "", "e_a", "e_b", "flows"); err != nil {
+		t.Fatal(err)
+	}
 
 	var rels struct{ Relations []map[string]any }
 	readAs(t, ws, "relations.json", &rels)
-	last := rels.Relations[len(rels.Relations)-1]
-	if last["origin"] != "authored" || last["type"] != "call" {
-		t.Fatalf("added: %v", last)
+	if n := len(rels.Relations); n != 3 || rels.Relations[1]["origin"] != "authored" || rels.Relations[1]["type"] != "call" || rels.Relations[2]["type"] != "flows" {
+		t.Fatalf("added: %v", rels.Relations)
 	}
-	// The code relation kept its via.
-	if rels.Relations[0]["via"] == nil {
+	// The code relation kept its via, in its evidence.
+	if ev, _ := rels.Relations[0]["evidence"].([]any); len(ev) != 1 || ev[0].(map[string]any)["via"] == nil {
 		t.Fatal("via of the code relation is gone")
 	}
 }
 
-func TestAddRelationType(t *testing.T) {
+// The default visibility of a relation is its type's in the dictionary
+// (CONTRACT §6, §8.5): showing a relation of a hidden type is an exception.
+func TestSetRelationVisibleFollowsTheTypesDictionaryVisibility(t *testing.T) {
 	ws := editWorkspace(t)
-	if err := AddRelationType(ws, "", "security", "hidden", "edge.security"); err != nil {
+	id, err := AddRelation(ws, "", "e_a", "e_x", "secret")
+	if err != nil {
 		t.Fatal(err)
 	}
-	refused(t, AddRelationType(ws, "", "security", "", ""), "exists")
-	refused(t, AddRelationType(ws, "", "x", "shown", ""), "visibility")
+	if _, err := SetRelationsVisible(ws, "", "v_main", []string{id}, true); err != nil {
+		t.Fatal(err)
+	}
+	var v map[string]any
+	readAs(t, ws, "views/main.view.json", &v)
+	if ex := v["relations"].(map[string]any)["except"].([]any); len(ex) != 1 || ex[0] != id {
+		t.Fatalf("except %v: showing a relation of a hidden type is the exception", ex)
+	}
+	if _, err := SetRelationsVisible(ws, "", "v_main", []string{id}, false); err != nil {
+		t.Fatal(err)
+	}
+	readAs(t, ws, "views/main.view.json", &v)
+	if ex := v["relations"].(map[string]any)["except"].([]any); len(ex) != 0 {
+		t.Fatalf("except %v: hiding it again is the default", ex)
+	}
 }
 
 func TestSetRelationVisibleKeepsExceptTheSmallerSide(t *testing.T) {
@@ -139,24 +165,25 @@ func TestSetRelationVisibleKeepsExceptTheSmallerSide(t *testing.T) {
 		readAs(t, ws, "views/main.view.json", &v)
 		return v
 	}
-	if err := SetRelationVisible(ws, "", "v_main", "r_a_b_items_item", false); err != nil {
+	if _, err := SetRelationsVisible(ws, "", "v_main", []string{"r_a_b_items_item"}, false); err != nil {
 		t.Fatal(err)
 	}
 	ex := view()["relations"].(map[string]any)["except"].([]any)
 	if len(ex) != 1 || ex[0] != "r_a_b_items_item" {
 		t.Fatalf("except %v", ex)
 	}
-	if err := SetRelationVisible(ws, "", "v_main", "r_a_b_items_item", true); err != nil {
+	if _, err := SetRelationsVisible(ws, "", "v_main", []string{"r_a_b_items_item"}, true); err != nil {
 		t.Fatal(err)
 	}
 	v := view()
 	if ex := v["relations"].(map[string]any)["except"].([]any); len(ex) != 0 {
 		t.Fatalf("except %v", ex)
 	}
-	if len(v["nodes"].([]any)) != 1 {
+	if len(v["placements"].([]any)) != 2 {
 		t.Fatal("geometry touched")
 	}
-	refused(t, SetRelationVisible(ws, "", "v_none", "r_a_b_items_item", true), "no view")
+	_, err := SetRelationsVisible(ws, "", "v_none", []string{"r_a_b_items_item"}, true)
+	refused(t, err, "no view")
 }
 
 func TestConfirmRenames(t *testing.T) {
@@ -171,33 +198,39 @@ func TestConfirmRenames(t *testing.T) {
 	id, _ := AddRelation(ws, "", "e_a", "e_x", "call")
 	refused(t, ConfirmRelationRename(ws, "", id, "m"), "no via")
 
-	var ents struct{ Entities []map[string]any }
-	readAs(t, ws, "entities.json", &ents)
-	if ents.Entities[0]["symbol"] != "N.A2" {
-		t.Fatalf("symbol %v", ents.Entities[0]["symbol"])
+	var ents struct {
+		Entities []struct{ Code []map[string]any }
 	}
-	var rels struct{ Relations []struct{ Via map[string]any } }
+	readAs(t, ws, "entities.json", &ents)
+	if code := ents.Entities[0].Code; len(code) != 1 || code[0]["symbol"] != "N.A2" || code[0]["lang"] != "csharp" {
+		t.Fatalf("code %v", code)
+	}
+	var rels struct {
+		Relations []struct {
+			Evidence []struct{ Via map[string]any }
+		}
+	}
 	readAs(t, ws, "relations.json", &rels)
-	if rels.Relations[0].Via["member"] != "entries" || rels.Relations[0].Via["path"] == nil {
-		t.Fatalf("via %v", rels.Relations[0].Via)
+	if via := rels.Relations[0].Evidence[0].Via; via["member"] != "entries" || via["path"] == nil {
+		t.Fatalf("via %v", via)
 	}
 }
 
 func TestPlaceEntitiesOnlyOnRequestAndNeverMoves(t *testing.T) {
 	ws := editWorkspace(t)
-	p := []Placement{{Entity: "e_b", Zone: "z_core", X: 100, Y: 100}}
+	p := []Placement{{Entity: "e_b", Parent: "e_core", X: 100, Y: 100}}
 	refused(t, PlaceEntities(ws, "", "v_main", p, false), "human")
 	refused(t, PlaceEntities(ws, "", "v_main", []Placement{{Entity: "e_a", X: 1, Y: 1}}, true), "already")
-	refused(t, PlaceEntities(ws, "", "v_main", []Placement{{Entity: "e_b", Zone: "z_none"}}, true), "no zone")
+	refused(t, PlaceEntities(ws, "", "v_main", []Placement{{Entity: "e_b", Parent: "e_none"}}, true), "no container")
 	if err := PlaceEntities(ws, "", "v_main", p, true); err != nil {
 		t.Fatal(err)
 	}
 	var v struct {
-		Nodes []map[string]any `json:"nodes"`
+		Placements []map[string]any `json:"placements"`
 	}
 	readAs(t, ws, "views/main.view.json", &v)
-	if len(v.Nodes) != 2 || v.Nodes[0]["x"] != 10.0 || v.Nodes[1]["zone"] != "z_core" {
-		t.Fatalf("nodes %v", v.Nodes)
+	if len(v.Placements) != 3 || v.Placements[1]["x"] != 10.0 || v.Placements[2]["parent"] != "e_core" {
+		t.Fatalf("placements %v", v.Placements)
 	}
 }
 

@@ -1,0 +1,253 @@
+{
+  "id": "v_internals",
+  "project": "overview",
+  "placements": [
+    {
+      "entity": "e_clients",
+      "parent": null,
+      "x": 20,
+      "y": -50,
+      "width": 1160,
+      "height": 160,
+      "override": {
+        "border": {
+          "color": "#cbd5e1"
+        },
+        "fill": "#f8fafc",
+        "header": {
+          "fill": "#e2e8f0"
+        }
+      }
+    },
+    {
+      "entity": "e_host",
+      "parent": null,
+      "x": 240,
+      "y": 140,
+      "width": 940,
+      "height": 500,
+      "override": {
+        "border": {
+          "color": "#93c5fd"
+        },
+        "fill": "#eff6ff",
+        "header": {
+          "fill": "#dbeafe"
+        }
+      }
+    },
+    {
+      "entity": "e_g_memory",
+      "parent": "e_host",
+      "x": 470,
+      "y": 300,
+      "width": 680,
+      "height": 210,
+      "override": {
+        "border": {
+          "color": "#c4b5fd"
+        },
+        "fill": "#f5f3ff",
+        "header": {
+          "fill": "#ede9fe"
+        }
+      }
+    },
+    {
+      "entity": "e_g_git",
+      "parent": null,
+      "x": 1220,
+      "y": -50,
+      "width": 236,
+      "height": 840,
+      "override": {
+        "border": {
+          "color": "#86efac"
+        },
+        "fill": "#f0fdf4",
+        "header": {
+          "fill": "#dcfce7"
+        }
+      }
+    },
+    {
+      "entity": "e_g_local",
+      "parent": null,
+      "x": -30,
+      "y": 670,
+      "width": 1210,
+      "height": 120,
+      "override": {
+        "border": {
+          "color": "#fdba74"
+        },
+        "fill": "#fff7ed",
+        "header": {
+          "fill": "#ffedd5"
+        }
+      }
+    },
+    {
+      "entity": "e_agent",
+      "parent": "e_clients",
+      "x": 40,
+      "y": 30,
+      "width": 160,
+      "height": 60
+    },
+    {
+      "entity": "e_editor",
+      "parent": "e_clients",
+      "x": 260,
+      "y": 0,
+      "width": 630,
+      "height": 60
+    },
+    {
+      "entity": "e_editor_local",
+      "parent": "e_clients",
+      "x": 960,
+      "y": 0,
+      "width": 160,
+      "height": 60
+    },
+    {
+      "entity": "e_mcp_proxy",
+      "parent": null,
+      "x": 30,
+      "y": 230,
+      "width": 160,
+      "height": 100
+    },
+    {
+      "entity": "e_mcp_server",
+      "parent": "e_host",
+      "x": 270,
+      "y": 230,
+      "width": 160,
+      "height": 180
+    },
+    {
+      "entity": "e_model_service",
+      "parent": "e_host",
+      "x": 740,
+      "y": 220,
+      "width": 180,
+      "height": 70
+    },
+    {
+      "entity": "e_http_api",
+      "parent": "e_host",
+      "x": 550,
+      "y": 190,
+      "width": 130,
+      "height": 60
+    },
+    {
+      "entity": "e_watcher",
+      "parent": "e_host",
+      "x": 550,
+      "y": 540,
+      "width": 190,
+      "height": 60
+    },
+    {
+      "entity": "e_mcp_settings",
+      "parent": "e_g_memory",
+      "x": 960,
+      "y": 340,
+      "width": 160,
+      "height": 70
+    },
+    {
+      "entity": "e_model",
+      "parent": "e_g_memory",
+      "x": 750,
+      "y": 400,
+      "width": 180,
+      "height": 90
+    },
+    {
+      "entity": "e_code_graph",
+      "parent": "e_g_memory",
+      "x": 500,
+      "y": 370,
+      "width": 180,
+      "height": 60
+    },
+    {
+      "entity": "e_sync",
+      "parent": "e_host",
+      "x": 270,
+      "y": 450,
+      "width": 160,
+      "height": 60
+    },
+    {
+      "entity": "e_defaults",
+      "parent": "e_host",
+      "x": 960,
+      "y": 180,
+      "width": 160,
+      "height": 60
+    },
+    {
+      "entity": "e_semaps_file",
+      "parent": "e_g_git",
+      "x": 1250,
+      "y": 230,
+      "width": 180,
+      "height": 180
+    },
+    {
+      "entity": "e_workspace",
+      "parent": "e_g_git",
+      "x": 1250,
+      "y": 430,
+      "width": 180,
+      "height": 60
+    },
+    {
+      "entity": "e_mcp_json",
+      "parent": "e_g_git",
+      "x": 1250,
+      "y": 50,
+      "width": 180,
+      "height": 60
+    },
+    {
+      "entity": "e_journal",
+      "parent": "e_g_local",
+      "x": 746,
+      "y": 714,
+      "width": 180,
+      "height": 60
+    },
+    {
+      "entity": "e_host_json",
+      "parent": "e_g_local",
+      "x": 150,
+      "y": 710,
+      "width": 150,
+      "height": 60
+    },
+    {
+      "entity": "e_mcp_log",
+      "parent": "e_g_local",
+      "x": -10,
+      "y": 710,
+      "width": 150,
+      "height": 60
+    },
+    {
+      "entity": "e_runs",
+      "parent": "e_g_local",
+      "x": 360,
+      "y": 714,
+      "width": 326,
+      "height": 60
+    }
+  ],
+  "routing": "orthogonal",
+  "axis": "axis_storage"
+}

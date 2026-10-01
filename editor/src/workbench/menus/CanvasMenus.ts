@@ -1,8 +1,13 @@
 import type { DiagramEditor } from "../../editor/DiagramEditor.js";
 import { edgePreview } from "../../editor/style-preview.js";
+import { variantLabel } from "../../editor/kindSelects.js";
 import type { RoutingMode } from "../../model/style-types.js";
 import { entityOf, type DiagramEdge, type DiagramElement } from "../../model/types.js";
+import { fileRealizations, langTag, refOf } from "../../model/realizations.js";
 import { i18n } from "../i18n/I18nService.js";
+import { KindCatalog } from "../../model/KindCatalog.js";
+import { icons } from "../../ui/icons.js";
+import { t as shellStrings } from "../../shell/strings.js";
 import { openContextMenu, type MenuItem } from "./ContextMenu.js";
 import { relationItems } from "./EntityMenu.js";
 
@@ -27,10 +32,10 @@ const ALIGN_EDGE_COMMANDS = [
 
 const MODES: readonly RoutingMode[] = ["orthogonal", "bezier", "tree-vertical", "tree-horizontal"];
 const MODE_ICON: Record<RoutingMode, string> = {
-  orthogonal: "┐",
-  bezier: "∿",
-  "tree-vertical": "┴",
-  "tree-horizontal": "├",
+  orthogonal: icons.cornerRightDown,
+  bezier: icons.waveSine,
+  "tree-vertical": icons.hierarchy,
+  "tree-horizontal": icons.hierarchy2,
 };
 
 /** Right click on the canvas: on a box, on a line, or on empty space. */
@@ -53,12 +58,71 @@ export function openCanvasMenu(
     if (edge) items = edgeItems(editor, host, edge);
     else if (doc.relations.some((r) => r.id === id)) items = ghostEdgeItems(editor, host, id);
   } else {
-    items = [viewRoutingItem(editor)];
+    items = [viewRoutingItem(editor), { kind: "separator" }, pasteItem(editor)];
   }
   if (items.length > 0) openContextMenu(items, clientX, clientY);
 }
 
+/** Nodes copied from the graph go onto the view (into the selected zone, when there is one). */
+function pasteItem(editor: DiagramEditor): MenuItem {
+  return { label: shellStrings.graphPaste, icon: icons.clipboard, note: "Ctrl+V", onSelect: () => void editor.pasteGraph() };
+}
+
 // ------------------------------------------------------------------ boxes
+
+/**
+ * «Create relation» over a multi-selection: the box selected first is the
+ * source, every other one a target. The type is picked from the dictionary,
+ * grouped as in the Relations panel.
+ */
+function connectItem(editor: DiagramEditor): MenuItem {
+  const source = editor.canvas.selectedElements()[0];
+  return {
+    label: i18n.d.canvasMenu.connect,
+    icon: icons.link,
+    ...(source ? { title: `${i18n.d.canvasMenu.connectFrom}: ${source.label}` } : {}),
+    submenu: () => relationTypeItems((type) => editor.connectSelection(type)),
+  };
+}
+
+/**
+ * The groups the extractor writes. Drawing one of those by hand is the
+ * exception, so they go last, behind submenus. Every other group — the
+ * dictionary's diagram relations and a workspace's own `relations.project`,
+ * where `call`, `data-flow` and `storage` may live after a migration — is what
+ * a person draws, and comes first, open.
+ */
+const CODE_GROUPS: ReadonlySet<string> = new Set(["relations.structure", "relations.members"]);
+
+/**
+ * The relation dictionary as menu entries: the hand-drawn types at the top,
+ * then a separator, then a submenu for each code group.
+ */
+function relationTypeItems(pick: (typeId: string) => void): MenuItem[] {
+  const catalog = KindCatalog.active;
+  const lang = i18n.currentLanguage;
+  const typeItem = (id: string): MenuItem => ({
+    label: catalog.relationName(id, lang),
+    note: id,
+    title: catalog.relationDescription(id, lang),
+    onSelect: () => pick(id),
+  });
+  const groups = catalog.relationGroups().filter((g) => g.types.length > 0);
+  const hand = groups.filter((g) => !CODE_GROUPS.has(g.id)).flatMap((g) => g.types.map((type) => typeItem(type.id)));
+  const code = groups
+    .filter((g) => CODE_GROUPS.has(g.id))
+    .map((g): MenuItem => ({
+      label: catalog.groupName(g, lang),
+      submenu: () => g.types.map((type) => typeItem(type.id)),
+    }));
+  if (hand.length === 0 || code.length === 0) return [...hand, ...code];
+  return [...hand, { kind: "separator" }, ...code];
+}
+
+/** A connection drag was dropped on a box: ask for the relation type, then draw it. */
+export function openConnectMenu(editor: DiagramEditor, from: string, to: string, clientX: number, clientY: number): void {
+  openContextMenu(relationTypeItems((type) => editor.connect(from, to, type)), clientX, clientY);
+}
 
 function blockItems(editor: DiagramEditor, host: MenuHost, el: DiagramElement): MenuItem[] {
   const t = i18n.d.canvasMenu;
@@ -71,7 +135,7 @@ function blockItems(editor: DiagramEditor, host: MenuHost, el: DiagramElement): 
   const entity = entityOf(el) ?? doc.entities.find((e) => e.id === el.id);
 
   const items: MenuItem[] = [];
-  items.push({ label: "Копировать ссылку", icon: "🔗", onSelect: () => editor.copyLink(ids.length > 0 ? ids : [el.id]) }, { kind: "separator" });
+  items.push({ label: "Копировать ссылку", icon: icons.link, onSelect: () => editor.copyLink(ids.length > 0 ? ids : [el.id]) }, { kind: "separator" });
   const relations = relationItems(editor, el.id);
   if (relations.length > 0) items.push(...relations, { kind: "separator" });
 
@@ -79,7 +143,7 @@ function blockItems(editor: DiagramEditor, host: MenuHost, el: DiagramElement): 
     const current = typeof el.metadata.template === "string" ? el.metadata.template : null;
     items.push({
       label: t.template,
-      icon: "▤",
+      icon: icons.template,
       submenu: () => [
         {
           label: t.templateFromStyle,
@@ -99,29 +163,29 @@ function blockItems(editor: DiagramEditor, host: MenuHost, el: DiagramElement): 
     });
   }
 
-  items.push({
-    label: t.style,
-    icon: "🎨",
-    submenu: () => [
-      {
-        label: t.styleDefault,
-        checked: el.styleId === undefined,
-        preview: () => editor.canvas.previewElement(el, { styleId: null }),
-        onSelect: () => editor.applyStyle(ids, null),
-      },
-      { kind: "separator" },
-      ...styles.list("block").map((s): MenuItem => ({
-        label: s.name,
-        checked: el.styleId === s.id,
+  // The variants of the box's own type (ADR_20260927-7), only when there is a choice.
+  const target = isZone ? "container" : "block";
+  const variants = styles.stylesOf(el.type, target);
+  if (variants.length > 1) {
+    const current = styles.blockStyleIdFor(el);
+    const base = styles.baseStyleOf(el.type, target);
+    items.push({
+      label: t.style,
+      icon: icons.palette,
+      submenu: () => variants.map((s): MenuItem => ({
+        label: variantLabel(s.name, s.id === base),
+        checked: current === s.id,
         title: s.style.description,
-        preview: () => editor.canvas.previewElement(el, { styleId: s.id }),
-        onSelect: () => editor.applyStyle(ids, s.id),
+        preview: () => editor.canvas.previewElement(el, { styleId: s.id === base ? null : s.id }),
+        onSelect: () => editor.applyKindAndStyle(ids, el.type, s.id),
       })),
-    ],
-  });
+    });
+  }
+
+  if (editor.canvas.selectedElements().length > 1) items.push(connectItem(editor));
 
   if (editor.canvas.selectedIds.size > 1) {
-    items.push({ label: t.align, icon: "⇤", submenu: () => [
+    items.push({ label: t.align, icon: icons.arrowBarToLeft, submenu: () => [
       ...ALIGN_COMMANDS.map((id) => host.command(id)),
       { kind: "separator" },
       ...ALIGN_EDGE_COMMANDS.map((id) => host.command(id)),
@@ -129,13 +193,19 @@ function blockItems(editor: DiagramEditor, host: MenuHost, el: DiagramElement): 
   }
 
   items.push({ kind: "separator" });
-  items.push({ label: t.describe, icon: "✎", onSelect: () => editor.openDocEditor(el.id, isZone ? "zone" : "node") });
-  const codeRef = typeof el.metadata.codeRef === "string" ? el.metadata.codeRef : entity?.codeRef;
-  if (codeRef) items.push({ label: t.code, icon: "💻", note: codeRef.split("/").pop(), onSelect: () => editor.openCodeViewer(codeRef, el.label) });
-  items.push({ label: t.properties, icon: "→", onSelect: () => host.openPanel("properties") });
-  items.push({ label: t.blockStyle, icon: "→", onSelect: () => host.openStyleEditor(styles.blockStyleIdFor(el)) });
-  if (entity) items.push({ label: t.neighbourhood, icon: "🕸️", onSelect: () => host.openPanel("neighbourhood") });
-  items.push({ kind: "separator" }, { label: t.remove, icon: "🗑", onSelect: () => editor.deleteSelection() });
+  items.push({ label: t.describe, icon: icons.pencil, onSelect: () => editor.openDocEditor(el.id, isZone ? "zone" : "node") });
+  // One item per realization that has a file, labelled with its language tag.
+  const own = fileRealizations(el.metadata);
+  for (const r of own.length > 0 ? own : fileRealizations(entity)) {
+    const ref = refOf(r);
+    items.push({ label: `${t.code}: ${langTag(r)}`, icon: icons.code, note: ref.split("/").pop(), onSelect: () => editor.openCodeViewer(ref, el.label) });
+  }
+  items.push({ label: t.properties, icon: icons.listDetails, onSelect: () => host.openPanel("properties") });
+  items.push({ label: t.blockStyle, icon: icons.palette, onSelect: () => host.openStyleEditor(styles.blockStyleIdFor(el)) });
+  if (entity) items.push({ label: t.neighbourhood, icon: icons.hierarchy, onSelect: () => host.openPanel("neighbourhood") });
+  if (isZone) items.push(pasteItem(editor));
+  items.push({ kind: "separator" }, { label: t.remove, icon: icons.trash, onSelect: () => editor.deleteSelection() });
+  items.push(...removeFromRegistryItems(editor, el.id));
   return items;
 }
 
@@ -149,9 +219,12 @@ function edgeItems(editor: DiagramEditor, host: MenuHost, edge: DiagramEdge): Me
   if (!ids.includes(edge.id)) ids.push(edge.id);
   const edges = ids.map((sid) => doc.edge(sid)!).filter(Boolean);
   const own = edges.some((e) => e.routing !== undefined);
+  const variants = styles.stylesOf(edge.type, "edge");
+  const base = styles.baseStyleOf(edge.type, "edge");
+  const currentStyle = styles.edgeStyleIdFor(edge);
 
   return [
-    { label: t.hideEdge, icon: "○", title: t.toggleEdgeHint, onSelect: () => editor.setEdgeShown(edge.id, false) },
+    { label: t.hideEdge, icon: icons.eyeOff, title: t.toggleEdgeHint, onSelect: () => editor.setEdgeShown(edge.id, false) },
     { kind: "separator" },
     {
       label: t.lineShape,
@@ -160,7 +233,7 @@ function edgeItems(editor: DiagramEditor, host: MenuHost, edge: DiagramEdge): Me
       submenu: () => [
         {
           label: t.resetShape,
-          icon: "↺",
+          icon: icons.refresh,
           title: t.resetShapeHint,
           disabled: !own,
           onSelect: () => editor.setEdgeRouting(ids, null),
@@ -175,43 +248,49 @@ function edgeItems(editor: DiagramEditor, host: MenuHost, edge: DiagramEdge): Me
       ],
     },
     viewRoutingItem(editor),
-    {
-      label: t.style,
-      icon: "🎨",
-      submenu: () => [
-        {
-          label: t.styleByType,
-          checked: edge.styleId === undefined,
-          preview: () => edgePreview(styles.resolveEdge(styles.has(edge.type) ? edge.type : null)),
-          onSelect: () => editor.applyStyle(ids, null),
-        },
-        { kind: "separator" },
-        ...styles.list("edge").map((s): MenuItem => ({
-          label: s.name,
-          checked: edge.styleId === s.id,
-          title: s.style.description,
-          preview: () => edgePreview(styles.resolveEdge(s.id)),
-          onSelect: () => editor.applyStyle(ids, s.id),
-        })),
-      ],
-    },
+    // The variants of the line's own relation type (ADR_20260930-2), only when there is a choice.
+    ...(variants.length > 1
+      ? [{
+          label: t.style,
+          icon: icons.palette,
+          submenu: (): MenuItem[] => variants.map((s): MenuItem => ({
+            label: variantLabel(s.name, s.id === base),
+            checked: currentStyle === s.id,
+            title: s.style.description,
+            preview: () => edgePreview(styles.resolveEdge(s.id)),
+            onSelect: () => editor.applyRelationTypeAndStyle(ids, edge.type, s.id),
+          })),
+        } satisfies MenuItem]
+      : []),
     { kind: "separator" },
-    { label: t.describe, icon: "✎", onSelect: () => editor.openDocEditor(edge.id, "edge") },
-    { label: t.properties, icon: "→", onSelect: () => host.openPanel("relations") },
-    { label: t.edgeStyle, icon: "→", onSelect: () => host.openStyleEditor(styles.edgeStyleIdFor(edge)) },
+    { label: t.describe, icon: icons.pencil, onSelect: () => editor.openDocEditor(edge.id, "edge") },
+    { label: t.properties, icon: icons.listDetails, onSelect: () => host.openPanel("relations") },
+    { label: t.edgeStyle, icon: icons.palette, onSelect: () => host.openStyleEditor(styles.edgeStyleIdFor(edge)) },
     { kind: "separator" },
-    { label: t.remove, icon: "🗑", onSelect: () => editor.deleteSelection() },
+    { label: t.remove, icon: icons.trash, onSelect: () => editor.deleteSelection() },
+    ...removeFromRegistryItems(editor, edge.id),
   ];
+}
+
+/**
+ * «Remove from registry» (ADR_20261001), only where the clicked line or block is an authored
+ * record; «Delete» above takes it off this view alone. A record from code has no such entry.
+ */
+function removeFromRegistryItems(editor: DiagramEditor, clicked: string): MenuItem[] {
+  const t = i18n.d.canvasMenu;
+  // the right click selects what it hit, so the selection is what the command acts on
+  if (!editor.authoredSelection().includes(clicked)) return [];
+  return [{ label: t.removeFromRegistry, icon: icons.trash, title: t.removeFromRegistryHint, onSelect: () => void editor.removeSelectionFromRegistry() }];
 }
 
 /** A ghost line: known in the registry, not on the view. */
 function ghostEdgeItems(editor: DiagramEditor, host: MenuHost, id: string): MenuItem[] {
   const t = i18n.d.canvasMenu;
   return [
-    { label: t.showEdge, icon: "●", title: t.toggleEdgeHint, onSelect: () => editor.setEdgeShown(id, true) },
+    { label: t.showEdge, icon: icons.eye, title: t.toggleEdgeHint, onSelect: () => editor.setEdgeShown(id, true) },
     { kind: "separator" },
-    { label: t.describe, icon: "✎", onSelect: () => editor.openDocEditor(id, "edge") },
-    { label: t.properties, icon: "→", onSelect: () => host.openPanel("relations") },
+    { label: t.describe, icon: icons.pencil, onSelect: () => editor.openDocEditor(id, "edge") },
+    { label: t.properties, icon: icons.listDetails, onSelect: () => host.openPanel("relations") },
   ];
 }
 

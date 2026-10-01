@@ -15,4 +15,7 @@ export interface WorkbenchMode {
   readonly surface: HTMLElement;
   /** Every time the mode is entered; the first time it may load its data. */
   enter?(): void;
+  /** Every time another mode is selected while this one was active — closes
+   * anything this mode opened for itself (e.g. its own EventSource). */
+  leave?(): void;
 }

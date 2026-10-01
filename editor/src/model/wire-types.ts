@@ -6,48 +6,53 @@
  * - entities.json (entities catalog)
  * - relations.json (relations catalog)
  * - text.<lang>.json (localized descriptions and names)
- * - views/<view_id>.view.json (view layouts: zones, nodes, edges)
+ * - views/<view_id>.view.json (view layouts: placements, edges)
  */
 
 import type { RoutingMode } from "./style-types.js";
 import type { ParsedTextCatalog } from "./text-provenance.js";
+import type { PlacementOverride } from "./override.js";
 
 export interface WireMetadata {
   type?: string;
   kind?: string;
   description?: string;
-  codeRef?: string;
+  /** The entity's realizations, copied from `EntityEntry.code`; absent when there are none. */
+  code?: CodeRealization[];
   responsibilities?: string[];
   [key: string]: unknown;
 }
 
-export interface WireZone {
+/**
+ * One placement as the editor carries it between the loader and the canvas:
+ * the view file's placement (CONTRACT.md §8.2) joined with what the registry
+ * says about its entity. Not a file shape — `ViewPlacement` is.
+ */
+export interface WirePlacement {
+  /** The entity id: a placement is named by its entity. */
   id: string;
-  name?: string;
-  type?: string;
-  semanticId?: string;
-  tags?: string[];
-  x: number;
-  y: number;
-  width: number;
-  height: number;
-  styleId?: string;
-  metadata?: WireMetadata;
-}
-
-export interface WireNode {
-  id: string;
+  /**
+   * Whether the entity's kind is a container (`container: true` in the kinds
+   * catalog): drawn as a frame and may hold other placements.
+   */
+  container: boolean;
+  /** The entity's display name (`entityDisplayName`). */
   label?: string;
+  /** The entity's `kind`. */
   type?: string;
-  /** Declared parent zone id. Null, absent, or dangling all mean "not declared". */
-  zone?: string | null;
+  /** Entity id of the container placement this one lies in; null — none. */
+  parent?: string | null;
   x: number;
   y: number;
   width: number;
   height: number;
   tags?: string[];
   styleId?: string;
+  override?: PlacementOverride;
+  collapsed?: boolean;
   metadata?: WireMetadata;
+  /** The loader's side data (`_entity`, the registry record). */
+  raw?: Record<string, unknown>;
 }
 
 export interface WireEdge {
@@ -61,6 +66,8 @@ export interface WireEdge {
   toLabel?: string;
   type?: string;
   styleId?: string;
+  /** Colour, width and dash of this one edge on this view (CONTRACT.md §11.6). */
+  override?: PlacementOverride;
   points?: Array<{ x: number; y: number }>;
   /**
    * Where this edge came from. A generated (`code`) edge carries no text at
@@ -100,8 +107,7 @@ export interface WireDocumentMetadata {
 export interface WireDocument {
   metadata?: WireDocumentMetadata;
   views?: WireView[];
-  zones?: WireZone[];
-  nodes?: WireNode[];
+  placements?: WirePlacement[];
   edges?: WireEdge[];
   bundle?: ProjectBundle;
 }
@@ -110,12 +116,18 @@ export interface WireDocument {
 
 export interface EntityEntry {
   id: string;
-  name: string;
+  /**
+   * Only an entity from code (or without an origin) has a `name` here. The name
+   * of an `authored` entity is a text: `name` under its id in `text.<lang>.json`,
+   * per language. Read it through `entityDisplayName`, never from this field.
+   */
+  name?: string;
   kind: string;
   origin?: "code" | "authored";
   status?: "present" | "missing" | "planned";
   namespace?: string;
-  codeRef?: string;
+  /** 0..N realizations, one per language; absent (never `[]`) when there is no code. */
+  code?: CodeRealization[];
   /**
    * Members of the type, for templates that show more than a caption.
    *
@@ -145,10 +157,29 @@ export interface EntityCatalog {
   entities: EntityEntry[];
 }
 
-export interface RelationEvidence {
-  codeRef?: string;
+/** One realization of an entity in code. */
+export interface CodeRealization {
+  /** Language of the extractor facts (`go`, `csharp`, `typescript`, …); comes with `symbol`. */
+  lang?: string;
+  /**
+   * File from the source root, possibly with a `#..`/`:..` anchor. Absent for an
+   * external symbol (`io.Writer`): there is no file of ours to open.
+   */
+  ref?: string;
+  /** Symbol id in the facts; comes with `lang`. */
   symbol?: string;
-  line?: number;
+  /** `missing` when the symbol left the facts; `present` is not written. */
+  status?: "missing";
+}
+
+/** One language's evidence for a relation. */
+export interface RelationEvidence {
+  lang?: string;
+  ref?: string;
+  symbol?: string;
+  /** Member relation signature in this language; it lives only here. */
+  via?: RelationVia;
+  status?: "missing";
 }
 
 export interface RelationVia {
@@ -158,7 +189,7 @@ export interface RelationVia {
   memberKind?: string;
   /** Visibility modifiers from the code. */
   modifiers?: string[];
-  /** The type text as written in code, e.g. "ConcurrentDictionary<long, Task<VmRunOutcome>>". */
+  /** The type text as written in code, e.g. "ConcurrentDictionary<long, Task<Result>>". */
   text?: string;
   /** Path from the outer type to the target class, e.g. ["value", "result"]. */
   path?: string[];
@@ -176,19 +207,17 @@ export interface RelationEntry {
   from: string;
   to: string;
   type: string;
-  relation?: string;
   label?: string;
   /** Cardinality/role captions at each end (ADR_20260903 §2.6); absent for `origin: "code"`. */
   fromLabel?: string;
   toLabel?: string;
-  styleId?: string;
   origin?: "code" | "authored";
   status?: "present" | "missing";
   /**
-   * Member relation signature (ADR_20260924-4): present only for member relations from code.
-   * The edge label is derived from this when `origin: "code"` and no authored text exists.
+   * Per-language evidence, absent when there is none. A member relation's
+   * signature (`via`) lives on its entries — see `relationVia()`; the edge label
+   * is derived from it when `origin: "code"` and no authored text exists.
    */
-  via?: RelationVia;
   evidence?: RelationEvidence[];
   points?: Array<{ x: number; y: number }>;
   [key: string]: unknown;
@@ -211,30 +240,6 @@ export interface TextCatalog {
 }
 
 /**
- * Authored vocabulary of relation types.
- *
- * A separate file rather than entries in `entities.json` because that catalogue
- * is partly generated from code: regeneration would drown a dozen hand-written
- * lines in churn. A relation type is also never placed on a canvas, which is
- * what `entities.json` is a registry of.
- *
- * Name and description live in the text catalogues under the type's `rt_` id.
- */
-export interface RelationTypeEntry {
-  id: string;
-  /** Generated by `sync` from code, or written by a human. */
-  origin?: "code" | "authored";
-  styleId?: string;
-  /** Default on views for relations of this type; absent — the view's `relations.default`. */
-  visibility?: "visible" | "hidden";
-  [key: string]: unknown;
-}
-
-export interface RelationTypeCatalog {
-  relationTypes: RelationTypeEntry[];
-}
-
-/**
  * Something wrong with the model as loaded, reported rather than thrown.
  *
  * A file that has fallen behind the contract — a view generated before axes
@@ -244,7 +249,7 @@ export interface RelationTypeCatalog {
  * not by refusing to show the diagram.
  */
 export interface ModelIssue {
-  kind: "view-without-axis";
+  kind: "view-without-axis" | "override-field" | "edges-old-shape";
   /** Human-readable, shown in the editor's banner. */
   message: string;
 }
@@ -267,44 +272,43 @@ export interface ProjectManifest {
   [key: string]: unknown;
 }
 
-export interface ViewZonePlacement {
-  id: string;
-  container?: string | null;
-  parent?: string | null;
-  x: number;
-  y: number;
-  width: number;
-  height: number;
-  styleId?: string;
-  collapsed?: boolean;
-}
-
-export interface ViewNodePlacement {
-  id?: string;
-  entity?: string;
-  container?: string | null;
-  zone?: string | null;
+/**
+ * One element of a view's `placements` (CONTRACT.md §8.2): blocks and
+ * containers are placed alike; which one it is follows from the entity's kind.
+ */
+export interface ViewPlacement {
+  entity: string;
+  /** Entity id of a container placement on this view; null — outside containers. */
+  parent: string | null;
   x: number;
   y: number;
   width?: number;
   height?: number;
   styleId?: string;
+  /** Partial style of this one placement (§11.6); fields from `OVERRIDE_FIELDS` only. */
+  override?: PlacementOverride;
   /**
    * Content template for this one placement, overriding the style's choice.
    * The exception: one node that must show more, or less, than its kind does.
    */
   template?: string;
+  /** A container folded to its header. */
+  collapsed?: boolean;
+  [key: string]: unknown;
 }
 
+/**
+ * One entry of a view's own `edges` list: a reference to a relation of
+ * `relations.json` and only what this view adds to its look (CONTRACT.md §8.5,
+ * ADR_20260930-7). It says nothing about visibility, ends or type — those are
+ * the registry's and the one visibility rule's. `from`/`to`/`type` are the old
+ * shape: read as a named problem, never written.
+ */
 export interface ViewEdgePlacement {
   id: string;
-  from: string;
-  to: string;
-  type?: string;
-  relation?: string;
-  label?: string;
   styleId?: string;
-  points?: Array<{ x: number; y: number }>;
+  /** Colour, width and dash of this one edge (§11.6); fields from `EDGE_OVERRIDE_FIELDS` only. */
+  override?: PlacementOverride;
   /** Line shape for this edge alone; see `WireEdge.routing`. */
   routing?: RoutingMode;
 }
@@ -332,9 +336,7 @@ export interface ViewDocument {
   icon?: string;
   theme?: string;
   order?: number;
-  zones?: ViewZonePlacement[];
-  nodes?: ViewNodePlacement[];
-  placements?: ViewNodePlacement[];
+  placements?: ViewPlacement[];
   edges?: ViewEdgePlacement[];
   [key: string]: unknown;
 }
@@ -350,7 +352,6 @@ export interface ProjectBundle {
    * untouched values exactly as they were and re-stamp only what changed.
    */
   textFiles?: Record<string, ParsedTextCatalog>;
-  relationTypes?: RelationTypeCatalog;
   view: ViewDocument;
   /**
    * The axis actually in force for this view: its own, or the project's default.

@@ -1,0 +1,12 @@
+{
+  "id": "overview",
+  "title": "SeMaps — общая архитектура",
+  "contractVersion": 5,
+  "defaultAxis": "axis_subsystem",
+  "languages": [
+    "ru",
+    "en"
+  ],
+  "icon": "🗺️",
+  "defaultView": "v_overview"
+}

@@ -23,17 +23,53 @@ type Facts struct {
 // Symbol is one declaration. ID is the key within one output (ADR_20260923-5),
 // never a registry id.
 type Symbol struct {
-	ID         string `json:"id"`
+	ID string `json:"id"`
+	// Kind "method" (ADR_20260928-4) covers a method, constructor, property,
+	// indexer, operator or accessor (see NativeKind); it is dynamic data of
+	// the live graph and core/sync.go drops it, and every edge that touches
+	// it, before any other processing.
 	Kind       string `json:"kind"`
 	NativeKind string `json:"nativeKind"`
 	Name       string `json:"name"`
 	Namespace  string `json:"namespace,omitempty"`
 	File       string `json:"file"`
 	Line       int    `json:"line,omitempty"`
+	EndLine    int    `json:"endLine,omitempty"` // last line of the declaration named by file/line
+	// Spans lists every declaration of the symbol (C# partial, TypeScript
+	// merged declarations); printed only when there is more than one. File
+	// and Line above stay the first declaration, as before this field
+	// existed.
+	Spans      []Span `json:"spans,omitempty"`
 	Visibility string `json:"visibility,omitempty"`
 	// Members keeps the extractor's array as is: its shape is the `members`
 	// of CONTRACT.md §3, and sync copies it into the entity unchanged.
 	Members json.RawMessage `json:"members,omitempty"`
+	// MemberLines maps member name -> line. It lives beside Members, never
+	// inside a member record: sync copies Members verbatim into entities.json,
+	// and a line there would make the registry change on every code edit
+	// above it. A member declared in a file other than File is left out.
+	MemberLines map[string]int `json:"memberLines,omitempty"`
+	// Dynamic lists blind-spot marks on a method (ADR_20260928-5 §4): the
+	// method creates or invokes something through platform reflection, or
+	// operates on an expression of the C# type `dynamic`. Only for Kind ==
+	// "method", only printed with --edges calls, sorted by (Line, Kind), no
+	// duplicates. There is never a target. Dynamic data of the live graph,
+	// like the method itself: core/sync.go drops it whole.
+	Dynamic []DynamicMark `json:"dynamic,omitempty"`
+}
+
+// DynamicMark is one blind spot inside a method (ADR_20260928-5 §4). Kind is
+// one of the closed list in DynamicMarkKinds; there is no target.
+type DynamicMark struct {
+	Kind string `json:"kind"`
+	Line int    `json:"line"`
+}
+
+// Span is one declaration of a symbol with more than one (docs/EXTRACTOR.md §2.1).
+type Span struct {
+	File    string `json:"file"`
+	Line    int    `json:"line"`
+	EndLine int    `json:"endLine,omitempty"`
 }
 
 // Edge joins two symbols of the same output.
@@ -41,7 +77,23 @@ type Edge struct {
 	From string `json:"from"`
 	To   string `json:"to"`
 	Kind string `json:"kind"`
-	Via  *Via   `json:"via,omitempty"` // signature of member relation
+	// Native is how the language expressed the edge (embed, methodset, field,
+	// interface…; docs/extractors/<lang>.md). Display and filters only: sync
+	// does not compare it and it never changes the relation type it derives
+	// (ADR_20260927 §3, ADR_20260930-3).
+	Native string `json:"native,omitempty"`
+	Via    *Via   `json:"via,omitempty"` // signature of member relation
+	// Line and File say where the edge comes from: the member for
+	// holds/uses, the base list for extends/implements. Not for contains
+	// and depends. File is set only when it differs from the `from`
+	// symbol's file. Neither is part of the edge's sort order or identity
+	// (docs/EXTRACTOR.md §3).
+	Line int    `json:"line,omitempty"`
+	File string `json:"file,omitempty"`
+	// Lines lists every place of a `calls` edge inside the calling method,
+	// sorted ascending (ADR_20260928-4 §3); Line above is the first of them.
+	// Not part of the edge's sort order or identity.
+	Lines []int `json:"lines,omitempty"`
 }
 
 // Via is the signature of a member relation: docs/EXTRACTOR.md §2.2a.
@@ -57,11 +109,28 @@ type Via struct {
 	Deferred    bool     `json:"deferred,omitempty"`    // true if the object comes later
 }
 
+// ExternalKind is the nativeKind of a symbol outside the read code that an
+// edge still needs as its end — `io.Reader` a Go type implements. It has no
+// file and is not filtered by sources.include (ADR_20260927-4).
+const ExternalKind = "external"
+
 // SymbolKinds and EdgeKinds are the closed vocabularies of EXTRACTOR.md §2.2–2.3.
+// EdgeKinds: extends..uses are the closed vocabulary of edges that reach the
+// registry (ADR_20260927); calls, constructs, overrides are fact kinds of the
+// live graph only and never reach it (ADR_20260930-3).
 var (
-	SymbolKinds = []string{"type", "interface", "function", "module", "value"}
-	EdgeKinds   = []string{"extends", "implements", "contains", "depends", "holds", "uses"}
+	SymbolKinds = []string{"type", "interface", "function", "module", "value", "method"}
+	EdgeKinds   = []string{"extends", "implements", "contains", "depends", "holds", "uses", "calls", "constructs", "overrides"}
 )
+
+// methodNativeKinds are the values NativeKind may take for a Kind == "method"
+// symbol (ADR_20260928-4 §1).
+var methodNativeKinds = setOf([]string{"method", "constructor", "property", "indexer", "operator", "accessor"})
+
+// DynamicMarkKinds is the closed vocabulary of blind-spot marks (ADR_20260928-5 §4).
+var DynamicMarkKinds = []string{"create", "invoke", "make-type", "dynamic"}
+
+var dynamicMarkKinds = setOf(DynamicMarkKinds)
 
 // FactsError lists every problem found in a facts document, not just the first.
 type FactsError struct{ Problems []string }
@@ -137,6 +206,7 @@ func (f *Facts) problems() []string {
 
 	kinds := setOf(SymbolKinds)
 	ids := make(map[string]bool, len(f.Symbols))
+	kindOf := make(map[string]string, len(f.Symbols))
 	for i, s := range f.Symbols {
 		where := fmt.Sprintf("symbols[%d] %s", i, s.ID)
 		if !symbolIDPattern.MatchString(s.ID) {
@@ -145,16 +215,25 @@ func (f *Facts) problems() []string {
 			bad("%s: id repeats", where)
 		}
 		ids[s.ID] = true
+		kindOf[s.ID] = s.Kind
 		if !kinds[s.Kind] {
 			bad("%s: kind %q is not one of %s", where, s.Kind, strings.Join(SymbolKinds, ", "))
 		}
 		if s.NativeKind == "" {
 			bad("%s: nativeKind is empty", where)
 		}
+		if s.Kind == "method" && !methodNativeKinds[s.NativeKind] {
+			bad("%s: nativeKind %q is not one of method, constructor, property, indexer, operator, accessor", where, s.NativeKind)
+		}
 		if s.Name == "" {
 			bad("%s: name is empty", where)
 		}
 		switch {
+		case s.NativeKind == ExternalKind:
+			// A method's nativeKind is checked above: it is never `external`.
+			if s.File != "" {
+				bad("%s: an external symbol has no file", where)
+			}
 		case s.File == "":
 			bad("%s: file is empty", where)
 		case strings.Contains(s.File, `\`):
@@ -164,6 +243,28 @@ func (f *Facts) problems() []string {
 		}
 		if s.Line < 0 {
 			bad("%s: line %d, lines start at 1", where, s.Line)
+		}
+		if s.EndLine < 0 {
+			bad("%s: endLine %d, lines start at 1", where, s.EndLine)
+		}
+		for j, sp := range s.Spans {
+			if sp.Line < 1 {
+				bad("%s: spans[%d].line %d, lines start at 1", where, j, sp.Line)
+			}
+			if sp.EndLine < 0 {
+				bad("%s: spans[%d].endLine %d, lines start at 1", where, j, sp.EndLine)
+			}
+			if j > 0 {
+				prev := s.Spans[j-1]
+				if prev.File > sp.File || (prev.File == sp.File && prev.Line > sp.Line) {
+					bad("%s: spans are not sorted by (file, line)", where)
+				}
+			}
+		}
+		for name, line := range s.MemberLines {
+			if line < 1 {
+				bad("%s: memberLines[%q] %d, lines start at 1", where, name, line)
+			}
 		}
 		if len(s.Members) > 0 {
 			var members []struct {
@@ -179,12 +280,32 @@ func (f *Facts) problems() []string {
 				}
 			}
 		}
+		if len(s.Dynamic) > 0 && s.Kind != "method" {
+			bad("%s: dynamic is only for kind method", where)
+		}
+		for j, m := range s.Dynamic {
+			if !dynamicMarkKinds[m.Kind] {
+				bad("%s: dynamic[%d].kind %q is not one of %s", where, j, m.Kind, strings.Join(DynamicMarkKinds, ", "))
+			}
+			if m.Line < 1 {
+				bad("%s: dynamic[%d].line %d, lines start at 1", where, j, m.Line)
+			}
+			if j > 0 {
+				prev := s.Dynamic[j-1]
+				if prev.Line > m.Line || (prev.Line == m.Line && prev.Kind >= m.Kind) {
+					bad("%s: dynamic is not sorted by (line, kind), or repeats", where)
+				}
+			}
+		}
 		if i > 0 && f.Symbols[i-1].ID > s.ID {
 			bad("%s: symbols are not sorted by id (after %s)", where, f.Symbols[i-1].ID)
 		}
 	}
 
 	edgeKinds := setOf(EdgeKinds)
+	// containedBy counts, for each method symbol, how many `contains` edges
+	// from a type name it (ADR_20260928-4 §1: exactly one).
+	containedBy := make(map[string]int)
 	for i, e := range f.Edges {
 		where := fmt.Sprintf("edges[%d] %s -%s-> %s", i, e.From, e.Kind, e.To)
 		if !edgeKinds[e.Kind] {
@@ -196,11 +317,72 @@ func (f *Facts) problems() []string {
 		if !ids[e.To] {
 			bad("%s: to is not a symbol of this output", where)
 		}
-		if e.From == e.To {
+		if e.From == e.To && e.Kind != "calls" {
+			// calls is the one edge kind self-reference makes sense for: a
+			// method can call itself (recursion). Every other kind (extends,
+			// implements, contains, depends, holds, uses, constructs,
+			// overrides) forbids it as before.
 			bad("%s: an edge to itself", where)
 		}
-		if e.Via != nil && (e.Kind == "extends" || e.Kind == "implements" || e.Kind == "contains" || e.Kind == "depends") {
+		if e.Via != nil && (e.Kind == "extends" || e.Kind == "implements" || e.Kind == "contains" || e.Kind == "depends" || e.Kind == "calls" || e.Kind == "constructs" || e.Kind == "overrides") {
 			bad("%s: `via` is only for holds/uses edges", where)
+		}
+		if e.Line < 0 {
+			bad("%s: line %d, lines start at 1", where, e.Line)
+		}
+		if e.Line != 0 && (e.Kind == "contains" || e.Kind == "depends") {
+			bad("%s: `line` is not for contains/depends edges", where)
+		}
+		if e.File != "" && e.Line == 0 {
+			bad("%s: `file` without `line`", where)
+		}
+		for j, ln := range e.Lines {
+			if ln < 1 {
+				bad("%s: lines[%d] %d, lines start at 1", where, j, ln)
+			}
+			if j > 0 && e.Lines[j-1] >= ln {
+				bad("%s: lines are not sorted or repeat", where)
+			}
+		}
+		// A method may construct the same type in several places, as it may
+		// call the same method: both carry every place.
+		if len(e.Lines) > 0 && e.Kind != "calls" && e.Kind != "constructs" {
+			bad("%s: `lines` is only for calls and constructs edges", where)
+		}
+		fromKind, toKind := kindOf[e.From], kindOf[e.To]
+		switch e.Kind {
+		case "calls":
+			if fromKind != "" && fromKind != "method" {
+				bad("%s: calls is method -> method, from is %s", where, fromKind)
+			}
+			if toKind != "" && toKind != "method" {
+				bad("%s: calls is method -> method, to is %s", where, toKind)
+			}
+		case "constructs":
+			if fromKind != "" && fromKind != "method" {
+				bad("%s: constructs is method -> type, from is %s", where, fromKind)
+			}
+			if toKind != "" && toKind != "type" {
+				bad("%s: constructs is method -> type, to is %s", where, toKind)
+			}
+		case "overrides":
+			if fromKind != "" && fromKind != "method" {
+				bad("%s: overrides is method -> method, from is %s", where, fromKind)
+			}
+			if toKind != "" && toKind != "method" {
+				bad("%s: overrides is method -> method, to is %s", where, toKind)
+			}
+		case "implements":
+			if (fromKind == "method") != (toKind == "method") {
+				bad("%s: implements joins two types or two methods, never a type and a method", where)
+			}
+		case "contains":
+			if toKind == "method" {
+				if fromKind != "" && fromKind != "type" && fromKind != "interface" {
+					bad("%s: contains to a method must start at a type or interface", where)
+				}
+				containedBy[e.To]++
+			}
 		}
 		if e.Via != nil {
 			if e.Via.Cardinality != "" && e.Via.Cardinality != "one" && e.Via.Cardinality != "optional" && e.Via.Cardinality != "many" && e.Via.Cardinality != "keyed" {
@@ -217,6 +399,11 @@ func (f *Facts) problems() []string {
 			case 1:
 				bad("%s: edges are not sorted by (from, to, kind, via.member, via.path)", where)
 			}
+		}
+	}
+	for id, n := range containedBy {
+		if n != 1 {
+			bad("symbol %s: a method must be contained by exactly one type of this output, has %d", id, n)
 		}
 	}
 	return out

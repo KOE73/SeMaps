@@ -19,7 +19,7 @@ import (
 
 // knownLanguages are the extractors SeMaps ships. Another language works
 // through `command` in .semaps or `semaps-extract-<language>` on PATH.
-var knownLanguages = []string{"csharp", "typescript"}
+var knownLanguages = []string{"csharp", "go", "typescript"}
 
 // runtimeInfo says whether the runtime an extractor needs is there.
 type runtimeInfo struct {
@@ -103,6 +103,14 @@ func shippedExtractor(language string) (argv []string, where string, ok bool) {
 		if dll := filepath.Join(dir, "semaps-extract-csharp.dll"); fileExists(dll) {
 			return []string{"dotnet", dll}, dll, true
 		}
+	case "go":
+		exe := filepath.Join(dir, "semaps-extract-go")
+		if runtime.GOOS == "windows" {
+			exe += ".exe"
+		}
+		if fileExists(exe) {
+			return []string{exe}, exe, true
+		}
 	case "typescript":
 		if cli := filepath.Join(dir, "dist", "cli.js"); fileExists(cli) {
 			return []string{"node", cli}, cli, true
@@ -136,6 +144,15 @@ func runtimeFor(language string) *runtimeInfo {
 		if out, err := probe("dotnet", "--list-sdks"); err == nil && strings.TrimSpace(out) != "" {
 			lines := strings.Split(strings.TrimSpace(out), "\n")
 			r.OK, r.Version, r.Hint = true, strings.Fields(lines[len(lines)-1])[0], ""
+		}
+	case "go":
+		// go/packages runs `go list`: the toolchain is needed at run time.
+		r = &runtimeInfo{Name: "go", Hint: "install Go: https://go.dev/dl"}
+		if out, err := probe("go", "version"); err == nil {
+			if f := strings.Fields(out); len(f) >= 3 {
+				r.Version = f[2]
+			}
+			r.OK, r.Hint = true, ""
 		}
 	case "typescript":
 		r = &runtimeInfo{Name: "node", Hint: "install Node.js 24 or newer: https://nodejs.org"}
@@ -219,6 +236,9 @@ func extractorArgs(t extractorTool, e extractorConf, projectRoot string) []strin
 			edges.WriteString(edge)
 		}
 		args = append(args, "--edges", edges.String())
+	}
+	if len(e.Implements) > 0 {
+		args = append(args, "--implements", strings.Join(e.Implements, ","))
 	}
 	return args
 }

@@ -8,12 +8,17 @@ long they stay true**, not by topic.
 | Path | Prefix | Contents | Lifecycle |
 |---|---|---|---|
 | `agents/` | — | agent-facing rules. **English only.** | must match the code; a mismatch is a bug |
-| `docs/` | — | normative contracts: `CONTRACT.md`, `API.md`, `EXTRACTOR.md`; `ADOPTING.md` — guide for an agent in a consuming project; `LAYOUT.md` — how a view works, for such an agent asked to help with one | edited together with the code they govern |
+| `docs/` | — | normative contracts: `CONTRACT.md`, `API.md`, `EXTRACTOR.md`; `ADOPTING.md` — guide for an agent in a consuming project. How a view works is not a document: an agent works on the canvas only through MCP, and the `layout_guide` tool says how | edited together with the code they govern |
+| `docs/archive/` | — | documents no longer true of the code, kept for history; never edited; not linked from live docs | **never edited** |
 | `docs/extractors/` | — | one normative file per language: how its types map to `kind`/`nativeKind` and to the member-relation features (cardinality, mutability, slots); a language without an extractor keeps a draft marked so | edited together with its extractor |
 | `docs/adr/` | `ADR_` | decisions: what was chosen and why, including what was rejected | **never edited** |
 | `docs/plans/` | `PLAN_` | work plans, with a status line | edited as work proceeds, closed when done |
 | `docs/ideas/` | `IDEA_` | ideas, "would be nice" notes | become a plan or die |
-| `docs/reviews/` | date | outside-eye audits of the code (see below) | **never edited** |
+| `docs/diagrams/` | — | SeMaps' own map: a workspace of the project itself (`projects/overview`), edited in the editor, not by hand | edited with the code it draws |
+| `docs/images/` | — | pictures for `README.md` and the docs (screenshots of the map, promo) | replaced when the thing pictured changes |
+
+`docs/reviews/` (date prefix, outside-eye audits of the code, see below) is **not in the repository
+yet**; the folder is created by the first review.
 
 File name: `GENRE_YYYYMMDD_zone_short-name.md`. Two documents on one day → `YYYYMMDD-2`.
 

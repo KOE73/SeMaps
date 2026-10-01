@@ -1,1 +1,1 @@
-{ "version": "0.0.1", "configurations": [ { "name": "editor", "runtimeExecutable": "npm", "runtimeArgs": ["run", "dev", "--prefix", "editor"], "port": 5173 } ] }
+{ "version": "0.0.1", "configurations": [ { "name": "editor", "runtimeExecutable": "npm", "runtimeArgs": ["run", "dev", "--prefix", "editor"], "port": 5177 }, { "name": "host", "runtimeExecutable": "go", "runtimeArgs": ["run", "./host", "--here", "--no-browser", "--port", "8777", "examples/example.semaps"], "port": 8777 } ] }

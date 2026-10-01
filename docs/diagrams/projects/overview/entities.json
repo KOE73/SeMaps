@@ -1,0 +1,227 @@
+{
+  "contractVersion": 5,
+  "entities": [
+    {
+      "id": "e_editor",
+      "kind": "app",
+      "origin": "authored",
+      "status": "present"
+    },
+    {
+      "id": "e_agent",
+      "kind": "external",
+      "origin": "authored",
+      "status": "present"
+    },
+    {
+      "id": "e_http_api",
+      "kind": "component",
+      "origin": "authored",
+      "status": "present"
+    },
+    {
+      "id": "e_mcp_server",
+      "kind": "component",
+      "origin": "authored",
+      "status": "present"
+    },
+    {
+      "id": "e_mcp_proxy",
+      "kind": "component",
+      "origin": "authored",
+      "status": "present"
+    },
+    {
+      "id": "e_model_service",
+      "kind": "component",
+      "origin": "authored",
+      "status": "present"
+    },
+    {
+      "id": "e_model",
+      "kind": "component",
+      "origin": "authored",
+      "status": "present"
+    },
+    {
+      "id": "e_rules",
+      "kind": "component",
+      "origin": "authored",
+      "status": "present"
+    },
+    {
+      "id": "e_sync",
+      "kind": "component",
+      "origin": "authored",
+      "status": "present"
+    },
+    {
+      "id": "e_check",
+      "kind": "component",
+      "origin": "authored",
+      "status": "present"
+    },
+    {
+      "id": "e_extract_csharp",
+      "kind": "app",
+      "origin": "authored",
+      "status": "present"
+    },
+    {
+      "id": "e_extract_ts",
+      "kind": "app",
+      "origin": "authored",
+      "status": "present"
+    },
+    {
+      "id": "e_workspace",
+      "kind": "database",
+      "origin": "authored",
+      "status": "present"
+    },
+    {
+      "id": "e_journal",
+      "kind": "database",
+      "origin": "authored",
+      "status": "present"
+    },
+    {
+      "id": "e_source",
+      "kind": "external",
+      "origin": "authored",
+      "status": "present"
+    },
+    {
+      "id": "e_clients",
+      "kind": "group",
+      "origin": "authored",
+      "status": "present"
+    },
+    {
+      "id": "e_host",
+      "kind": "group",
+      "origin": "authored",
+      "status": "present"
+    },
+    {
+      "id": "e_core",
+      "kind": "group",
+      "origin": "authored",
+      "status": "present"
+    },
+    {
+      "id": "e_storage",
+      "kind": "group",
+      "origin": "authored",
+      "status": "present"
+    },
+    {
+      "id": "e_extractors",
+      "kind": "group",
+      "origin": "authored",
+      "status": "present"
+    },
+    {
+      "id": "e_extract_go",
+      "kind": "app",
+      "origin": "authored",
+      "status": "present"
+    },
+    {
+      "id": "e_code_graph",
+      "kind": "component",
+      "origin": "authored",
+      "status": "present"
+    },
+    {
+      "id": "e_watcher",
+      "kind": "component",
+      "origin": "authored",
+      "status": "present"
+    },
+    {
+      "id": "e_runs",
+      "kind": "store",
+      "origin": "authored",
+      "status": "present"
+    },
+    {
+      "id": "e_semaps_file",
+      "kind": "store",
+      "origin": "authored",
+      "status": "present"
+    },
+    {
+      "id": "e_mcp_json",
+      "kind": "store",
+      "origin": "authored",
+      "status": "present"
+    },
+    {
+      "id": "e_defaults",
+      "kind": "store",
+      "origin": "authored",
+      "status": "present"
+    },
+    {
+      "id": "e_host_json",
+      "kind": "store",
+      "origin": "authored",
+      "status": "present"
+    },
+    {
+      "id": "e_mcp_log",
+      "kind": "store",
+      "origin": "authored",
+      "status": "present"
+    },
+    {
+      "id": "e_mcp_settings",
+      "kind": "component",
+      "origin": "authored",
+      "status": "present"
+    },
+    {
+      "id": "e_editor_local",
+      "kind": "store",
+      "origin": "authored",
+      "status": "present"
+    },
+    {
+      "id": "e_g_memory",
+      "kind": "group",
+      "origin": "authored",
+      "status": "present"
+    },
+    {
+      "id": "e_g_git",
+      "kind": "group",
+      "origin": "authored",
+      "status": "present"
+    },
+    {
+      "id": "e_g_local",
+      "kind": "group",
+      "origin": "authored",
+      "status": "present"
+    },
+    {
+      "id": "e_human",
+      "kind": "actor",
+      "origin": "authored",
+      "status": "present"
+    },
+    {
+      "id": "e_map",
+      "kind": "store",
+      "origin": "authored",
+      "status": "present"
+    },
+    {
+      "id": "e_semaps",
+      "kind": "system",
+      "origin": "authored",
+      "status": "present"
+    }
+  ]
+}

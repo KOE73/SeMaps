@@ -9,6 +9,7 @@ import (
 	"net/http"
 	"os"
 	"path/filepath"
+	"sort"
 	"strings"
 	"sync"
 
@@ -21,6 +22,18 @@ type modelEvent struct {
 	Changed         []core.Ref        `json:"changed"`
 	Dirty           core.DirtySummary `json:"dirty"`
 	ProjectReloaded *projectReloaded  `json:"projectReloaded,omitempty"`
+	// Graph carries what changed in the live code graph after a run
+	// (PLAN_20260928_host_graph-provider.md step 5), never the graph
+	// itself. It is a field the current editor's ModelEvent interface does
+	// not declare (editor/src/editor/io/HostModelStore.ts): a TypeScript
+	// `as ModelEvent` cast does not validate at runtime, so an event with
+	// only `graph` set and no other content the editor understands is read
+	// as an ordinary (empty) change and safely ignored.
+	Graph *core.GraphDiff `json:"graph,omitempty"`
+	// Render asks an editor that subscribed with render=1 to draw a picture of
+	// a view (the render_view tool, host/render.go). Only those clients get
+	// such an event.
+	Render *renderRequest `json:"render,omitempty"`
 }
 
 type projectReloaded struct {
@@ -37,6 +50,12 @@ type modelService struct {
 	structureMu sync.RWMutex
 	models      map[string]*core.Model
 	clients     map[string]map[chan modelEvent]struct{}
+	// renderers: the subscribed channels (a subset of clients) of editors that
+	// can render; guarded by mu, like clients.
+	renderers map[chan modelEvent]bool
+	// pending render requests by id (render.go), guarded by renderMu.
+	renderMu sync.Mutex
+	pending  map[string]*renderCall
 }
 
 func newModelService(workspace string) (*modelService, error) {
@@ -44,7 +63,8 @@ func newModelService(workspace string) (*modelService, error) {
 	if _, err := rand.Read(b); err != nil {
 		return nil, err
 	}
-	return &modelService{workspace: workspace, key: hex.EncodeToString(b), models: map[string]*core.Model{}, clients: map[string]map[chan modelEvent]struct{}{}}, nil
+	return &modelService{workspace: workspace, key: hex.EncodeToString(b), models: map[string]*core.Model{}, clients: map[string]map[chan modelEvent]struct{}{},
+		renderers: map[chan modelEvent]bool{}, pending: map[string]*renderCall{}}, nil
 }
 
 func (s *modelService) get(id string) (*core.Model, error) {
@@ -54,12 +74,16 @@ func (s *modelService) get(id string) (*core.Model, error) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	if m := s.models[id]; m != nil {
+		m.SetCanvas(loadCanvas(s.workspace))
 		return m, nil
 	}
-	m, err := core.LoadModel(s.workspace, id)
+	m, err := core.LoadModel(s.workspace, id, defaultKinds())
 	if err != nil {
 		return nil, err
 	}
+	// the canvas is read each time a model is handed out, so a workspace
+	// canvas.json edited meanwhile is picked up
+	m.SetCanvas(loadCanvas(s.workspace))
 	s.models[id] = m
 	return m, nil
 }
@@ -77,10 +101,13 @@ func (s *modelService) clean(id string) error {
 	}
 	d := m.Dirty()
 	if len(d.Registry) > 0 || len(d.Views) > 0 {
-		return fmt.Errorf("сначала сохраните проект %s", id)
+		return fmt.Errorf("%w %s", errUnsaved, id)
 	}
 	return nil
 }
+
+// errUnsaved: a structural change waits for Save. The editor matches its text.
+var errUnsaved = errors.New("сначала сохраните проект")
 
 func (s *modelService) reload(change projectReloaded) error {
 	s.evict(change.OldProject)
@@ -95,6 +122,127 @@ func (s *modelService) reload(change projectReloaded) error {
 		s.publish(change.NewProject, ev)
 	}
 	return nil
+}
+
+// The workspace as every client sees it — the editor's catalog
+// (/api/workspace) and MCP list_projects/list_views alike: what exists from
+// disk, names and looks from the working model, unsaved edits included.
+func (s *modelService) index() core.WorkspaceIndex {
+	return core.LiveIndex(s.workspace, s.get)
+}
+
+// createProject and createView are the one way a project or a view comes
+// into being, for the editor (HTTP) and for agents (MCP): the file rule is
+// core's, the lock and the reload that tells every open editor are here
+// (ADR_20260926).
+func (s *modelService) createProject(p core.NewProject) error {
+	s.structureMu.Lock()
+	defer s.structureMu.Unlock()
+	if err := core.CreateProject(s.workspace, p); err != nil {
+		return err
+	}
+	return s.reload(projectReloaded{OldProject: p.ID, NewProject: p.ID})
+}
+
+// createView refuses while the project has unsaved changes: SetDefault rewrites
+// project.json on disk, and the reload drops the working model. names (language
+// to caption) become texts of the working model, unsaved: a language left empty
+// is the project's first one.
+func (s *modelService) createView(project string, v core.NewView, names map[string]string, author string) error {
+	s.structureMu.Lock()
+	if err := s.clean(project); err != nil {
+		s.structureMu.Unlock()
+		return err
+	}
+	err := core.CreateView(s.workspace, project, v)
+	if err == nil {
+		err = s.reload(projectReloaded{OldProject: project, NewProject: project, NewView: v.ID})
+	}
+	s.structureMu.Unlock()
+	if err != nil {
+		return err
+	}
+	langs := make([]string, 0, len(names))
+	for lang, name := range names {
+		if strings.TrimSpace(name) != "" {
+			langs = append(langs, lang)
+		}
+	}
+	if len(langs) == 0 {
+		return nil
+	}
+	m, err := s.get(project)
+	if err != nil {
+		return err
+	}
+	sort.Strings(langs)
+	defer s.publishDirty(m, author)
+	for _, lang := range langs {
+		name := names[lang]
+		if lang == "" {
+			lang = m.Languages()[0]
+		}
+		if err := m.SetText(lang, v.ID, "name", name, author); err != nil {
+			return fmt.Errorf("view %s created, its name not written: %w", v.ID, err)
+		}
+	}
+	return nil
+}
+
+func (s *modelService) publishDirty(m *core.Model, author string) {
+	dirty := m.Dirty()
+	refs := append([]core.Ref{}, dirty.Registry...)
+	for _, viewRefs := range dirty.Views {
+		refs = append(refs, viewRefs...)
+	}
+	s.publish(m.ProjectID(), modelEvent{Author: author, Changed: refs, Dirty: dirty})
+}
+
+func (s *modelService) postProject(w http.ResponseWriter, r *http.Request) {
+	if !s.authorize(w, r) {
+		return
+	}
+	var p core.NewProject
+	if err := readJSON(r, &p); err != nil {
+		http.Error(w, err.Error(), 400)
+		return
+	}
+	if err := s.createProject(p); err != nil {
+		createError(w, err)
+		return
+	}
+	writeJSON(w, map[string]string{"id": p.ID})
+}
+
+func (s *modelService) postView(w http.ResponseWriter, r *http.Request) {
+	if !s.authorize(w, r) {
+		return
+	}
+	var body struct {
+		core.NewView
+		Name     string `json:"name"`
+		Language string `json:"language"`
+	}
+	if err := readJSON(r, &body); err != nil {
+		http.Error(w, err.Error(), 400)
+		return
+	}
+	project := r.PathValue("project")
+	if err := s.createView(project, body.NewView, map[string]string{body.Language: body.Name}, "human"); err != nil {
+		createError(w, err)
+		return
+	}
+	writeJSON(w, map[string]string{"id": body.ID, "file": "projects/" + project + "/views/" + body.ID + core.ViewSuffix})
+}
+
+// createError: a taken id or unsaved changes are a conflict (409), as the
+// editor's dialogs expect; everything else is modelError.
+func createError(w http.ResponseWriter, err error) {
+	if errors.Is(err, core.ErrExists) || errors.Is(err, errUnsaved) {
+		http.Error(w, err.Error(), http.StatusConflict)
+		return
+	}
+	modelError(w, err)
 }
 
 func (s *modelService) publish(id string, ev modelEvent) {
@@ -127,6 +275,7 @@ func (s *modelService) hostFile(root string, port int) error {
 	if err := os.MkdirAll(filepath.Dir(path), 0o700); err != nil {
 		return err
 	}
+	core.EnsureSelfIgnore(filepath.Dir(path))
 	b, _ := json.Marshal(struct {
 		PID  int    `json:"pid"`
 		Port int    `json:"port"`
@@ -136,13 +285,35 @@ func (s *modelService) hostFile(root string, port int) error {
 }
 
 func (s *modelService) register(mux *http.ServeMux) {
+	mux.HandleFunc("POST /api/projects", s.postProject)
+	mux.HandleFunc("POST /api/model/{project}/views", s.postView)
 	mux.HandleFunc("GET /api/model/{project}", s.snapshot)
 	mux.HandleFunc("GET /api/model/{project}/views/{id}", s.view)
 	mux.HandleFunc("POST /api/model/{project}/ops", s.ops)
+	mux.HandleFunc("POST /api/model/{project}/remove", s.remove)
 	mux.HandleFunc("GET /api/model/{project}/save", s.summary)
 	mux.HandleFunc("POST /api/model/{project}/save", s.save)
 	mux.HandleFunc("POST /api/model/{project}/discard", s.discard)
 	mux.HandleFunc("GET /api/events", s.events)
+	mux.HandleFunc("POST /api/render/{id}", s.answerRender)
+	mux.HandleFunc("GET /api/kinds", s.kinds)
+}
+
+// kinds answers GET /api/kinds: the dictionary — the tool's default with the
+// workspace kinds.json added (CONTRACT §6). Without `lang` every text comes in
+// all its languages; with it, names and descriptions in that one (as get_kinds).
+func (s *modelService) kinds(w http.ResponseWriter, r *http.Request) {
+	catalog, err := core.LoadKinds(s.workspace, defaultKinds())
+	if err != nil {
+		modelError(w, err)
+		return
+	}
+	w.Header().Set("Cache-Control", "no-cache")
+	if lang := r.URL.Query().Get("lang"); lang != "" {
+		writeJSON(w, dictionaryOut(catalog, lang))
+		return
+	}
+	writeJSON(w, catalog)
 }
 
 func modelError(w http.ResponseWriter, err error) {
@@ -187,15 +358,13 @@ func (s *modelService) snapshot(w http.ResponseWriter, r *http.Request) {
 					modelError(w, err)
 					return
 				}
-				delete(props, "zones")
-				delete(props, "nodes")
 				delete(props, "placements")
 				views[v.ID], _ = json.Marshal(props)
 				viewFiles[v.ID] = v.File
 			}
 		}
 	}
-	writeJSON(w, map[string]any{"project": json.RawMessage(manifest), "registry": m.RegistrySnapshot(), "texts": texts, "views": views, "viewFiles": viewFiles, "dirty": m.Dirty()})
+	writeJSON(w, map[string]any{"project": json.RawMessage(manifest), "registry": m.RegistrySnapshot(), "texts": texts, "views": views, "viewFiles": viewFiles, "dirty": m.Dirty(), "unsaved": m.Unsaved()})
 }
 
 func (s *modelService) view(w http.ResponseWriter, r *http.Request) {
@@ -240,6 +409,44 @@ func (s *modelService) ops(w http.ResponseWriter, r *http.Request) {
 	dirty := m.Dirty()
 	s.publish(m.ProjectID(), modelEvent{Client: body.Client, Author: "human", Changed: changed, Dirty: dirty})
 	writeJSON(w, map[string]any{"changed": changed, "dirty": dirty})
+}
+
+// remove takes authored records out of the registry with every name views and
+// relations hold of them (ADR_20261001). The batch is the core's, the same the
+// MCP tool `remove` runs; the editor sends ids, not operations, so the rule is
+// not written twice.
+func (s *modelService) remove(w http.ResponseWriter, r *http.Request) {
+	s.structureMu.RLock()
+	defer s.structureMu.RUnlock()
+	if !s.authorize(w, r) {
+		return
+	}
+	var body struct {
+		Client  string   `json:"client"`
+		IDs     []string `json:"ids"`
+		Cascade bool     `json:"cascade"`
+	}
+	if err := readJSON(r, &body); err != nil {
+		http.Error(w, err.Error(), 400)
+		return
+	}
+	m, err := s.get(r.PathValue("project"))
+	if err != nil {
+		modelError(w, err)
+		return
+	}
+	removal, err := m.RemoveRecords(body.IDs, body.Cascade, "human")
+	if err != nil {
+		modelError(w, err)
+		return
+	}
+	dirty := m.Dirty()
+	changed := append([]core.Ref{}, dirty.Registry...)
+	for _, refs := range dirty.Views {
+		changed = append(changed, refs...)
+	}
+	s.publish(m.ProjectID(), modelEvent{Client: body.Client, Author: "human", Changed: changed, Dirty: dirty})
+	writeJSON(w, map[string]any{"removal": removal, "changed": changed, "dirty": dirty})
 }
 
 func (s *modelService) summary(w http.ResponseWriter, r *http.Request) {
@@ -328,8 +535,16 @@ func (s *modelService) events(w http.ResponseWriter, r *http.Request) {
 		s.clients[id] = map[chan modelEvent]struct{}{}
 	}
 	s.clients[id][ch] = struct{}{}
+	if r.URL.Query().Get("render") == "1" {
+		s.renderers[ch] = true
+	}
 	s.mu.Unlock()
-	defer func() { s.mu.Lock(); delete(s.clients[id], ch); s.mu.Unlock() }()
+	defer func() {
+		s.mu.Lock()
+		delete(s.clients[id], ch)
+		delete(s.renderers, ch)
+		s.mu.Unlock()
+	}()
 	fmt.Fprint(w, ": connected\n\n")
 	f.Flush()
 	for {

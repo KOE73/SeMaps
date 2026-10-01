@@ -1,7 +1,9 @@
 import { el } from "../util/dom.js";
-import { toolApi, type McpStatus } from "../shell/api.js";
+import { iconEl } from "../ui/icons.js";
+import { toolApi, type GraphFormats, type McpStatus, type Setup } from "../shell/api.js";
 import { fmt, t } from "../shell/strings.js";
 import { mcpSandbox } from "./mcpSandbox.js";
+import { mcpSettingsSection } from "./mcpSettings.js";
 
 /**
  * The MCP mode: what `semaps mcp` gives an agent, whether this project's
@@ -11,24 +13,31 @@ import { mcpSandbox } from "./mcpSandbox.js";
 export async function loadMcp(inner: HTMLElement): Promise<void> {
   inner.replaceChildren(el("p", { class: "tool-muted", text: t.loading }));
   try {
-    render(inner, await toolApi.mcp());
+    const [st, setup, formats] = await Promise.all([toolApi.mcp(), toolApi.setup(), toolApi.graphFormats()]);
+    render(inner, st, setup, formats);
   } catch (e) {
     inner.replaceChildren(el("p", { class: "tool-error", text: (e as Error).message }));
   }
 }
 
+/** Clicks the settings section's own save button, as the ribbon tab does. */
+export function saveMcp(inner: HTMLElement): void {
+  inner.querySelector<HTMLButtonElement>(".mcp-settings-save")?.click();
+}
+
 /** Writes the semaps entry into .mcp.json, then shows the new state. */
 export async function installMcp(inner: HTMLElement): Promise<void> {
   try {
-    render(inner, await toolApi.installMcp());
+    const [st, setup, formats] = await Promise.all([toolApi.installMcp(), toolApi.setup(), toolApi.graphFormats()]);
+    render(inner, st, setup, formats);
   } catch (e) {
     inner.querySelector(".mcp-install-error")?.replaceChildren((e as Error).message);
   }
 }
 
-function render(inner: HTMLElement, st: McpStatus): void {
+function render(inner: HTMLElement, st: McpStatus, setup: Setup, formats: GraphFormats): void {
   const hero = el("section", { class: "mcp-hero" }, [
-    el("div", { class: "mcp-hero-mark", text: "🤖" }),
+    el("div", { class: "mcp-hero-mark" }, [iconEl("robot", "ui-icon-lg")]),
     el("div", {}, [el("h1", { text: t.mcpTitle }), el("p", { class: "tool-hint", text: t.mcpLead })]),
   ]);
 
@@ -43,7 +52,7 @@ function render(inner: HTMLElement, st: McpStatus): void {
   } else if (st.configured) {
     stateRows.push(
       el("p", {}, [
-        el("span", { class: "tool-badge is-ok", text: "✓" }),
+        el("span", { class: "tool-badge is-ok" }, [iconEl("check")]),
         el("span", { text: " " + fmt(t.mcpConfigured, { file: st.file, entry: st.entry }) }),
       ]),
     );
@@ -101,5 +110,7 @@ function render(inner: HTMLElement, st: McpStatus): void {
     ),
   ]);
 
-  inner.replaceChildren(hero, state, why, ask, mcpSandbox(st.tools), tools);
+  const settings = mcpSettingsSection(st, setup, formats, () => void loadMcp(inner));
+
+  inner.replaceChildren(hero, state, why, settings, ask, mcpSandbox(st.tools), tools);
 }

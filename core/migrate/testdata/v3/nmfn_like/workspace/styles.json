@@ -1,0 +1,125 @@
+{
+  "version": 1,
+  "description": "Библиотека стилей проекта (сокращённая копия).",
+  "styles": [
+    {
+      "id": "default.node",
+      "name": "Блок по умолчанию",
+      "appliesTo": "block",
+      "description": "Последняя инстанция для узла, тип которого не назвал стиль.",
+      "fill": "#ffffff",
+      "border": {
+        "color": "#cbd5e1",
+        "width": 1.5
+      },
+      "radius": 8,
+      "shadow": true,
+      "icon": {
+        "glyph": "file-text"
+      }
+    },
+    {
+      "id": "default.zone",
+      "name": "Зона по умолчанию",
+      "appliesTo": "block",
+      "description": "Последняя инстанция для контейнера.",
+      "fill": "#f8fafc",
+      "border": {
+        "color": "#cbd5e1",
+        "width": 2
+      },
+      "radius": 12,
+      "shadow": false,
+      "header": {
+        "fill": "#e2e8f0",
+        "height": 34
+      },
+      "icon": {
+        "show": false
+      },
+      "subtitle": {
+        "align": "end"
+      }
+    },
+    {
+      "id": "class",
+      "name": "Класс",
+      "appliesTo": "block",
+      "description": "Обычный класс: поведение, реализация.",
+      "fill": "#ffffff",
+      "border": {
+        "color": "#cbd5e1",
+        "width": 1.5
+      },
+      "radius": 8,
+      "shadow": true,
+      "icon": {
+        "glyph": "class"
+      }
+    },
+    {
+      "id": "zone.red",
+      "name": "Зона · red",
+      "appliesTo": "block",
+      "basedOn": "default.zone",
+      "fill": "#fff1f2",
+      "border": {
+        "color": "#fca5a5",
+        "width": 2
+      },
+      "header": {
+        "fill": "#ffe4e6"
+      }
+    },
+    {
+      "id": "zone.red.dashed",
+      "name": "Зона · red · пунктир",
+      "appliesTo": "block",
+      "basedOn": "zone.red",
+      "border": {
+        "dash": "6,4"
+      }
+    },
+    {
+      "id": "zone.blue",
+      "name": "Зона · blue",
+      "appliesTo": "block",
+      "basedOn": "default.zone",
+      "fill": "#eff6ff",
+      "border": {
+        "color": "#93c5fd",
+        "width": 2
+      },
+      "header": {
+        "fill": "#dbeafe"
+      }
+    },
+    {
+      "id": "default.edge",
+      "name": "Связь по умолчанию",
+      "appliesTo": "edge",
+      "line": {
+        "color": "#cbd5e1",
+        "width": 1.5
+      },
+      "target": {
+        "shape": "arrow",
+        "size": 6
+      }
+    },
+    {
+      "id": "extends",
+      "name": "Наследование класса",
+      "appliesTo": "edge",
+      "family": "structure",
+      "line": {
+        "color": "#94a3b8",
+        "width": 1.4
+      },
+      "target": {
+        "shape": "triangle-hollow",
+        "size": 10
+      }
+    }
+  ]
+}

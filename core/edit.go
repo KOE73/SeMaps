@@ -31,17 +31,21 @@ func ProjectDir(workspace, project string) (string, error) {
 var now = func() time.Time { return time.Now().UTC() }
 var TextFields = []string{"name", "title", "description", "doc", "fromLabel", "toLabel"}
 
+// Placement is an entity to put on a view; Parent is the entity of a container
+// placement of that view, or empty for none.
 type Placement struct {
 	Entity string  `json:"entity"`
-	Zone   string  `json:"zone,omitempty"`
+	Parent string  `json:"parent,omitempty"`
 	X      float64 `json:"x"`
 	Y      float64 `json:"y"`
 	Width  float64 `json:"width,omitempty"`
 	Height float64 `json:"height,omitempty"`
 }
 
+// The helpers below load the model without the tool's default dictionary: only
+// <workspace>/kinds.json, when there is one, says which kinds are containers.
 func editAndSave(workspace, project string, edit func(*Model) error) error {
-	m, err := LoadModel(workspace, project)
+	m, err := LoadModel(workspace, project, nil)
 	if err != nil {
 		return err
 	}
@@ -55,7 +59,7 @@ func SetText(workspace, project, lang, key, field, value string) error {
 	return editAndSave(workspace, project, func(m *Model) error { return m.SetText(lang, key, field, value, "agent") })
 }
 func AddRelation(workspace, project, from, to, relType string) (string, error) {
-	m, err := LoadModel(workspace, project)
+	m, err := LoadModel(workspace, project, nil)
 	if err != nil {
 		return "", err
 	}
@@ -65,11 +69,13 @@ func AddRelation(workspace, project, from, to, relType string) (string, error) {
 	}
 	return id, m.Save()
 }
-func AddRelationType(workspace, project, id, visibility, styleID string) error {
-	return editAndSave(workspace, project, func(m *Model) error { return m.AddRelationType(id, visibility, styleID, "agent") })
-}
-func SetRelationVisible(workspace, project, viewID, relationID string, visible bool) error {
-	return editAndSave(workspace, project, func(m *Model) error { return m.SetRelationVisible(viewID, relationID, visible, "agent") })
+func SetRelationsVisible(workspace, project, viewID string, relationIDs []string, visible bool) (VisibilityChange, error) {
+	var out VisibilityChange
+	err := editAndSave(workspace, project, func(m *Model) (err error) {
+		out, err = m.SetRelationsVisible(viewID, relationIDs, visible, "agent")
+		return err
+	})
+	return out, err
 }
 func ConfirmEntityRename(workspace, project, entityID, symbol string) error {
 	return editAndSave(workspace, project, func(m *Model) error { return m.ConfirmEntityRename(entityID, symbol, "agent") })
@@ -85,13 +91,13 @@ func PlaceEntities(workspace, project, viewID string, list []Placement, requeste
 
 // Records returns the items of a registry file of the project as raw JSON
 // objects, in file order: entities.json → "entities", relations.json →
-// "relations", relation-types.json → "relationTypes".
+// "relations".
 func Records(workspace, project, file string) ([]json.RawMessage, error) {
 	dir, err := ProjectDir(workspace, project)
 	if err != nil {
 		return nil, err
 	}
-	key := map[string]string{"entities.json": "entities", "relations.json": "relations", "relation-types.json": "relationTypes"}[file]
+	key := map[string]string{"entities.json": "entities", "relations.json": "relations"}[file]
 	if key == "" {
 		return nil, fmt.Errorf("not a registry file: %s", file)
 	}
@@ -137,7 +143,7 @@ func findByID(items []*object, id string) *object {
 func freshList(key string) func() *object {
 	return func() *object {
 		o := newObject()
-		o.set("contractVersion", 3)
+		o.set("contractVersion", ContractVersion)
 		o.set(key, []any{})
 		return o
 	}
@@ -170,15 +176,23 @@ func loadDoc(file string) (*object, error) {
 	return o, nil
 }
 
-func saveDoc(file string, o *object) error {
+func encodeDoc(o *object) ([]byte, error) {
 	var b bytes.Buffer
 	enc := json.NewEncoder(&b)
 	enc.SetEscapeHTML(false)
 	enc.SetIndent("", "  ")
 	if err := enc.Encode(o); err != nil {
+		return nil, err
+	}
+	return b.Bytes(), nil
+}
+
+func saveDoc(file string, o *object) error {
+	b, err := encodeDoc(o)
+	if err != nil {
 		return err
 	}
-	return os.WriteFile(file, b.Bytes(), 0o644)
+	return os.WriteFile(file, b, 0o644)
 }
 
 // loadView finds a view by its id: the `id` inside wins over the file name

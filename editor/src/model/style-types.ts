@@ -18,8 +18,11 @@
  * field filled in and no inheritance left to chase.
  */
 
-/** Which family of thing a style can dress. */
-export type StyleTarget = "block" | "edge";
+/**
+ * Which family of thing a style can dress (CONTRACT.md §11.5): a block, a
+ * container (a placement whose entity's kind is a container), or an edge.
+ */
+export type StyleTarget = "block" | "container" | "edge";
 
 export interface WireGradientStop {
   /** 0…1 along the gradient axis. */
@@ -100,7 +103,7 @@ export interface WireEndpoint {
 }
 
 export interface WireIcon {
-  /** Emoji or any short glyph. */
+  /** A registry icon: a Tabler name of the set (ui/iconSet.ts) or a kind key (ui/kindIcons.ts). Anything else draws the fallback icon. */
   glyph?: string;
   show?: boolean;
 }
@@ -139,6 +142,17 @@ export interface WireStyle {
   description?: string;
   /** Free-form grouping, used by the picker's filter. */
   tags?: string[];
+  /**
+   * What this style belongs to: entity kinds (`class`, `record`, …) for a
+   * block or container style, relation types (`extends`, `holds.many`, …) for
+   * an edge style. A style is offered only to those; it is the way a style
+   * belongs to a type (ADR_20260927-7, ADR_20260930-2). Required everywhere but
+   * the fallbacks `default.node` / `default.container` / `default.edge`; absent
+   * — a style of no type, offered to none and listed under «Без типа». Not
+   * inherited through `basedOn`. Does not affect drawing: a placement with an
+   * explicit `styleId` wears it whether it fits or not (CONTRACT.md §11.5).
+   */
+  forKinds?: string[];
   /**
    * Inherit every unset field from another style. One chain, cycles ignored.
    * With dozens of styles this is what keeps "the record variant of a class"

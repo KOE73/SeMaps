@@ -7,6 +7,8 @@ import { setAttrs, svg, text } from "../svg.js";
 import type { ElementRenderer, RenderContext } from "./ElementRenderer.js";
 import { alignX, dashArray, textAttrs } from "./textAttrs.js";
 import { DIAGRAM_CONFIG } from "../../constants/diagram-constants.js";
+import { canvas } from "../../constants/canvas.js";
+import { iconGlyph, iconGlyphByKey } from "./iconGlyph.js";
 
 /** Left inset of the header caption: clear of the collapse toggle at x+8..x+28. */
 const TITLE_PAD = DIAGRAM_CONFIG.container.titlePad;
@@ -93,18 +95,27 @@ export class ContainerRenderer implements ElementRenderer {
     const titleStyle = style.header.text;
     if (titleStyle.show) {
       const childCount = el.children.filter((c) => c.kind === "node").length;
-      const icon = style.icon.show ? `${style.icon.glyph} ` : "";
+      // The style's icon is a registry icon drawn ahead of the title (an unknown
+      // key draws the fallback icon), in the title's own colour.
+      const iconSize = 14;
+      const showIcon = style.icon.show;
+      const pos = alignX(titleStyle, rect, TITLE_PAD);
+      if (showIcon) {
+        g.appendChild(
+          iconGlyphByKey(style.icon.glyph, rect.x + TITLE_PAD, el.y + (headerHeight - iconSize) / 2, iconSize, "semaps-zone-glyph", titleStyle.color),
+        );
+      }
       g.appendChild(
         text(
           {
             ...textAttrs(titleStyle),
-            ...alignX(titleStyle, rect, TITLE_PAD),
+            ...pos,
+            // The icon takes the start of the header, so a start-aligned title moves past it.
+            ...(showIcon && pos["text-anchor"] === "start" ? { x: pos.x + iconSize + 4 } : {}),
             y: baseline(el.y, headerHeight, titleStyle),
             class: "semaps-zone-title",
           },
-          collapsed
-            ? `${icon}${el.label} (${childCount} компонентов)`
-            : `${icon}${el.label}`,
+          collapsed ? `${el.label} (${childCount} компонентов)` : el.label,
         ),
       );
     }
@@ -132,17 +143,7 @@ export class ContainerRenderer implements ElementRenderer {
       { [ROLE_ATTR]: Role.DocEdit, class: `semaps-zone-doc${hasDoc ? " has-doc" : ""}`, style: "cursor: pointer;" },
       [
         svg("rect", { x: el.x + 8, y: el.y + 7, width: 20, height: 20, rx: 5, class: "semaps-zone-doc-rect" }),
-        text(
-          {
-            x: el.x + 18,
-            y: el.y + 21,
-            "font-size": 11,
-            "text-anchor": "middle",
-            class: "semaps-zone-doc-icon",
-            "pointer-events": "none",
-          },
-          hasDoc ? "📝" : "📄",
-        ),
+        iconGlyph(hasDoc ? "notes" : "doc", el.x + 11, el.y + 10, 14, "semaps-zone-doc-icon"),
       ],
     );
   }
@@ -185,7 +186,7 @@ export class ContainerRenderer implements ElementRenderer {
   }
 
   cornerInset(_side: Side, style?: ResolvedBlockStyle): number {
-    return (style?.radius ?? DIAGRAM_CONFIG.container.defaultRadius) + DIAGRAM_CONFIG.ports.extraCornerGap;
+    return (style?.radius ?? canvas().container.radius) + DIAGRAM_CONFIG.ports.extraCornerGap;
   }
 }
 

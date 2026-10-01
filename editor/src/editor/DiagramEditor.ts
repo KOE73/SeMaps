@@ -1,8 +1,9 @@
 import type { RoutingMode } from "../model/style-types.js";
 import { DiagramCanvas, type Selection } from "../canvas/DiagramCanvas.js";
 import type { StrokeScaling } from "../canvas/Viewport.js";
+import { canvas as canvasNumbers } from "../constants/canvas.js";
 import { layoutFreeKey } from "../util/keys.js";
-import { placeEntities } from "./placeEntity.js";
+import { NEW_CONTAINER_SIZE, freeSpot, placeEntities } from "./placeEntity.js";
 import {
   CenterPortAssigner,
   DiscretePortAssigner,
@@ -10,11 +11,14 @@ import {
 } from "../canvas/ports/assigners.js";
 import { DiagramDocument } from "../model/document.js";
 import { StyleLibrary } from "../model/StyleLibrary.js";
+import { KindCatalog, loadKindCatalog } from "../model/KindCatalog.js";
 import { builtinStyleSheet } from "../model/style-defaults.js";
 import type { WireStyleSheet } from "../model/style-types.js";
 import { parseDocument, serializeDocument } from "../model/wire.js";
 import type { ModelIssue, WireDocument } from "../model/wire-types.js";
-import type { DiagramElement } from "../model/types.js";
+import { entityOf, type DiagramElement } from "../model/types.js";
+import { fileRealizations, lineOfRef, refOf } from "../model/realizations.js";
+import { i18n } from "../workbench/i18n/I18nService.js";
 import { snap } from "../geometry/rect.js";
 import { History } from "./History.js";
 import { Inspector, type InspectorHost } from "./Inspector.js";
@@ -23,16 +27,20 @@ import { StyleEditor } from "./StyleEditor.js";
 import { StyleList, type StylePanelHost } from "./StyleList.js";
 import { BasePanel } from "./BasePanel.js";
 import { FiltersPanel } from "./FiltersPanel.js";
+import { toast as showToast } from "../ui/toast.js";
+import { decodeGraphClipboard, lastGraphCopy } from "../model/graphClipboard.js";
+import { pasteGraphNodes } from "./pasteGraph.js";
+import { fmt, t as shellStrings } from "../shell/strings.js";
 import {
   drawioFileName,
   exportDrawio,
   HttpProjectStore,
   HostModelStore,
+  type ChangedRef,
   type DirtySummary,
   type ModelEvent,
   HttpStyleStore,
   download,
-  readJsonFile,
   HttpWorkspaceStore,
   type ModelStore,
   type NewProject,
@@ -44,6 +52,7 @@ import {
   type WorkspaceStore,
 } from "./io/index.js";
 import { el } from "../util/dom.js";
+import { iconEl } from "../ui/icons.js";
 import { Emitter } from "../util/emitter.js";
 import { DocEditorDialog, type DocTargetKind } from "./doc/DocEditorDialog.js";
 import { CodeViewerDialog } from "./code/CodeViewerDialog.js";
@@ -72,6 +81,14 @@ import { DIAGRAM_CONFIG } from "../constants/diagram-constants.js";
 /** How long a text field must be quiet before its edits become a history step. */
 const FIELD_EDIT_QUIET_MS = DIAGRAM_CONFIG.interaction.fieldEditQuietMs;
 
+/**
+ * The types a block and a container get when they are drawn on the canvas
+ * rather than placed from the registry: two neutral entries of the tool's own
+ * dictionary. The person changes the type in Properties.
+ */
+const NEW_BLOCK_KIND = "component";
+const NEW_CONTAINER_KIND = "group";
+
 const INSPECTOR_WIDTH_KEY = "semaps:inspector-width";
 const MIN_INSPECTOR_WIDTH = 320;
 const STYLE_LIST_WIDTH_KEY = "semaps:style-list-width";
@@ -83,9 +100,9 @@ function clamp(value: number, min: number, max: number): number {
 }
 
 type Slot =
-  | "canvas" | "catalog" | "custom-catalog" | "custom-catalog-section"
+  | "canvas" | "catalog"
   | "inspector-badge" | "inspector-body" | "edges-body" | "filters-body" | "title" | "zoom"
-  | "json-modal" | "json-text" | "file-input" | "drop-hint" | "sidebar"
+  | "sidebar"
   | "styles-body" | "style-list" | "style-editor" | "style-pane-resizer"
   | "inspector" | "inspector-resizer"
   | "tab-base" | "base-search" | "base-body" | "base-list";
@@ -140,6 +157,11 @@ export class DiagramEditor implements InspectorHost, StylePanelHost, DiagramEdit
   currentView: ViewEntry | null = null;
   get currentViewId(): string | null { return this.currentView?.id ?? null; }
   readonly workspaceEvents = new Emitter<{ change: null }>();
+  /**
+   * The style library and the dictionary of types arrive from the host after
+   * the panels are built: whoever drew from them before redraws on `loaded`.
+   */
+  readonly libraryEvents = new Emitter<{ loaded: null }>();
   private dirty = false;
   private readonly modelDirty = new Map<string, DirtySummary>();
   private metadataProject: string | null = null;
@@ -201,7 +223,7 @@ export class DiagramEditor implements InspectorHost, StylePanelHost, DiagramEdit
     this.bindCanvas();
     this.bindActions();
     this.bindKeyboard();
-    this.bindFiles();
+    this.bindEntityDrop();
     this.bindInspectorResize();
     this.bindStyleListResize();
     this.initTheme();
@@ -214,7 +236,14 @@ export class DiagramEditor implements InspectorHost, StylePanelHost, DiagramEdit
     void this.start();
   }
 
+  /**
+   * Set by the workbench, whose panels are dock panels rather than the slots
+   * `setTab` toggles: asking for a tab brings the dock panel of that name forward.
+   */
+  panelOpener: ((panelId: string) => void) | null = null;
+
   openTab(tab: Tab): void {
+    this.panelOpener?.(tab === "edges" ? "relations" : tab);
     this.setTab(tab);
   }
 
@@ -227,28 +256,30 @@ export class DiagramEditor implements InspectorHost, StylePanelHost, DiagramEdit
     this.docEditor.open(id, kind);
   }
 
-  openCodeViewer(codeRef?: string | null, label?: string): void {
-    if (!codeRef) {
+  openCodeViewer(ref?: string | null, label?: string): void {
+    if (!ref) {
+      // No file given: the selection's first realization that has one.
       const selected = this.canvas.selectedElement();
-      if (selected && typeof selected.metadata?.codeRef === "string") {
-        codeRef = selected.metadata.codeRef;
+      const first = selected ? fileRealizations(selected.metadata)[0] : undefined;
+      if (selected && first) {
+        ref = refOf(first);
         label = label || selected.label;
       }
     }
-    if (!codeRef) {
-      this.notify("У выбранного элемента не указана ссылка на исходный код (codeRef)");
+    if (!ref) {
+      this.notify(i18n.d.panels.properties.noCodeSelected);
       return;
     }
-    void this.codeViewer.open(codeRef, label);
+    const line = lineOfRef(ref);
+    void (line === undefined ? this.codeViewer.open(ref, label) : this.codeViewer.openAt(ref, line, label));
   }
 
   /**
-   * Load the style library, then the first model.
+   * Load the style library and the dictionary of types, then the first model.
    *
-   * Ordered, not parallel: `parseDocument` migrates a zone's inline colours
-   * into the library as it parses, so a model opened against the placeholder
-   * library would mint its imported styles into a library about to be thrown
-   * away — and the zones would come back wearing ids that no longer exist.
+   * Ordered, not parallel: whether a placement is a container is its kind's to
+   * say (CONTRACT.md §8.2), so the dictionary must be in force before a view is
+   * read.
    */
   private async start(): Promise<void> {
     try {
@@ -259,7 +290,17 @@ export class DiagramEditor implements InspectorHost, StylePanelHost, DiagramEdit
           "Используются встроенные стили. Сохранение стилей перезапишет файл на сервере.",
       );
     }
+    // Before the first view: whether a placement is a container is its kind's to say.
+    try {
+      KindCatalog.active = await loadKindCatalog();
+    } catch (err) {
+      this.notify(
+        `Словарь типов не загружен: ${(err as Error).message}\n` +
+          "Контейнеры не будут распознаны, пока словарь не придёт от сервера.",
+      );
+    }
     this.styleList.render();
+    this.libraryEvents.emit("loaded", null);
 
     await this.reloadWorkspace();
     const hashView = location.hash.match(/^#(v_[^?]+)/)?.[1];
@@ -292,6 +333,39 @@ export class DiagramEditor implements InspectorHost, StylePanelHost, DiagramEdit
   }
 
   dirtyForProject(project: string): DirtySummary | undefined { return this.modelDirty.get(project); }
+
+  /** The view the «Изменения» panel is narrowed to; null — the whole project. */
+  changesFilter: string | null = null;
+  /** Asks the workbench to show the «Изменения» panel. */
+  readonly changesEvents = new Emitter<{ show: null }>();
+
+  showChanges(view: ViewEntry | null): void {
+    this.changesFilter = view?.id ?? null;
+    if (view && this.currentView?.file !== view.file) void this.loadView(view);
+    this.changesEvents.emit("show", null);
+    this.workspaceEvents.emit("change", null);
+  }
+
+  describeChange(project: string, ref: ChangedRef): string {
+    return this.store instanceof HostModelStore ? this.store.describe(project, ref, this.dataLang) : ref.id;
+  }
+
+  /**
+   * Open the view a change lives on and put the object in the middle, selected.
+   * A change with no place on a view (the project) says so.
+   */
+  async revealChange(ref: ChangedRef): Promise<void> {
+    const views = this.workspace.projects.flatMap((p) => p.views);
+    const target = ref.kind === "text" && ref.id.startsWith("v_") ? ref.id : ref.view;
+    const view = target ? views.find((v) => v.id === target && this.projectOf(v)?.id === (this.currentView && this.projectOf(this.currentView)?.id)) : undefined;
+    if (view && this.currentView?.file !== view.file) await this.loadView(view);
+    if (ref.kind === "view" || (ref.kind === "text" && ref.id.startsWith("v_"))) { this.canvas.fit(); return; }
+    if (ref.kind === "project") {
+      this.notify("У этого изменения нет места на схеме: оно в реестре проекта.");
+      return;
+    }
+    if (!this.canvas.reveal(ref.id)) this.notify(`«${ref.id}» нет на открытой схеме.`);
+  }
 
   /** Open a view, asking first if the current one has unsaved changes. */
   openView(view: ViewEntry, pos?: { clientX: number; clientY: number }): void {
@@ -377,10 +451,8 @@ export class DiagramEditor implements InspectorHost, StylePanelHost, DiagramEdit
   private slot(name: Slot): HTMLElement {
     let node = this.slots.get(name);
     if (node === undefined) {
-      if (name === "file-input" || name === "base-search") {
+      if (name === "base-search") {
         node = document.createElement("input");
-      } else if (name === "json-text") {
-        node = document.createElement("textarea");
       } else {
         node = document.createElement("div");
       }
@@ -431,8 +503,8 @@ export class DiagramEditor implements InspectorHost, StylePanelHost, DiagramEdit
       this.openDocEditor(payload.id, payload.kind);
     });
 
-    this.canvas.events.on("openCodeViewer", (payload: { id: string; codeRef: string; label?: string }) => {
-      this.openCodeViewer(payload.codeRef, payload.label);
+    this.canvas.events.on("openCodeViewer", (payload: { id: string; ref: string; label?: string }) => {
+      this.openCodeViewer(payload.ref, payload.label);
     });
 
     this.canvas.events.on("viewport", (state) => {
@@ -447,21 +519,7 @@ export class DiagramEditor implements InspectorHost, StylePanelHost, DiagramEdit
       const actionNode = target.closest<HTMLElement>("[data-action]");
       if (actionNode === null || actionNode.getAttribute("disabled") !== null) return;
       const action = actionNode.dataset.action;
-      if (action !== undefined) {
-        if (action === "open-file") {
-          const rect = actionNode.getBoundingClientRect();
-          const pos = { clientX: rect.left + rect.width / 2, clientY: rect.top + rect.height / 2 };
-          if (this.hasUnsavedChanges) {
-            this.confirmDiscardOrSave(pos, () => {
-              (this.slot("file-input") as HTMLInputElement).click();
-            });
-          } else {
-            (this.slot("file-input") as HTMLInputElement).click();
-          }
-          return;
-        }
-        void this.runAction(action);
-      }
+      if (action !== undefined) void this.runAction(action);
     });
 
     this.root.addEventListener("change", (e) => {
@@ -495,13 +553,20 @@ export class DiagramEditor implements InspectorHost, StylePanelHost, DiagramEdit
   applyDataLang(lang: string): void {
     this.dataLang = lang;
     this.canvas.dataLang = lang;
+    // Names of authored entities are texts: they follow the language.
+    const model = this.canvas.model;
+    if (model !== null && model.lang !== lang) {
+      model.lang = lang;
+      model.refreshNames();
+      this.canvas.render();
+    }
     localStorage.setItem("semaps.dataLang", lang);
     this.workspaceEvents.emit("change", null);
     const select = this.root.querySelector<HTMLSelectElement>("[data-select='data-lang']");
     if (select && select.value !== lang) {
       select.value = lang;
     }
-    this.inspector.render(this.canvas.selected);
+    this.refreshInspector(this.canvas.selected);
   }
 
   /** Per-viewer preference, like ports: the model never learns about it. */
@@ -548,7 +613,7 @@ export class DiagramEditor implements InspectorHost, StylePanelHost, DiagramEdit
   private async runAction(action: string): Promise<void> {
     switch (action) {
       case "create-node": return this.createNode();
-      case "create-zone": return this.createZone();
+      case "create-container": return this.createContainer();
       case "delete": return this.deleteSelection();
       case "undo": return this.undo();
       case "redo": return this.redo();
@@ -559,10 +624,6 @@ export class DiagramEditor implements InspectorHost, StylePanelHost, DiagramEdit
       case "zoom-out": return this.canvas.zoomBy(0.8);
       case "zoom-reset": return this.canvas.resetZoom();
       case "toggle-sidebar": return this.toggleSidebar();
-      case "open-file": return this.slot("file-input").click();
-      case "toggle-json": return this.toggleJsonModal();
-      case "copy-json": return this.copyJson();
-      case "apply-json": return this.applyJson();
       case "tab-properties": return this.setTab("properties");
       case "tab-edges": return this.setTab("edges");
       case "tab-filters": return this.setTab("filters");
@@ -591,7 +652,7 @@ export class DiagramEditor implements InspectorHost, StylePanelHost, DiagramEdit
       node.classList.toggle("is-active", node.dataset.tab === tab);
     }
 
-    if (tab === "properties") this.inspector.render(this.canvas.selected);
+    if (tab === "properties") this.refreshInspector(this.canvas.selected);
     else if (tab === "edges") this.edgesPanel.render();
     else if (tab === "filters") this.filtersPanel.render();
     else if (tab === "styles") this.styleList.render();
@@ -604,7 +665,7 @@ export class DiagramEditor implements InspectorHost, StylePanelHost, DiagramEdit
         this.slot("canvas").classList.toggle("with-grid", on);
         return;
       case "snap":
-        this.canvas.gridStep = on ? 10 : 0;
+        this.canvas.gridStep = on ? canvasNumbers().grid : 0;
         return;
       case "structure-edges":
         // Not a style question, which is why no style can answer it: in
@@ -667,6 +728,17 @@ export class DiagramEditor implements InspectorHost, StylePanelHost, DiagramEdit
   }
 
   private bindKeyboard(): void {
+    // Ctrl+V with nodes copied from the graph on the clipboard: paste them on the view.
+    // Anything else on the clipboard is left to the browser.
+    document.addEventListener("paste", (e) => {
+      const target = e.target;
+      if (target instanceof HTMLElement && (target.tagName === "INPUT" || target.tagName === "TEXTAREA" || target.isContentEditable)) return;
+      if (this.canvas.hostElement.offsetParent === null) return; // the diagram is not what is shown
+      const text = e.clipboardData?.getData("text/plain");
+      if (decodeGraphClipboard(text) === null) return;
+      e.preventDefault();
+      void this.pasteGraph(text);
+    });
     window.addEventListener("keydown", (e) => {
       const target = e.target;
       if (target instanceof HTMLElement) {
@@ -697,53 +769,25 @@ export class DiagramEditor implements InspectorHost, StylePanelHost, DiagramEdit
     });
   }
 
-  private bindFiles(): void {
-    const input = this.slot("file-input") as unknown as HTMLInputElement;
-    input.addEventListener("change", () => {
-      const file = input.files?.[0];
-      if (file !== undefined) void this.loadFile(file);
-      input.value = "";
-    });
-
-    const hint = this.slot("drop-hint");
+  /** An entity dragged from the Base or Neighbourhood panel lands on the canvas where it is dropped. */
+  private bindEntityDrop(): void {
+    const isEntity = (e: DragEvent): boolean => e.dataTransfer?.types.includes("application/semaps-entity") ?? false;
     window.addEventListener("dragover", (e) => {
-      e.preventDefault();
-      if (!e.dataTransfer?.types.includes("application/semaps-entity")) {
-        hint.hidden = false;
-      }
-    });
-    window.addEventListener("dragleave", (e) => {
-      if (e.relatedTarget === null) hint.hidden = true;
+      if (isEntity(e)) e.preventDefault();
     });
     window.addEventListener("drop", (e) => {
+      if (!isEntity(e)) return;
       e.preventDefault();
-      hint.hidden = true;
-
-      const entityData = e.dataTransfer?.getData("application/semaps-entity");
-      if (entityData) {
-        try {
-          const payload = JSON.parse(entityData);
-          if (payload && payload.id) {
-            const at = this.canvas.toModel(e.clientX, e.clientY);
-            const [id] = placeEntities(this, [payload.entity], at);
-            if (id !== undefined) this.canvas.select(id);
-            this.basePanel.render();
-          }
-        } catch (err) {}
-        return;
-      }
-      const file = e.dataTransfer?.files[0];
-      if (file === undefined) return;
-      if (!file.name.endsWith(".json")) {
-        this.notify("Перетащите файл с расширением .json");
-        return;
-      }
-      if (this.hasUnsavedChanges) {
-        this.confirmDiscardOrSave({ clientX: e.clientX, clientY: e.clientY }, () => {
-          void this.loadFile(file);
-        });
-      } else {
-        void this.loadFile(file);
+      try {
+        const payload = JSON.parse(e.dataTransfer!.getData("application/semaps-entity"));
+        if (payload && payload.id) {
+          const at = this.canvas.toModel(e.clientX, e.clientY);
+          const [id] = placeEntities(this, [payload.entity], at);
+          if (id !== undefined) this.canvas.select(id);
+          this.basePanel.render();
+        }
+      } catch {
+        // A payload that is not ours: nothing to place.
       }
     });
   }
@@ -867,6 +911,51 @@ export class DiagramEditor implements InspectorHost, StylePanelHost, DiagramEdit
     }
   }
 
+  /**
+   * Another view of the open project on a second canvas that is never shown:
+   * the working model as this editor sees it (unsaved changes included), drawn
+   * with the same styles, templates and pictures. Nothing of what the person
+   * works with is touched — not this canvas, the selection, the undo stack or
+   * the open view. The caller draws from it and calls `dispose`.
+   */
+  async offscreenCanvas(viewId: string): Promise<{ canvas: DiagramCanvas; dispose: () => void }> {
+    const project = this.currentView === null ? undefined : this.projectOf(this.currentView);
+    if (project === undefined) throw new Error("no project is open in this editor");
+    const entry = project.views.find((v) => v.id === viewId);
+    if (entry === undefined) throw new Error(`view ${viewId} does not exist in project ${project.id}`);
+    if (entry.error) throw new Error(`view ${viewId} cannot be opened: ${entry.error}`);
+
+    const wire = await this.store.load(entry.file);
+
+    const host = document.createElement("div");
+    host.className = this.canvas.hostElement.className.replace(/\b(is-panning|with-grid)\b/g, "").trim();
+    host.style.cssText = "position:fixed;left:-100000px;top:0;width:1600px;height:1200px;overflow:hidden;pointer-events:none;";
+    document.body.appendChild(host);
+    const canvas = new DiagramCanvas(host, {
+      styles: this.canvas.styles,
+      templates: this.canvas.templates,
+      assets: this.canvas.assets,
+    });
+    const dispose = (): void => {
+      canvas.destroy();
+      host.remove();
+    };
+    try {
+      canvas.dataLang = this.dataLang;
+      await this.canvas.templates.whenLoaded();
+      canvas.setModel(parseDocument(wire, this.canvas.styles));
+      // Pictures arrive after the first frame and repaint it; text is measured with the real fonts.
+      await this.canvas.assets.settled();
+      await document.fonts.ready;
+      canvas.render();
+      await this.canvas.assets.settled();
+      return { canvas, dispose };
+    } catch (e) {
+      dispose();
+      throw e;
+    }
+  }
+
   private async receiveModelEvent(event: ModelEvent): Promise<void> {
     const project=this.currentView && this.projectOf(this.currentView)?.id;
     if (!project) return;
@@ -881,7 +970,14 @@ export class DiagramEditor implements InspectorHost, StylePanelHost, DiagramEdit
       if (view) await this.loadView(view);
     } else if (this.currentView) {
       if (event.changed.some((ref) => ref.kind === "project" || ref.kind === "text")) await this.reloadWorkspace();
+      // The reload rebuilds the model, and with it the selection. A save echoes
+      // back as such an event, so without this every Save dropped what was selected.
+      const primary = this.canvas.selected?.id;
+      const kept = [...this.canvas.selectedIds].filter((id) => id !== primary);
+      if (primary !== undefined) kept.push(primary);
       await this.loadView(this.currentView);
+      const alive = kept.filter((id) => this.canvas.model?.element(id) !== undefined || this.canvas.model?.edge(id) !== undefined);
+      if (alive.length > 0) this.canvas.selectMany(alive);
     }
     this.workspaceEvents.emit("change",null);
   }
@@ -895,26 +991,12 @@ export class DiagramEditor implements InspectorHost, StylePanelHost, DiagramEdit
     }).catch((err)=>this.notify(`Не удалось передать изменение хосту: ${(err as Error).message}`));
   }
 
-  async loadFile(file: File): Promise<void> {
-    try {
-      const wire = await readJsonFile(file);
-      this.currentView = null;
-      this.workspaceEvents.emit("change", null);
-      this.loadWire(wire, file.name);
-      this.addCustomCatalogEntry(file.name, wire);
-    } catch (err) {
-      this.notify((err as Error).message);
-    }
-  }
-
   private loadWire(wire: WireDocument, title: string): void {
     // Anything half-typed belongs to the model being replaced, not the new one.
     if (this.fieldEditTimer !== null) window.clearTimeout(this.fieldEditTimer);
     this.fieldEditTimer = null;
     this.fieldEditSnapshot = null;
 
-    // Parsed against the live library so that a model still carrying inline
-    // zone colours is migrated into named styles as it loads (see wire.ts).
     const doc = parseDocument(wire, this.styleLibrary);
     this.canvas.setModel(doc);
     if(this.store instanceof HostModelStore && this.currentView){this.store.confirmLoaded(this.currentView.file,serializeDocument(doc))}
@@ -925,7 +1007,7 @@ export class DiagramEditor implements InspectorHost, StylePanelHost, DiagramEdit
     this.renderViews(doc);
     this.renderTags();
     this.syncToolbar(null);
-    // Migration may have minted styles; the list must show them.
+    // The tree of styles shows how many elements of the new view wear each.
     this.styleList.render();
     this.basePanel.render();
     this.showModelIssues(wire.bundle?.issues ?? []);
@@ -988,14 +1070,18 @@ export class DiagramEditor implements InspectorHost, StylePanelHost, DiagramEdit
     // The library is rebuilt, not mutated, so a style deleted since the
     // snapshot comes back and one added since it goes away. Everything holding
     // a library must therefore read it through `this.styles`, never cache it.
-    this.styleLibrary = StyleLibrary.parse(state.styles);
+    // Only a step that really changed a style marks the styles dirty: undoing a
+    // model edit must not make the next save write the whole library into the
+    // workspace, where it would hide every later default.
+    const stylesChanged = JSON.stringify(state.styles) !== JSON.stringify(this.styleLibrary.serialize());
+    if (stylesChanged) this.styleLibrary = StyleLibrary.parse(state.styles);
     const doc = parseDocument(state.doc, this.styleLibrary);
     this.canvas.setStyles(this.styleLibrary);
     this.canvas.replaceModel(doc);
     this.renderTags();
 
     this.markDirty();
-    this.markStylesDirty();
+    if (stylesChanged) this.markStylesDirty();
     this.styleList.setActive(this.styleEditor.openId);
     this.styleEditor.render();
     this.syncToolbar(this.canvas.selected);
@@ -1005,40 +1091,6 @@ export class DiagramEditor implements InspectorHost, StylePanelHost, DiagramEdit
     this.styleLibrary = library;
     this.canvas.setStyles(library);
     this.renderTags();
-  }
-
-  // ---------------------------------------------------------------- catalog
-
-  private addCustomCatalogEntry(name: string, wire: WireDocument): void {
-    this.slot("custom-catalog-section").hidden = false;
-    this.slot("custom-catalog").appendChild(
-      el(
-        "button",
-        {
-          class: "catalog-item",
-          on: {
-            click: (e: MouseEvent) => {
-              if (this.hasUnsavedChanges) {
-                this.confirmDiscardOrSave({ clientX: e.clientX, clientY: e.clientY }, () => {
-                  this.currentView = null;
-                  this.loadWire(wire, name);
-                });
-              } else {
-                this.currentView = null;
-                this.loadWire(wire, name);
-              }
-            },
-          },
-        },
-        [
-          el("span", { class: "catalog-icon theme-blue", text: "📄" }),
-          el("span", { class: "catalog-text sidebar-label" }, [
-            el("span", { class: "catalog-title", text: name }),
-            el("span", { class: "catalog-subtitle", text: "Пользовательский файл" }),
-          ]),
-        ],
-      ),
-    );
   }
 
   private renderViews(_doc: DiagramDocument): void {
@@ -1059,55 +1111,63 @@ export class DiagramEditor implements InspectorHost, StylePanelHost, DiagramEdit
     const doc = this.canvas.model;
     if (doc === null) return;
     const at = this.canvas.viewCenter();
-    const x = snap(at.x, 10);
-    const y = snap(at.y, 10);
+    const { x, y } = freeSpot(
+      doc, snap(at.x, canvasNumbers().grid), snap(at.y, canvasNumbers().grid),
+      canvasNumbers().node.width, canvasNumbers().node.height,
+    );
 
     const node: DiagramElement = {
-      id: `node_${Date.now().toString(36)}`,
+      id: `e_${Date.now().toString(36)}`,
       kind: "node",
-      type: "concept",
+      type: NEW_BLOCK_KIND,
       label: "Новый блок",
       tags: [],
-      metadata: { type: "Concept / Блок", description: "Пользовательский блок архитектуры." },
-      x, y, width: 190, height: 60,
+      metadata: {},
+      x, y, width: canvasNumbers().node.width, height: canvasNumbers().node.height,
       parent: null,
       children: [],
       wireOrder: Number.POSITIVE_INFINITY,
     };
 
-    const target = doc.containerAt({ x: x + 95, y: y + 30 });
+    const target = doc.containerAt({ x: x + node.width / 2, y: y + node.height / 2 });
     doc.add(node, target);
+    // The name of an authored entity is a text; its entity reaches the registry with the first sync.
+    doc.setText(node.id, { name: node.label }, doc.textLang);
     this.commit("create-node");
     this.canvas.select(node.id);
   }
 
-  createZone(): void {
+  /**
+   * A new container: an authored entity of a container kind and its placement
+   * (CONTRACT.md §8.2 — a container is an entity like any other). The entity
+   * reaches the registry with the first sync, as a new block's does.
+   */
+  createContainer(): void {
     const doc = this.canvas.model;
     if (doc === null) return;
     const at = this.canvas.viewCenter();
-    const id = `zone_${Date.now().toString(36)}`;
+    const { x, y } = freeSpot(
+      doc, snap(at.x, canvasNumbers().grid), snap(at.y, canvasNumbers().grid),
+      NEW_CONTAINER_SIZE.width, NEW_CONTAINER_SIZE.height,
+    );
 
-    const zone: DiagramElement = {
-      id,
+    const container: DiagramElement = {
+      id: `e_${Date.now().toString(36)}`,
       kind: "zone",
-      type: "boundary",
-      label: "Новая область / Слой",
-      semanticId: `zone.${id}`,
+      type: NEW_CONTAINER_KIND,
+      label: "Новый контейнер",
       tags: [],
-      metadata: { description: "Пользовательский логический контейнер." },
-      x: snap(at.x, 10), y: snap(at.y, 10), width: 420, height: 300,
-      // A named style, not five inline colours. The slate theme is what the old
-      // hardcoded literals here spelled out, so a new zone looks the same as
-      // before while now being repaintable in one place.
-      styleId: "zone.slate",
+      metadata: {},
+      x, y, ...NEW_CONTAINER_SIZE,
       parent: null,
       children: [],
       wireOrder: Number.POSITIVE_INFINITY,
     };
 
-    doc.add(zone, null);
-    this.commit("create-zone");
-    this.canvas.select(zone.id);
+    doc.add(container, doc.containerAt({ x: x + NEW_CONTAINER_SIZE.width / 2, y: y + NEW_CONTAINER_SIZE.height / 2 }));
+    doc.setText(container.id, { name: container.label }, doc.textLang);
+    this.commit("create-container");
+    this.canvas.select(container.id);
   }
 
   /**
@@ -1214,7 +1274,7 @@ export class DiagramEditor implements InspectorHost, StylePanelHost, DiagramEdit
     // inspector from binding to something that no longer exists (D-05).
     if (this.canvas.selected?.id === edgeId) this.canvas.select(null);
     this.commit("delete-edge");
-    this.inspector.render(this.canvas.selected);
+    this.refreshInspector(this.canvas.selected);
   }
 
   /** Whether the relation `id` is drawn on this view (not only known, as a ghost). */
@@ -1225,7 +1285,7 @@ export class DiagramEditor implements InspectorHost, StylePanelHost, DiagramEdit
   /**
    * Show a registry relation on the view, or hide it back to a ghost. The one
    * way the inspector, the line's menu and a double click all go (CONTRACT.md
-   * §8.5: a view shows what its edge list holds).
+   * §8.5, ADR_20260930-7: showing or hiding is a change of the view's `relations.except`).
    */
   setEdgeShown(id: string, shown: boolean): void {
     const doc = this.canvas.model;
@@ -1233,20 +1293,25 @@ export class DiagramEditor implements InspectorHost, StylePanelHost, DiagramEdit
     if (shown) {
       const rel = doc.relations.find((r) => r.id === id);
       if (rel === undefined) return;
+      // The view's own look of this line, if it kept one from before it was hidden.
+      const own = doc.bundle?.view?.edges?.find((entry) => entry.id === id);
       doc.addEdge({
         id: rel.id,
         from: rel.from,
         to: rel.to,
-        type: rel.type || (rel as { relation?: string }).relation || "relates",
-        label: (rel as { label?: string }).label || "",
-        ...(rel.styleId === undefined ? {} : { styleId: rel.styleId }),
+        type: rel.type,
+        label: rel.label || "",
+        ...(rel.origin === undefined ? {} : { origin: rel.origin }),
+        ...(own?.styleId === undefined ? {} : { styleId: own.styleId }),
+        ...(own?.override === undefined ? {} : { override: own.override }),
+        ...(own?.routing === undefined ? {} : { routing: own.routing }),
       });
       this.commit("show-edge");
     } else {
       doc.removeEdge(id);
       this.commit("hide-edge");
     }
-    this.inspector.render(this.canvas.selected);
+    this.refreshInspector(this.canvas.selected);
   }
 
   addEdgeFromSelection(targetId: string, type: string, label: string): void {
@@ -1254,15 +1319,51 @@ export class DiagramEditor implements InspectorHost, StylePanelHost, DiagramEdit
     const selection = this.canvas.selected;
     if (doc === null || selection === null || selection.kind === "edge") return;
 
-    doc.addEdge({
-      id: `edge_${Date.now().toString(36)}`,
-      from: selection.id,
-      to: targetId,
-      label,
-      type,
-    });
+    // A line is a relation of the registry (authored), never a line of this view alone.
+    doc.drawRelation(selection.id, targetId, type, label);
     this.commit("add-edge");
+    this.refreshInspector(selection);
+  }
+
+  /**
+   * Relations of one type from the box selected first to every other selected
+   * box, one undo step. A pair that already has a relation of this type is
+   * skipped rather than doubled.
+   */
+  connectSelection(type: string): void {
+    const doc = this.canvas.model;
+    if (doc === null) return;
+    const [source, ...targets] = this.canvas.selectedElements();
+    if (source === undefined || targets.length === 0) return;
+    let drawn = 0;
+    for (const target of targets) {
+      if (this.drawRelation(source.id, target.id, type)) drawn++;
+    }
+    if (drawn > 0) this.commit("add-edge");
+  }
+
+  /** One relation of `type` from one box to another (a drag from the arrow under a box), one undo step. */
+  connect(from: string, to: string, type: string): void {
+    if (this.drawRelation(from, to, type)) this.commit("add-edge");
+  }
+
+  /** False when that pair already has a relation of this type, or there is no model. */
+  private drawRelation(from: string, to: string, type: string): boolean {
+    const doc = this.canvas.model;
+    if (doc === null || doc.relations.some((r) => r.from === from && r.to === to && r.type === type)) return false;
+    doc.drawRelation(from, to, type, "");
+    return true;
+  }
+
+  /**
+   * Redraw whatever shows the selected object: the built-in inspector and, via
+   * `inspect`, the Properties and Relations panels of the workbench, which
+   * otherwise only redraw when the selection changes — so an edit made from one
+   * of them left the other stale.
+   */
+  private refreshInspector(selection: Selection | null): void {
     this.inspector.render(selection);
+    this.canvas.events.emit("inspect", selection);
   }
 
   /**
@@ -1282,7 +1383,7 @@ export class DiagramEditor implements InspectorHost, StylePanelHost, DiagramEdit
     apply();
     this.markDirty();
     if (options.rerender === true) this.canvas.render();
-    if (options.reselect === true) this.inspector.render(this.canvas.selected);
+    if (options.reselect === true) this.refreshInspector(this.canvas.selected);
 
     if (this.fieldEditTimer !== null) window.clearTimeout(this.fieldEditTimer);
     this.fieldEditTimer = window.setTimeout(() => this.flushFieldEdit(), FIELD_EDIT_QUIET_MS);
@@ -1407,23 +1508,124 @@ export class DiagramEditor implements InspectorHost, StylePanelHost, DiagramEdit
       if (need !== null && need > el.height) el.height = need;
     }
     this.commit("template");
-    this.inspector.render(this.canvas.selected);
+    this.refreshInspector(this.canvas.selected);
   }
 
-  /** Give these boxes (or these edges) a named style, one undo step; `null` — back to the default. */
-  applyStyle(ids: readonly string[], styleId: string | null): void {
+  /**
+   * The one way the UI sets the kind and style of blocks and containers
+   * (ADR_20260927-7): the Properties kind select and variant cards, the canvas
+   * menu's «Стиль» and the Styles panel's «Применить» all end here. One undo step.
+   *
+   * - A kind read from code stays the code's: such an element takes the style
+   *   only when it belongs to its own kind, otherwise it is skipped and the
+   *   skip said once.
+   * - `styleId` null, or the kind's base style, removes the explicit `styleId`:
+   *   the base is never written. So a kind change drops an explicit style
+   *   unless a non-base style of the new kind is passed along.
+   * - An element of the other sort (a block for a container kind, or the other
+   *   way round) is left alone: turning one into the other is not a kind edit.
+   */
+  applyKindAndStyle(ids: readonly string[], kind: string, styleId: string | null): void {
     const doc = this.canvas.model;
-    if (!doc) return;
+    if (!doc || kind === "") return;
+    const lib = this.styleLibrary;
+    const catalog = KindCatalog.active;
+    const skipped: string[] = [];
+    let changed = false;
+
     for (const id of ids) {
-      const target = doc.element(id) ?? doc.edge(id);
-      if (!target) continue;
-      target.styleId = styleId ?? undefined;
       const el = doc.element(id);
-      const need = el ? this.canvas.contentHeight(el) : null;
-      if (el && need !== null && need > el.height) el.height = need;
+      if (!el) continue;
+      const target = StyleLibrary.targetOfElement(el);
+      if (catalog.lookup(kind) !== undefined && StyleLibrary.targetOfKind(kind) !== target) continue;
+      if (styleId !== null && lib.has(styleId) && lib.targetOf(styleId) !== target) continue;
+
+      let nextKind = kind;
+      if (entityOf(el)?.origin === "code" && el.type !== kind) {
+        // The code decides the kind; the style is taken only when it is one of that kind's.
+        const fits = styleId !== null && (lib.fits(styleId, el.type, target) || styleId === lib.baseStyleOf(el.type, target));
+        if (!fits) {
+          skipped.push(el.label || el.id);
+          continue;
+        }
+        nextKind = el.type;
+      }
+
+      const base = lib.baseStyleOf(nextKind, target);
+      const nextStyle = styleId === null || styleId === base || !lib.has(styleId) ? undefined : styleId;
+      if (el.type === nextKind && el.styleId === nextStyle) continue;
+      el.type = nextKind;
+      if (nextStyle === undefined) delete el.styleId;
+      else el.styleId = nextStyle;
+      // A box too short for its new style's content grows to fit, never shrinks.
+      const need = this.canvas.contentHeight(el);
+      if (need !== null && need > el.height) el.height = need;
+      changed = true;
     }
-    this.commit("style");
-    this.inspector.render(this.canvas.selected);
+
+    if (changed) this.commit("kind-style");
+    this.refreshInspector(this.canvas.selected);
+    if (skipped.length > 0) {
+      this.toast(i18n.format(i18n.d.panels.properties.kindFromCodeSkipped, { names: skipped.join(", ") }));
+    }
+  }
+
+  /**
+   * The same for lines (ADR_20260930-2): the relation type and the style of
+   * that type together, the one mechanism behind the Properties type select and
+   * variant cards, the line's menu and the Styles panel. One undo step.
+   *
+   * A relation is a registry record and, when drawn, a line on the view; the type
+   * goes to both, the style only to the line — saved as its `styleId` in the view's
+   * `edges` overlay (a relation shown as a ghost has none). A type read from code stays the code's. A type
+   * is a string on the relation: the dictionary describes it, the project lists none.
+   */
+  applyRelationTypeAndStyle(ids: readonly string[], type: string, styleId: string | null): void {
+    const doc = this.canvas.model;
+    if (!doc || type === "") return;
+    const lib = this.styleLibrary;
+    const skipped: string[] = [];
+    let changed = false;
+
+    for (const id of ids) {
+      const edge = doc.edge(id);
+      const relation = doc.relations.find((r) => r.id === id);
+      if (edge === undefined && relation === undefined) continue;
+      if (styleId !== null && lib.has(styleId) && lib.targetOf(styleId) !== "edge") continue;
+      const current = edge?.type ?? relation!.type;
+      const fromCode = edge?.origin === "code" || relation?.origin === "code";
+
+      let nextType = type;
+      if (fromCode && current !== type) {
+        const fits = styleId !== null && (lib.fits(styleId, current, "edge") || styleId === lib.baseStyleOf(current, "edge"));
+        if (!fits) {
+          skipped.push(id);
+          continue;
+        }
+        nextType = current;
+      }
+
+      const base = lib.baseStyleOf(nextType, "edge");
+      const nextStyle = styleId === null || styleId === base || !lib.has(styleId) ? undefined : styleId;
+      const typeChanged = current !== nextType;
+      if (!typeChanged && (edge === undefined || edge.styleId === nextStyle)) continue;
+
+      if (typeChanged) {
+        if (edge !== undefined) edge.type = nextType;
+        if (relation !== undefined) relation.type = nextType;
+      }
+      if (edge !== undefined) {
+        if (nextStyle === undefined) delete edge.styleId;
+        else edge.styleId = nextStyle;
+      }
+      changed = true;
+    }
+
+    if (changed) this.commit("relation-type-style");
+    this.refreshInspector(this.canvas.selected);
+    if (skipped.length > 0) {
+      this.toast(i18n.format(i18n.d.panels.properties.kindFromCodeSkipped, { names: skipped.join(", ") }));
+    }
   }
 
   /** Line shape of these edges alone (`null` — back to the view's / type's), one undo step. */
@@ -1451,6 +1653,7 @@ export class DiagramEditor implements InspectorHost, StylePanelHost, DiagramEdit
 
   /** From the inspector's "править стиль" button. */
   openStyleTab(styleId: string): void {
+    this.panelOpener?.("styles");
     this.setTab("styles");
     this.openStyle(styleId);
   }
@@ -1498,22 +1701,11 @@ export class DiagramEditor implements InspectorHost, StylePanelHost, DiagramEdit
    */
   async save(): Promise<void> {
     this.flushFieldEdit();
+    // No question before saving: what is unsaved is always in the «Изменения» panel (ADR_20260926-2).
     if (this.store instanceof HostModelStore && this.currentView) {
-      try {
-        this.queueModelSync();
-        const project=this.projectOf(this.currentView)?.id;
-        if(project){
-          const summary=await this.store.dirty(project);
-          this.modelDirty.set(project,summary);
-          const agentRegistry=summary.registry.filter((r)=>r.author==="agent" || r.author==="sync").length;
-          const agentViews=Object.values(summary.views).flat().filter((r)=>r.author==="agent" || r.author==="sync").length;
-          if(agentRegistry+agentViews>0){
-            const humanRegistry=summary.registry.length-agentRegistry;
-            const views=Object.entries(summary.views).map(([id,refs])=>`${id}: вы ${refs.filter((r)=>r.author==="human").length}, агент ${refs.filter((r)=>r.author!=="human").length}`).join("\n");
-            if(!window.confirm(`Сохранить всё в проекте ${project}?\nРеестр: вы ${humanRegistry}, агент ${agentRegistry}.\nВиды:\n${views}`)) return;
-          }
-        }
-      }catch(err){this.notify(`Не удалось получить сводку сохранения: ${(err as Error).message}`);return}
+      const project=this.projectOf(this.currentView)?.id;
+      try { if(project) this.modelDirty.set(project,await this.store.dirty(project)); }
+      catch(err){this.notify(`Не удалось получить состояние проекта: ${(err as Error).message}`);return}
     }
     const problems: string[] = [];
     let stylesSaved = false;
@@ -1557,6 +1749,8 @@ export class DiagramEditor implements InspectorHost, StylePanelHost, DiagramEdit
     }
 
     this.syncSaveButton();
+    // The «Изменения» panel and the catalog show what is still unsaved.
+    this.workspaceEvents.emit("change", null);
 
     if (problems.length === 0) {
       this.flashSaved();
@@ -1581,6 +1775,53 @@ export class DiagramEditor implements InspectorHost, StylePanelHost, DiagramEdit
     catch(err){this.notify(`Не удалось отменить изменения вида: ${(err as Error).message}`)}
   }
 
+  /**
+   * The ids of the selected lines and blocks that are authored records of the registry: the ones
+   * «Удалить из реестра» may take away (ADR_20261001). A record from code is never among them.
+   */
+  authoredSelection(): string[] {
+    const doc = this.canvas.model;
+    if (doc === null) return [];
+    const ids: string[] = [];
+    for (const id of this.canvas.selectedIds) {
+      const edge = doc.edge(id);
+      const el = doc.element(id);
+      if (edge !== undefined) {
+        if (edge.origin === "authored") ids.push(id);
+      } else if (el !== undefined) {
+        const entity = entityOf(el) ?? doc.entities.find((e) => e.id === el.id);
+        if (entity?.origin === "authored") ids.push(id);
+      }
+    }
+    return ids;
+  }
+
+  /**
+   * Remove the selected authored lines and blocks from the registry, not only from this view. The
+   * host builds the batch (HostModelStore.removeRecords); a block's own authored relations go with
+   * it after one question. Unsaved like any edit: «Сохранить» writes it, discarding brings it back.
+   */
+  async removeSelectionFromRegistry(): Promise<void> {
+    const doc = this.canvas.model;
+    if (!(this.store instanceof HostModelStore) || !this.currentView || doc === null) return;
+    const project = this.projectOf(this.currentView)?.id;
+    const ids = this.authoredSelection();
+    if (!project || ids.length === 0) return;
+    const held = new Set(doc.relations
+      .filter((r) => !ids.includes(r.id) && (ids.includes(r.from) || ids.includes(r.to)))
+      .map((r) => r.id));
+    if (held.size > 0 && !window.confirm(`Вместе с записью будут удалены связи, которые на ней стоят: ${held.size}. Продолжить?`)) return;
+    try {
+      // what the editor changed a moment ago must reach the host before the host builds the batch
+      await this.store.sync(this.currentView.file, serializeDocument(doc));
+      await this.store.removeRecords(project, ids, held.size > 0);
+      await this.loadView(this.currentView);
+      this.workspaceEvents.emit("change", null);
+    } catch (err) {
+      this.notify(`Не удалось удалить из реестра: ${(err as Error).message}`);
+    }
+  }
+
   async discardRegistry(): Promise<void> {
     if(!(this.store instanceof HostModelStore)||!this.currentView)return;
     const project=this.projectOf(this.currentView)?.id;if(!project)return;
@@ -1592,9 +1833,9 @@ export class DiagramEditor implements InspectorHost, StylePanelHost, DiagramEdit
   private flashSaved(): void {
     const button = this.root.querySelector<HTMLElement>('[data-action="save"]');
     if (button === null) return;
-    button.textContent = "✅ Сохранено";
+    button.replaceChildren(iconEl("circleCheck"), "Сохранено");
     window.setTimeout(() => {
-      button.textContent = "💾 Сохранить";
+      button.replaceChildren(iconEl("save"), "Сохранить");
       this.syncSaveButton();
     }, 2000);
   }
@@ -1603,71 +1844,6 @@ export class DiagramEditor implements InspectorHost, StylePanelHost, DiagramEdit
     const doc = this.canvas.model;
     if (doc === null) return;
     download(drawioFileName(doc), exportDrawio(doc, this.styleLibrary), "application/xml");
-  }
-
-  toggleJsonModal(): void {
-    let modal = this.slots.get("json-modal");
-    let editor = this.slots.get("json-text") as HTMLTextAreaElement | undefined;
-    if (!modal || !modal.parentElement) {
-      editor = el("textarea", {
-        attrs: {
-          spellcheck: "false",
-          style: "width: 100%; height: 360px; font-family: monospace; font-size: calc(12px * var(--ui-text)); background: var(--bg, #1a1a1a); color: var(--text, #fff); border: 1px solid var(--border, #3a3a3c); border-radius: 4px; padding: calc(8px * var(--ui-space)); resize: vertical; box-sizing: border-box;",
-        },
-      }) as HTMLTextAreaElement;
-      this.slots.set("json-text", editor);
-
-      const closeBtn = el("button", { class: "btn-icon", text: "✕", on: { click: () => { modal!.hidden = true; } } });
-      const copyBtn = el("button", { class: "btn", text: "Копировать", on: { click: () => { void this.copyJson(); } } });
-      const applyBtn = el("button", { class: "btn btn-primary", text: "Применить к холсту", on: { click: () => { this.applyJson(); } } });
-
-      modal = el("div", { class: "modal", attrs: { hidden: "true" } }, [
-        el("div", { class: "modal-card", attrs: { style: "width: 600px; max-width: 90vw;" } }, [
-          el("div", { class: "modal-head", attrs: { style: "display: flex; justify-content: space-between; align-items: center; padding: calc(10px * var(--ui-space)) calc(14px * var(--ui-space)); border-bottom: 1px solid var(--border, #3a3a3c);" } }, [
-            el("h3", { text: "Модель диаграммы (JSON)", attrs: { style: "margin: 0; font-size: calc(14px * var(--ui-text));" } }),
-            closeBtn,
-          ]),
-          el("div", { class: "modal-body", attrs: { style: "padding: calc(14px * var(--ui-space));" } }, [editor]),
-          el("div", { class: "modal-foot", attrs: { style: "display: flex; justify-content: flex-end; gap: calc(8px * var(--ui-space)); padding: calc(10px * var(--ui-space)) calc(14px * var(--ui-space)); border-top: 1px solid var(--border, #3a3a3c);" } }, [
-            copyBtn,
-            applyBtn,
-          ]),
-        ]),
-      ]);
-      this.slots.set("json-modal", modal);
-      document.body.appendChild(modal);
-    }
-
-    const doc = this.canvas.model;
-    if (modal.hidden) {
-      if (editor) editor.value = doc === null ? "" : JSON.stringify(serializeDocument(doc), null, 2);
-      modal.hidden = false;
-    } else {
-      modal.hidden = true;
-    }
-  }
-
-  async copyJson(): Promise<void> {
-    const editor = this.slot("json-text") as unknown as HTMLTextAreaElement;
-    try {
-      await navigator.clipboard.writeText(editor.value);
-      this.notify("JSON скопирован в буфер обмена");
-    } catch {
-      this.notify("Не удалось получить доступ к буферу обмена");
-    }
-  }
-
-  applyJson(): void {
-    const editor = this.slot("json-text") as unknown as HTMLTextAreaElement;
-    try {
-      const wire = JSON.parse(editor.value) as WireDocument;
-      const title = wire.metadata?.title ?? "Пользовательская схема";
-      this.currentView = null;
-      this.loadWire(wire, title);
-      this.slot("json-modal").hidden = true;
-    } catch (err) {
-      this.notify(`Ошибка в формате JSON: ${(err as Error).message}`);
-    }
   }
 
   // ------------------------------------------------------------------- ui
@@ -1711,7 +1887,6 @@ export class DiagramEditor implements InspectorHost, StylePanelHost, DiagramEdit
     const saveBtn = el("button", {
       class: "btn btn-success full",
       attrs: { style: "padding: calc(8px * var(--ui-space)) calc(12px * var(--ui-space)); font-size: calc(12px * var(--ui-text)); font-weight: 600;" },
-      text: "💾 Сохранить и открыть",
       on: {
         click: async (ev: MouseEvent) => {
           ev.stopPropagation();
@@ -1720,24 +1895,22 @@ export class DiagramEditor implements InspectorHost, StylePanelHost, DiagramEdit
           await onProceed(true);
         },
       },
-    });
+    }, [iconEl("save"), "Сохранить и открыть"]);
 
     const cancelBtn = el("button", {
       class: "btn full",
       attrs: { style: "padding: calc(8px * var(--ui-space)) calc(12px * var(--ui-space)); font-size: calc(12px * var(--ui-text)); font-weight: 600; background: var(--panel-alt); border: 1px solid var(--line);" },
-      text: "↩ Отменить",
       on: {
         click: (ev: MouseEvent) => {
           ev.stopPropagation();
           cleanup();
         },
       },
-    });
+    }, [iconEl("restore"), "Отменить"]);
 
     const discardBtn = el("button", {
       class: "btn btn-danger full",
       attrs: { style: "padding: calc(7px * var(--ui-space)) calc(12px * var(--ui-space)); font-size: calc(12px * var(--ui-text)); font-weight: 500;" },
-      text: "🗑 Загрузить без сохранения",
       on: {
         click: async (ev: MouseEvent) => {
           ev.stopPropagation();
@@ -1745,11 +1918,11 @@ export class DiagramEditor implements InspectorHost, StylePanelHost, DiagramEdit
           await onProceed(false);
         },
       },
-    });
+    }, [iconEl("trash"), "Загрузить без сохранения"]);
 
     const card = el("div", { class: "confirm-popover-card" }, [
       el("div", { class: "confirm-popover-title" }, [
-        el("span", { text: "⚠️" }),
+        el("span", {}, [iconEl("alert")]),
         el("span", { text: "Несохранённые изменения" }),
       ]),
       el("p", { class: "confirm-popover-msg", text: "В текущей схеме есть несохранённые правки. Что сделать перед переключением?" }),
@@ -1831,12 +2004,42 @@ export class DiagramEditor implements InspectorHost, StylePanelHost, DiagramEdit
     void navigator.clipboard.writeText(link).then(() => this.toast(`Ссылка скопирована: ${link}`));
   }
 
+  /** Copy an entity id (as it is, without a view prefix) and say so with a short-lived toast. */
+  copyId(id: string): void {
+    void navigator.clipboard.writeText(id).then(
+      () => this.toast(i18n.format(i18n.d.panels.properties.idCopied, { id })),
+      () => this.toast(id),
+    );
+  }
+
   toast(message: string): void {
-    const box = document.createElement("div");
-    box.textContent = message;
-    box.setAttribute("role", "status");
-    Object.assign(box.style, { position: "fixed", left: "50%", bottom: "24px", transform: "translateX(-50%)", padding: "8px 14px", background: "#222", color: "#fff", borderRadius: "6px", font: "13px sans-serif", zIndex: "10000", maxWidth: "80vw" });
-    document.body.append(box);
-    setTimeout(() => box.remove(), 2200);
+    showToast(message);
+  }
+
+  /**
+   * Paste nodes copied from the graph mode: from `text`, else the system
+   * clipboard, else this page's last copy. One undo step; the registry is never
+   * written (nodes without an entity are counted, not placed).
+   */
+  async pasteGraph(text?: string): Promise<void> {
+    let payload = decodeGraphClipboard(text);
+    if (payload === null && text === undefined) {
+      try {
+        payload = decodeGraphClipboard(await navigator.clipboard.readText());
+      } catch {
+        // The clipboard cannot be read here: the last copy made in this page will do.
+      }
+    }
+    payload ??= lastGraphCopy() ?? null;
+    if (payload === null) {
+      this.toast(shellStrings.graphPasteEmpty);
+      return;
+    }
+    if (this.canvas.model === null) return;
+    const r = pasteGraphNodes(this, payload);
+    const parts = [fmt(shellStrings.graphPasted, { n: String(r.placed.length) })];
+    if (r.notInModel > 0) parts.push(fmt(shellStrings.graphPasteSkipped, { k: String(r.notInModel) }));
+    if (r.alreadyOnView > 0) parts.push(fmt(shellStrings.graphPasteExisting, { n: String(r.alreadyOnView) }));
+    this.toast(parts.join(" · "));
   }
 }

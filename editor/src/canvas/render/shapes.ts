@@ -189,6 +189,22 @@ export class CylinderRenderer extends BoxRenderer {
     ]);
   }
 
+  override pointAt(rect: Rect, slot: BoundarySlot): Point {
+    // The box's point, dropped onto the lid or the base: off the middle both
+    // arcs sit inside the bounding box, and a port left on it floats above them.
+    const p = super.pointAt(rect, slot);
+    const depth = this.outlineDepth(rect, slot.side, p.x);
+    return { x: p.x, y: slot.side === "north" ? p.y + depth : slot.side === "south" ? p.y - depth : p.y };
+  }
+
+  outlineDepth(rect: Rect, side: Side, along: number): number {
+    if (side !== "north" && side !== "south") return 0;
+    const cap = Math.min(rect.height * 0.18, 14);
+    const a = rect.width / 2;
+    const t = Math.min(Math.abs(along - (rect.x + a)) / a, 1);
+    return cap * (1 - Math.sqrt(1 - t * t));
+  }
+
   override cornerInset(_side: Side): number {
     // The sides are straight; only the caps bulge, and the inset that keeps an
     // arrow off them is about the cap's own height.

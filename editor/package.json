@@ -3,7 +3,7 @@
   "version": "0.1.0",
   "private": true,
   "type": "module",
-  "description": "Semantic architecture diagram canvas and editor. Fixed coordinates, no auto-layout.",
+  "description": "Semantic architecture diagram canvas and editor. Diagrams have fixed coordinates, no auto-layout.",
   "license": "MIT",
   "files": [
     "dist"
@@ -26,18 +26,29 @@
     "preview": "vite preview",
     "check:content-template": "node scripts/check-content-template.mjs",
     "check:routers": "node scripts/check-routers.mjs",
-    "check:nudge": "node scripts/check-nudge.mjs"
+    "check:nudge": "node scripts/check-nudge.mjs",
+    "check:model-sync": "node scripts/check-model-sync.mjs"
   },
   "devDependencies": {
+    "@tabler/icons": "^3.48.0",
     "@types/node": "^26.3.0",
     "@types/prismjs": "^1.26.6",
+    "graphology-types": "^0.24.8",
     "typescript": "^5.9.3",
     "vite": "^7.1.5",
     "vite-plugin-dts": "^4.5.4"
   },
   "dependencies": {
+    "@dagrejs/dagre": "^3.1.1",
+    "@sigma/node-border": "^3.0.0",
     "dockview-core": "^8.2.0",
+    "graphology": "0.26.0",
+    "graphology-communities-louvain": "2.0.2",
+    "graphology-layout": "^0.6.1",
+    "graphology-layout-forceatlas2": "0.10.1",
+    "graphology-layout-noverlap": "0.4.2",
     "marked": "^18.0.11",
-    "prismjs": "^1.30.0"
+    "prismjs": "^1.30.0",
+    "sigma": "3.0.3"
   }
 }

@@ -1,11 +1,11 @@
 package core
 
-// Sync reconciles one project's registry (entities.json, relations.json,
-// relation-types.json) with extractor facts. The rules are normative in
+// Sync reconciles one project's registry (entities.json, relations.json) with
+// extractor facts. The rules are normative in
 // docs/EXTRACTOR.md §5; why they are what they are:
 // ADR_20260923-9_core_sync-symbol-mapping-and-containment.
 //
-// Sync never writes texts, views or containers, never touches an `authored`
+// Sync never writes texts or views, never touches an `authored`
 // record, never deletes and never changes an id it has handed out.
 
 import (
@@ -33,6 +33,9 @@ type SyncOptions struct {
 	// NoRenames treats every rename candidate as what it literally is — one
 	// entity gone and one new — instead of holding both for a human decision.
 	NoRenames bool
+	// DefaultKinds is the tool's dictionary, for SyncWorkspace's load
+	// (LoadModel); sync itself never reads it.
+	DefaultKinds []byte
 }
 
 // UsageError is a mistake in how sync was called, not in the data.
@@ -52,7 +55,7 @@ type SyncReport struct {
 	Ambiguous []string `json:"ambiguous"` // неоднозначно: an entity without `symbol` fits several symbols, or the reverse
 	Renames   []string `json:"renames"`   // переименование?: gone and new in one file, same kind
 	Gone      []string `json:"gone"`      // лишнее: marked `status: missing`
-	Added     []string `json:"added"`     // не хватает: new entities, relations, relation types
+	Added     []string `json:"added"`     // не хватает: new entities and relations
 	Changed   []string `json:"changed"`   // изменилось: fields updated, entities adopted, returned from missing
 
 	Written []string `json:"written"` // files written, workspace-relative
@@ -118,10 +121,50 @@ func (r *SyncReport) Print(w io.Writer) {
 	}
 	if len(r.Renames) > 0 {
 		fmt.Fprintln(w, "Переименование:")
-		fmt.Fprintln(w, "  Сущность: поставьте старой сущности `symbol` нового символа (и `name`, если имя сменилось).")
-		fmt.Fprintln(w, "  Членская связь: установите `via.member` старой связи на новое имя члена и повторите сверку.")
+		fmt.Fprintln(w, "  Сущность: поставьте старой сущности в code[] `symbol` нового символа (и `name`, если имя сменилось).")
+		fmt.Fprintln(w, "  Членская связь: установите `via.member` в evidence[] старой связи на новое имя члена и повторите сверку.")
 		fmt.Fprintln(w, "  Не переименование — повторите с --no-renames.")
 	}
+}
+
+// dropMethodsAndCalls removes methods and calls (ADR_20260928-4 §4) before
+// sync does anything else with the facts: they are dynamic data of the live
+// graph and must never reach the registry, git, the workspace, or a missing
+// mark. Dropped by kind, never by extractor: symbols of kind "method", edges
+// of kind "calls"/"constructs"/"overrides", and "contains"/"implements" edges
+// with a method at either end. `calls` in edgeKinds is likewise ignored:
+// nothing is ever marked missing for it.
+func dropMethodsAndCalls(facts *Facts) *Facts {
+	out := *facts
+	out.Symbols = make([]Symbol, 0, len(facts.Symbols))
+	isMethod := map[string]bool{}
+	for _, s := range facts.Symbols {
+		if s.Kind == "method" {
+			isMethod[s.ID] = true
+			continue
+		}
+		out.Symbols = append(out.Symbols, s)
+	}
+	out.Edges = make([]Edge, 0, len(facts.Edges))
+	for _, e := range facts.Edges {
+		switch e.Kind {
+		case "calls", "constructs", "overrides":
+			continue
+		}
+		if (e.Kind == "contains" || e.Kind == "implements") && (isMethod[e.From] || isMethod[e.To]) {
+			continue
+		}
+		out.Edges = append(out.Edges, e)
+	}
+	var edgeKinds []string
+	for _, k := range facts.EdgeKinds {
+		if k == "calls" {
+			continue
+		}
+		edgeKinds = append(edgeKinds, k)
+	}
+	out.EdgeKinds = edgeKinds
+	return &out
 }
 
 // structuralTypes are the edge kinds sync writes as relations: all organic ones.
@@ -135,12 +178,16 @@ func Sync(model *Model, facts *Facts, opt SyncOptions) (*SyncReport, error) {
 	if err := facts.Validate(); err != nil {
 		return nil, err
 	}
+	facts = dropMethodsAndCalls(facts)
 	if model == nil {
 		return nil, errors.New("nil model")
 	}
 	if opt.Project != "" && opt.Project != model.project {
 		return nil, &UsageError{fmt.Sprintf("model project %q differs from %q", model.project, opt.Project)}
 	}
+	// snapshot, diff and Apply are one edit: see Model.editMu
+	model.editMu.Lock()
+	defer model.editMu.Unlock()
 	model.mu.Lock()
 	base := model.copy()
 	model.mu.Unlock()
@@ -160,7 +207,9 @@ func Sync(model *Model, facts *Facts, opt SyncOptions) (*SyncReport, error) {
 	symbols := map[string]Symbol{}
 	var order []string // symbol ids, in the facts' own (sorted) order
 	for _, s := range facts.Symbols {
-		if included(s.File, manifest.Sources.Include) {
+		// An external symbol has no file to filter by (ADR_20260927-4); it
+		// stays whatever sources.include says.
+		if s.NativeKind == ExternalKind || included(s.File, manifest.Sources.Include) {
 			symbols[s.ID] = s
 			order = append(order, s.ID)
 		}
@@ -183,11 +232,11 @@ func Sync(model *Model, facts *Facts, opt SyncOptions) (*SyncReport, error) {
 		covered[k] = true
 	}
 
-	ents, rels, types := working.registries["entity"], working.registries["relation"], working.registries["relationType"]
+	ents, rels := working.registries["entity"], working.registries["relation"]
 
 	// ------------------------------------------------ registry must be sane
 	taken := map[string]bool{}   // every entity id, any origin
-	bySymbol := map[string]int{} // symbol -> index, non-authored only
+	bySymbol := map[string]int{} // symbol of this language's realization -> index, non-authored only
 	for i, e := range ents.items {
 		id := e.str("id")
 		if id == "" {
@@ -202,9 +251,21 @@ func Sync(model *Model, facts *Facts, opt SyncOptions) (*SyncReport, error) {
 		if e.str("origin") == "authored" {
 			continue
 		}
-		if s := e.str("symbol"); s != "" {
+		// One realization per entity per language (CONTRACT §3): the run of
+		// this facts' language sees only the entry of its own language.
+		langs := map[string]bool{}
+		for _, c := range entries(e, "code") {
+			if l := c.str("lang"); l != "" {
+				if langs[l] {
+					rep.Broken = append(rep.Broken, fmt.Sprintf("%s: в code[] два элемента языка %s", id, l))
+				}
+				langs[l] = true
+			}
+		}
+		if k := entryFor(entries(e, "code"), facts.Language); k >= 0 {
+			s := entries(e, "code")[k].str("symbol")
 			if j, dup := bySymbol[s]; dup {
-				rep.Broken = append(rep.Broken, fmt.Sprintf("%s и %s: у обеих symbol %s", ents.items[j].str("id"), id, s))
+				rep.Broken = append(rep.Broken, fmt.Sprintf("%s и %s: у обеих symbol %s (%s)", ents.items[j].str("id"), id, s, facts.Language))
 				continue
 			}
 			bySymbol[s] = i
@@ -234,9 +295,10 @@ func Sync(model *Model, facts *Facts, opt SyncOptions) (*SyncReport, error) {
 	}
 	held := map[int]bool{}       // entities waiting for a human
 	heldSym := map[string]bool{} // symbols waiting for a human
+	lang := facts.Language
 	adopt(ents.items, symbols, order, match, matched, held, heldSym, rep)
 	if !opt.NoRenames {
-		renames(ents.items, symbols, order, match, matched, held, heldSym, rep)
+		renames(ents.items, symbols, order, match, matched, held, heldSym, lang, rep)
 	}
 
 	// ------------------------------------------------ apply to entities
@@ -248,14 +310,14 @@ func Sync(model *Model, facts *Facts, opt SyncOptions) (*SyncReport, error) {
 		}
 		e := ents.items[i]
 		inCode[e.str("id")] = true
-		if msg := updateEntity(e, symbols[sid]); msg != "" {
+		if msg := updateEntity(e, symbols[sid], lang); msg != "" {
 			rep.Changed = append(rep.Changed, msg)
 			ents.dirty = true
 		}
 	}
 	gone := map[string]bool{}
 	for i, e := range ents.items {
-		if !managed(e) || held[i] {
+		if !managed(e, lang) || held[i] {
 			continue
 		}
 		if _, ok := matched[i]; ok {
@@ -283,8 +345,7 @@ func Sync(model *Model, facts *Facts, opt SyncOptions) (*SyncReport, error) {
 		if s.Namespace != "" {
 			e.set("namespace", s.Namespace)
 		}
-		e.set("codeRef", s.File)
-		e.set("symbol", s.ID)
+		e.set("code", []*object{codeEntry(lang, s)}) // an external symbol has no file, so no ref (ADR_20260927-4)
 		if len(s.Members) > 0 {
 			e.vals["members"] = s.Members
 			e.keys = append(e.keys, "members")
@@ -344,14 +405,10 @@ func Sync(model *Model, facts *Facts, opt SyncOptions) (*SyncReport, error) {
 						r.set("status", "present")
 						changes = append(changes, "status")
 					}
-					// Update via
-					existingViaJSON, hasVia := r.vals["via"]
-					newViaJSON := encodeJSON(edge.Via)
-					if !hasVia || compactJSON(existingViaJSON) != compactJSON(newViaJSON) {
-						r.set("via", edge.Via)
-						if hasVia {
-							changes = append(changes, "via")
-						}
+					// Update the member signature in the evidence of this language
+					hadVia := relationVia(r) != nil
+					if putVia(r, lang, fromSym, edge.Via) {
+						changes = append(changes, map[bool]string{true: "via", false: "evidence"}[hadVia])
 					}
 					if len(changes) > 0 {
 						rels.dirty = true
@@ -369,8 +426,7 @@ func Sync(model *Model, facts *Facts, opt SyncOptions) (*SyncReport, error) {
 			r.set("type", relType)
 			r.set("origin", "code")
 			r.set("status", "present")
-			r.set("via", edge.Via)
-			r.set("evidence", []map[string]string{{"codeRef": fromSym.File, "symbol": fromSym.ID}})
+			r.set("evidence", []*object{evidenceEntry(lang, fromSym, edge.Via)})
 			rels.items = append(rels.items, r)
 			rels.dirty = true
 			confirmed[len(rels.items)-1] = true
@@ -411,7 +467,7 @@ func Sync(model *Model, facts *Facts, opt SyncOptions) (*SyncReport, error) {
 			r.set("type", edge.Kind)
 			r.set("origin", "code")
 			r.set("status", "present")
-			r.set("evidence", []map[string]string{{"codeRef": fromSym.File, "symbol": fromSym.ID}})
+			r.set("evidence", []*object{evidenceEntry(lang, fromSym, nil)})
 			rels.items = append(rels.items, r)
 			rels.dirty = true
 			confirmed[len(rels.items)-1] = true
@@ -447,12 +503,8 @@ func Sync(model *Model, facts *Facts, opt SyncOptions) (*SyncReport, error) {
 				continue
 			}
 			// This is a missing member relation
-			via, hasVia := r.vals["via"]
-			if !hasVia || len(via) == 0 || string(via) == "null" {
-				continue
-			}
-			var v Via
-			if err := json.Unmarshal(via, &v); err != nil {
+			v := relationVia(r)
+			if v == nil {
 				continue
 			}
 			path := strings.Join(v.Path, ",")
@@ -470,12 +522,8 @@ func Sync(model *Model, facts *Facts, opt SyncOptions) (*SyncReport, error) {
 				continue
 			}
 			from, to := r.str("from"), r.str("to")
-			via, hasVia := r.vals["via"]
-			if !hasVia || len(via) == 0 || string(via) == "null" {
-				continue
-			}
-			var v Via
-			if err := json.Unmarshal(via, &v); err != nil {
+			v := relationVia(r)
+			if v == nil {
 				continue
 			}
 			path := strings.Join(v.Path, ",")
@@ -490,11 +538,8 @@ func Sync(model *Model, facts *Facts, opt SyncOptions) (*SyncReport, error) {
 				// Potential rename: same (from, to, path, type) but different member name
 				for _, mi := range missingIndices {
 					r := rels.items[mi]
-					via, _ := r.vals["via"]
-					var v Via
-					json.Unmarshal(via, &v)
 					memberRenameHolds[mi] = true
-					oldMember := v.Member
+					oldMember := relationVia(r).Member
 					for _, newMember := range newMembers[key] {
 						if oldMember != newMember {
 							rep.Renames = append(rep.Renames, fmt.Sprintf("%s (%s) → %s", r.str("id"), oldMember, newMember))
@@ -546,58 +591,14 @@ func Sync(model *Model, facts *Facts, opt SyncOptions) (*SyncReport, error) {
 		}
 	}
 
-	// ------------------------------------------------ relation types
-	declared := map[string]bool{}
-	for _, t := range types.items {
-		declared[t.str("id")] = true
-	}
-	used := map[string]bool{}
-	for _, r := range rels.items {
-		if r.str("origin") == "code" {
-			used[relationType(r)] = true
-		}
-	}
-
-	// Organic types
-	for _, t := range structuralTypes {
-		if used[t] && !declared[t] {
-			o := newObject()
-			o.set("id", t)
-			o.set("origin", "code")
-			o.set("visibility", "visible")
-			types.items = append(types.items, o)
-			types.dirty = true
-			rep.Added = append(rep.Added, "relation-types.json: "+t)
-		}
-	}
-
-	// Member relation types derived from holds/uses edges
-	for _, typeID := range []string{
-		"holds.one", "holds.optional", "holds.many", "holds.many.ro", "holds.keyed", "holds.keyed.ro",
-		"holds.one.internal", "holds.optional.internal", "holds.many.internal", "holds.many.ro.internal",
-		"holds.keyed.internal", "holds.keyed.ro.internal",
-		"uses", "injects",
-	} {
-		if used[typeID] && !declared[typeID] {
-			o := newObject()
-			o.set("id", typeID)
-			o.set("origin", "code")
-			visibility := "visible"
-			if strings.HasSuffix(typeID, ".internal") || typeID == "uses" || typeID == "injects" {
-				visibility = "hidden"
-			}
-			o.set("visibility", visibility)
-			types.items = append(types.items, o)
-			types.dirty = true
-			rep.Added = append(rep.Added, "relation-types.json: "+typeID)
-		}
-	}
-
+	// A relation type needs no record: it is a string on the relation, and what
+	// it means — name, base style, default visibility — is the dictionary's
+	// (CONTRACT §5, §6).
 	if opt.DryRun {
 		return rep, nil
 	}
 	var ops []Op
-	for _, kind := range []string{"entity", "relation", "relationType"} {
+	for _, kind := range []string{"entity", "relation"} {
 		reg := working.registries[kind]
 		if !reg.dirty {
 			continue
@@ -623,7 +624,7 @@ func Sync(model *Model, facts *Facts, opt SyncOptions) (*SyncReport, error) {
 // SyncWorkspace is the non-host CLI path: load, reconcile, and save. Hosts use
 // Sync on their already loaded model and leave Save to the human.
 func SyncWorkspace(workspace string, facts *Facts, opt SyncOptions) (*SyncReport, error) {
-	m, err := LoadModel(workspace, opt.Project)
+	m, err := LoadModel(workspace, opt.Project, opt.DefaultKinds)
 	if err != nil {
 		return nil, err
 	}
@@ -637,24 +638,33 @@ func SyncWorkspace(workspace string, facts *Facts, opt SyncOptions) (*SyncReport
 	return rep, err
 }
 
-// managed: an entity sync answers for — `origin: code`, or adopted earlier.
-// Authored entities and hand-made ones without origin that matched nothing
-// are not sync's business.
-func managed(e *object) bool {
-	origin := e.str("origin")
-	return origin != "authored" && (origin == "code" || e.str("symbol") != "")
+// managed: an entity this run answers for — one realized in the facts'
+// language (its `code[]` has an entry of that language bound to a symbol), or
+// `origin: code` with no symbol bound anywhere. Authored entities, entities
+// realized only in another language, and hand-made ones without origin that
+// matched nothing are not this run's business (ADR_20260930-4).
+func managed(e *object, lang string) bool {
+	if e.str("origin") == "authored" {
+		return false
+	}
+	list := entries(e, "code")
+	if entryFor(list, lang) >= 0 {
+		return true
+	}
+	return e.str("origin") == "code" && !hasBound(list)
 }
 
-// adopt matches entities made without sync (no `symbol`) to symbols, so that
-// a first run keeps their ids instead of minting duplicates. Two rules, in
-// order; each must be unique both ways, otherwise both sides are held:
+// adopt matches entities made without sync (no realization bound to a symbol)
+// to symbols, so that a first run keeps their ids instead of minting
+// duplicates. Two rules, in order; each must be unique both ways, otherwise
+// both sides are held:
 //
-//  1. same file (codeRef without its #/: anchor) and same name; several
+//  1. same file (a `ref` of code[] without its #/: anchor) and same name; several
 //     symbols there (a TS file module and its class) are narrowed by kind;
 //  2. same namespace, same name and the same kind family.
 //
 // Names are compared by baseName (no generic parameter list, no arity), kinds
-// by kindFamily (`abstract-class` ~ `class`): a hand-written registry says
+// by normKind (modifiers stripped): a hand-written registry says
 // `IRunner<in TIn, out TOut>` / `class` where the extractor says `IRunner` /
 // `abstract-class`.
 func adopt(items []*object, symbols map[string]Symbol, order []string,
@@ -668,7 +678,7 @@ func adopt(items []*object, symbols map[string]Symbol, order []string,
 	rules := []rule{
 		{
 			entityKey: func(e *object) string {
-				if f := codeRefFile(e.str("codeRef")); f != "" {
+				if f := refFile(firstRef(entries(e, "code"))); f != "" {
 					return f + "\x00" + baseName(e.str("name"))
 				}
 				return ""
@@ -681,10 +691,10 @@ func adopt(items []*object, symbols map[string]Symbol, order []string,
 				if e.str("kind") == "" {
 					return ""
 				}
-				return e.str("namespace") + "\x00" + baseName(e.str("name")) + "\x00" + kindFamily(e.str("kind"))
+				return e.str("namespace") + "\x00" + baseName(e.str("name")) + "\x00" + normKind(e.str("kind"))
 			},
 			symbolKey: func(s Symbol) string {
-				return s.Namespace + "\x00" + baseName(s.Name) + "\x00" + kindFamily(s.NativeKind)
+				return s.Namespace + "\x00" + baseName(s.Name) + "\x00" + normKind(s.NativeKind)
 			},
 		},
 	}
@@ -701,7 +711,7 @@ func adopt(items []*object, symbols map[string]Symbol, order []string,
 		claims := map[string]int{}
 		var candidates []int
 		for i, e := range items {
-			if e.str("origin") == "authored" || e.str("symbol") != "" || e.str("id") == "" || held[i] {
+			if e.str("origin") == "authored" || hasBound(entries(e, "code")) || e.str("id") == "" || held[i] {
 				continue
 			}
 			if _, ok := matched[i]; ok {
@@ -713,10 +723,10 @@ func adopt(items []*object, symbols map[string]Symbol, order []string,
 			}
 			found := free[k]
 			if r.narrow && len(found) > 1 {
-				// Exact kind first, then the family; neither — leave all.
+				// Exact kind first, then the base kind; neither — leave all.
 				for _, same := range []func(string) bool{
 					func(nk string) bool { return strings.EqualFold(nk, e.str("kind")) },
-					func(nk string) bool { return kindFamily(nk) == kindFamily(e.str("kind")) },
+					func(nk string) bool { return normKind(nk) == normKind(e.str("kind")) },
 				} {
 					var narrowed []string
 					for _, sid := range found {
@@ -755,7 +765,7 @@ func adopt(items []*object, symbols map[string]Symbol, order []string,
 // file and kind. Every such pair is only a candidate: held entities are
 // neither marked missing, held symbols are not minted, until a human decides.
 func renames(items []*object, symbols map[string]Symbol, order []string,
-	match map[string]int, matched map[int]string, held map[int]bool, heldSym map[string]bool, rep *SyncReport) {
+	match map[string]int, matched map[int]string, held map[int]bool, heldSym map[string]bool, lang string, rep *SyncReport) {
 
 	type group struct {
 		ents []int
@@ -769,14 +779,14 @@ func renames(items []*object, symbols map[string]Symbol, order []string,
 		return groups[k]
 	}
 	for i, e := range items {
-		if !managed(e) || held[i] || e.str("status") == "missing" {
+		if !managed(e, lang) || held[i] || e.str("status") == "missing" {
 			continue
 		}
 		if _, ok := matched[i]; ok {
 			continue
 		}
-		if f := codeRefFile(e.str("codeRef")); f != "" {
-			g := at(f + "\x00" + kindFamily(e.str("kind")))
+		if f := refFile(entityRef(e, lang)); f != "" {
+			g := at(f + "\x00" + normKind(e.str("kind")))
 			g.ents = append(g.ents, i)
 		}
 	}
@@ -785,7 +795,7 @@ func renames(items []*object, symbols map[string]Symbol, order []string,
 			continue
 		}
 		s := symbols[sid]
-		if g := groups[s.File+"\x00"+kindFamily(s.NativeKind)]; g != nil {
+		if g := groups[s.File+"\x00"+normKind(s.NativeKind)]; g != nil {
 			g.syms = append(g.syms, sid)
 		}
 	}
@@ -811,13 +821,34 @@ func renames(items []*object, symbols map[string]Symbol, order []string,
 }
 
 // updateEntity brings a matched entity in line with its symbol. id, name and
-// kind are the human's once the entity exists; namespace, codeRef, members
-// and status follow the code. Returns a report line, or "" if nothing changed.
-func updateEntity(e *object, s Symbol) string {
+// kind are the human's once the entity exists; namespace, the realization of
+// this language in code[] (lang, ref, symbol), members and status follow the
+// code. Returns a report line, or "" if nothing changed.
+func updateEntity(e *object, s Symbol, lang string) string {
 	var changes []string
-	adopted := e.str("symbol") == ""
-	if e.str("symbol") != s.ID {
-		e.set("symbol", s.ID)
+	list := entries(e, "code")
+	k := entryFor(list, lang)
+	adopted := k < 0
+	if adopted {
+		// The hand-written link to a file (a `ref` only) becomes the realization,
+		// preferring the one that names the symbol's own file; none: a new entry.
+		for i, c := range list {
+			if c.str("symbol") == "" && c.str("lang") == "" && (k < 0 || refFile(c.str("ref")) == s.File) {
+				k = i
+			}
+		}
+		if k < 0 {
+			list = append(list, newObject())
+			k = len(list) - 1
+		}
+	}
+	old, _ := list[k].MarshalJSON()
+	setCodeEntry(list[k], lang, s)
+	if now, _ := list[k].MarshalJSON(); adopted || compactJSON(old) != compactJSON(now) {
+		setEntries(e, "code", list) // written only when it changed: a rewrite would reformat the file's own bytes
+		if !adopted {
+			changes = append(changes, "code")
+		}
 	}
 	if e.str("origin") != "code" {
 		e.set("origin", "code")
@@ -830,10 +861,6 @@ func updateEntity(e *object, s Symbol) string {
 			e.set("namespace", s.Namespace)
 		}
 		changes = append(changes, "namespace")
-	}
-	if e.str("codeRef") != s.File {
-		e.set("codeRef", s.File)
-		changes = append(changes, "codeRef")
 	}
 	if len(s.Members) > 0 {
 		if raw, ok := e.vals["members"]; !ok || compactJSON(raw) != compactJSON(s.Members) {
@@ -897,13 +924,6 @@ func included(file string, include []string) bool {
 	return false
 }
 
-func codeRefFile(ref string) string {
-	if i := strings.IndexAny(ref, "#:"); i >= 0 {
-		return ref[:i]
-	}
-	return ref
-}
-
 func relationType(r *object) string {
 	if t := r.str("type"); t != "" {
 		return t
@@ -916,18 +936,13 @@ func triple(from, to, kind string) string { return from + "\x00" + to + "\x00" +
 // relationKey returns the identification key for any relation: either triple
 // (from, to, type) for organic edges or member key for member relations.
 func relationKey(r *object) string {
-	via, ok := r.vals["via"]
-	if !ok || len(via) == 0 || string(via) == "null" {
+	v := relationVia(r)
+	if v == nil {
 		// Organic relation
 		return triple(r.str("from"), r.str("to"), relationType(r))
 	}
 	// Member relation: key is (from, to, family, via.member, via.path)
-	var v Via
-	if err := json.Unmarshal(via, &v); err != nil {
-		// Malformed via; treat as organic for ordering
-		return triple(r.str("from"), r.str("to"), relationType(r))
-	}
-	return memberRelationKey(r.str("from"), r.str("to"), relationType(r), &v)
+	return memberRelationKey(r.str("from"), r.str("to"), relationType(r), v)
 }
 
 // memberRelationKey creates the identification key for a member relation:
@@ -1043,9 +1058,9 @@ func mintMemberRelationID(from, to string, via *Via, taken map[string]bool) stri
 }
 
 // newEntityID is the base of a new entity's id. A type, function or value is
-// named by its short name (`e_repetitionguard`). A module is named by its whole
-// symbol id with its native kind in front — `e_namespace_neuromodflownet_onnx_diagnostics`,
-// `e_assembly_neuromodflownet_onnx`, `e_file_editor_src_canvas_diagramcanvas`:
+// named by its short name (`e_invoiceservice`). A module is named by its whole
+// symbol id with its native kind in front — `e_namespace_shop_billing_diagnostics`,
+// `e_assembly_shop_billing`, `e_file_web_src_canvas_drawing`:
 // module short names (`Diagnostics`, `Tracking`) repeat across assemblies and
 // read as something else, and a namespace and an assembly often share a name.
 func newEntityID(s Symbol) string {
@@ -1086,20 +1101,24 @@ func baseName(name string) string {
 	return name
 }
 
-// kindFamily compares kinds without their modifiers: a native kind written as
-// `<modifier>-<kind>` (`abstract-class`, `static-class`, `record-struct`) is
-// the family of its last segment. The registry's `class` then matches the
-// extractor's `abstract-class`; `record-struct` ~ `struct`.
-func kindFamily(kind string) string {
-	kind = strings.ToLower(strings.TrimSpace(kind))
-	if i := strings.LastIndexByte(kind, '-'); i >= 0 {
-		return kind[i+1:]
+// kindModifiers are the prefixes an extractor puts in front of a base kind in
+// `nativeKind` (docs/extractors/csharp.md, "Модификаторы в nativeKind");
+// the same list as KIND_MODIFIERS in editor/src/ui/kindIcons.ts.
+var kindModifiers = map[string]bool{"abstract": true, "static": true, "sealed": true, "readonly": true, "ref": true}
+
+// normKind is the base kind: case and surrounding space ignored, leading
+// known modifiers (`abstract-class` → `class`) stripped. Compound kinds such
+// as `record-struct` stay whole and are not a `struct`.
+func normKind(kind string) string {
+	parts := strings.Split(strings.ToLower(strings.TrimSpace(kind)), "-")
+	for len(parts) > 1 && kindModifiers[parts[0]] {
+		parts = parts[1:]
 	}
-	return kind
+	return strings.Join(parts, "-")
 }
 
 // slug is the lower-cased name with every run of non-letters and non-digits
-// turned into one `_`: `NeuroModFlowNet.ONNX` → `neuromodflownet_onnx`.
+// turned into one `_`: `Shop.Billing` → `shop_billing`.
 func slug(name string) string {
 	var b strings.Builder
 	gap := false
@@ -1239,10 +1258,22 @@ type registry struct {
 	top     *object
 	items   []*object
 	dirty   bool
+	// saved: the ids the file held when it was loaded or last saved. A record
+	// outside it was created in the unsaved working state and can be withdrawn
+	// (ADR_20260930-8). Replaced, never mutated, so a copy may share it.
+	saved map[string]bool
+}
+
+// markSaved remembers the ids now in items as the saved ones.
+func (r *registry) markSaved() {
+	r.saved = make(map[string]bool, len(r.items))
+	for _, o := range r.items {
+		r.saved[o.str("id")] = true
+	}
 }
 
 func loadRegistry(dir, name, listKey string, fresh func() *object) (*registry, error) {
-	r := &registry{file: filepath.Join(dir, name), name: name, listKey: listKey}
+	r := &registry{file: filepath.Join(dir, name), name: name, listKey: listKey, saved: map[string]bool{}}
 	data, err := os.ReadFile(r.file)
 	if errors.Is(err, fs.ErrNotExist) {
 		r.top = fresh()
@@ -1260,6 +1291,7 @@ func loadRegistry(dir, name, listKey string, fresh func() *object) (*registry, e
 			return nil, fmt.Errorf("%s: %s: %w", name, listKey, err)
 		}
 	}
+	r.markSaved()
 	return r, nil
 }
 

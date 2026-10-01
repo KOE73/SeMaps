@@ -814,27 +814,6 @@ body {
   color: var(--muted);
 }
 
-.drop-hint {
-  position: absolute;
-  inset: 16px;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  border: 4px dashed var(--accent-soft);
-  border-radius: 12px;
-  background: var(--accent-soft);
-  pointer-events: none;
-  z-index: 30;
-}
-
-.drop-hint-card {
-  padding: calc(20px * var(--ui-space)) calc(28px * var(--ui-space));
-  border: 1px solid var(--line);
-  border-radius: 12px;
-  background: var(--panel);
-  text-align: center;
-}
-
 /* --------------------------------------------------------------- inspector */
 
 /*
@@ -1105,6 +1084,206 @@ body {
 .style-empty {
   padding: calc(12px * var(--ui-space));
   text-align: center;
+}
+
+/* Styles panel tree: group of the dictionary → type (entity kind or relation type) → styles. */
+.style-tree-group,
+.style-tree-kind {
+  display: flex;
+  align-items: center;
+  gap: calc(6px * var(--ui-space));
+  padding: calc(3px * var(--ui-space)) calc(6px * var(--ui-space));
+  border: 1px solid transparent;
+  border-radius: 6px;
+  cursor: pointer;
+  user-select: none;
+}
+
+.style-tree-group {
+  font-weight: 700;
+  font-size: calc(12px * var(--ui-text));
+}
+
+.style-tree-kind {
+  padding-left: calc(18px * var(--ui-space));
+  font-size: calc(12px * var(--ui-text));
+}
+
+.style-tree-group:hover,
+.style-tree-kind:hover {
+  background: var(--hover);
+}
+
+.style-tree-group.is-selected,
+.style-tree-kind.is-selected {
+  border-color: var(--accent);
+}
+
+.style-tree-chevron {
+  flex: 0 0 auto;
+  width: 14px;
+  color: var(--muted);
+}
+
+.style-tree-name {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.style-tree-id {
+  font-size: calc(10px * var(--ui-text));
+  font-weight: 400;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  max-width: 40%;
+}
+
+.style-row.style-tree-leaf {
+  margin-left: calc(28px * var(--ui-space));
+  gap: calc(6px * var(--ui-space));
+  padding: calc(2px * var(--ui-space)) calc(4px * var(--ui-space));
+}
+
+.style-tree-empty {
+  padding: calc(2px * var(--ui-space)) 0 calc(4px * var(--ui-space)) calc(34px * var(--ui-space));
+  font-size: calc(11px * var(--ui-text));
+}
+
+/* Styles panel row: apply · copy / delete · count, a dense 2×2 at the row's end. */
+.style-row-actions {
+  flex: 0 0 auto;
+  display: grid;
+  grid-template-columns: auto auto;
+  align-items: center;
+  justify-items: center;
+  gap: 1px;
+}
+
+.style-row-actions .btn-icon {
+  padding: 1px;
+  line-height: 0;
+  font-size: calc(11px * var(--ui-text));
+}
+
+.style-row-actions .style-row-count {
+  min-width: 0;
+  padding: 0 3px;
+  border-radius: 6px;
+  font-size: calc(9px * var(--ui-text));
+  line-height: 1.3;
+}
+
+/* Properties: the current style, and the variants of the element's type. */
+.style-head {
+  align-items: center;
+}
+
+.style-head-name {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-size: calc(12px * var(--ui-text));
+  font-weight: 600;
+}
+
+.style-variants {
+  display: flex;
+  flex-wrap: wrap;
+  gap: calc(4px * var(--ui-space));
+  margin-top: calc(4px * var(--ui-space));
+}
+
+.style-variant {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 2px;
+  width: 72px;
+  padding: 3px;
+  border: 1px solid var(--line);
+  border-radius: 6px;
+  background: var(--panel-alt);
+  color: var(--text);
+  cursor: pointer;
+}
+
+.style-variant:hover {
+  background: var(--hover);
+}
+
+.style-variant.is-active {
+  border-color: var(--accent);
+  background: var(--accent-soft);
+}
+
+.style-variant-preview {
+  display: flex;
+  padding: 1px;
+  border-radius: 4px;
+  background: var(--input-bg);
+}
+
+.style-variant-name {
+  max-width: 100%;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-size: calc(10px * var(--ui-text));
+}
+
+/* «Выделить»: ready colours, small and dense. */
+.highlight-palette {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 3px;
+  margin: calc(2px * var(--ui-space)) 0 calc(4px * var(--ui-space));
+}
+
+.highlight-swatch {
+  width: 16px;
+  height: 16px;
+  padding: 0;
+  border: 2px solid;
+  border-radius: 4px;
+  cursor: pointer;
+}
+
+.highlight-swatch:hover {
+  transform: scale(1.15);
+}
+
+.highlight-swatch.is-active {
+  outline: 2px solid var(--accent);
+  outline-offset: 1px;
+}
+
+.highlight-reset {
+  margin-left: 2px;
+  font-size: calc(11px * var(--ui-text));
+}
+
+/* «Выделить» → значок: the icon in effect and its name; the picker opens under it. */
+.override-icon summary {
+  display: flex;
+  align-items: center;
+  gap: calc(6px * var(--ui-space));
+  cursor: pointer;
+  list-style: none;
+}
+
+.override-icon summary::-webkit-details-marker {
+  display: none;
+}
+
+.override-icon-name.is-inherited {
+  opacity: 0.6;
 }
 
 /* -------------------------------------------------------------- style form */
@@ -1822,10 +2001,29 @@ textarea {
 }
 
 .ctx-icon {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
   width: 16px;
   flex-shrink: 0;
   text-align: center;
   color: var(--accent);
+}
+
+/* Tabler icons (svg strings) in the icon column and the submenu arrow. */
+.ctx-icon svg {
+  width: 14px;
+  height: 14px;
+  fill: none;
+  stroke: currentColor;
+}
+
+.ctx-arrow svg {
+  display: block;
+  width: 12px;
+  height: 12px;
+  fill: none;
+  stroke: currentColor;
 }
 
 .ctx-label {
@@ -1870,6 +2068,84 @@ textarea {
   flex-shrink: 0;
   font-size: calc(9px * var(--ui-text));
   color: var(--muted);
+}
+
+/* -------------------------------------------------------- icon picker */
+
+.icon-picker {
+  display: flex;
+  flex-direction: column;
+  gap: calc(6px * var(--ui-space));
+}
+
+.icon-picker-head {
+  display: flex;
+  align-items: center;
+  gap: calc(8px * var(--ui-space));
+}
+
+.icon-picker-current svg {
+  width: 20px;
+  height: 20px;
+  fill: none;
+  stroke: currentColor;
+}
+
+.icon-picker-name {
+  flex: 1;
+  font-family: monospace;
+  font-size: calc(11px * var(--ui-text));
+}
+
+.icon-picker-name.is-inherited {
+  color: var(--muted);
+}
+
+.icon-picker-grid {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 2px;
+  max-height: 150px;
+  overflow-y: auto;
+}
+
+.icon-picker-item {
+  width: 28px;
+  height: 28px;
+  padding: 0;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  border: 1px solid transparent;
+  border-radius: 5px;
+  background: transparent;
+  color: var(--text);
+  cursor: pointer;
+}
+
+.icon-picker-item:hover {
+  background: var(--hover);
+}
+
+.icon-picker-item.is-active {
+  background: var(--accent-soft);
+  border-color: var(--accent);
+  color: var(--accent);
+}
+
+.icon-picker-item svg {
+  width: 18px;
+  height: 18px;
+  fill: none;
+  stroke: currentColor;
+}
+
+/* The tile of a project or view in the catalogue (a registry icon, tinted by theme). */
+.catalog-icon svg {
+  width: 1.2em;
+  height: 1.2em;
+  fill: none;
+  stroke: currentColor;
 }
 
 /* ------------------------------------------------------ workspace forms */
@@ -2047,7 +2323,7 @@ textarea {
 }
 
 .help-file.is-coderef .help-file-note::after {
-  content: "  →  codeRef";
+  content: "  →  code[]";
   color: var(--accent);
   font-family: monospace;
 }
@@ -2353,3 +2629,45 @@ textarea {
 }
 .catalog-dirty { color: #e0a83b; margin-left: 6px; font-size: 15px; }
 .catalog-registry-dirty { color: #e0a83b; font-size: 12px; padding: 2px 10px 5px; }
+
+/* «Изменения»: unsaved changes beside the catalog (ADR_20260926-2) */
+.catalog-row .catalog-eye { visibility: visible; opacity: 0.45; }
+.catalog-row:hover .catalog-eye { opacity: 1; }
+.changes-panel { width: 100%; height: 100%; overflow-y: auto; background: var(--panel); }
+.changes-body { padding: calc(8px * var(--ui-space)); display: flex; flex-direction: column; gap: calc(8px * var(--ui-space)); }
+.changes-head { display: flex; align-items: center; justify-content: space-between; gap: 6px; }
+.changes-title { font-weight: 600; font-size: 13px; }
+.changes-empty { color: var(--muted); font-size: 13px; padding: 8px 2px; }
+.changes-group { display: flex; flex-direction: column; gap: 2px; }
+.changes-group > .section-label { display: flex; align-items: center; gap: 6px; }
+.changes-row {
+  display: flex; align-items: center; gap: 8px; width: 100%; text-align: left;
+  padding: 5px 6px; border: 0; border-radius: 6px; background: transparent; color: inherit; cursor: pointer;
+}
+.changes-row:hover { background: var(--hover); }
+.changes-icon { width: 18px; flex: none; display: inline-flex; justify-content: center; }
+.changes-text { display: flex; flex-direction: column; min-width: 0; flex: 1; }
+.changes-name { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: 13px; }
+.changes-kind { font-size: 11px; color: var(--muted); }
+.changes-author { font-size: 11px; padding: 1px 6px; border-radius: 8px; flex: none; }
+.changes-row.author-human .changes-author { background: rgb(59 130 246 / 15%); }
+.changes-row.author-agent .changes-author { background: rgb(224 168 59 / 22%); }
+
+/* «Разводка линий»: the router's constants, live, with a picture of the zones */
+.routing-panel { width: 100%; height: 100%; overflow-y: auto; background: var(--panel); }
+.routing-body { padding: calc(8px * var(--ui-space)); display: flex; flex-direction: column; gap: calc(8px * var(--ui-space)); }
+.routing-hint { color: var(--muted); font-size: 12px; }
+.routing-head { display: flex; align-items: center; justify-content: space-between; gap: 6px; }
+.routing-zones { display: flex; align-items: center; gap: 6px; font-size: 13px; }
+.routing-svg { width: 100%; height: auto; display: block; }
+.routing-legend { display: flex; flex-wrap: wrap; gap: 4px 10px; font-size: 11px; color: var(--muted); }
+.routing-legend-item { display: inline-flex; align-items: center; gap: 4px; }
+.routing-legend-item i { width: 10px; height: 10px; border: 1px solid; display: inline-block; }
+.routing-group { display: flex; flex-direction: column; gap: calc(6px * var(--ui-space)); }
+.routing-row { display: grid; grid-template-columns: 1fr auto; gap: 1px 8px; }
+.routing-label { grid-column: 1 / -1; font-size: 12px; }
+.routing-controls { display: flex; align-items: center; gap: 6px; min-width: 0; }
+.routing-range { flex: 1; min-width: 0; }
+.routing-number { width: 58px; }
+.routing-default { justify-self: end; font-size: 11px; color: var(--muted); }
+.routing-reset:disabled { opacity: 0.35; }

@@ -5,5 +5,7 @@ export * from "./FiltersPanel.js";
 export * from "./StylesPanel.js";
 export * from "./TemplatesPanel.js";
 export * from "./CatalogPanel.js";
+export * from "./ChangesPanel.js";
 export * from "./BasePanel.js";
 export * from "./NeighbourhoodPanel.js";
+export * from "./RoutingPanel.js";

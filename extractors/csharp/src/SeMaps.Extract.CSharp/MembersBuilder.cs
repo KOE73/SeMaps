@@ -10,15 +10,52 @@ namespace SeMaps.Extract.CSharp;
 /// </summary>
 internal static class MembersBuilder
 {
-    public static List<MemberFact>? Build(INamedTypeSymbol symbol, string kind)
+    /// <summary>
+    /// Locates a symbol's declaration as (file, line) relative to the root,
+    /// or null when it has none under the root (e.g. compiler-generated).
+    /// </summary>
+    internal delegate (string File, int Line)? Locate(ISymbol symbol);
+
+    public static (List<MemberFact>? Members, Dictionary<string, int>? MemberLines) Build(
+        INamedTypeSymbol symbol, string kind, string symbolFile, Locate locate)
     {
-        return symbol.TypeKind switch
+        var members = symbol.TypeKind switch
         {
             TypeKind.Enum => BuildEnumMembers(symbol),
             TypeKind.Interface => BuildInterfaceMembers(symbol),
             TypeKind.Class or TypeKind.Struct => BuildDataMembers(symbol),
             _ => null, // delegate: no members concept in the contract
         };
+
+        Dictionary<string, int>? memberLines = null;
+        if (members is not null)
+        {
+            foreach (var member in members)
+            {
+                var owner = symbol.GetMembers(member.Name).FirstOrDefault(m => !m.IsImplicitlyDeclared);
+                if (owner is null)
+                {
+                    continue;
+                }
+
+                var location = locate(owner);
+                // A member declared outside the symbol's own file is left out
+                // (docs/EXTRACTOR.md §2.1): memberLines only points into `file`.
+                if (location is not { } loc || loc.File != symbolFile)
+                {
+                    continue;
+                }
+
+                memberLines ??= new Dictionary<string, int>(StringComparer.Ordinal);
+                // Overloads share a name: keep the smallest line.
+                if (!memberLines.TryGetValue(member.Name, out var existing) || loc.Line < existing)
+                {
+                    memberLines[member.Name] = loc.Line;
+                }
+            }
+        }
+
+        return (members, memberLines);
     }
 
     private static List<MemberFact> BuildEnumMembers(INamedTypeSymbol symbol)

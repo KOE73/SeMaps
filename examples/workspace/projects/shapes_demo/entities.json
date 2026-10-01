@@ -1,79 +1,130 @@
 {
   "entities": [
     {
-      "id": "actor_user",
-      "name": "Владелец схемы",
+      "id": "e_actor_user",
       "kind": "external",
       "origin": "authored",
       "status": "present",
       "members": []
     },
     {
-      "id": "uc_edit",
-      "name": "Править содержимое блока",
+      "id": "e_uc_edit",
       "kind": "usecase",
       "origin": "authored",
       "status": "present",
       "members": []
     },
     {
-      "id": "cls_template",
-      "name": "TemplateLibrary",
+      "id": "e_cls_template",
       "kind": "class",
       "origin": "authored",
       "status": "present",
-      "codeRef": "editor/src/content/TemplateLibrary.ts",
+      "code": [
+        {
+          "ref": "editor/src/content/TemplateLibrary.ts"
+        }
+      ],
       "members": [
-        { "kind": "field", "name": "sheet", "type": "WireTemplateSheet", "visibility": "private" },
-        { "kind": "field", "name": "compiled", "type": "Map<string, CompileResult>", "visibility": "private" },
-        { "kind": "method", "name": "load()", "type": "Promise<void>", "visibility": "public" },
-        { "kind": "method", "name": "get(id)", "type": "CompileResult", "visibility": "public" },
-        { "kind": "method", "name": "setText(id, src)", "type": "CompileResult", "visibility": "public" }
+        {
+          "kind": "field",
+          "name": "sheet",
+          "type": "WireTemplateSheet",
+          "visibility": "private"
+        },
+        {
+          "kind": "field",
+          "name": "compiled",
+          "type": "Map<string, CompileResult>",
+          "visibility": "private"
+        },
+        {
+          "kind": "method",
+          "name": "load()",
+          "type": "Promise<void>",
+          "visibility": "public"
+        },
+        {
+          "kind": "method",
+          "name": "get(id)",
+          "type": "CompileResult",
+          "visibility": "public"
+        },
+        {
+          "kind": "method",
+          "name": "setText(id, src)",
+          "type": "CompileResult",
+          "visibility": "public"
+        }
       ]
     },
     {
-      "id": "tbl_templates",
-      "name": "templates.json",
+      "id": "e_tbl_templates",
       "kind": "database",
       "origin": "authored",
       "status": "present",
       "members": [
-        { "kind": "field", "name": "id", "type": "text PK" },
-        { "kind": "field", "name": "name", "type": "text" },
-        { "kind": "field", "name": "lines", "type": "text[]" }
+        {
+          "kind": "field",
+          "name": "id",
+          "type": "text PK"
+        },
+        {
+          "kind": "field",
+          "name": "name",
+          "type": "text"
+        },
+        {
+          "kind": "field",
+          "name": "lines",
+          "type": "text[]"
+        }
       ]
     },
     {
-      "id": "store_assets",
-      "name": "content/",
+      "id": "e_store_assets",
       "kind": "database",
       "origin": "authored",
       "status": "present",
       "members": []
     },
     {
-      "id": "dec_valid",
-      "name": "Текст разобрался?",
+      "id": "e_dec_valid",
       "kind": "decision",
       "origin": "authored",
       "status": "present",
       "members": []
     },
     {
-      "id": "stage_compile",
-      "name": "Компиляция",
+      "id": "e_stage_compile",
       "kind": "stage",
       "origin": "authored",
       "status": "present",
       "members": []
     },
     {
-      "id": "pic_model",
-      "name": "Модель",
+      "id": "e_pic_model",
       "kind": "concept",
       "origin": "authored",
       "status": "present",
       "members": []
+    },
+    {
+      "id": "e_zone_human",
+      "kind": "group",
+      "origin": "authored",
+      "status": "present"
+    },
+    {
+      "id": "e_zone_machine",
+      "kind": "group",
+      "origin": "authored",
+      "status": "present"
+    },
+    {
+      "id": "e_zone_storage",
+      "kind": "group",
+      "origin": "authored",
+      "status": "present"
     }
   ]
 }

@@ -8,6 +8,8 @@ import type {
 } from "./types.js";
 import type { EntityEntry, ProjectBundle, RelationEntry } from "./wire-types.js";
 import { elementRect, isContainer } from "./types.js";
+import { entityDisplayName, textLanguageOf } from "./entityName.js";
+import { newRelationId } from "./relationId.js";
 
 /**
  * The loaded diagram: a containment tree of elements, a flat list of edges that
@@ -68,6 +70,50 @@ export class DiagramDocument {
     if (Array.isArray(raw)) return raw;
     if (raw && Array.isArray((raw as any).relations)) return (raw as any).relations;
     return [];
+  }
+
+  /**
+   * The language names are shown in: the editor's data language, set by the
+   * canvas when it takes the model. A viewer's choice, never written to a file.
+   */
+  lang = "ru";
+
+  /** The project's languages in order; empty when the model has no bundle. */
+  get languages(): readonly string[] {
+    return this.bundle?.project?.languages ?? [];
+  }
+
+  /**
+   * The language a text is written in: `lang` when the project has it, else the
+   * project's first — never a language the project does not have.
+   */
+  get textLang(): string {
+    return textLanguageOf(this.languages, this.lang);
+  }
+
+  /** The display name of the entity `id` in `lang` (see `entityDisplayName`); the id when it has none. */
+  entityName(id: string, lang = this.lang): string {
+    return this.nameOfEntity(this.entities.find((e) => e.id === id), id, lang);
+  }
+
+  /** The display name of a registry record, or of an id with no record yet. */
+  nameOfEntity(entity: EntityEntry | undefined, id = entity?.id ?? "", lang = this.lang): string {
+    return entityDisplayName(entity, id, this.bundle?.textRegistries, lang, this.languages);
+  }
+
+  /**
+   * Re-resolve the caption of every element that has a name to resolve — its
+   * registry record or a name text — after the language or a text changed.
+   * An element with neither (a block just drawn, not yet named) keeps its label.
+   */
+  refreshNames(): void {
+    const entities = new Map(this.entities.map((e) => [e.id, e]));
+    for (const el of this.elements()) {
+      const entity = entities.get(el.id);
+      const hasText = Object.values(this.bundle?.textRegistries ?? {}).some((r) => r.entries?.[el.id]?.name);
+      if (entity === undefined && !hasText) continue;
+      el.label = this.nameOfEntity(entity, el.id);
+    }
   }
 
   getText(
@@ -287,6 +333,28 @@ export class DiagramDocument {
 
   addEdge(edge: DiagramEdge): void {
     this.edges.push(edge);
+  }
+
+  /**
+   * A line drawn by hand: an authored relation of the registry and its line on
+   * this view (ADR_20260930-7 — a line exists on no view alone). Saving sends the
+   * relation and, when the type is hidden by default, the `except` entry that
+   * shows it, in one batch. Returns the new relation's id.
+   */
+  drawRelation(from: string, to: string, type: string, label: string, styleId?: string | null): string {
+    const bundle = this.bundle;
+    const taken = new Set<string>([...this.relations.map((r) => r.id), ...this.edges.map((e) => e.id)]);
+    const id = newRelationId(from, to, type, taken);
+    if (bundle) {
+      const catalog = (bundle.relations ??= { relations: [] });
+      (catalog.relations ??= []).push({ id, from, to, type, origin: "authored", status: "present" });
+    }
+    if (label !== "") this.setText(id, { name: label }, this.textLang);
+    this.addEdge({
+      id, from, to, type, label, origin: "authored",
+      ...(styleId ? { styleId } : {}),
+    });
+    return id;
   }
 
   /** Centre of an element, in model coordinates. */

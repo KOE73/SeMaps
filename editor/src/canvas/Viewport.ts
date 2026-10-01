@@ -106,6 +106,23 @@ export class Viewport {
     this.set({ panX: this.state.panX + dx, panY: this.state.panY + dy });
   }
 
+  /**
+   * Put `bounds` in the middle of the viewport. The zoom stays unless the
+   * object would be unreadably small (below 0.8) or not fit.
+   */
+  centerOn(bounds: Rect | null, size: { width: number; height: number }): void {
+    if (bounds === null || size.width === 0 || size.height === 0) return;
+    const fits = Math.min(size.width / (bounds.width + FIT_PADDING * 2), size.height / (bounds.height + FIT_PADDING * 2));
+    let zoom = this.state.zoom < 0.8 ? Math.min(1, fits) : this.state.zoom;
+    zoom = clampZoom(Math.min(zoom, fits));
+    this.state = {
+      zoom,
+      panX: size.width / 2 - (bounds.x + bounds.width / 2) * zoom,
+      panY: size.height / 2 - (bounds.y + bounds.height / 2) * zoom,
+    };
+    this.apply();
+  }
+
   /** Fit `bounds` into a viewport of `size`, never magnifying past FIT_MAX_ZOOM. */
   fit(bounds: Rect | null, size: { width: number; height: number }): void {
     if (bounds === null || size.width === 0 || size.height === 0) return;

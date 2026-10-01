@@ -1,7 +1,10 @@
 import { el, replaceChildren } from "../util/dom.js";
+import { iconEl } from "../ui/icons.js";
+import { kindIconEl } from "../ui/kindIcons.js";
 import { i18n } from "../workbench/i18n/I18nService.js";
 import type { DiagramEditor } from "./DiagramEditor.js";
 import { placeEntities } from "./placeEntity.js";
+import { realizationSearchText } from "../model/realizations.js";
 
 export class BasePanel {
   /** Kinds the list is narrowed to; empty means every kind. */
@@ -43,8 +46,9 @@ export class BasePanel {
     const found = entities.filter((e: any) => {
       if (!e) return false;
       const id = String(e.id ?? "");
-      const name = String(texts[id]?.name || e.name || id);
-      return name.toLowerCase().includes(query) || id.toLowerCase().includes(query);
+      const name = doc.nameOfEntity(e);
+      return name.toLowerCase().includes(query) || id.toLowerCase().includes(query) ||
+        realizationSearchText(e).toLowerCase().includes(query);
     });
 
     // A kind picked in another project, or gone since, must not hide everything.
@@ -62,7 +66,7 @@ export class BasePanel {
       this.body,
       ...matches.map((e: any) => {
         const id = String(e?.id ?? "");
-        const name = String(texts[id]?.name || e?.name || id);
+        const name = doc.nameOfEntity(e);
         const isPlaced = placedIds.has(id);
 
         const row = document.createElement("div");
@@ -102,7 +106,7 @@ export class BasePanel {
         row.appendChild(labelCol);
         
         if (isPlaced) {
-          const b = el("span", { text: "✓", title: "На виде" });
+          const b = el("span", { title: "На виде" }, [iconEl("check")]);
           b.style.color = "var(--accent)";
           b.style.fontSize = "12px";
           b.style.flexShrink = "0";
@@ -138,13 +142,13 @@ export class BasePanel {
     const counts = new Map<string, number>();
     for (const e of found) counts.set(String(e.kind ?? ""), (counts.get(String(e.kind ?? "")) ?? 0) + 1);
 
-    const chip = (label: string, count: number, active: boolean, onClick: () => void, title?: string): HTMLElement =>
+    const chip = (label: string, count: number, active: boolean, onClick: () => void, title?: string, kind?: string): HTMLElement =>
       el("button", {
         type: "button",
         class: `kind-chip${active ? " is-active" : ""}${count === 0 ? " is-empty" : ""}`,
         title,
         on: { click: onClick },
-      }, [el("span", { text: label }), el("span", { class: "kind-chip-count", text: String(count) })]);
+      }, [kind !== undefined ? kindIconEl("symbol", kind) : null, el("span", { text: label }), el("span", { class: "kind-chip-count", text: String(count) })]);
 
     replaceChildren(
       this.kindsSlot,
@@ -157,7 +161,7 @@ export class BasePanel {
           if (this.kinds.has(kind)) this.kinds.delete(kind);
           else this.kinds.add(kind);
           this.render();
-        }, t.kindHint),
+        }, t.kindHint, kind),
       ),
     );
   }

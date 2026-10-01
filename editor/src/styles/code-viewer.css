@@ -185,6 +185,10 @@
   color: #d4d4d8;
 }
 
+.semaps-code-line-target {
+  background: rgba(79, 140, 255, 0.22);
+}
+
 /* ------------------------------------------------------------------ Footer */
 
 .semaps-code-foot {
@@ -384,12 +388,19 @@
   stroke: #60a5fa;
 }
 
+/* The button's label is the realization's language tag (go, c#, ts, …): text, not a glyph. */
 .semaps-node-code .semaps-node-code-icon {
   fill: #e4e4e7;
+  stroke: none;
+  font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
   font-weight: 700;
   transition: fill 0.15s ease;
 }
 
 .semaps-node-code:hover .semaps-node-code-icon {
   fill: #ffffff;
+}
+
+.semaps-node-code.is-missing .semaps-node-code-icon {
+  text-decoration: line-through;
 }

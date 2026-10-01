@@ -25,13 +25,24 @@ type toolAPI struct {
 	workspace string
 	models    *modelService
 	runs      *runStore
-	syncMu    sync.Mutex // one sync at a time: both write the same registry
+	// watch is nil for --workspace (no .semaps file, so no extractors and no
+	// watchers) and in tests that do not exercise step 5. When set, an edit
+	// to `extractors:` reloads it so a `watch` toggle takes effect at once,
+	// with no host restart (PLAN_20260928-4_host_watch-sources.md step 5).
+	watch    *watchManager
+	settings *mcpSettingsBox // the `mcp:` section, live (PLAN_20260928-7 step 2)
+	syncMu   sync.Mutex      // one sync at a time: both write the same registry
 }
 
-func registerToolAPI(mux *http.ServeMux, file, workspace string, models *modelService) {
-	api := &toolAPI{file: file, workspace: workspace, models: models}
+// onFinish, when not nil, is attached to the run store so something outside
+// the tool API (the graph service, PLAN_20260928_host_graph-provider.md step
+// 3/5) hears about a finished run without the tool API knowing it exists.
+// watch, when not nil, is reloaded after every change to `extractors:`.
+func registerToolAPI(mux *http.ServeMux, file, workspace string, models *modelService, onFinish func(*runInfo), watch *watchManager, settings *mcpSettingsBox) {
+	api := &toolAPI{file: file, workspace: workspace, models: models, watch: watch, settings: settings}
 	if file != "" {
 		api.runs = newRunStore(file)
+		api.runs.onFinish = onFinish
 	}
 	mux.HandleFunc("GET /api/tools", api.guard(api.tools))
 	mux.HandleFunc("GET /api/setup", api.guard(api.getSetup))
@@ -86,6 +97,7 @@ type extractorView struct {
 	Include  []string      `json:"include"`
 	Exclude  []string      `json:"exclude"`
 	Edges    []string      `json:"edges"`
+	Watch    bool          `json:"watch"`
 	Command  string        `json:"command,omitempty"` // shown, never written through the API
 	Tool     extractorTool `json:"tool"`
 	LastRun  *runInfo      `json:"lastRun,omitempty"`
@@ -96,7 +108,7 @@ func (api *toolAPI) extractorViews(list []extractorConf) []extractorView {
 	for _, e := range list {
 		v := extractorView{
 			ID: e.ID, Language: e.Language, Project: e.Project, Root: e.Root,
-			Include: nonNil(e.Include), Exclude: nonNil(e.Exclude), Edges: nonNil(e.Edges), Command: e.Command,
+			Include: nonNil(e.Include), Exclude: nonNil(e.Exclude), Edges: nonNil(e.Edges), Watch: e.Watch, Command: e.Command,
 			Tool: resolveExtractor(e),
 		}
 		// Absolute paths of this machine stay here (ADR_20260924-3 §6).
@@ -168,18 +180,40 @@ func (api *toolAPI) getSetup(w http.ResponseWriter, r *http.Request) {
 		"port":        f.Port,
 		"extractors":  api.extractorViews(f.Extractors),
 		"languages":   knownLanguages,
+		"mcp":         f.Mcp.withDefaults(),
 	})
 }
 
+// putSetupBody is settingsPatch plus the optional `mcp` patch (step 1/2):
+// kept as its own body type since mcp's keys are not settingsPatch's.
+type putSetupBody struct {
+	settingsPatch
+	Mcp *mcpPatch `json:"mcp"`
+}
+
 func (api *toolAPI) putSetup(w http.ResponseWriter, r *http.Request) {
-	var patch settingsPatch
-	if err := readJSON(r, &patch); err != nil {
+	var body putSetupBody
+	if err := readJSON(r, &body); err != nil {
 		http.Error(w, "Bad JSON: "+err.Error(), http.StatusBadRequest)
 		return
 	}
-	if err := patchSettings(api.file, patch); err != nil {
+	if err := patchSettings(api.file, body.settingsPatch); err != nil {
 		http.Error(w, err.Error(), http.StatusBadRequest)
 		return
+	}
+	if body.Mcp != nil {
+		if err := patchMcp(api.file, *body.Mcp); err != nil {
+			http.Error(w, err.Error(), http.StatusBadRequest)
+			return
+		}
+		// Take effect at once (step 2): re-read the file and update the
+		// shared box, so the HTTP graph endpoint and the MCP server both use
+		// the new format/list_cap/limit from the next call on, no restart.
+		if api.settings != nil {
+			if f, err := readProjectFile(api.file); err == nil {
+				api.settings.Set(f.Mcp)
+			}
+		}
 	}
 	api.getSetup(w, r)
 }
@@ -194,6 +228,7 @@ func (api *toolAPI) putExtractor(w http.ResponseWriter, r *http.Request) {
 		Include  *[]string `json:"include"`
 		Exclude  *[]string `json:"exclude"`
 		Edges    *[]string `json:"edges"`
+		Watch    *bool     `json:"watch"`
 	}
 	dec := json.NewDecoder(io.LimitReader(r.Body, 1<<20))
 	dec.DisallowUnknownFields()
@@ -206,11 +241,12 @@ func (api *toolAPI) putExtractor(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "id: lowercase letters, digits and `-`", http.StatusBadRequest)
 		return
 	}
-	patch := extractorPatch{Language: body.Language, Project: body.Project, Root: body.Root, Include: body.Include, Exclude: body.Exclude, Edges: body.Edges}
+	patch := extractorPatch{Language: body.Language, Project: body.Project, Root: body.Root, Include: body.Include, Exclude: body.Exclude, Edges: body.Edges, Watch: body.Watch}
 	if err := patchExtractor(api.file, id, patch); err != nil {
 		http.Error(w, err.Error(), http.StatusBadRequest)
 		return
 	}
+	api.reloadWatch()
 	api.getSetup(w, r)
 }
 
@@ -219,7 +255,19 @@ func (api *toolAPI) deleteExtractor(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, err.Error(), http.StatusNotFound)
 		return
 	}
+	api.reloadWatch()
 	api.getSetup(w, r)
+}
+
+// reloadWatch re-reads the .semaps file and rebuilds the watchers, so a
+// `watch` toggle (or an added/removed/edited entry) takes effect at once.
+func (api *toolAPI) reloadWatch() {
+	if api.watch == nil {
+		return
+	}
+	if proj, err := loadProject(api.file); err == nil {
+		api.watch.Reload(proj)
+	}
 }
 
 func (api *toolAPI) listRuns(w http.ResponseWriter, r *http.Request) {
@@ -248,7 +296,7 @@ func (api *toolAPI) startRun(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, fmt.Sprintf("extractor %q: not in the .semaps file", body.Extractor), http.StatusBadRequest)
 		return
 	}
-	info, _, err := api.runs.start(proj, list[0], nil)
+	info, _, err := api.runs.start(proj, list[0], nil, "")
 	if err != nil {
 		http.Error(w, err.Error(), http.StatusConflict)
 		return

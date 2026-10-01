@@ -16,8 +16,8 @@
  * canonical figure and leave avoidance to the mode whose job it is.
  */
 import type { Point, Side } from "../../geometry/types.js";
-import type { EdgeRouter, Route, RouteRequest } from "./EdgeRouter.js";
-import { findRoute, simplify } from "./VisibilityGraph.js";
+import type { EdgeRouter, EndSide, Route, RouteRequest } from "./EdgeRouter.js";
+import { searchRoute, simplify } from "./VisibilityGraph.js";
 
 /** Corner rounding for the searched route. Tree shapes stay deliberately sharp. */
 const FILLET_RADIUS = 10;
@@ -237,6 +237,33 @@ function usable(p: Point, fallback: Point): Point {
 }
 
 /**
+ * Both ends moved in along their sides' normals onto the real outline (the
+ * request's depths). The last segment runs along that normal, so the line stays
+ * square to the side; only its length changes.
+ */
+function landOnOutline(
+  points: Point[],
+  fromSide: Side,
+  fromDepth: ((along: number) => number) | undefined,
+  toSide: Side,
+  toDepth: ((along: number) => number) | undefined,
+): Point[] {
+  if (points.length < 2 || (!fromDepth && !toDepth)) return points;
+  const out = [...points];
+  const sink = (i: number, side: Side, depth: ((along: number) => number) | undefined) => {
+    if (!depth) return;
+    const p = out[i]!;
+    const d = depth(isHorizontal(side) ? p.y : p.x);
+    if (!Number.isFinite(d) || d === 0) return;
+    const n = sideVector(side);
+    out[i] = { x: p.x - n.x * d, y: p.y - n.y * d };
+  };
+  sink(0, fromSide, fromDepth);
+  sink(out.length - 1, toSide, toDepth);
+  return out;
+}
+
+/**
  * The mode that routes properly: a search over the scene, priced by length,
  * bends and the zones it passes through.
  */
@@ -245,7 +272,13 @@ export class OrthogonalRouter implements EdgeRouter {
 
   route(req: RouteRequest): Route {
     const { pFrom, pTo } = ends(req);
-    const searched = findRoute({
+    // With every side offered the search picks them; each anchor is moved out by
+    // its marker, like the assigned port is. Without, the given sides stand.
+    const marked = (list: readonly EndSide[] | undefined, offset: number | undefined) =>
+      list?.map((e) => ({ ...e, port: offsetPoint(e.port, e.side, offset ?? 0) }));
+    const fromEnds = marked(req.fromEnds, req.fromMarkerOffset);
+    const toEnds = marked(req.toEnds, req.toMarkerOffset);
+    const searched = searchRoute({
       from: pFrom,
       to: pTo,
       fromSide: req.fromSide,
@@ -253,9 +286,26 @@ export class OrthogonalRouter implements EdgeRouter {
       zones: req.zones ?? [],
       ...(req.fromSlide ? { fromSlide: req.fromSlide } : {}),
       ...(req.toSlide ? { toSlide: req.toSlide } : {}),
+      ...(fromEnds && toEnds ? { fromEnds, toEnds } : {}),
+      fromRect: req.fromRect,
+      toRect: req.toRect,
+      ...(req.prevFromSide ? { prevFromSide: req.prevFromSide } : {}),
+      ...(req.prevToSide ? { prevToSide: req.prevToSide } : {}),
       ...(req.onGrid ? { onGrid: req.onGrid } : {}),
     });
-    const points = searched ?? simplify(ladder(pFrom, req.fromSide, pTo, req.toSide));
+    // The sides actually used: the search's choice, or the given ones when it
+    // found nothing and the plain ladder between the assigned ports is drawn.
+    const fromSide = searched?.fromSide ?? req.fromSide;
+    const toSide = searched?.toSide ?? req.toSide;
+    const depthOf = (list: readonly EndSide[] | undefined, side: Side, given: RouteRequest["fromDepth"]) =>
+      list ? list.find((e) => e.side === side)?.depth : given;
+    const points = landOnOutline(
+      searched?.points ?? simplify(ladder(pFrom, req.fromSide, pTo, req.toSide)),
+      fromSide,
+      depthOf(fromEnds, fromSide, req.fromDepth),
+      toSide,
+      depthOf(toEnds, toSide, req.toDepth),
+    );
     // The search may have slid the ends along their sides; labels follow the real ends.
     const start = points[0] ?? pFrom;
     const end = points[points.length - 1] ?? pTo;
@@ -264,8 +314,10 @@ export class OrthogonalRouter implements EdgeRouter {
       path: filletedPath(points),
       points,
       corners: "rounded",
+      fromSide,
+      toSide,
       labelAt: labelOnLongestSegment(points),
-      ...endLabels(start, req.fromSide, end, req.toSide),
+      ...endLabels(start, fromSide, end, toSide),
     };
   }
 }

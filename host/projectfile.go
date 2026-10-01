@@ -10,7 +10,15 @@ import (
 	"strings"
 
 	"gopkg.in/yaml.v3"
+
+	"semaps/core"
 )
+
+// validGraphFormat: mcp.format must name a registered graph formatter.
+func validGraphFormat(name string) bool {
+	_, ok := core.GetGraphFormat(name)
+	return ok
+}
 
 // ProjectExt marks a project file: `<name>.semaps` in the project root. The
 // directory holding it is the project root; every path inside is relative to it.
@@ -27,6 +35,76 @@ type project struct {
 	SourceRoot string          // default: the project root
 	Port       int             // default: 8777
 	Extractors []extractorConf // ADR_20260924-3 §2
+	Mcp        mcpSettings     // PLAN_20260928-7 step 1, defaults filled in
+}
+
+// mcpSettings is the `mcp:` section of a .semaps file (PLAN_20260928-7 step
+// 1): every key optional, filled in with its default by loadProject/readMCPSettings.
+type mcpSettings struct {
+	Tools       string `yaml:"tools,omitempty" json:"tools"`             // one | narrow
+	Description string `yaml:"description,omitempty" json:"description"` // brief | standard | full
+	Format      string `yaml:"format,omitempty" json:"format"`           // a registered graph format name
+	ListCap     int    `yaml:"list_cap,omitempty" json:"listCap"`        // >= 1
+	Limit       int    `yaml:"limit,omitempty" json:"limit"`             // >= 1
+}
+
+// Defaults of the `mcp:` section (PLAN_20260928-7 step 1).
+const (
+	DefaultMcpTools       = "one"
+	DefaultMcpDescription = "standard"
+	DefaultMcpFormat      = "facts"
+	DefaultMcpListCap     = 50
+	DefaultMcpLimit       = 200
+	// DefaultMcpViewFullMax: get_view without `detail` answers in full for a view
+	// (or a container's subtree) of at most this many placements, else as a tree.
+	// A constant, not a `.semaps` setting: nothing has needed it changed.
+	DefaultMcpViewFullMax = 60
+)
+
+// withDefaults fills in every key `mcpSettings` left zero-valued.
+func (m mcpSettings) withDefaults() mcpSettings {
+	if m.Tools == "" {
+		m.Tools = DefaultMcpTools
+	}
+	if m.Description == "" {
+		m.Description = DefaultMcpDescription
+	}
+	if m.Format == "" {
+		m.Format = DefaultMcpFormat
+	}
+	if m.ListCap == 0 {
+		m.ListCap = DefaultMcpListCap
+	}
+	if m.Limit == 0 {
+		m.Limit = DefaultMcpLimit
+	}
+	return m
+}
+
+// validateMcp: the error style the file already uses (validateExtractors) —
+// an unknown key is caught by yaml.KnownFields before this runs; this checks
+// the values of the keys that did decode.
+func validateMcp(m mcpSettings) error {
+	var problems []string
+	if m.Tools != "" && m.Tools != "one" && m.Tools != "narrow" {
+		problems = append(problems, fmt.Sprintf("mcp.tools: %q is neither %q nor %q", m.Tools, "one", "narrow"))
+	}
+	if m.Description != "" && m.Description != "brief" && m.Description != "standard" && m.Description != "full" {
+		problems = append(problems, fmt.Sprintf("mcp.description: %q is none of %q, %q, %q", m.Description, "brief", "standard", "full"))
+	}
+	if m.Format != "" && !validGraphFormat(m.Format) {
+		problems = append(problems, fmt.Sprintf("mcp.format: %q is not a registered graph format", m.Format))
+	}
+	if m.ListCap < 0 {
+		problems = append(problems, fmt.Sprintf("mcp.list_cap: %d must be >= 1", m.ListCap))
+	}
+	if m.Limit < 0 {
+		problems = append(problems, fmt.Sprintf("mcp.limit: %d must be >= 1", m.Limit))
+	}
+	if len(problems) > 0 {
+		return errors.New(strings.Join(problems, "; "))
+	}
+	return nil
 }
 
 // extractorConf is one entry of `extractors:` — what to extract and into which
@@ -38,7 +116,15 @@ type extractorConf struct {
 	Root     string   `yaml:"root,omitempty"`
 	Include  []string `yaml:"include,omitempty"`
 	Exclude  []string `yaml:"exclude,omitempty"`
-	Edges    []string `yaml:"edges,omitempty"` // optional edge kinds: holds, uses, injects
+	Edges    []string `yaml:"edges,omitempty"` // optional edge kinds: holds, uses, injects, calls
+	// Implements lists interfaces outside the read code whose implementations
+	// to report, by full name (`io.Reader`, `error`); only extractors that take
+	// --implements (Go) accept it (ADR_20260927 §5).
+	Implements []string `yaml:"implements,omitempty"`
+	// Watch: the host watches this entry's sources and reruns it on a
+	// change, without a person or an agent asking (PLAN_20260928-4). Default
+	// off; never touches sync or the model (ADR_20260928 §4).
+	Watch bool `yaml:"watch,omitempty"`
 	// Command replaces the found extractor. Only ever written by hand in the
 	// file: nothing from outside sets it (ADR_20260924-3 §5).
 	Command string `yaml:"command,omitempty"`
@@ -51,6 +137,7 @@ type projectFile struct {
 	SourceRoot string          `yaml:"source_root"`
 	Port       int             `yaml:"port"`
 	Extractors []extractorConf `yaml:"extractors"`
+	Mcp        mcpSettings     `yaml:"mcp"`
 }
 
 // loadProject reads a .semaps file. It is YAML; the flat `key: value` files
@@ -77,14 +164,18 @@ func loadProject(file string) (project, error) {
 	if err := validateExtractors(f.Extractors); err != nil {
 		return p, fmt.Errorf("%s: %v", file, err)
 	}
+	if err := validateMcp(f.Mcp); err != nil {
+		return p, fmt.Errorf("%s: %v", file, err)
+	}
 	p.Name, p.Port, p.Extractors = f.Name, f.Port, f.Extractors
+	p.Mcp = f.Mcp.withDefaults()
 	p.Workspace = filepath.Join(root, filepath.FromSlash(f.Workspace))
 	p.SourceRoot = filepath.Join(root, filepath.FromSlash(f.SourceRoot))
 	return p, nil
 }
 
 func validateExtractors(list []extractorConf) error {
-	validEdges := map[string]bool{"holds": true, "uses": true, "injects": true}
+	validEdges := map[string]bool{"holds": true, "uses": true, "injects": true, "calls": true}
 	var problems []string
 	seen := map[string]bool{}
 	for i, e := range list {
@@ -110,7 +201,7 @@ func validateExtractors(list []extractorConf) error {
 		}
 		for _, edge := range e.Edges {
 			if !validEdges[edge] {
-				problems = append(problems, fmt.Sprintf("%s: edge kind %q must be holds, uses, or injects", where, edge))
+				problems = append(problems, fmt.Sprintf("%s: edge kind %q must be holds, uses, injects, or calls", where, edge))
 			}
 		}
 	}
@@ -129,6 +220,7 @@ type extractorPatch struct {
 	Include  *[]string
 	Exclude  *[]string
 	Edges    *[]string
+	Watch    *bool
 }
 
 // patchExtractor changes, or adds, one entry of `extractors:`. The file is
@@ -172,6 +264,9 @@ func patchExtractor(file, id string, patch extractorPatch) error {
 		setList("include", patch.Include)
 		setList("exclude", patch.Exclude)
 		setList("edges", patch.Edges)
+		if patch.Watch != nil {
+			setMapValue(entry, "watch", &yaml.Node{Kind: yaml.ScalarNode, Tag: "!!bool", Value: fmt.Sprint(*patch.Watch)})
+		}
 		return nil
 	})
 }
@@ -225,6 +320,44 @@ func patchSettings(file string, patch settingsPatch) error {
 	})
 }
 
+// mcpPatch: the keys of `mcp:` that may change from outside the file. Nil
+// leaves a key as it is.
+type mcpPatch struct {
+	Tools       *string `json:"tools"`
+	Description *string `json:"description"`
+	Format      *string `json:"format"`
+	ListCap     *int    `json:"listCap"`
+	Limit       *int    `json:"limit"`
+}
+
+// patchMcp changes the `mcp:` section of the file through its YAML tree, so
+// comments and key order survive (step 1). Bad values are refused before
+// anything is written, in the error style validateMcp/validateExtractors use.
+func patchMcp(file string, patch mcpPatch) error {
+	return editProjectFile(file, func(top *yaml.Node) error {
+		mcpNode := mapValue(top, "mcp")
+		if mcpNode == nil || mcpNode.Kind != yaml.MappingNode {
+			mcpNode = &yaml.Node{Kind: yaml.MappingNode}
+			setMapValue(top, "mcp", mcpNode)
+		}
+		setString := func(key string, v *string) {
+			if v != nil {
+				setMapValue(mcpNode, key, scalar(*v))
+			}
+		}
+		setString("tools", patch.Tools)
+		setString("description", patch.Description)
+		setString("format", patch.Format)
+		if patch.ListCap != nil {
+			setMapValue(mcpNode, "list_cap", &yaml.Node{Kind: yaml.ScalarNode, Tag: "!!int", Value: fmt.Sprint(*patch.ListCap)})
+		}
+		if patch.Limit != nil {
+			setMapValue(mcpNode, "limit", &yaml.Node{Kind: yaml.ScalarNode, Tag: "!!int", Value: fmt.Sprint(*patch.Limit)})
+		}
+		return nil
+	})
+}
+
 // readProjectFile: the keys as written, paths not resolved.
 func readProjectFile(file string) (projectFile, error) {
 	var f projectFile
@@ -264,6 +397,9 @@ func editProjectFile(file string, edit func(top *yaml.Node) error) error {
 		return err
 	}
 	if err := validateExtractors(check.Extractors); err != nil {
+		return err
+	}
+	if err := validateMcp(check.Mcp); err != nil {
 		return err
 	}
 	var out bytes.Buffer

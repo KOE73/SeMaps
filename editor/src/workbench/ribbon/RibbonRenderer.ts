@@ -10,6 +10,7 @@ import type {
   RibbonThemeGallerySpec,
 } from "./types.js";
 import { el } from "../../util/dom.js";
+import { icons } from "../../ui/icons.js";
 
 export class RibbonRenderer {
   constructor(
@@ -57,7 +58,7 @@ export class RibbonRenderer {
         },
       });
 
-      const icon = state.icon || "⚙️";
+      const icon = state.icon || icons.settings;
       const iconSpan = el("span", { class: "ribbon-qat-icon" });
       if (icon.startsWith("<svg")) {
         iconSpan.innerHTML = icon;
@@ -207,7 +208,7 @@ export class RibbonRenderer {
     const state = this.registry.getState(spec.command, ctx);
     const size = spec.size ?? "medium";
     const label = spec.label || state.title;
-    const icon = spec.icon || state.icon || "⚙️";
+    const icon = spec.icon || state.icon || icons.settings;
 
     const dataset: Record<string, string> = {
       tooltipCommand: spec.command,
@@ -224,7 +225,7 @@ export class RibbonRenderer {
 
     const children: HTMLElement[] = [iconSpan];
 
-    if (size !== "small") {
+    if (size !== "small" && spec.showLabel !== false) {
       children.push(el("span", { class: "ribbon-btn-label", text: label }));
     }
 
@@ -233,7 +234,8 @@ export class RibbonRenderer {
       {
         class: `ribbon-btn ribbon-btn-${size}`,
         dataset,
-        attrs: !state.enabled ? { disabled: "true" } : {},
+        // The tooltip is the app's own (data-tooltip-command); no native `title` on top of it.
+        attrs: { "aria-label": label, ...(!state.enabled ? { disabled: "true" } : {}) },
         on: {
           click: () => {
             void this.registry.execute(spec.command, btn);
@@ -250,7 +252,7 @@ export class RibbonRenderer {
     const state = this.registry.getState(spec.command, ctx);
     const size = spec.size ?? "medium";
     const label = spec.label || state.title;
-    const icon = spec.icon || state.icon || "🔘";
+    const icon = spec.icon || state.icon || icons.circleDot;
     const isChecked = Boolean(state.checked);
 
     const dataset: Record<string, string> = {
@@ -268,7 +270,7 @@ export class RibbonRenderer {
 
     const children: HTMLElement[] = [iconSpan];
 
-    if (size !== "small") {
+    if (size !== "small" && spec.showLabel !== false) {
       children.push(el("span", { class: "ribbon-btn-label", text: label }));
     }
 
@@ -277,7 +279,7 @@ export class RibbonRenderer {
       {
         class: `ribbon-btn ribbon-btn-${size} ribbon-toggle ${isChecked ? "is-checked" : ""}`,
         dataset,
-        attrs: !state.enabled ? { disabled: "true" } : {},
+        attrs: { "aria-label": label, "aria-pressed": String(isChecked), ...(!state.enabled ? { disabled: "true" } : {}) },
         on: {
           click: () => {
             void this.registry.execute(spec.command);
@@ -312,7 +314,7 @@ export class RibbonRenderer {
       ),
     );
 
-    return el("div", { class: "ribbon-select-wrapper" }, [
+    return el("div", { class: `ribbon-select-wrapper${spec.dimmed?.(ctx) ? " is-dimmed" : ""}` }, [
       el("span", { class: "ribbon-select-label", text: spec.label }),
       selectEl,
     ]);

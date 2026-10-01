@@ -141,4 +141,13 @@ export interface ElementRenderer {
    * or curvature begins.
    */
   cornerInset?(side: Side, style?: ResolvedBlockStyle): number;
+
+  /**
+   * How far inside the side's straight line the outline really is at this
+   * coordinate along the side (x on north/south, y on east/west). A shape that
+   * answers lets its ports slide along the side like a box's: the router lands
+   * the line on the outline at whatever spot it chose. Absent: the outline is
+   * the side itself, or the shape does not let its ports slide.
+   */
+  outlineDepth?(rect: Rect, side: Side, along: number): number;
 }

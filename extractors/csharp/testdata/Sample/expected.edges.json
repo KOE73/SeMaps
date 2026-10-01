@@ -27,6 +27,7 @@
       "namespace": "Sample.App",
       "file": "Sample.App/AdvancedRepetitionGuard.cs",
       "line": 6,
+      "endLine": 13,
       "visibility": "public",
       "members": [
         {
@@ -35,7 +36,10 @@
           "type": "Status",
           "visibility": "public"
         }
-      ]
+      ],
+      "memberLines": {
+        "CurrentStatus": 8
+      }
     },
     {
       "id": "Sample.Core",
@@ -54,6 +58,7 @@
       "namespace": "Sample.Core",
       "file": "Sample.Core/Container.cs",
       "line": 3,
+      "endLine": 16,
       "visibility": "public",
       "members": []
     },
@@ -65,6 +70,7 @@
       "namespace": "Sample.Core",
       "file": "Sample.Core/Container.cs",
       "line": 5,
+      "endLine": 8,
       "visibility": "public",
       "members": [
         {
@@ -73,7 +79,10 @@
           "type": "int",
           "visibility": "public"
         }
-      ]
+      ],
+      "memberLines": {
+        "Value": 7
+      }
     },
     {
       "id": "Sample.Core.Container+Secret",
@@ -83,6 +92,7 @@
       "namespace": "Sample.Core",
       "file": "Sample.Core/Container.cs",
       "line": 10,
+      "endLine": 15,
       "visibility": "private",
       "members": [
         {
@@ -97,7 +107,11 @@
           "type": "Status",
           "visibility": "private"
         }
-      ]
+      ],
+      "memberLines": {
+        "Hidden": 12,
+        "_status": 14
+      }
     },
     {
       "id": "Sample.Core.Features",
@@ -107,6 +121,7 @@
       "namespace": "Sample.Core",
       "file": "Sample.Core/Features.cs",
       "line": 10,
+      "endLine": 46,
       "visibility": "public",
       "members": [
         {
@@ -151,7 +166,16 @@
           "type": "Lazy<Status>",
           "visibility": "public"
         }
-      ]
+      ],
+      "memberLines": {
+        "Statuses": 13,
+        "ReadOnlyStatuses": 16,
+        "StatusMap": 19,
+        "StatusArray": 22,
+        "OptionalStatus": 25,
+        "StatusFactory": 31,
+        "LazyStatus": 34
+      }
     },
     {
       "id": "Sample.Core.Guards",
@@ -170,6 +194,19 @@
       "namespace": "Sample.Core.Guards",
       "file": "Sample.Core/Guards/RepetitionGuard.Extra.cs",
       "line": 3,
+      "endLine": 6,
+      "spans": [
+        {
+          "file": "Sample.Core/Guards/RepetitionGuard.Extra.cs",
+          "line": 3,
+          "endLine": 6
+        },
+        {
+          "file": "Sample.Core/Guards/RepetitionGuard.cs",
+          "line": 3,
+          "endLine": 6
+        }
+      ],
       "visibility": "public",
       "members": [
         {
@@ -184,7 +221,22 @@
           "type": "string",
           "visibility": "internal"
         }
-      ]
+      ],
+      "memberLines": {
+        "Label": 5
+      }
+    },
+    {
+      "id": "Sample.Core.IReadStore",
+      "kind": "interface",
+      "nativeKind": "interface",
+      "name": "IReadStore",
+      "namespace": "Sample.Core",
+      "file": "Sample.Core/Contracts.cs",
+      "line": 4,
+      "endLine": 6,
+      "visibility": "public",
+      "members": []
     },
     {
       "id": "Sample.Core.IRepository",
@@ -194,6 +246,7 @@
       "namespace": "Sample.Core",
       "file": "Sample.Core/IRepository.cs",
       "line": 3,
+      "endLine": 10,
       "visibility": "public",
       "members": [
         {
@@ -214,7 +267,24 @@
           "type": "Repo<Status> Snapshot()",
           "visibility": "public"
         }
-      ]
+      ],
+      "memberLines": {
+        "CurrentStatus": 5,
+        "Changed": 7,
+        "Snapshot": 9
+      }
+    },
+    {
+      "id": "Sample.Core.IWriteStore",
+      "kind": "interface",
+      "nativeKind": "interface",
+      "name": "IWriteStore",
+      "namespace": "Sample.Core",
+      "file": "Sample.Core/Contracts.cs",
+      "line": 8,
+      "endLine": 10,
+      "visibility": "public",
+      "members": []
     },
     {
       "id": "Sample.Core.Logger",
@@ -224,6 +294,7 @@
       "namespace": "Sample.Core",
       "file": "Sample.Core/Logger.cs",
       "line": 3,
+      "endLine": 8,
       "visibility": "public",
       "members": [
         {
@@ -238,7 +309,11 @@
           "type": "string",
           "visibility": "public"
         }
-      ]
+      ],
+      "memberLines": {
+        "Created": 5,
+        "Name": 7
+      }
     },
     {
       "id": "Sample.Core.Notify",
@@ -248,6 +323,7 @@
       "namespace": "Sample.Core",
       "file": "Sample.Core/Notify.cs",
       "line": 3,
+      "endLine": 3,
       "visibility": "public"
     },
     {
@@ -258,6 +334,7 @@
       "namespace": "Sample.Core",
       "file": "Sample.Core/Point.cs",
       "line": 3,
+      "endLine": 3,
       "visibility": "public",
       "members": [
         {
@@ -272,7 +349,11 @@
           "type": "int",
           "visibility": "public"
         }
-      ]
+      ],
+      "memberLines": {
+        "X": 3,
+        "Y": 3
+      }
     },
     {
       "id": "Sample.Core.Repo`1",
@@ -282,6 +363,7 @@
       "namespace": "Sample.Core",
       "file": "Sample.Core/Repo.cs",
       "line": 3,
+      "endLine": 8,
       "visibility": "public",
       "members": [
         {
@@ -296,7 +378,11 @@
           "type": "List<T>",
           "visibility": "public"
         }
-      ]
+      ],
+      "memberLines": {
+        "Current": 5,
+        "Items": 7
+      }
     },
     {
       "id": "Sample.Core.Status",
@@ -306,6 +392,7 @@
       "namespace": "Sample.Core",
       "file": "Sample.Core/Status.cs",
       "line": 3,
+      "endLine": 8,
       "visibility": "public",
       "members": [
         {
@@ -323,7 +410,12 @@
           "name": "Archived",
           "type": "2"
         }
-      ]
+      ],
+      "memberLines": {
+        "Draft": 5,
+        "Published": 6,
+        "Archived": 7
+      }
     },
     {
       "id": "Sample.Shared",
@@ -342,6 +434,7 @@
       "namespace": "Sample.Shared",
       "file": "Shared/BuildInfo.cs",
       "line": 5,
+      "endLine": 8,
       "visibility": "internal",
       "members": [
         {
@@ -350,7 +443,10 @@
           "type": "string",
           "visibility": "public"
         }
-      ]
+      ],
+      "memberLines": {
+        "Product": 7
+      }
     },
     {
       "id": "[Sample.App]",
@@ -373,32 +469,40 @@
     {
       "from": "Sample.App",
       "to": "Sample.App.AdvancedRepetitionGuard",
-      "kind": "contains"
+      "kind": "contains",
+      "native": "namespace"
     },
     {
       "from": "Sample.App.AdvancedRepetitionGuard",
       "to": "Sample.Core.Guards.RepetitionGuard",
-      "kind": "extends"
+      "kind": "extends",
+      "native": "class",
+      "line": 6
     },
     {
       "from": "Sample.App.AdvancedRepetitionGuard",
       "to": "Sample.Core.IRepository",
-      "kind": "implements"
+      "kind": "implements",
+      "native": "interface",
+      "line": 6
     },
     {
       "from": "Sample.App.AdvancedRepetitionGuard",
       "to": "Sample.Core.Repo`1",
       "kind": "uses",
+      "native": "return",
       "via": {
         "member": "Snapshot",
         "memberKind": "return",
         "text": "Repo<Status>"
-      }
+      },
+      "line": 12
     },
     {
       "from": "Sample.App.AdvancedRepetitionGuard",
       "to": "Sample.Core.Status",
       "kind": "holds",
+      "native": "property",
       "via": {
         "member": "CurrentStatus",
         "memberKind": "property",
@@ -406,12 +510,14 @@
           "public"
         ],
         "text": "Status"
-      }
+      },
+      "line": 8
     },
     {
       "from": "Sample.App.AdvancedRepetitionGuard",
       "to": "Sample.Core.Status",
       "kind": "uses",
+      "native": "return",
       "via": {
         "member": "Snapshot",
         "memberKind": "return",
@@ -419,62 +525,86 @@
         "path": [
           "arg:0"
         ]
-      }
+      },
+      "line": 12
     },
     {
       "from": "Sample.Core",
       "to": "Sample.Core.Container",
-      "kind": "contains"
+      "kind": "contains",
+      "native": "namespace"
     },
     {
       "from": "Sample.Core",
       "to": "Sample.Core.Features",
-      "kind": "contains"
+      "kind": "contains",
+      "native": "namespace"
+    },
+    {
+      "from": "Sample.Core",
+      "to": "Sample.Core.IReadStore",
+      "kind": "contains",
+      "native": "namespace"
     },
     {
       "from": "Sample.Core",
       "to": "Sample.Core.IRepository",
-      "kind": "contains"
+      "kind": "contains",
+      "native": "namespace"
+    },
+    {
+      "from": "Sample.Core",
+      "to": "Sample.Core.IWriteStore",
+      "kind": "contains",
+      "native": "namespace"
     },
     {
       "from": "Sample.Core",
       "to": "Sample.Core.Logger",
-      "kind": "contains"
+      "kind": "contains",
+      "native": "namespace"
     },
     {
       "from": "Sample.Core",
       "to": "Sample.Core.Notify",
-      "kind": "contains"
+      "kind": "contains",
+      "native": "namespace"
     },
     {
       "from": "Sample.Core",
       "to": "Sample.Core.Point",
-      "kind": "contains"
+      "kind": "contains",
+      "native": "namespace"
     },
     {
       "from": "Sample.Core",
       "to": "Sample.Core.Repo`1",
-      "kind": "contains"
+      "kind": "contains",
+      "native": "namespace"
     },
     {
       "from": "Sample.Core",
       "to": "Sample.Core.Status",
-      "kind": "contains"
+      "kind": "contains",
+      "native": "namespace"
     },
     {
       "from": "Sample.Core.Container",
       "to": "Sample.Core.Container+Inner",
-      "kind": "contains"
+      "kind": "contains",
+      "native": "nested"
     },
     {
       "from": "Sample.Core.Container",
       "to": "Sample.Core.Container+Secret",
-      "kind": "contains"
+      "kind": "contains",
+      "native": "nested"
     },
     {
       "from": "Sample.Core.Container+Secret",
       "to": "Sample.Core.Status",
       "kind": "holds",
+      "native": "field",
       "via": {
         "member": "_status",
         "memberKind": "field",
@@ -482,12 +612,14 @@
           "private"
         ],
         "text": "Status"
-      }
+      },
+      "line": 14
     },
     {
       "from": "Sample.Core.Features",
       "to": "Sample.Core.Repo`1",
       "kind": "holds",
+      "native": "property",
       "via": {
         "member": "StatusMap",
         "memberKind": "property",
@@ -500,12 +632,14 @@
         ],
         "cardinality": "keyed",
         "mutability": "mutable"
-      }
+      },
+      "line": 19
     },
     {
       "from": "Sample.Core.Features",
       "to": "Sample.Core.Status",
       "kind": "holds",
+      "native": "property",
       "via": {
         "member": "LazyStatus",
         "memberKind": "property",
@@ -518,12 +652,14 @@
         ],
         "cardinality": "one",
         "deferred": true
-      }
+      },
+      "line": 34
     },
     {
       "from": "Sample.Core.Features",
       "to": "Sample.Core.Status",
       "kind": "holds",
+      "native": "property",
       "via": {
         "member": "OptionalStatus",
         "memberKind": "property",
@@ -532,12 +668,14 @@
         ],
         "text": "Status?",
         "cardinality": "optional"
-      }
+      },
+      "line": 25
     },
     {
       "from": "Sample.Core.Features",
       "to": "Sample.Core.Status",
       "kind": "holds",
+      "native": "property",
       "via": {
         "member": "ReadOnlyStatuses",
         "memberKind": "property",
@@ -550,12 +688,14 @@
         ],
         "cardinality": "many",
         "mutability": "readonly"
-      }
+      },
+      "line": 16
     },
     {
       "from": "Sample.Core.Features",
       "to": "Sample.Core.Status",
       "kind": "holds",
+      "native": "property",
       "via": {
         "member": "StatusArray",
         "memberKind": "property",
@@ -566,12 +706,14 @@
         "path": [
           "item"
         ]
-      }
+      },
+      "line": 22
     },
     {
       "from": "Sample.Core.Features",
       "to": "Sample.Core.Status",
       "kind": "holds",
+      "native": "property",
       "via": {
         "member": "StatusFactory",
         "memberKind": "property",
@@ -584,12 +726,14 @@
         ],
         "cardinality": "one",
         "deferred": true
-      }
+      },
+      "line": 31
     },
     {
       "from": "Sample.Core.Features",
       "to": "Sample.Core.Status",
       "kind": "holds",
+      "native": "property",
       "via": {
         "member": "StatusMap",
         "memberKind": "property",
@@ -602,12 +746,14 @@
         ],
         "cardinality": "keyed",
         "mutability": "mutable"
-      }
+      },
+      "line": 19
     },
     {
       "from": "Sample.Core.Features",
       "to": "Sample.Core.Status",
       "kind": "holds",
+      "native": "property",
       "via": {
         "member": "StatusMap",
         "memberKind": "property",
@@ -619,12 +765,14 @@
           "value",
           "arg:0"
         ]
-      }
+      },
+      "line": 19
     },
     {
       "from": "Sample.Core.Features",
       "to": "Sample.Core.Status",
       "kind": "holds",
+      "native": "property",
       "via": {
         "member": "Statuses",
         "memberKind": "property",
@@ -637,12 +785,14 @@
         ],
         "cardinality": "many",
         "mutability": "mutable"
-      }
+      },
+      "line": 13
     },
     {
       "from": "Sample.Core.Features",
       "to": "Sample.Core.Status",
       "kind": "uses",
+      "native": "return",
       "via": {
         "member": "GetStatusAsync",
         "memberKind": "return",
@@ -652,27 +802,32 @@
         ],
         "cardinality": "one",
         "deferred": true
-      }
+      },
+      "line": 28
     },
     {
       "from": "Sample.Core.Features",
       "to": "Sample.Core.Status",
       "kind": "uses",
+      "native": "constructor",
       "via": {
         "member": "initialStatus",
         "memberKind": "constructor",
         "text": "Status"
-      }
+      },
+      "line": 37
     },
     {
       "from": "Sample.Core.Guards",
       "to": "Sample.Core.Guards.RepetitionGuard",
-      "kind": "contains"
+      "kind": "contains",
+      "native": "namespace"
     },
     {
       "from": "Sample.Core.IRepository",
       "to": "Sample.Core.Notify",
       "kind": "holds",
+      "native": "event",
       "via": {
         "member": "Changed",
         "memberKind": "event",
@@ -680,22 +835,26 @@
           "public"
         ],
         "text": "Notify"
-      }
+      },
+      "line": 7
     },
     {
       "from": "Sample.Core.IRepository",
       "to": "Sample.Core.Repo`1",
       "kind": "uses",
+      "native": "return",
       "via": {
         "member": "Snapshot",
         "memberKind": "return",
         "text": "Repo<Status>"
-      }
+      },
+      "line": 9
     },
     {
       "from": "Sample.Core.IRepository",
       "to": "Sample.Core.Status",
       "kind": "holds",
+      "native": "property",
       "via": {
         "member": "CurrentStatus",
         "memberKind": "property",
@@ -704,12 +863,14 @@
           "readonly"
         ],
         "text": "Status"
-      }
+      },
+      "line": 5
     },
     {
       "from": "Sample.Core.IRepository",
       "to": "Sample.Core.Status",
       "kind": "uses",
+      "native": "return",
       "via": {
         "member": "Snapshot",
         "memberKind": "return",
@@ -717,32 +878,45 @@
         "path": [
           "arg:0"
         ]
-      }
+      },
+      "line": 9
+    },
+    {
+      "from": "Sample.Core.IWriteStore",
+      "to": "Sample.Core.IReadStore",
+      "kind": "extends",
+      "native": "interface",
+      "line": 8
     },
     {
       "from": "Sample.Core.Notify",
       "to": "Sample.Core.Status",
       "kind": "uses",
+      "native": "parameter",
       "via": {
         "member": "status",
         "memberKind": "parameter",
         "text": "Status"
-      }
+      },
+      "line": 3
     },
     {
       "from": "Sample.Shared",
       "to": "Sample.Shared.BuildInfo",
-      "kind": "contains"
+      "kind": "contains",
+      "native": "namespace"
     },
     {
       "from": "[Sample.App]",
       "to": "Sample.App.AdvancedRepetitionGuard",
-      "kind": "contains"
+      "kind": "contains",
+      "native": "assembly"
     },
     {
       "from": "[Sample.App]",
       "to": "Sample.Shared.BuildInfo",
-      "kind": "contains"
+      "kind": "contains",
+      "native": "assembly"
     },
     {
       "from": "[Sample.App]",
@@ -752,52 +926,74 @@
     {
       "from": "[Sample.Core]",
       "to": "Sample.Core.Container",
-      "kind": "contains"
+      "kind": "contains",
+      "native": "assembly"
     },
     {
       "from": "[Sample.Core]",
       "to": "Sample.Core.Features",
-      "kind": "contains"
+      "kind": "contains",
+      "native": "assembly"
     },
     {
       "from": "[Sample.Core]",
       "to": "Sample.Core.Guards.RepetitionGuard",
-      "kind": "contains"
+      "kind": "contains",
+      "native": "assembly"
+    },
+    {
+      "from": "[Sample.Core]",
+      "to": "Sample.Core.IReadStore",
+      "kind": "contains",
+      "native": "assembly"
     },
     {
       "from": "[Sample.Core]",
       "to": "Sample.Core.IRepository",
-      "kind": "contains"
+      "kind": "contains",
+      "native": "assembly"
+    },
+    {
+      "from": "[Sample.Core]",
+      "to": "Sample.Core.IWriteStore",
+      "kind": "contains",
+      "native": "assembly"
     },
     {
       "from": "[Sample.Core]",
       "to": "Sample.Core.Logger",
-      "kind": "contains"
+      "kind": "contains",
+      "native": "assembly"
     },
     {
       "from": "[Sample.Core]",
       "to": "Sample.Core.Notify",
-      "kind": "contains"
+      "kind": "contains",
+      "native": "assembly"
     },
     {
       "from": "[Sample.Core]",
       "to": "Sample.Core.Point",
-      "kind": "contains"
+      "kind": "contains",
+      "native": "assembly"
     },
     {
       "from": "[Sample.Core]",
       "to": "Sample.Core.Repo`1",
-      "kind": "contains"
+      "kind": "contains",
+      "native": "assembly"
     },
     {
       "from": "[Sample.Core]",
       "to": "Sample.Core.Status",
-      "kind": "contains"
+      "kind": "contains",
+      "native": "assembly"
     },
     {
       "from": "[Sample.Core]",
       "to": "Sample.Shared.BuildInfo",
-      "kind": "contains"
+      "kind": "contains",
+      "native": "assembly"
     }
   ]
 }

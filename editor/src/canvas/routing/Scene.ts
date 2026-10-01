@@ -1,5 +1,6 @@
 import { bottom, right } from "../../geometry/rect.js";
 import type { Point, Rect } from "../../geometry/types.js";
+import { routingTuning } from "./tuning.js";
 
 /**
  * What the canvas looks like to a router: everything in the way, with a price
@@ -43,6 +44,17 @@ export interface RouteZone {
    * matters more than a lane next to another line.
    */
   readonly lane?: boolean;
+  /**
+   * A soft preference, not an outline: it offers no grid lines of its own and
+   * is no wall for nudging. A container's interior is one — crossing it is
+   * fine, but a run that could have taken the free space between containers
+   * should.
+   */
+  readonly area?: boolean;
+  /** Priced, but no wall for nudging: a block's halo, which a lane may sit in. */
+  readonly halo?: boolean;
+  /** The band straddling a container's outline. */
+  readonly frame?: boolean;
 }
 
 export interface RouteScene {
@@ -52,27 +64,10 @@ export interface RouteScene {
 /** A scene with nothing in it: routing degrades to plain geometry. */
 export const EMPTY_SCENE: RouteScene = { zones: [] };
 
-/**
- * How far a line keeps off a shape it is not attached to. Also the width of
- * the discouraged band along a container's outline.
+/*
+ * The fine constants — clearance, band widths and weights, lane gap — live in
+ * `routingTuning` (./tuning.ts), read at call time so the panel can move them.
  */
-export const CLEARANCE = 8;
-
-/** Cost of a container's border band, per unit length. */
-const BORDER_WEIGHT = 6;
-
-/** Spacing between routes that end up sharing a corridor. */
-export const LANE_GAP = 10;
-
-/** Cost of running along a line already drawn, per unit length. Crossing it costs almost nothing. */
-const LANE_WEIGHT = 3;
-
-/**
- * Width of that band. Wider than the separation pass's gap on purpose: two
- * lines 10 units apart are one stroke at the zoom a whole view is read at,
- * and "separate but indistinguishable" is the same failure as merged.
- */
-const LANE_WIDTH = 24;
 
 /**
  * A finished route as a band around each of its segments, for the routes
@@ -82,7 +77,8 @@ const LANE_WIDTH = 24;
  * ends, where the separation pass may not move anything.
  */
 export function laneZones(points: readonly Point[], ownerId: string): RouteZone[] {
-  const half = LANE_WIDTH / 2;
+  const laneWidth = routingTuning.laneWidth;
+  const half = laneWidth / 2;
   const out: RouteZone[] = [];
   for (let i = 0; i < points.length - 1; i++) {
     const a = points[i]!;
@@ -92,10 +88,10 @@ export function laneZones(points: readonly Point[], ownerId: string): RouteZone[
     const horizontal = Math.abs(a.y - b.y) < 0.01;
     if (!vertical && !horizontal) continue;
     const rect = vertical
-      ? { x: a.x - half, y: Math.min(a.y, b.y), width: LANE_WIDTH, height: Math.abs(a.y - b.y) }
-      : { x: Math.min(a.x, b.x), y: a.y - half, width: Math.abs(a.x - b.x), height: LANE_WIDTH };
+      ? { x: a.x - half, y: Math.min(a.y, b.y), width: laneWidth, height: Math.abs(a.y - b.y) }
+      : { x: Math.min(a.x, b.x), y: a.y - half, width: Math.abs(a.x - b.x), height: laneWidth };
     if (rect.width < 0.5 || rect.height < 0.5) continue;
-    out.push({ rect, weight: LANE_WEIGHT, ownerId, lane: true });
+    out.push({ rect, weight: routingTuning.laneWeight, ownerId, lane: true });
   }
   return out;
 }
@@ -104,7 +100,7 @@ export function laneZones(points: readonly Point[], ownerId: string): RouteZone[
  * Blocks become forbidden rectangles, grown by the clearance so that a line
  * never grazes an outline it is merely passing.
  */
-export function solidZone(rect: Rect, ownerId: string, clearance = CLEARANCE): RouteZone {
+export function solidZone(rect: Rect, ownerId: string, clearance = routingTuning.clearance): RouteZone {
   return {
     rect: {
       x: rect.x - clearance,
@@ -117,6 +113,31 @@ export function solidZone(rect: Rect, ownerId: string, clearance = CLEARANCE): R
   };
 }
 
+/** The four bands around a solid block where hugging its outline is priced. */
+export function haloZones(rect: Rect, ownerId: string, clearance = routingTuning.clearance): RouteZone[] {
+  const haloWidth = routingTuning.haloWidth;
+  const x0 = rect.x - clearance - haloWidth;
+  const y0 = rect.y - clearance - haloWidth;
+  const w = rect.width + (clearance + haloWidth) * 2;
+  const make = (x: number, y: number, width: number, height: number): RouteZone => ({
+    rect: { x, y, width, height },
+    weight: routingTuning.haloWeight,
+    ownerId,
+    halo: true,
+  });
+  return [
+    make(x0, y0, w, haloWidth),
+    make(x0, bottom(rect) + clearance, w, haloWidth),
+    make(x0, rect.y - clearance, haloWidth, rect.height + clearance * 2),
+    make(right(rect) + clearance, rect.y - clearance, haloWidth, rect.height + clearance * 2),
+  ];
+}
+
+/** A container's inside, lightly priced. */
+export function areaZone(rect: Rect, ownerId: string): RouteZone {
+  return { rect, weight: routingTuning.areaWeight, ownerId, area: true };
+}
+
 /**
  * A container contributes a band straddling its outline, not its interior.
  *
@@ -126,14 +147,15 @@ export function solidZone(rect: Rect, ownerId: string, clearance = CLEARANCE): R
  * what a per-length price on a narrow band discourages while leaving a
  * perpendicular crossing almost free.
  */
-export function borderZones(rect: Rect, ownerId: string, clearance = CLEARANCE): RouteZone[] {
+export function borderZones(rect: Rect, ownerId: string, header = 0, clearance = routingTuning.clearance): RouteZone[] {
   const band = clearance * 2;
   const r = right(rect);
   const b = bottom(rect);
   const make = (x: number, y: number, width: number, height: number): RouteZone => ({
     rect: { x, y, width, height },
-    weight: BORDER_WEIGHT,
+    weight: routingTuning.borderWeight,
     ownerId,
+    frame: true,
   });
 
   return [
@@ -141,6 +163,9 @@ export function borderZones(rect: Rect, ownerId: string, clearance = CLEARANCE):
     make(rect.x - clearance, b - clearance, rect.width + band, band),
     make(rect.x - clearance, rect.y - clearance, band, rect.height + band),
     make(r - clearance, rect.y - clearance, band, rect.height + band),
+    // The caption strip reads as part of the frame: a line running along it
+    // crosses the title, so it is priced like the outline — crossing it is fine.
+    ...(header > clearance ? [make(rect.x, rect.y + clearance, rect.width, header - clearance)] : []),
   ];
 }
 
@@ -151,9 +176,17 @@ export function borderZones(rect: Rect, ownerId: string, clearance = CLEARANCE):
  * and an edge's own shapes — plus every container that holds one of its ends —
  * simply drop out of it. Without that an edge could not leave its own block.
  */
-export function zonesFor(scene: RouteScene, exclude: ReadonlySet<string>): readonly RouteZone[] {
-  if (exclude.size === 0) return scene.zones;
-  return scene.zones.filter((z) => !exclude.has(z.ownerId));
+export function zonesFor(
+  scene: RouteScene,
+  exclude: ReadonlySet<string>,
+  holders: ReadonlySet<string> = new Set(),
+): readonly RouteZone[] {
+  if (exclude.size === 0 && holders.size === 0) return scene.zones;
+  // A container holding an end is entered, so its inside is free — but its
+  // frame still is not a path: crossing the band once costs the same for every
+  // route, running along it is what the band is there to price.
+  return scene.zones.filter((z) =>
+    !exclude.has(z.ownerId) && (!holders.has(z.ownerId) || z.frame === true || z.halo === true));
 }
 
 /** Whether a point falls inside a rectangle, edges included. */
@@ -217,7 +250,7 @@ export function walls(zones: readonly RouteZone[]): Rect[] {
  * break a route that legitimately crosses one.
  */
 export function nudgeWalls(zones: readonly RouteZone[]): Rect[] {
-  return zones.map((z) => z.rect);
+  return zones.filter((z) => !z.area && !z.halo).map((z) => z.rect);
 }
 
 /** Whether a point sits inside any forbidden zone. */

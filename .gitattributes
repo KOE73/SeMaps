@@ -1,0 +1,6 @@
+# Golden files of the extractors are compared byte for byte with what an
+# extractor prints, and it prints LF on every system.
+extractors/**/testdata/** text eol=lf
+
+# gofmt writes LF and reports a file with CRLF as not formatted.
+*.go text eol=lf

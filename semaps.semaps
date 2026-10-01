@@ -1,0 +1,27 @@
+version: 1
+name: SeMaps
+
+# SeMaps reads its own code: the host and core in Go, the editor in TypeScript,
+# the C# extractor in C#. All three land in one model project, `code`.
+extractors:
+  - id: go
+    language: go
+    project: code
+    root: .
+    include: [host, core]
+    edges: [holds, uses, injects]
+    watch: true
+  - id: editor
+    language: typescript
+    project: code
+    root: editor
+    include: [src]
+    edges: [holds, uses, injects]
+    watch: true
+  - id: csharp
+    language: csharp
+    project: code
+    root: extractors/csharp
+    include: [src]
+    edges: [holds, uses, injects, calls]
+    watch: true

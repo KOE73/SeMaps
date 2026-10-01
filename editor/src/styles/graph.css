@@ -1,0 +1,858 @@
+/*
+ * The Graph mode (PLAN_20260928-2): a full-bleed sigma canvas with a
+ * toolbar above and a side dock (legend, filters, selection panel) to the
+ * right. Unlike the other tool pages, this one does not scroll — the
+ * canvas fills the surface.
+ */
+
+.graph-surface {
+  overflow: hidden;
+}
+
+.graph-page-inner {
+  max-width: none;
+  height: 100%;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+}
+
+.graph-mode {
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+  min-height: 0;
+}
+
+.graph-notice {
+  margin: 0;
+  padding: var(--tp-ctl-py) var(--tp-page-px);
+  background: var(--panel-alt);
+  color: var(--muted);
+  border-bottom: 1px solid var(--line);
+}
+
+.graph-notice a {
+  color: var(--accent);
+}
+
+.graph-notice.is-warn {
+  color: var(--warn, #f2b705);
+}
+
+.graph-notices:empty {
+  display: none;
+}
+
+.graph-live-notice {
+  color: var(--muted);
+  font-size: 0.9em;
+}
+
+.graph-dock-host {
+  flex: 1;
+  min-height: 0;
+}
+
+/* The dock's centre: the sigma canvas fills it, a small overlay in its corner
+   carries the notices, the stats line and the live-diff notice. */
+.graph-canvas-slot {
+  width: 100%;
+  height: 100%;
+  position: relative;
+  overflow: hidden;
+}
+
+.graph-canvas-slot .graph-message {
+  margin: 0;
+  padding: var(--tp-card-py) var(--tp-card-px);
+}
+
+.graph-mode {
+  position: relative;
+  width: 100%;
+  height: 100%;
+}
+
+.graph-canvas {
+  position: absolute;
+  inset: 0;
+  background: var(--canvas-bg, #1c1e22);
+}
+
+/* The «Вид» panel: lists of entries (the .graph-check-btn look of the filters), depth/axis inline. */
+/* Segmented buttons: «1 2 3» in the entry's own row, the current one filled. */
+.graph-seg {
+  display: inline-flex;
+  gap: 2px;
+  margin-left: auto;
+}
+
+.graph-seg-btn {
+  min-width: 18px;
+  padding: 0 5px;
+  line-height: 18px;
+  border: 1px solid var(--line);
+  border-radius: 5px;
+  background: transparent;
+  color: var(--muted);
+  font: inherit;
+  cursor: pointer;
+}
+
+.graph-seg-btn:hover {
+  background: var(--hover);
+}
+
+/* The level an unselected grouping remembers: an outline, not a fill. */
+.graph-seg-btn.is-mem {
+  border-color: var(--accent);
+  color: var(--accent);
+}
+
+.graph-seg-btn.is-on {
+  background: var(--accent);
+  border-color: var(--accent);
+  color: var(--panel);
+  font-weight: 700;
+}
+
+/* A list that applies only in another layout: greyed, but a click still switches over. */
+.graph-filter-group.is-dim .graph-filter-list,
+.graph-filter-group.is-dim h3 {
+  opacity: 0.5;
+}
+
+.graph-view-hint {
+  font-size: var(--tp-small);
+  margin: 0 0 4px;
+}
+
+/* The rectangle of a Shift+drag box selection. */
+.graph-box {
+  position: absolute;
+  z-index: 3;
+  border: 1px dashed var(--accent);
+  background: var(--accent-soft);
+  pointer-events: none;
+}
+
+.graph-overlay {
+  position: absolute;
+  top: 8px;
+  left: 8px;
+  right: 8px;
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 4px;
+  pointer-events: none;
+  z-index: 2;
+}
+
+.graph-overlay .graph-notice {
+  pointer-events: auto;
+  border: 1px solid var(--line);
+  border-radius: 6px;
+}
+
+.graph-overlay-line {
+  display: flex;
+  gap: 12px;
+  padding: 2px 8px;
+  border-radius: 6px;
+  background: rgba(28, 30, 34, 0.75);
+  color: #aeb4bf;
+  font-size: var(--tp-small);
+}
+
+.graph-dock-pane {
+  width: 100%;
+  height: 100%;
+  overflow: auto;
+  background: var(--panel);
+  color: var(--text);
+  padding: var(--tp-card-py) var(--tp-card-px);
+  box-sizing: border-box;
+}
+
+.graph-search {
+  flex: 1;
+  min-width: 0;
+  padding: var(--tp-ctl-py) var(--tp-ctl-px);
+  border: 1px solid var(--line);
+  border-radius: 6px;
+  background: var(--input-bg);
+  color: var(--text);
+  font: inherit;
+}
+
+/* The centre canvas: no tab header, as the editor's diagram (ribbon.css). */
+.dv-groupview:has(.graph-canvas-slot) > .dv-tabs-and-actions-container,
+.dv-tab[data-tab-id="graph"] {
+  display: none !important;
+}
+
+/* The «Узлы» panel: a header, a count line and a virtualised list. */
+.graph-dock-pane-fill {
+  overflow: hidden;
+  padding: 0;
+}
+
+.graph-nodes {
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+  min-height: 0;
+  user-select: none;
+}
+
+.graph-nodes-head {
+  display: flex;
+  gap: 4px;
+  align-items: center;
+  padding: var(--tp-card-py) var(--tp-card-px) 4px;
+}
+
+.graph-icon-btn {
+  display: inline-flex;
+  align-items: center;
+  padding: 4px;
+}
+
+.graph-icon-btn svg {
+  width: 16px;
+  height: 16px;
+  fill: none;
+  stroke: currentColor;
+}
+
+.graph-icon-btn.is-on {
+  background: var(--accent-soft);
+  color: var(--accent);
+}
+
+.graph-nodes-info {
+  padding: 0 var(--tp-card-px) 4px;
+  color: var(--muted);
+  font-size: var(--tp-small);
+}
+
+.graph-nodes-list {
+  position: relative;
+  flex: 1;
+  min-height: 0;
+  overflow: auto;
+}
+
+.graph-nodes-spacer {
+  width: 1px;
+}
+
+/* Header and rows share one grid: checkbox | kind icon | name | namespace. The
+   global `input { width: 100% }` of editor.css must not reach the checkbox. */
+.graph-node-grid {
+  display: grid;
+  grid-template-columns: 14px 16px minmax(0, 1fr) minmax(0, 0.8fr);
+  align-items: center;
+  column-gap: 4px;
+  padding: 0 var(--tp-card-px);
+  box-sizing: border-box;
+}
+
+.graph-node-row {
+  position: absolute;
+  left: 0;
+  right: 0;
+  height: 24px;
+  cursor: pointer;
+  white-space: nowrap;
+  overflow: hidden;
+}
+
+.graph-nodes-colhead {
+  position: sticky;
+  top: 0;
+  z-index: 2;
+  height: 24px;
+  background: var(--panel);
+  border-bottom: 1px solid var(--line);
+  font-size: var(--tp-small);
+  color: var(--muted);
+}
+
+.graph-col {
+  display: inline-flex;
+  align-items: center;
+  gap: 2px;
+  min-width: 0;
+  padding: 0;
+  border: 0;
+  background: transparent;
+  color: inherit;
+  font: inherit;
+  cursor: pointer;
+  text-align: left;
+}
+
+.graph-col.is-active {
+  color: var(--text);
+  font-weight: 600;
+}
+
+.graph-col-label {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.graph-col-arrow svg {
+  display: block;
+  width: 12px;
+  height: 12px;
+  fill: none;
+  stroke: currentColor;
+}
+
+.graph-nodes-types {
+  display: flex;
+  flex-wrap: nowrap;
+  gap: 2px;
+  height: 28px;
+  overflow: hidden;
+  padding: 0 var(--tp-card-px);
+}
+
+.graph-type-btn {
+  flex: 0 0 24px;
+  width: 24px;
+  height: 24px;
+  padding: 0;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  border: 1px solid transparent;
+  border-radius: 5px;
+  background: transparent;
+  color: var(--muted);
+  cursor: pointer;
+}
+
+.graph-type-btn:hover {
+  background: var(--hover);
+}
+
+.graph-type-btn.is-on {
+  background: var(--accent-soft);
+  border-color: var(--accent);
+  color: var(--accent);
+}
+
+.graph-type-btn svg {
+  width: 16px;
+  height: 16px;
+  fill: none;
+  stroke: currentColor;
+}
+
+.graph-node-row:hover {
+  background: var(--hover);
+}
+
+.graph-node-row.is-selected {
+  background: var(--accent-soft);
+  box-shadow: inset 2px 0 var(--accent);
+}
+
+.graph-node-check {
+  width: 14px;
+  height: 14px;
+  margin: 0;
+  padding: 0;
+  cursor: pointer;
+  justify-self: start;
+}
+
+.graph-node-kind svg {
+  width: 100%;
+  height: 100%;
+}
+
+.graph-node-dot {
+  width: 9px;
+  height: 9px;
+  border-radius: 50%;
+  flex-shrink: 0;
+}
+
+.graph-node-name {
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.graph-node-name.is-abstract {
+  font-style: italic;
+}
+
+.graph-node-name.is-static {
+  text-decoration: underline dotted;
+}
+
+.graph-node-ns {
+  color: var(--muted);
+  font-size: var(--tp-small);
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.graph-nodes-empty {
+  padding: 0 var(--tp-card-px);
+}
+
+/* Edge tooltip on the canvas; calls in the properties panel. */
+.graph-edge-tip {
+  position: absolute;
+  z-index: 3;
+  max-width: 360px;
+  padding: 4px 8px;
+  border-radius: 6px;
+  border: 1px solid var(--line);
+  background: var(--panel-alt);
+  color: var(--text);
+  font-size: var(--tp-small);
+  pointer-events: none;
+}
+
+.graph-panel-methods {
+  color: var(--muted);
+  font-size: var(--tp-small);
+  overflow-wrap: anywhere;
+}
+
+/* The «Экстракторы» panel: what the graph holds and why. */
+.graph-ex-summary {
+  padding: 6px 8px;
+  margin-bottom: 8px;
+  border-radius: 6px;
+  background: var(--accent-soft);
+  font-weight: 600;
+}
+
+.graph-ex-card {
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  padding: 8px;
+  margin-bottom: 10px;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.graph-ex-head {
+  display: flex;
+  gap: 8px;
+  align-items: baseline;
+}
+
+.graph-ex-badge {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 8px 10px;
+  border-radius: 8px;
+  font-size: 1.15em;
+  font-weight: 700;
+  background: var(--panel-alt);
+  color: var(--muted);
+}
+
+.graph-ex-badge.is-ok {
+  background: rgba(51, 195, 122, 0.16);
+  color: #33c37a;
+}
+
+.graph-ex-badge.is-failed {
+  background: rgba(240, 84, 84, 0.16);
+  color: #f05454;
+}
+
+.graph-ex-badge.is-running {
+  background: var(--accent-soft);
+  color: var(--accent);
+}
+
+.graph-ex-badge-icon {
+  display: inline-flex;
+}
+
+.graph-ex-badge-icon svg {
+  width: 24px;
+  height: 24px;
+  fill: none;
+  stroke: currentColor;
+}
+
+.graph-ex-badge.is-running .graph-ex-badge-icon svg {
+  animation: graph-spin 1s linear infinite;
+}
+
+@keyframes graph-spin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+.graph-ex-badge-detail {
+  margin-left: auto;
+  font-size: 0.8em;
+  font-weight: 500;
+  opacity: 0.85;
+}
+
+.graph-ex-line {
+  font-size: var(--tp-small);
+}
+
+.graph-ex-line.is-warn {
+  color: var(--warn, #f2b705);
+}
+
+.graph-ex-error pre {
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+  max-height: 200px;
+  overflow: auto;
+  margin: 4px 0 0;
+  font-size: var(--tp-small);
+}
+
+.graph-ex-label {
+  color: var(--muted);
+  font-size: var(--tp-small);
+  text-transform: uppercase;
+}
+
+.graph-ex-chips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px;
+}
+
+.graph-ex-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 3px 10px;
+  border-radius: 999px;
+  border: 1px solid var(--line);
+  background: transparent;
+  color: var(--muted);
+  cursor: pointer;
+  font: inherit;
+}
+
+/* ON: filled, with a check. OFF: an outline only. */
+.graph-ex-chip.is-on {
+  background: var(--accent);
+  border-color: var(--accent);
+  color: var(--panel);
+  font-weight: 700;
+}
+
+.graph-ex-chip-mark svg {
+  display: block;
+  width: 14px;
+  height: 14px;
+  fill: none;
+  stroke: currentColor;
+  stroke-width: 3;
+}
+
+.graph-ex-runrow {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  flex-wrap: wrap;
+}
+
+.graph-ex-run {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  padding: 10px 18px;
+  font-size: 1.1em;
+  font-weight: 700;
+}
+
+.graph-ex-run-icon svg {
+  display: block;
+  width: 20px;
+  height: 20px;
+  fill: none;
+  stroke: currentColor;
+}
+
+.graph-ex-run-icon.is-spinning svg {
+  animation: graph-spin 1s linear infinite;
+}
+
+.graph-ex-pending {
+  color: var(--warn, #f2b705);
+  font-size: var(--tp-small);
+}
+
+.graph-ex-log {
+  margin: 0;
+  padding: 6px 8px;
+  border-radius: 6px;
+  background: var(--panel-alt);
+  font-size: var(--tp-small);
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+  max-height: 120px;
+  overflow: auto;
+}
+
+/* The watch setting as a switch with its one-line explanation. */
+.graph-ex-switch {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  cursor: pointer;
+}
+
+.graph-ex-switch input {
+  position: absolute;
+  opacity: 0;
+  pointer-events: none;
+}
+
+.graph-ex-switch-track {
+  position: relative;
+  flex-shrink: 0;
+  width: 34px;
+  height: 18px;
+  border-radius: 999px;
+  background: var(--line);
+  transition: background 0.15s;
+}
+
+.graph-ex-switch-track::after {
+  content: "";
+  position: absolute;
+  top: 2px;
+  left: 2px;
+  width: 14px;
+  height: 14px;
+  border-radius: 50%;
+  background: var(--panel);
+  transition: transform 0.15s;
+}
+
+.graph-ex-switch input:checked + .graph-ex-switch-track {
+  background: var(--accent);
+}
+
+.graph-ex-switch input:checked + .graph-ex-switch-track::after {
+  transform: translateX(16px);
+}
+
+.graph-ex-switch-text {
+  font-size: var(--tp-small);
+}
+
+.graph-ex-actions {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  flex-wrap: wrap;
+}
+
+.graph-ex-refresh svg {
+  width: 16px;
+  height: 16px;
+  margin-right: 4px;
+  vertical-align: -3px;
+  fill: none;
+  stroke: currentColor;
+}
+
+.graph-ex-reconcile {
+  color: var(--accent);
+  font-size: var(--tp-small);
+}
+
+.graph-filter-presets {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px;
+  margin: 8px 0;
+}
+
+.graph-filter-head {
+  display: flex;
+  align-items: baseline;
+  gap: 8px;
+}
+
+.graph-filter-head h3 {
+  flex: 1;
+}
+
+.graph-filter-link {
+  font-size: var(--tp-small);
+  color: var(--accent);
+}
+
+.graph-filters-head {
+  display: flex;
+  gap: 6px;
+  align-items: center;
+}
+
+/* Every filter in one column: a header per section, a checkbox per line. */
+.graph-filter-list {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+/* A filter value as a check-button: icon + label, filled and ticked when on. */
+.graph-check-btn {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  width: 100%;
+  padding: 3px 8px;
+  border-radius: 6px;
+  border: 1px solid var(--line);
+  background: transparent;
+  color: var(--muted);
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+}
+
+.graph-check-btn:hover {
+  background: var(--hover);
+}
+
+.graph-check-btn.is-on {
+  background: var(--accent-soft);
+  border-color: var(--accent);
+  color: var(--text);
+  font-weight: 600;
+}
+
+.graph-check-btn.is-on .ui-icon {
+  color: var(--accent);
+}
+
+.graph-check-btn-count {
+  color: var(--muted);
+  font-size: var(--tp-small);
+  font-variant-numeric: tabular-nums;
+}
+
+/* A value the data does not have: dimmed, still clickable. */
+.graph-check-btn.is-empty {
+  opacity: 0.5;
+}
+
+.graph-check-btn-label {
+  flex: 1;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.graph-check-btn-mark svg {
+  display: block;
+  width: 14px;
+  height: 14px;
+  fill: none;
+  stroke: var(--accent);
+  stroke-width: 3;
+}
+
+.graph-filter-group select {
+  width: 100%;
+  padding: var(--tp-ctl-py) var(--tp-ctl-px);
+  border: 1px solid var(--line);
+  border-radius: 6px;
+  background: var(--input-bg);
+  color: var(--text);
+  font: inherit;
+}
+
+.graph-panel h2 {
+  font-size: var(--tp-h2);
+  margin: 0 0 6px;
+}
+
+.graph-legend-list {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+  margin-bottom: 8px;
+  font-size: var(--tp-small);
+}
+
+.graph-legend-item {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  color: var(--text);
+}
+
+.graph-swatch {
+  width: 10px;
+  height: 10px;
+  border-radius: 50%;
+  flex-shrink: 0;
+  display: inline-block;
+}
+
+/* Modifier looks: abstract = a ring round a pale fill; static = a double ring. */
+.graph-swatch-abstract {
+  background: transparent;
+  border: 2px solid var(--muted);
+  box-sizing: border-box;
+}
+
+.graph-swatch-static {
+  background: transparent;
+  border: 3px double var(--muted);
+  box-sizing: border-box;
+}
+
+.graph-swatch-model {
+  background: transparent;
+  border: 2px solid var(--muted);
+}
+
+.graph-filter-group h3 {
+  font-size: var(--tp-small);
+  color: var(--muted);
+  margin: 8px 0 4px;
+  text-transform: uppercase;
+}
+
+.graph-panel-row {
+  display: flex;
+  gap: 6px;
+  font-size: var(--tp-small);
+  padding: 2px 0;
+}
+
+.graph-panel-label {
+  color: var(--muted);
+  min-width: 88px;
+  flex-shrink: 0;
+}
+
+.graph-panel-edges {
+  margin: 4px 0 8px;
+  padding-left: 18px;
+  font-size: var(--tp-small);
+}

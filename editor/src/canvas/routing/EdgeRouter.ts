@@ -3,6 +3,23 @@ import { DIAGRAM_CONFIG } from "../../constants/diagram-constants.js";
 import type { RouteZone } from "./Scene.js";
 import type { Slide } from "./VisibilityGraph.js";
 
+/**
+ * One side an end of an orthogonal line may use (ADR_20261001-2): where the side
+ * touches the outline, how the end may slide along it and where the outline
+ * really is for it. The router is given every side and picks.
+ */
+export interface EndSide {
+  readonly side: Side;
+  /** The side's anchor on the outline: the shape's `pointAt` at the middle of the side. */
+  readonly port: Point;
+  /** Absent: the shape offers just the anchor on this side. */
+  readonly slide?: Slide;
+  /** As `RouteRequest.fromDepth`, for this side. */
+  readonly depth?: (along: number) => number;
+  /** Shape-aware corner inset on this side (px). */
+  readonly inset: number;
+}
+
 export interface RouteRequest {
   readonly from: Point;
   readonly to: Point;
@@ -37,6 +54,24 @@ export interface RouteRequest {
    */
   readonly fromSlide?: Slide;
   readonly toSlide?: Slide;
+  /**
+   * Where the outline really is, for a shape whose side is not straight: how
+   * much deeper the outline lies at a coordinate along the side than at the
+   * port the end was given (`from`/`to` are already on the outline there). A
+   * sliding end keeps the port's depth; this moves it onto the outline.
+   */
+  readonly fromDepth?: (along: number) => number;
+  readonly toDepth?: (along: number) => number;
+  /**
+   * Every side each end may use. A router that searches picks the sides itself
+   * (`from`/`to`/`fromSide`/`toSide` then only serve as the plain fallback); one
+   * that does not ignores this and draws between the sides it was given.
+   */
+  readonly fromEnds?: readonly EndSide[];
+  readonly toEnds?: readonly EndSide[];
+  /** The sides this line's ends used last time: keeping them is cheaper, so a drag does not make the line jump. */
+  readonly prevFromSide?: Side;
+  readonly prevToSide?: Side;
   /** Debugging only: a searching router hands over the grid it searched. */
   readonly onGrid?: (xs: readonly number[], ys: readonly number[]) => void;
 }
@@ -44,6 +79,9 @@ export interface RouteRequest {
 export interface Route {
   /** SVG path data. */
   readonly path: string;
+  /** The sides the ends actually use, when the router chose them (see `RouteRequest.fromEnds`). */
+  readonly fromSide?: Side;
+  readonly toSide?: Side;
   /** Where the edge's centre label belongs. */
   readonly labelAt: Point;
   /**

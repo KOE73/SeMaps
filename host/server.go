@@ -1,9 +1,9 @@
 // The SeMaps host: serves the editor bundle, a workspace of models, and the
-// source tree that `codeRef` points into. Three roots, kept apart on purpose:
+// source tree that the `ref` of `code[]` points into. Three roots, kept apart on purpose:
 //
 //   - the tool itself: `app/` and `defaults/`, embedded into the binary;
 //   - the workspace: projects, and any override of the defaults;
-//   - the source root: code, read-only, for the code viewer and codeRef checks.
+//   - the source root: code, read-only, for the code viewer and the code[].ref checks.
 //
 // Run with no arguments from anywhere inside a project: the workspace and the
 // source root are found by walking up from the current directory.
@@ -22,6 +22,7 @@ import (
 	"net/http"
 	"os"
 	"os/exec"
+	"os/signal"
 	"path"
 	"path/filepath"
 	"runtime"
@@ -37,7 +38,22 @@ var bundled embed.FS
 // Workspace files the tool ships a default for. A workspace that has its own
 // copy wins; otherwise the default is served. Saving always writes to the
 // workspace, so the first save of a default turns it into an override.
-var overridable = []string{"styles.json", "templates.json", "content/"}
+// canvas.json (grid, sizes, gaps) and graph-filters.json are served the same
+// way; the Go code never requires a default to exist at build time, only
+// canvas.json is read by the host (canvas.go).
+var overridable = []string{"styles.json", "templates.json", "content/", "canvas.json", "graph-filters.json"}
+
+// kinds.json is not among them: the workspace dictionary adds to the default
+// instead of replacing it (CONTRACT §6), so /kinds.json is the workspace file
+// or 404, and the editor merges it over the default it bundles. The host's own
+// readers (the model, semaps check, MCP get_kinds) take the default from here.
+func defaultKinds() []byte {
+	b, err := bundled.ReadFile("defaults/" + core.KindsFile)
+	if err != nil {
+		panic("the embedded default kinds.json is missing: " + err.Error())
+	}
+	return b
+}
 
 // findProjectFile walks up from dir to the first directory with a .semaps
 // file. Two of them in one directory is an error, not a silent pick. Only
@@ -207,8 +223,11 @@ func main() {
 	extractMode := len(os.Args) > 1 && os.Args[1] == "extract"
 	// `semaps mcp`: MCP server over stdio (ADR_20260924-5).
 	mcpMode := len(os.Args) > 1 && os.Args[1] == "mcp"
+	// `semaps migrate file.semaps`: rewrites a workspace of an older contract
+	// to the current one in place (ADR_20260927-3, docs/ADOPTING.md).
+	migrateMode := len(os.Args) > 1 && os.Args[1] == "migrate"
 	toolMode := doctorMode || extractMode
-	if checkMode || syncMode || toolMode || mcpMode {
+	if checkMode || syncMode || toolMode || mcpMode || migrateMode {
 		os.Args = append(os.Args[:1], os.Args[2:]...)
 	}
 	// `semaps install`: copy to a stable folder, PATH, *.semaps association.
@@ -221,10 +240,10 @@ func main() {
 
 	var port int
 	var workspaceDir, sourceDir string
-	var noBrowser bool
+	var noBrowser, dropUntyped bool
 	flag.IntVar(&port, "port", 8777, "Port to listen on; the next free one is taken if busy")
-	flag.StringVar(&workspaceDir, "workspace", "", "Workspace directory (default: found upward from the current directory)")
-	flag.StringVar(&sourceDir, "source-root", "", "Directory codeRef paths resolve against (default: the repository root above the workspace)")
+	flag.StringVar(&workspaceDir, "workspace", "", "Workspace directory, used instead of a *.semaps project file (default: the workspace of the *.semaps file found upward from the current directory)")
+	flag.StringVar(&sourceDir, "source-root", "", "Directory the code[].ref paths resolve against (default: source_root of the *.semaps file, i.e. the project root; with --workspace and no *.semaps: the repository root above the workspace)")
 	var here bool
 	flag.BoolVar(&noBrowser, "no-browser", false, "Do not open a browser")
 	flag.BoolVar(&here, "here", false, "Run the server in this console instead of a new window")
@@ -239,6 +258,10 @@ func main() {
 	if mcpMode {
 		flag.StringVar(&sync.project, "project", "", "Project id under projects/ (default: the only one there is)")
 	}
+	if migrateMode {
+		flag.BoolVar(&sync.dryRun, "dry-run", false, "Report only, write nothing")
+		flag.BoolVar(&dropUntyped, "drop-untyped-styles", false, "Also drop the styles of the workspace styles.json that name no type (forKinds); the views that named them lose the styleId, the report says which")
+	}
 	if syncMode {
 		flag.StringVar(&sync.facts, "facts", "", "Extractor facts (EXTRACTOR.md §2); `-` reads stdin. Default: run the extractors of the .semaps file")
 		flag.StringVar(&sync.run, "run", "", "Use the facts of this run (`semaps extract` prints its id) instead of extracting again")
@@ -247,7 +270,7 @@ func main() {
 		flag.BoolVar(&sync.noRenames, "no-renames", false, "Treat rename candidates as one entity gone and one new")
 	}
 	flag.Usage = func() {
-		fmt.Fprintln(os.Stderr, "usage: semaps [flags] [dir | file.semaps]\n       semaps check [flags] [dir | file.semaps]\n       semaps sync [--extractor <id>] [--run <id> | --facts <file.json>] [flags] [dir | file.semaps]\n       semaps extract [--extractor <id>] [dir | file.semaps]\n       semaps doctor [dir | file.semaps]\n       semaps mcp [--project <id>] [dir | file.semaps]\n\nWith no arguments, finds a *.semaps project file upward from the current directory.\n`check` reports stale texts, views without an axis, broken codeRef and the like;\nexit code 1 when anything is found.\n`sync` reconciles entities.json and relations.json with extractor facts; without\n--facts it runs the extractors listed in the .semaps file. `extract` only runs them;\n`doctor` shows which extractors and runtimes are found;\n`mcp` serves the registry as MCP tools on stdio (docs/API.md §6). Flags go\nbefore the project argument. `semaps sync --help` lists its flags.")
+		fmt.Fprintln(os.Stderr, "usage: semaps [flags] [dir | file.semaps]\n       semaps check [flags] [dir | file.semaps]\n       semaps migrate [--dry-run] [--drop-untyped-styles] [dir | file.semaps]\n       semaps sync [--extractor <id>] [--run <id> | --facts <file.json>] [flags] [dir | file.semaps]\n       semaps extract [--extractor <id>] [dir | file.semaps]\n       semaps doctor [dir | file.semaps]\n       semaps mcp [--project <id>] [dir | file.semaps]\n       semaps install\n\nWith no arguments, finds a *.semaps project file upward from the current directory.\n`check` reports stale texts, views without an axis, broken code[].ref and the like;\nexit code 1 when anything is found.\n`sync` reconciles entities.json and relations.json with extractor facts; without\n--facts it runs the extractors listed in the .semaps file. `extract` only runs them;\n`doctor` shows which extractors and runtimes are found;\n`migrate` rewrites the workspace of a project of an older contract to the current one, in place,\nand prints what it did and what a human must decide (idempotent; --dry-run writes nothing);\n`mcp` serves the registry as MCP tools on stdio (docs/API.md §6);\n`install` (Windows) copies the exe to a stable folder, adds it to PATH and registers *.semaps. Flags go\nbefore the project argument. `semaps sync --help` lists its flags.")
 		flag.PrintDefaults()
 	}
 	flag.Parse()
@@ -283,7 +306,7 @@ func main() {
 		if file == "" {
 			// A downloaded exe started by a double click lands here: nothing
 			// to open, not installed. Offer the install instead of vanishing.
-			if flag.NArg() == 0 && !checkMode && !syncMode && !toolMode && !installed() {
+			if flag.NArg() == 0 && !checkMode && !syncMode && !toolMode && !migrateMode && !installed() {
 				offerInstall()
 				return
 			}
@@ -324,7 +347,11 @@ func main() {
 
 	if checkMode {
 		fmt.Printf("  workspace:   %s\n  source root: %s\n\n", absWorkspace, absRoot)
-		os.Exit(core.Report(os.Stdout, core.Check(absWorkspace, absRoot)))
+		os.Exit(core.Report(os.Stdout, core.Check(absWorkspace, absRoot, defaultKinds())))
+	}
+	if migrateMode {
+		fmt.Printf("  workspace:   %s\n\n", absWorkspace)
+		os.Exit(runMigrate(os.Stdout, absWorkspace, sync.dryRun, dropUntyped, proj.Extractors))
 	}
 	if doctorMode {
 		os.Exit(runDoctor(os.Stdout, proj))
@@ -338,7 +365,7 @@ func main() {
 	}
 	if syncMode {
 		fmt.Printf("  workspace:   %s\n\n", absWorkspace)
-		opt := core.SyncOptions{Project: sync.project, DryRun: sync.dryRun, NoRenames: sync.noRenames}
+		opt := core.SyncOptions{Project: sync.project, DryRun: sync.dryRun, NoRenames: sync.noRenames, DefaultKinds: defaultKinds()}
 		if sync.facts != "" {
 			os.Exit(runSync(absWorkspace, sync.facts, opt))
 		}
@@ -416,8 +443,31 @@ func main() {
 	})))
 	http.Handle("/", noCacheHandler(workspaceHandler(absWorkspace, defaultsFS)))
 	models.register(http.DefaultServeMux)
-	registerMCPHTTP(http.DefaultServeMux, proj, absWorkspace, absRoot, models)
-	registerToolAPI(http.DefaultServeMux, proj.File, absWorkspace, models)
+	// mcpSettings live in one box, shared by the HTTP graph endpoint, the MCP
+	// server and the tool API (PLAN_20260928-7 step 2): PUT /api/setup writes
+	// the .semaps file, then updates this box, so every reader sees the new
+	// format/list_cap/limit from the next request on, no restart needed.
+	mcpSettingsBoxVal := newMcpSettingsBox(proj.Mcp)
+	graphSvc := newGraphService(proj, models, mcpSettingsBoxVal)
+	graphSvc.register(http.DefaultServeMux)
+	registerMCPHTTP(http.DefaultServeMux, proj, absWorkspace, absRoot, models, graphSvc.notifyRunFinished, mcpSettingsBoxVal)
+	// Watchers start with the host and stop on its shutdown (below); with
+	// --workspace (proj.File == "") there is no .semaps file and so no
+	// watchManager at all (PLAN_20260928-4_host_watch-sources.md step 5).
+	var watch *watchManager
+	if proj.File != "" {
+		watch = newWatchManager(newRunStore(proj.File))
+		watch.runs.onFinish = graphSvc.notifyRunFinished
+		watch.Reload(proj)
+		stop := make(chan os.Signal, 1)
+		signal.Notify(stop, os.Interrupt)
+		go func() {
+			<-stop
+			watch.Stop()
+			os.Exit(0)
+		}()
+	}
+	registerToolAPI(http.DefaultServeMux, proj.File, absWorkspace, models, graphSvc.notifyRunFinished, watch, mcpSettingsBoxVal)
 	// Short addresses of the tool pages (ADR_20260924-3 §4).
 	for short, page := range map[string]string{"/setup": "/app/#project", "/extract": "/app/#extract"} {
 		http.Handle("GET "+short, http.RedirectHandler(page, http.StatusFound))
@@ -429,7 +479,7 @@ func main() {
 	http.HandleFunc("/api/workspace", func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "application/json; charset=utf-8")
 		w.Header().Set("Cache-Control", "no-cache")
-		_ = json.NewEncoder(w).Encode(core.Index(absWorkspace))
+		_ = json.NewEncoder(w).Encode(models.index())
 	})
 
 	http.HandleFunc("/api/source", func(w http.ResponseWriter, r *http.Request) {
@@ -533,26 +583,9 @@ func main() {
 			return
 		}
 		rel := filepath.ToSlash(strings.TrimPrefix(strings.TrimPrefix(target, absWorkspace), string(filepath.Separator)))
-		structureProject := ""
-		structureView := ""
 		if strings.HasPrefix(rel, "projects/") {
-			parts := strings.Split(rel, "/")
-			allowedCreate := r.URL.Query().Get("create") == "1" &&
-				(len(parts) == 3 && parts[2] == "project.json" || len(parts) == 4 && parts[2] == "views" && strings.HasSuffix(parts[3], ".view.json"))
-			if !allowedCreate {
-				http.Error(w, "Project model files are saved through /api/model/{project}/save", http.StatusGone)
-				return
-			}
-			structureProject = parts[1]
-			models.structureMu.Lock()
-			defer models.structureMu.Unlock()
-			if len(parts) == 4 {
-				structureView = strings.TrimSuffix(parts[3], ".view.json")
-				if err := models.clean(structureProject); err != nil {
-					http.Error(w, "сначала сохраните: "+err.Error(), http.StatusConflict)
-					return
-				}
-			}
+			http.Error(w, "Project files: POST /api/projects, /api/model/{project}/views, /api/model/{project}/save", http.StatusGone)
+			return
 		}
 
 		body, err := io.ReadAll(r.Body)
@@ -565,31 +598,9 @@ func main() {
 			return
 		}
 
-		// `create=1`: a new project or view must not land on an existing one.
-		flags := os.O_WRONLY | os.O_CREATE | os.O_TRUNC
-		if r.URL.Query().Get("create") == "1" {
-			flags = os.O_WRONLY | os.O_CREATE | os.O_EXCL
-		}
-		f, err := os.OpenFile(target, flags, 0644)
-		if errors.Is(err, fs.ErrExist) {
-			http.Error(w, "Already exists: "+fileName, http.StatusConflict)
-			return
-		}
-		if err == nil {
-			_, err = f.Write(body)
-			if cerr := f.Close(); err == nil {
-				err = cerr
-			}
-		}
-		if err != nil {
+		if err := os.WriteFile(target, body, 0644); err != nil {
 			http.Error(w, "Failed to write file: "+err.Error(), http.StatusInternalServerError)
 			return
-		}
-		if structureProject != "" {
-			if err := models.reload(projectReloaded{OldProject: structureProject, NewProject: structureProject, NewView: structureView}); err != nil {
-				http.Error(w, "Created but model reload failed: "+err.Error(), http.StatusInternalServerError)
-				return
-			}
 		}
 
 		fmt.Printf("Saved %s (%d bytes)\n", fileName, len(body))
@@ -658,7 +669,7 @@ func main() {
 			change = projectReloaded{OldProject: projectID, NewProject: projectID, OldView: oldID, NewView: newID}
 		}
 		if moveErr != nil {
-			http.Error(w, "Failed to move: "+moveErr.Error(), http.StatusInternalServerError)
+			createError(w, moveErr)
 			return
 		}
 		if err := models.reload(change); err != nil {

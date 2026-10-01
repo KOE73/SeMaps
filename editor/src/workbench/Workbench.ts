@@ -1,5 +1,6 @@
 import { el } from "../util/dom.js";
-import { openCanvasMenu, type MenuHost } from "./menus/CanvasMenus.js";
+import { iconEl } from "../ui/icons.js";
+import { openCanvasMenu, openConnectMenu, type MenuHost } from "./menus/CanvasMenus.js";
 import { DiagramEditor, type DiagramEditorOptions } from "../editor/DiagramEditor.js";
 import { CommandRegistry } from "./commands/CommandRegistry.js";
 import { createBuiltinCommands } from "./commands/builtinCommands.js";
@@ -159,6 +160,7 @@ export class Workbench {
   selectMode(id: string): void {
     const next = this.modes.find((m) => m.id === id) ?? this.modes[0]!;
     this.display.close();
+    if (this.mode !== next) this.mode.leave?.();
     this.mode = next;
     for (const m of this.modes) m.surface.hidden = m !== next;
     this.shortcuts.enabled = next.id === "";
@@ -188,10 +190,9 @@ export class Workbench {
     }
     const gear = el("button", {
       class: "ribbon-gear-btn",
-      text: "⚙",
       attrs: { title: i18n.d.ribbon.modes.display, "aria-label": i18n.d.ribbon.modes.display },
       on: { click: (e: MouseEvent) => this.display.toggle(e.currentTarget as HTMLElement) },
-    });
+    }, [iconEl("settings")]);
     out.push(gear);
     return out;
   }
@@ -199,6 +200,7 @@ export class Workbench {
   private bindEvents(): void {
     // Right click: a box's family and look, a line's shape and style, the view's line shape.
     const panels = this.dockviewHost.panelService;
+    this.editor.panelOpener = (id) => panels.open(id);
     const menuHost: MenuHost = {
       openPanel: (id) => panels.open(id),
       openStyleEditor: (styleId) => {
@@ -220,6 +222,10 @@ export class Workbench {
       openCanvasMenu(this.editor, menuHost, target, id, clientX, clientY);
     });
 
+    this.editor.canvas.events.on("connect", ({ from, to, clientX, clientY }) => {
+      openConnectMenu(this.editor, from, to, clientX, clientY);
+    });
+
     // Re-evaluate ribbon and commands on selection change
     this.editor.canvas.events.on("select", () => {
       this.commands.notifyStateChanged();
@@ -229,6 +235,8 @@ export class Workbench {
     this.editor.canvas.events.on("modelchange", () => {
       this.commands.notifyStateChanged();
     });
+
+    this.editor.changesEvents.on("show", () => panels.open("changes"));
 
     // Opening a view or changing the workspace enables the view/project commands.
     this.editor.workspaceEvents.on("change", () => {

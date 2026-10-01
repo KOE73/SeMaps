@@ -29,8 +29,11 @@ func RenameProject(workspace, oldID, newID string) error {
 	if oldID == newID {
 		return nil
 	}
-	if oldID == "" || newID == "" || strings.ContainsAny(oldID, `/\`) || strings.ContainsAny(newID, `/\`) || oldID == ".." || newID == ".." {
-		return refuse("invalid project id")
+	if oldID == "" || strings.ContainsAny(oldID, `/\`) || oldID == ".." {
+		return refuse("invalid project id %q", oldID)
+	}
+	if !ProjectIDPattern.MatchString(newID) {
+		return refuse("project id %q: expected %s", newID, ProjectIDPattern)
 	}
 	oldDir := filepath.Join(workspace, "projects", oldID)
 	newDir := filepath.Join(workspace, "projects", newID)
@@ -77,8 +80,11 @@ func RenameView(workspace, project, oldID, newID string) error {
 	if oldID == newID {
 		return nil
 	}
-	if oldID == "" || newID == "" || strings.ContainsAny(oldID, `/\`) || strings.ContainsAny(newID, `/\`) || oldID == ".." || newID == ".." {
-		return refuse("invalid view id")
+	if oldID == "" || strings.ContainsAny(oldID, `/\`) || oldID == ".." {
+		return refuse("invalid view id %q", oldID)
+	}
+	if !ViewIDPattern.MatchString(newID) {
+		return refuse("view id %q: expected %s", newID, ViewIDPattern)
 	}
 	dir := filepath.Join(workspace, "projects", project)
 	oldFile, view, err := loadView(dir, oldID)

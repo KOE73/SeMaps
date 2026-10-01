@@ -23,8 +23,27 @@ internal sealed class SymbolFact
     [JsonPropertyName("namespace")] public string Namespace { get; set; } = "";
     [JsonPropertyName("file")] public string File { get; set; } = "";
     [JsonPropertyName("line")] public int? Line { get; set; }
+    [JsonPropertyName("endLine")] public int? EndLine { get; set; }
+    [JsonPropertyName("spans")] public List<SpanFact>? Spans { get; set; }
     [JsonPropertyName("visibility")] public string? Visibility { get; set; }
     [JsonPropertyName("members")] public List<MemberFact>? Members { get; set; }
+    [JsonPropertyName("memberLines")] public Dictionary<string, int>? MemberLines { get; set; }
+    // Blind-spot marks (ADR_20260928-5 §4, PLAN_20260928-7 step 6): only for kind
+    // "method", only printed with --edges calls, only when not empty.
+    [JsonPropertyName("dynamic")] public List<DynamicMarkFact>? Dynamic { get; set; }
+}
+
+internal sealed class DynamicMarkFact
+{
+    [JsonPropertyName("kind")] public string Kind { get; set; } = "";
+    [JsonPropertyName("line")] public int Line { get; set; }
+}
+
+internal sealed class SpanFact
+{
+    [JsonPropertyName("file")] public string File { get; set; } = "";
+    [JsonPropertyName("line")] public int Line { get; set; }
+    [JsonPropertyName("endLine")] public int? EndLine { get; set; }
 }
 
 internal sealed class MemberFact
@@ -41,7 +60,11 @@ internal sealed class EdgeFact
     [JsonPropertyName("from")] public string From { get; set; } = "";
     [JsonPropertyName("to")] public string To { get; set; } = "";
     [JsonPropertyName("kind")] public string Kind { get; set; } = "";
+    [JsonPropertyName("native")] public string? Native { get; set; }
     [JsonPropertyName("via")] public ViaFact? Via { get; set; }
+    [JsonPropertyName("line")] public int? Line { get; set; }
+    [JsonPropertyName("file")] public string? File { get; set; }
+    [JsonPropertyName("lines")] public List<int>? Lines { get; set; }
 }
 
 internal sealed class ViaFact

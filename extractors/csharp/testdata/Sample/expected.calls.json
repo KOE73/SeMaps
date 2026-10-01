@@ -1,0 +1,1193 @@
+{
+  "language": "csharp",
+  "root": ".",
+  "edgeKinds": [
+    "calls",
+    "contains",
+    "depends",
+    "extends",
+    "implements"
+  ],
+  "symbols": [
+    {
+      "id": "Sample.App",
+      "kind": "module",
+      "nativeKind": "namespace",
+      "name": "App",
+      "namespace": "",
+      "file": "Sample.App/AdvancedRepetitionGuard.cs",
+      "line": 4
+    },
+    {
+      "id": "Sample.App.AdvancedRepetitionGuard",
+      "kind": "type",
+      "nativeKind": "class",
+      "name": "AdvancedRepetitionGuard",
+      "namespace": "Sample.App",
+      "file": "Sample.App/AdvancedRepetitionGuard.cs",
+      "line": 6,
+      "endLine": 13,
+      "visibility": "public",
+      "members": [
+        {
+          "kind": "property",
+          "name": "CurrentStatus",
+          "type": "Status",
+          "visibility": "public"
+        }
+      ],
+      "memberLines": {
+        "CurrentStatus": 8
+      }
+    },
+    {
+      "id": "Sample.App.AdvancedRepetitionGuard..ctor()",
+      "kind": "method",
+      "nativeKind": "constructor",
+      "name": ".ctor",
+      "namespace": "",
+      "file": "Sample.App/AdvancedRepetitionGuard.cs",
+      "line": 6,
+      "endLine": 6,
+      "visibility": "public"
+    },
+    {
+      "id": "Sample.App.AdvancedRepetitionGuard.CurrentStatus",
+      "kind": "method",
+      "nativeKind": "property",
+      "name": "CurrentStatus",
+      "namespace": "",
+      "file": "Sample.App/AdvancedRepetitionGuard.cs",
+      "line": 8,
+      "endLine": 8,
+      "visibility": "public"
+    },
+    {
+      "id": "Sample.App.AdvancedRepetitionGuard.Snapshot()",
+      "kind": "method",
+      "nativeKind": "method",
+      "name": "Snapshot",
+      "namespace": "",
+      "file": "Sample.App/AdvancedRepetitionGuard.cs",
+      "line": 12,
+      "endLine": 12,
+      "visibility": "public"
+    },
+    {
+      "id": "Sample.Core",
+      "kind": "module",
+      "nativeKind": "namespace",
+      "name": "Core",
+      "namespace": "",
+      "file": "Sample.Core/Container.cs",
+      "line": 1
+    },
+    {
+      "id": "Sample.Core.Container",
+      "kind": "type",
+      "nativeKind": "class",
+      "name": "Container",
+      "namespace": "Sample.Core",
+      "file": "Sample.Core/Container.cs",
+      "line": 3,
+      "endLine": 16,
+      "visibility": "public",
+      "members": []
+    },
+    {
+      "id": "Sample.Core.Container+Inner",
+      "kind": "type",
+      "nativeKind": "class",
+      "name": "Inner",
+      "namespace": "Sample.Core",
+      "file": "Sample.Core/Container.cs",
+      "line": 5,
+      "endLine": 8,
+      "visibility": "public",
+      "members": [
+        {
+          "kind": "property",
+          "name": "Value",
+          "type": "int",
+          "visibility": "public"
+        }
+      ],
+      "memberLines": {
+        "Value": 7
+      }
+    },
+    {
+      "id": "Sample.Core.Container+Inner..ctor()",
+      "kind": "method",
+      "nativeKind": "constructor",
+      "name": ".ctor",
+      "namespace": "",
+      "file": "Sample.Core/Container.cs",
+      "line": 5,
+      "endLine": 5,
+      "visibility": "public"
+    },
+    {
+      "id": "Sample.Core.Container+Inner.Value",
+      "kind": "method",
+      "nativeKind": "property",
+      "name": "Value",
+      "namespace": "",
+      "file": "Sample.Core/Container.cs",
+      "line": 7,
+      "endLine": 7,
+      "visibility": "public"
+    },
+    {
+      "id": "Sample.Core.Container+Secret",
+      "kind": "type",
+      "nativeKind": "class",
+      "name": "Secret",
+      "namespace": "Sample.Core",
+      "file": "Sample.Core/Container.cs",
+      "line": 10,
+      "endLine": 15,
+      "visibility": "private",
+      "members": [
+        {
+          "kind": "property",
+          "name": "Hidden",
+          "type": "int",
+          "visibility": "public"
+        },
+        {
+          "kind": "field",
+          "name": "_status",
+          "type": "Status",
+          "visibility": "private"
+        }
+      ],
+      "memberLines": {
+        "Hidden": 12,
+        "_status": 14
+      }
+    },
+    {
+      "id": "Sample.Core.Container+Secret..ctor()",
+      "kind": "method",
+      "nativeKind": "constructor",
+      "name": ".ctor",
+      "namespace": "",
+      "file": "Sample.Core/Container.cs",
+      "line": 10,
+      "endLine": 10,
+      "visibility": "public"
+    },
+    {
+      "id": "Sample.Core.Container+Secret.Hidden",
+      "kind": "method",
+      "nativeKind": "property",
+      "name": "Hidden",
+      "namespace": "",
+      "file": "Sample.Core/Container.cs",
+      "line": 12,
+      "endLine": 12,
+      "visibility": "public"
+    },
+    {
+      "id": "Sample.Core.Container..ctor()",
+      "kind": "method",
+      "nativeKind": "constructor",
+      "name": ".ctor",
+      "namespace": "",
+      "file": "Sample.Core/Container.cs",
+      "line": 3,
+      "endLine": 3,
+      "visibility": "public"
+    },
+    {
+      "id": "Sample.Core.Features",
+      "kind": "type",
+      "nativeKind": "class",
+      "name": "Features",
+      "namespace": "Sample.Core",
+      "file": "Sample.Core/Features.cs",
+      "line": 10,
+      "endLine": 46,
+      "visibility": "public",
+      "members": [
+        {
+          "kind": "property",
+          "name": "Statuses",
+          "type": "List<Status>",
+          "visibility": "public"
+        },
+        {
+          "kind": "property",
+          "name": "ReadOnlyStatuses",
+          "type": "IReadOnlyList<Status>",
+          "visibility": "public"
+        },
+        {
+          "kind": "property",
+          "name": "StatusMap",
+          "type": "Dictionary<Status, Repo<Status>>",
+          "visibility": "public"
+        },
+        {
+          "kind": "property",
+          "name": "StatusArray",
+          "type": "Status[]",
+          "visibility": "public"
+        },
+        {
+          "kind": "property",
+          "name": "OptionalStatus",
+          "type": "Status?",
+          "visibility": "public"
+        },
+        {
+          "kind": "property",
+          "name": "StatusFactory",
+          "type": "Func<Status>",
+          "visibility": "public"
+        },
+        {
+          "kind": "property",
+          "name": "LazyStatus",
+          "type": "Lazy<Status>",
+          "visibility": "public"
+        }
+      ],
+      "memberLines": {
+        "Statuses": 13,
+        "ReadOnlyStatuses": 16,
+        "StatusMap": 19,
+        "StatusArray": 22,
+        "OptionalStatus": 25,
+        "StatusFactory": 31,
+        "LazyStatus": 34
+      }
+    },
+    {
+      "id": "Sample.Core.Features..ctor(Status)",
+      "kind": "method",
+      "nativeKind": "constructor",
+      "name": ".ctor",
+      "namespace": "",
+      "file": "Sample.Core/Features.cs",
+      "line": 37,
+      "endLine": 40,
+      "visibility": "public"
+    },
+    {
+      "id": "Sample.Core.Features.GetStatusAsync()",
+      "kind": "method",
+      "nativeKind": "method",
+      "name": "GetStatusAsync",
+      "namespace": "",
+      "file": "Sample.Core/Features.cs",
+      "line": 28,
+      "endLine": 28,
+      "visibility": "public"
+    },
+    {
+      "id": "Sample.Core.Features.LazyStatus",
+      "kind": "method",
+      "nativeKind": "property",
+      "name": "LazyStatus",
+      "namespace": "",
+      "file": "Sample.Core/Features.cs",
+      "line": 34,
+      "endLine": 34,
+      "visibility": "public"
+    },
+    {
+      "id": "Sample.Core.Features.OptionalStatus",
+      "kind": "method",
+      "nativeKind": "property",
+      "name": "OptionalStatus",
+      "namespace": "",
+      "file": "Sample.Core/Features.cs",
+      "line": 25,
+      "endLine": 25,
+      "visibility": "public"
+    },
+    {
+      "id": "Sample.Core.Features.ProcessGeneric`1(T)",
+      "kind": "method",
+      "nativeKind": "method",
+      "name": "ProcessGeneric",
+      "namespace": "",
+      "file": "Sample.Core/Features.cs",
+      "line": 43,
+      "endLine": 45,
+      "visibility": "public"
+    },
+    {
+      "id": "Sample.Core.Features.ReadOnlyStatuses",
+      "kind": "method",
+      "nativeKind": "property",
+      "name": "ReadOnlyStatuses",
+      "namespace": "",
+      "file": "Sample.Core/Features.cs",
+      "line": 16,
+      "endLine": 16,
+      "visibility": "public"
+    },
+    {
+      "id": "Sample.Core.Features.StatusArray",
+      "kind": "method",
+      "nativeKind": "property",
+      "name": "StatusArray",
+      "namespace": "",
+      "file": "Sample.Core/Features.cs",
+      "line": 22,
+      "endLine": 22,
+      "visibility": "public"
+    },
+    {
+      "id": "Sample.Core.Features.StatusFactory",
+      "kind": "method",
+      "nativeKind": "property",
+      "name": "StatusFactory",
+      "namespace": "",
+      "file": "Sample.Core/Features.cs",
+      "line": 31,
+      "endLine": 31,
+      "visibility": "public"
+    },
+    {
+      "id": "Sample.Core.Features.StatusMap",
+      "kind": "method",
+      "nativeKind": "property",
+      "name": "StatusMap",
+      "namespace": "",
+      "file": "Sample.Core/Features.cs",
+      "line": 19,
+      "endLine": 19,
+      "visibility": "public"
+    },
+    {
+      "id": "Sample.Core.Features.Statuses",
+      "kind": "method",
+      "nativeKind": "property",
+      "name": "Statuses",
+      "namespace": "",
+      "file": "Sample.Core/Features.cs",
+      "line": 13,
+      "endLine": 13,
+      "visibility": "public"
+    },
+    {
+      "id": "Sample.Core.Guards",
+      "kind": "module",
+      "nativeKind": "namespace",
+      "name": "Guards",
+      "namespace": "",
+      "file": "Sample.Core/Guards/RepetitionGuard.Extra.cs",
+      "line": 1
+    },
+    {
+      "id": "Sample.Core.Guards.RepetitionGuard",
+      "kind": "type",
+      "nativeKind": "class",
+      "name": "RepetitionGuard",
+      "namespace": "Sample.Core.Guards",
+      "file": "Sample.Core/Guards/RepetitionGuard.Extra.cs",
+      "line": 3,
+      "endLine": 6,
+      "spans": [
+        {
+          "file": "Sample.Core/Guards/RepetitionGuard.Extra.cs",
+          "line": 3,
+          "endLine": 6
+        },
+        {
+          "file": "Sample.Core/Guards/RepetitionGuard.cs",
+          "line": 3,
+          "endLine": 6
+        }
+      ],
+      "visibility": "public",
+      "members": [
+        {
+          "kind": "property",
+          "name": "Count",
+          "type": "int",
+          "visibility": "public"
+        },
+        {
+          "kind": "field",
+          "name": "Label",
+          "type": "string",
+          "visibility": "internal"
+        }
+      ],
+      "memberLines": {
+        "Label": 5
+      }
+    },
+    {
+      "id": "Sample.Core.Guards.RepetitionGuard..ctor()",
+      "kind": "method",
+      "nativeKind": "constructor",
+      "name": ".ctor",
+      "namespace": "",
+      "file": "Sample.Core/Guards/RepetitionGuard.Extra.cs",
+      "line": 3,
+      "endLine": 3,
+      "visibility": "public"
+    },
+    {
+      "id": "Sample.Core.Guards.RepetitionGuard.Count",
+      "kind": "method",
+      "nativeKind": "property",
+      "name": "Count",
+      "namespace": "",
+      "file": "Sample.Core/Guards/RepetitionGuard.cs",
+      "line": 5,
+      "endLine": 5,
+      "visibility": "public"
+    },
+    {
+      "id": "Sample.Core.IReadStore",
+      "kind": "interface",
+      "nativeKind": "interface",
+      "name": "IReadStore",
+      "namespace": "Sample.Core",
+      "file": "Sample.Core/Contracts.cs",
+      "line": 4,
+      "endLine": 6,
+      "visibility": "public",
+      "members": []
+    },
+    {
+      "id": "Sample.Core.IRepository",
+      "kind": "interface",
+      "nativeKind": "interface",
+      "name": "IRepository",
+      "namespace": "Sample.Core",
+      "file": "Sample.Core/IRepository.cs",
+      "line": 3,
+      "endLine": 10,
+      "visibility": "public",
+      "members": [
+        {
+          "kind": "property",
+          "name": "CurrentStatus",
+          "type": "Status",
+          "visibility": "public"
+        },
+        {
+          "kind": "event",
+          "name": "Changed",
+          "type": "Notify",
+          "visibility": "public"
+        },
+        {
+          "kind": "method",
+          "name": "Snapshot",
+          "type": "Repo<Status> Snapshot()",
+          "visibility": "public"
+        }
+      ],
+      "memberLines": {
+        "CurrentStatus": 5,
+        "Changed": 7,
+        "Snapshot": 9
+      }
+    },
+    {
+      "id": "Sample.Core.IRepository.CurrentStatus",
+      "kind": "method",
+      "nativeKind": "property",
+      "name": "CurrentStatus",
+      "namespace": "",
+      "file": "Sample.Core/IRepository.cs",
+      "line": 5,
+      "endLine": 5,
+      "visibility": "public"
+    },
+    {
+      "id": "Sample.Core.IRepository.Snapshot()",
+      "kind": "method",
+      "nativeKind": "method",
+      "name": "Snapshot",
+      "namespace": "",
+      "file": "Sample.Core/IRepository.cs",
+      "line": 9,
+      "endLine": 9,
+      "visibility": "public"
+    },
+    {
+      "id": "Sample.Core.IWriteStore",
+      "kind": "interface",
+      "nativeKind": "interface",
+      "name": "IWriteStore",
+      "namespace": "Sample.Core",
+      "file": "Sample.Core/Contracts.cs",
+      "line": 8,
+      "endLine": 10,
+      "visibility": "public",
+      "members": []
+    },
+    {
+      "id": "Sample.Core.Logger",
+      "kind": "type",
+      "nativeKind": "class",
+      "name": "Logger",
+      "namespace": "Sample.Core",
+      "file": "Sample.Core/Logger.cs",
+      "line": 3,
+      "endLine": 8,
+      "visibility": "public",
+      "members": [
+        {
+          "kind": "property",
+          "name": "Created",
+          "type": "DateTime",
+          "visibility": "public"
+        },
+        {
+          "kind": "property",
+          "name": "Name",
+          "type": "string",
+          "visibility": "public"
+        }
+      ],
+      "memberLines": {
+        "Created": 5,
+        "Name": 7
+      }
+    },
+    {
+      "id": "Sample.Core.Logger..ctor()",
+      "kind": "method",
+      "nativeKind": "constructor",
+      "name": ".ctor",
+      "namespace": "",
+      "file": "Sample.Core/Logger.cs",
+      "line": 3,
+      "endLine": 3,
+      "visibility": "public"
+    },
+    {
+      "id": "Sample.Core.Logger.Created",
+      "kind": "method",
+      "nativeKind": "property",
+      "name": "Created",
+      "namespace": "",
+      "file": "Sample.Core/Logger.cs",
+      "line": 5,
+      "endLine": 5,
+      "visibility": "public"
+    },
+    {
+      "id": "Sample.Core.Logger.Name",
+      "kind": "method",
+      "nativeKind": "property",
+      "name": "Name",
+      "namespace": "",
+      "file": "Sample.Core/Logger.cs",
+      "line": 7,
+      "endLine": 7,
+      "visibility": "public"
+    },
+    {
+      "id": "Sample.Core.Notify",
+      "kind": "function",
+      "nativeKind": "delegate",
+      "name": "Notify",
+      "namespace": "Sample.Core",
+      "file": "Sample.Core/Notify.cs",
+      "line": 3,
+      "endLine": 3,
+      "visibility": "public"
+    },
+    {
+      "id": "Sample.Core.Point",
+      "kind": "type",
+      "nativeKind": "record-struct",
+      "name": "Point",
+      "namespace": "Sample.Core",
+      "file": "Sample.Core/Point.cs",
+      "line": 3,
+      "endLine": 3,
+      "visibility": "public",
+      "members": [
+        {
+          "kind": "property",
+          "name": "X",
+          "type": "int",
+          "visibility": "public"
+        },
+        {
+          "kind": "property",
+          "name": "Y",
+          "type": "int",
+          "visibility": "public"
+        }
+      ],
+      "memberLines": {
+        "X": 3,
+        "Y": 3
+      }
+    },
+    {
+      "id": "Sample.Core.Point..ctor(int,int)",
+      "kind": "method",
+      "nativeKind": "constructor",
+      "name": ".ctor",
+      "namespace": "",
+      "file": "Sample.Core/Point.cs",
+      "line": 3,
+      "endLine": 3,
+      "visibility": "public"
+    },
+    {
+      "id": "Sample.Core.Point.X",
+      "kind": "method",
+      "nativeKind": "property",
+      "name": "X",
+      "namespace": "",
+      "file": "Sample.Core/Point.cs",
+      "line": 3,
+      "endLine": 3,
+      "visibility": "public"
+    },
+    {
+      "id": "Sample.Core.Point.Y",
+      "kind": "method",
+      "nativeKind": "property",
+      "name": "Y",
+      "namespace": "",
+      "file": "Sample.Core/Point.cs",
+      "line": 3,
+      "endLine": 3,
+      "visibility": "public"
+    },
+    {
+      "id": "Sample.Core.Repo`1",
+      "kind": "type",
+      "nativeKind": "class",
+      "name": "Repo",
+      "namespace": "Sample.Core",
+      "file": "Sample.Core/Repo.cs",
+      "line": 3,
+      "endLine": 8,
+      "visibility": "public",
+      "members": [
+        {
+          "kind": "property",
+          "name": "Current",
+          "type": "T?",
+          "visibility": "public"
+        },
+        {
+          "kind": "property",
+          "name": "Items",
+          "type": "List<T>",
+          "visibility": "public"
+        }
+      ],
+      "memberLines": {
+        "Current": 5,
+        "Items": 7
+      }
+    },
+    {
+      "id": "Sample.Core.Repo`1..ctor()",
+      "kind": "method",
+      "nativeKind": "constructor",
+      "name": ".ctor",
+      "namespace": "",
+      "file": "Sample.Core/Repo.cs",
+      "line": 3,
+      "endLine": 3,
+      "visibility": "public"
+    },
+    {
+      "id": "Sample.Core.Repo`1.Current",
+      "kind": "method",
+      "nativeKind": "property",
+      "name": "Current",
+      "namespace": "",
+      "file": "Sample.Core/Repo.cs",
+      "line": 5,
+      "endLine": 5,
+      "visibility": "public"
+    },
+    {
+      "id": "Sample.Core.Repo`1.Items",
+      "kind": "method",
+      "nativeKind": "property",
+      "name": "Items",
+      "namespace": "",
+      "file": "Sample.Core/Repo.cs",
+      "line": 7,
+      "endLine": 7,
+      "visibility": "public"
+    },
+    {
+      "id": "Sample.Core.Status",
+      "kind": "type",
+      "nativeKind": "enum",
+      "name": "Status",
+      "namespace": "Sample.Core",
+      "file": "Sample.Core/Status.cs",
+      "line": 3,
+      "endLine": 8,
+      "visibility": "public",
+      "members": [
+        {
+          "kind": "value",
+          "name": "Draft",
+          "type": "0"
+        },
+        {
+          "kind": "value",
+          "name": "Published",
+          "type": "1"
+        },
+        {
+          "kind": "value",
+          "name": "Archived",
+          "type": "2"
+        }
+      ],
+      "memberLines": {
+        "Draft": 5,
+        "Published": 6,
+        "Archived": 7
+      }
+    },
+    {
+      "id": "Sample.Shared",
+      "kind": "module",
+      "nativeKind": "namespace",
+      "name": "Shared",
+      "namespace": "",
+      "file": "Shared/BuildInfo.cs",
+      "line": 1
+    },
+    {
+      "id": "Sample.Shared.BuildInfo",
+      "kind": "type",
+      "nativeKind": "static-class",
+      "name": "BuildInfo",
+      "namespace": "Sample.Shared",
+      "file": "Shared/BuildInfo.cs",
+      "line": 5,
+      "endLine": 8,
+      "visibility": "internal",
+      "members": [
+        {
+          "kind": "field",
+          "name": "Product",
+          "type": "string",
+          "visibility": "public"
+        }
+      ],
+      "memberLines": {
+        "Product": 7
+      }
+    },
+    {
+      "id": "[Sample.App]",
+      "kind": "module",
+      "nativeKind": "assembly",
+      "name": "Sample.App",
+      "namespace": "",
+      "file": "Sample.App/Sample.App.csproj"
+    },
+    {
+      "id": "[Sample.Core]",
+      "kind": "module",
+      "nativeKind": "assembly",
+      "name": "Sample.Core",
+      "namespace": "",
+      "file": "Sample.Core/Sample.Core.csproj"
+    }
+  ],
+  "edges": [
+    {
+      "from": "Sample.App",
+      "to": "Sample.App.AdvancedRepetitionGuard",
+      "kind": "contains",
+      "native": "namespace"
+    },
+    {
+      "from": "Sample.App.AdvancedRepetitionGuard",
+      "to": "Sample.App.AdvancedRepetitionGuard..ctor()",
+      "kind": "contains"
+    },
+    {
+      "from": "Sample.App.AdvancedRepetitionGuard",
+      "to": "Sample.App.AdvancedRepetitionGuard.CurrentStatus",
+      "kind": "contains"
+    },
+    {
+      "from": "Sample.App.AdvancedRepetitionGuard",
+      "to": "Sample.App.AdvancedRepetitionGuard.Snapshot()",
+      "kind": "contains"
+    },
+    {
+      "from": "Sample.App.AdvancedRepetitionGuard",
+      "to": "Sample.Core.Guards.RepetitionGuard",
+      "kind": "extends",
+      "native": "class",
+      "line": 6
+    },
+    {
+      "from": "Sample.App.AdvancedRepetitionGuard",
+      "to": "Sample.Core.IRepository",
+      "kind": "implements",
+      "native": "interface",
+      "line": 6
+    },
+    {
+      "from": "Sample.App.AdvancedRepetitionGuard.CurrentStatus",
+      "to": "Sample.Core.IRepository.CurrentStatus",
+      "kind": "implements"
+    },
+    {
+      "from": "Sample.App.AdvancedRepetitionGuard.Snapshot()",
+      "to": "Sample.Core.IRepository.Snapshot()",
+      "kind": "implements"
+    },
+    {
+      "from": "Sample.App.AdvancedRepetitionGuard.Snapshot()",
+      "to": "Sample.Core.Repo`1",
+      "kind": "constructs",
+      "line": 12
+    },
+    {
+      "from": "Sample.App.AdvancedRepetitionGuard.Snapshot()",
+      "to": "Sample.Core.Repo`1..ctor()",
+      "kind": "calls",
+      "line": 12
+    },
+    {
+      "from": "Sample.Core",
+      "to": "Sample.Core.Container",
+      "kind": "contains",
+      "native": "namespace"
+    },
+    {
+      "from": "Sample.Core",
+      "to": "Sample.Core.Features",
+      "kind": "contains",
+      "native": "namespace"
+    },
+    {
+      "from": "Sample.Core",
+      "to": "Sample.Core.IReadStore",
+      "kind": "contains",
+      "native": "namespace"
+    },
+    {
+      "from": "Sample.Core",
+      "to": "Sample.Core.IRepository",
+      "kind": "contains",
+      "native": "namespace"
+    },
+    {
+      "from": "Sample.Core",
+      "to": "Sample.Core.IWriteStore",
+      "kind": "contains",
+      "native": "namespace"
+    },
+    {
+      "from": "Sample.Core",
+      "to": "Sample.Core.Logger",
+      "kind": "contains",
+      "native": "namespace"
+    },
+    {
+      "from": "Sample.Core",
+      "to": "Sample.Core.Notify",
+      "kind": "contains",
+      "native": "namespace"
+    },
+    {
+      "from": "Sample.Core",
+      "to": "Sample.Core.Point",
+      "kind": "contains",
+      "native": "namespace"
+    },
+    {
+      "from": "Sample.Core",
+      "to": "Sample.Core.Repo`1",
+      "kind": "contains",
+      "native": "namespace"
+    },
+    {
+      "from": "Sample.Core",
+      "to": "Sample.Core.Status",
+      "kind": "contains",
+      "native": "namespace"
+    },
+    {
+      "from": "Sample.Core.Container",
+      "to": "Sample.Core.Container+Inner",
+      "kind": "contains",
+      "native": "nested"
+    },
+    {
+      "from": "Sample.Core.Container",
+      "to": "Sample.Core.Container+Secret",
+      "kind": "contains",
+      "native": "nested"
+    },
+    {
+      "from": "Sample.Core.Container",
+      "to": "Sample.Core.Container..ctor()",
+      "kind": "contains"
+    },
+    {
+      "from": "Sample.Core.Container+Inner",
+      "to": "Sample.Core.Container+Inner..ctor()",
+      "kind": "contains"
+    },
+    {
+      "from": "Sample.Core.Container+Inner",
+      "to": "Sample.Core.Container+Inner.Value",
+      "kind": "contains"
+    },
+    {
+      "from": "Sample.Core.Container+Secret",
+      "to": "Sample.Core.Container+Secret..ctor()",
+      "kind": "contains"
+    },
+    {
+      "from": "Sample.Core.Container+Secret",
+      "to": "Sample.Core.Container+Secret.Hidden",
+      "kind": "contains"
+    },
+    {
+      "from": "Sample.Core.Features",
+      "to": "Sample.Core.Features..ctor(Status)",
+      "kind": "contains"
+    },
+    {
+      "from": "Sample.Core.Features",
+      "to": "Sample.Core.Features.GetStatusAsync()",
+      "kind": "contains"
+    },
+    {
+      "from": "Sample.Core.Features",
+      "to": "Sample.Core.Features.LazyStatus",
+      "kind": "contains"
+    },
+    {
+      "from": "Sample.Core.Features",
+      "to": "Sample.Core.Features.OptionalStatus",
+      "kind": "contains"
+    },
+    {
+      "from": "Sample.Core.Features",
+      "to": "Sample.Core.Features.ProcessGeneric`1(T)",
+      "kind": "contains"
+    },
+    {
+      "from": "Sample.Core.Features",
+      "to": "Sample.Core.Features.ReadOnlyStatuses",
+      "kind": "contains"
+    },
+    {
+      "from": "Sample.Core.Features",
+      "to": "Sample.Core.Features.StatusArray",
+      "kind": "contains"
+    },
+    {
+      "from": "Sample.Core.Features",
+      "to": "Sample.Core.Features.StatusFactory",
+      "kind": "contains"
+    },
+    {
+      "from": "Sample.Core.Features",
+      "to": "Sample.Core.Features.StatusMap",
+      "kind": "contains"
+    },
+    {
+      "from": "Sample.Core.Features",
+      "to": "Sample.Core.Features.Statuses",
+      "kind": "contains"
+    },
+    {
+      "from": "Sample.Core.Features..ctor(Status)",
+      "to": "Sample.Core.Features.OptionalStatus",
+      "kind": "calls",
+      "line": 39
+    },
+    {
+      "from": "Sample.Core.Guards",
+      "to": "Sample.Core.Guards.RepetitionGuard",
+      "kind": "contains",
+      "native": "namespace"
+    },
+    {
+      "from": "Sample.Core.Guards.RepetitionGuard",
+      "to": "Sample.Core.Guards.RepetitionGuard..ctor()",
+      "kind": "contains"
+    },
+    {
+      "from": "Sample.Core.Guards.RepetitionGuard",
+      "to": "Sample.Core.Guards.RepetitionGuard.Count",
+      "kind": "contains"
+    },
+    {
+      "from": "Sample.Core.IRepository",
+      "to": "Sample.Core.IRepository.CurrentStatus",
+      "kind": "contains"
+    },
+    {
+      "from": "Sample.Core.IRepository",
+      "to": "Sample.Core.IRepository.Snapshot()",
+      "kind": "contains"
+    },
+    {
+      "from": "Sample.Core.IWriteStore",
+      "to": "Sample.Core.IReadStore",
+      "kind": "extends",
+      "native": "interface",
+      "line": 8
+    },
+    {
+      "from": "Sample.Core.Logger",
+      "to": "Sample.Core.Logger..ctor()",
+      "kind": "contains"
+    },
+    {
+      "from": "Sample.Core.Logger",
+      "to": "Sample.Core.Logger.Created",
+      "kind": "contains"
+    },
+    {
+      "from": "Sample.Core.Logger",
+      "to": "Sample.Core.Logger.Name",
+      "kind": "contains"
+    },
+    {
+      "from": "Sample.Core.Point",
+      "to": "Sample.Core.Point..ctor(int,int)",
+      "kind": "contains"
+    },
+    {
+      "from": "Sample.Core.Point",
+      "to": "Sample.Core.Point.X",
+      "kind": "contains"
+    },
+    {
+      "from": "Sample.Core.Point",
+      "to": "Sample.Core.Point.Y",
+      "kind": "contains"
+    },
+    {
+      "from": "Sample.Core.Repo`1",
+      "to": "Sample.Core.Repo`1..ctor()",
+      "kind": "contains"
+    },
+    {
+      "from": "Sample.Core.Repo`1",
+      "to": "Sample.Core.Repo`1.Current",
+      "kind": "contains"
+    },
+    {
+      "from": "Sample.Core.Repo`1",
+      "to": "Sample.Core.Repo`1.Items",
+      "kind": "contains"
+    },
+    {
+      "from": "Sample.Shared",
+      "to": "Sample.Shared.BuildInfo",
+      "kind": "contains",
+      "native": "namespace"
+    },
+    {
+      "from": "[Sample.App]",
+      "to": "Sample.App.AdvancedRepetitionGuard",
+      "kind": "contains",
+      "native": "assembly"
+    },
+    {
+      "from": "[Sample.App]",
+      "to": "Sample.Shared.BuildInfo",
+      "kind": "contains",
+      "native": "assembly"
+    },
+    {
+      "from": "[Sample.App]",
+      "to": "[Sample.Core]",
+      "kind": "depends"
+    },
+    {
+      "from": "[Sample.Core]",
+      "to": "Sample.Core.Container",
+      "kind": "contains",
+      "native": "assembly"
+    },
+    {
+      "from": "[Sample.Core]",
+      "to": "Sample.Core.Features",
+      "kind": "contains",
+      "native": "assembly"
+    },
+    {
+      "from": "[Sample.Core]",
+      "to": "Sample.Core.Guards.RepetitionGuard",
+      "kind": "contains",
+      "native": "assembly"
+    },
+    {
+      "from": "[Sample.Core]",
+      "to": "Sample.Core.IReadStore",
+      "kind": "contains",
+      "native": "assembly"
+    },
+    {
+      "from": "[Sample.Core]",
+      "to": "Sample.Core.IRepository",
+      "kind": "contains",
+      "native": "assembly"
+    },
+    {
+      "from": "[Sample.Core]",
+      "to": "Sample.Core.IWriteStore",
+      "kind": "contains",
+      "native": "assembly"
+    },
+    {
+      "from": "[Sample.Core]",
+      "to": "Sample.Core.Logger",
+      "kind": "contains",
+      "native": "assembly"
+    },
+    {
+      "from": "[Sample.Core]",
+      "to": "Sample.Core.Notify",
+      "kind": "contains",
+      "native": "assembly"
+    },
+    {
+      "from": "[Sample.Core]",
+      "to": "Sample.Core.Point",
+      "kind": "contains",
+      "native": "assembly"
+    },
+    {
+      "from": "[Sample.Core]",
+      "to": "Sample.Core.Repo`1",
+      "kind": "contains",
+      "native": "assembly"
+    },
+    {
+      "from": "[Sample.Core]",
+      "to": "Sample.Core.Status",
+      "kind": "contains",
+      "native": "assembly"
+    },
+    {
+      "from": "[Sample.Core]",
+      "to": "Sample.Shared.BuildInfo",
+      "kind": "contains",
+      "native": "assembly"
+    }
+  ]
+}

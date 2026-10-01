@@ -11,8 +11,8 @@
     "root": { "type": "string", "minLength": 1 },
     "edgeKinds": {
       "type": "array",
-      "items": { "enum": ["extends", "implements", "contains", "depends", "holds", "uses", "injects"] },
-      "description": "explicit list of edge kinds that these facts cover; sync marks missing only for listed kinds"
+      "items": { "enum": ["extends", "implements", "contains", "depends", "holds", "uses", "injects", "calls"] },
+      "description": "explicit list of edge kinds that these facts cover; sync marks missing only for listed kinds. `calls` is ignored by sync (ADR_20260928-4 §4)"
     },
     "symbols": {
       "type": "array",
@@ -27,21 +27,58 @@
     "id": { "type": "string", "pattern": "^\\S+$" },
     "symbol": {
       "type": "object",
-      "required": ["id", "kind", "nativeKind", "name", "file"],
+      "required": ["id", "kind", "nativeKind", "name"],
+      "if": { "properties": { "nativeKind": { "not": { "const": "external" } } } },
+      "then": { "required": ["file"] },
       "additionalProperties": false,
       "properties": {
         "id": { "$ref": "#/$defs/id" },
-        "kind": { "enum": ["type", "interface", "function", "module", "value"] },
+        "kind": { "enum": ["type", "interface", "function", "module", "value", "method"] },
         "nativeKind": { "type": "string", "minLength": 1 },
         "name": { "type": "string", "minLength": 1 },
         "namespace": { "type": "string" },
         "file": { "type": "string", "pattern": "^[^\\\\]+$", "description": "relative to root, forward slashes" },
         "line": { "type": "integer", "minimum": 1 },
+        "endLine": { "type": "integer", "minimum": 1, "description": "last line of the declaration named by file/line" },
+        "spans": {
+          "type": "array",
+          "items": { "$ref": "#/$defs/span" },
+          "description": "printed only when the symbol has more than one declaration (C# partial, TypeScript merged declarations); sorted by (file, line)"
+        },
         "visibility": { "type": "string", "minLength": 1 },
         "members": {
           "type": "array",
           "items": { "$ref": "#/$defs/member" }
+        },
+        "memberLines": {
+          "type": "object",
+          "additionalProperties": { "type": "integer", "minimum": 1 },
+          "description": "member name -> line, beside members so sync never copies it into entities.json; a member declared in another file than the symbol's file is left out"
+        },
+        "dynamic": {
+          "type": "array",
+          "items": { "$ref": "#/$defs/dynamicMark" },
+          "description": "blind-spot marks (ADR_20260928-5 §4): only for kind method, only printed with --edges calls, sorted by (line, kind), no duplicates"
         }
+      }
+    },
+    "span": {
+      "type": "object",
+      "required": ["file", "line"],
+      "additionalProperties": false,
+      "properties": {
+        "file": { "type": "string", "pattern": "^[^\\\\]+$" },
+        "line": { "type": "integer", "minimum": 1 },
+        "endLine": { "type": "integer", "minimum": 1 }
+      }
+    },
+    "dynamicMark": {
+      "type": "object",
+      "required": ["kind", "line"],
+      "additionalProperties": false,
+      "properties": {
+        "kind": { "enum": ["create", "invoke", "make-type", "dynamic"], "description": "no target: create (Activator/ConstructorInfo.Invoke), invoke (MethodBase.Invoke/Delegate.DynamicInvoke), make-type (Type.MakeGenericType/GetType, Assembly.GetType, MethodInfo.MakeGenericMethod), dynamic (an operation on an expression of the C# type dynamic)" },
+        "line": { "type": "integer", "minimum": 1 }
       }
     },
     "member": {
@@ -63,8 +100,16 @@
       "properties": {
         "from": { "$ref": "#/$defs/id" },
         "to": { "$ref": "#/$defs/id" },
-        "kind": { "enum": ["extends", "implements", "contains", "depends", "holds", "uses"] },
-        "via": { "$ref": "#/$defs/via" }
+        "kind": { "enum": ["extends", "implements", "contains", "depends", "holds", "uses", "calls", "constructs", "overrides"], "description": "extends..uses: the closed architectural vocabulary of edges that reach the registry (ADR_20260927, ADR_20260930-3); calls, constructs, overrides: fact kinds of the live graph only, never in the registry" },
+        "native": { "type": "string", "minLength": 1, "description": "how the language expressed the edge: embed, methodset, field, property, interface… (docs/extractors/<lang>.md); not compared by sync" },
+        "via": { "$ref": "#/$defs/via" },
+        "line": { "type": "integer", "minimum": 1, "description": "where the edge comes from: the member for holds/uses, the base list for extends/implements, the first call site for calls. Not for contains and depends" },
+        "file": { "type": "string", "pattern": "^[^\\\\]+$", "description": "only when it differs from the file of the `from` symbol" },
+        "lines": {
+          "type": "array",
+          "items": { "type": "integer", "minimum": 1 },
+          "description": "every place of a calls or constructs edge inside the method, sorted ascending; line is the first of them (ADR_20260928-4 §3)"
+        }
       }
     },
     "via": {

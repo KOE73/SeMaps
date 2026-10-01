@@ -32,24 +32,33 @@ type runStats struct {
 }
 
 type runInfo struct {
-	ID        string    `json:"id"`
-	Extractor string    `json:"extractor"` // entry id in .semaps
-	Project   string    `json:"project"`   // model project the facts are for
-	Language  string    `json:"language"`
-	Command   []string  `json:"command,omitempty"`
-	Started   time.Time `json:"started"`
-	Finished  time.Time `json:"finished,omitzero"`
-	Seconds   float64   `json:"seconds,omitempty"`
-	State     string    `json:"state"` // running | done | failed
-	ExitCode  int       `json:"exitCode"`
-	Error     string    `json:"error,omitempty"`
-	Stats     *runStats `json:"stats,omitempty"`
+	ID        string   `json:"id"`
+	Extractor string   `json:"extractor"` // entry id in .semaps
+	Project   string   `json:"project"`   // model project the facts are for
+	Language  string   `json:"language"`
+	Command   []string `json:"command,omitempty"`
+	// Trigger says who started the run: "watch" for one started by
+	// host/watch.go on its own; empty for a person or an agent
+	// (PLAN_20260928-4_host_watch-sources.md step 2).
+	Trigger  string    `json:"trigger,omitempty"`
+	Started  time.Time `json:"started"`
+	Finished time.Time `json:"finished,omitzero"`
+	Seconds  float64   `json:"seconds,omitempty"`
+	State    string    `json:"state"` // running | done | failed
+	ExitCode int       `json:"exitCode"`
+	Error    string    `json:"error,omitempty"`
+	Stats    *runStats `json:"stats,omitempty"`
 }
 
 // runStore keeps the runs of one project file.
 type runStore struct {
 	dir string
 	mu  sync.Mutex
+	// onFinish, when set, is called after a run reaches "done" (never after
+	// "failed"): PLAN_20260928_host_graph-provider.md step 3/5 hooks the
+	// graph service here to notify /api/events subscribers of what changed.
+	// nil by default: existing callers and tests are unaffected.
+	onFinish func(*runInfo)
 }
 
 func newRunStore(projectFile string) *runStore {
@@ -106,12 +115,21 @@ func (s *runStore) list(extractor string) []*runInfo {
 	return out
 }
 
-// prune keeps the newest `keep` runs of each extractor.
-func (s *runStore) prune(keep int) {
+// prune keeps the newest `keepPerson` non-watch runs and the newest
+// `keepWatch` watch runs of each extractor, counted apart: a watcher running
+// on its own must never push out the runs a person or an agent started
+// (PLAN_20260928-4_host_watch-sources.md step 2).
+func (s *runStore) prune(keepPerson, keepWatch int) {
 	count := map[string]int{}
 	for _, r := range s.list("") {
-		count[r.Extractor]++
-		if count[r.Extractor] > keep && r.State != "running" {
+		key := r.Extractor
+		keep := keepPerson
+		if r.Trigger == "watch" {
+			key += "\x00watch"
+			keep = keepWatch
+		}
+		count[key]++
+		if count[key] > keep && r.State != "running" {
 			os.RemoveAll(filepath.Join(s.dir, r.ID))
 		}
 	}
@@ -119,7 +137,7 @@ func (s *runStore) prune(keep int) {
 
 // start creates a run and launches the extractor. The returned channel closes
 // when it is finished; `echo`, when set, also receives the log.
-func (s *runStore) start(proj project, e extractorConf, echo io.Writer) (*runInfo, <-chan struct{}, error) {
+func (s *runStore) start(proj project, e extractorConf, echo io.Writer, trigger string) (*runInfo, <-chan struct{}, error) {
 	tool := resolveExtractor(e)
 	if !tool.Found {
 		return nil, nil, errors.New(tool.Problem)
@@ -132,7 +150,7 @@ func (s *runStore) start(proj project, e extractorConf, echo io.Writer) (*runInf
 	info := &runInfo{
 		ID:        now.Format("20060102-150405") + "-" + strings.ToLower(e.ID),
 		Extractor: e.ID, Project: e.Project, Language: e.Language,
-		Command: args, Started: now, State: "running",
+		Command: args, Trigger: trigger, Started: now, State: "running",
 	}
 	if !validRunID(info.ID) {
 		info.ID = now.Format("20060102-150405-000000000")
@@ -189,7 +207,10 @@ func (s *runStore) start(proj project, e extractorConf, echo io.Writer) (*runInf
 		logFile.Close()
 		s.save(info)
 		close(done)
-		s.prune(5)
+		s.prune(5, 2)
+		if s.onFinish != nil && info.State == "done" {
+			s.onFinish(info)
+		}
 	}
 	if err := cmd.Start(); err != nil {
 		finish(err)
@@ -239,7 +260,7 @@ func (s *runStore) syncRunModel(model *core.Model, info *runInfo, opt core.SyncO
 }
 
 func (s *runStore) syncRun(workspace string, info *runInfo, opt core.SyncOptions) (*core.SyncReport, error) {
-	m, err := core.LoadModel(workspace, info.Project)
+	m, err := core.LoadModel(workspace, info.Project, defaultKinds())
 	if err != nil {
 		return nil, err
 	}

@@ -43,7 +43,7 @@ func TestMCPProxyStartsHostAndCallsTool(t *testing.T) {
 	if err := os.MkdirAll(projectDir, 0755); err != nil {
 		t.Fatal(err)
 	}
-	for file, body := range map[string]string{"project.json": `{"id":"p","languages":["ru"]}`, "entities.json": `{"entities":[{"id":"e_a","name":"A","kind":"class"}]}`} {
+	for file, body := range map[string]string{"project.json": `{"id":"p","contractVersion":5,"languages":["ru"]}`, "entities.json": `{"entities":[{"id":"e_a","name":"A","kind":"class"}]}`} {
 		if err := os.WriteFile(filepath.Join(projectDir, file), []byte(body), 0644); err != nil {
 			t.Fatal(err)
 		}

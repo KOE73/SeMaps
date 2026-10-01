@@ -2,6 +2,7 @@ package core
 
 import (
 	"encoding/json"
+	"fmt"
 	"net/url"
 	"strings"
 )
@@ -57,31 +58,32 @@ func ParseRef(ref string) (ObjectRef, error) {
 }
 
 // ResolveRef checks that the referenced view exists and, when the reference
-// names an object, that the object is on it. kind is "view", "zone" or "node".
+// names an object, that the object is on it: "view", "container" (a placement
+// of a container entity) or "block" (any other placement).
 func (m *Model) ResolveRef(r ObjectRef) (string, error) {
 	doc, err := m.view(r.View)
 	if err != nil {
-		return "", refuse("no view %s", r.View)
+		return "", err
 	}
 	if r.ID == "" {
 		return "view", nil
 	}
-	for _, z := range viewItems(doc, "zones") {
-		if z.str("id") == r.ID {
-			return "zone", nil
-		}
-	}
-	for _, key := range []string{"nodes", "placements"} {
-		for _, n := range viewItems(doc, key) {
-			if nodeID(n) == r.ID {
-				return "node", nil
+	for _, p := range viewItems(doc, "placements") {
+		if p.str("entity") == r.ID {
+			if m.isContainerEntity(r.ID) {
+				return "container", nil
 			}
+			return "block", nil
 		}
 	}
 	return "", refuse("%s is not on view %s", r.ID, r.View)
 }
 
-func nodeID(n *object) string { return orDefault(n.str("entity"), n.str("id")) }
+// isContainerEntity: the entity's kind is a container kind of the dictionary.
+func (m *Model) isContainerEntity(id string) bool {
+	e := m.record("entity", id)
+	return e != nil && m.kinds.IsContainer(e.str("kind"))
+}
 
 // viewItems is the objects under a view key, in file order.
 func viewItems(doc *object, key string) []*object {
@@ -90,4 +92,67 @@ func viewItems(doc *object, key string) []*object {
 		_ = json.Unmarshal(raw, &items)
 	}
 	return items
+}
+
+// oldViewShape names what makes a view an old shape — of contract 3: `zones`,
+// `nodes`, a placement with `zone`/`container` or `id` instead of `entity`; of the
+// earlier contract 5: an `edges` entry with from/to/type; "" when the view is of the current shape (CONTRACT §8). The loader
+// does not read it; `semaps migrate` rewrites it (ADR_20260927-3).
+func oldViewShape(doc *object) string {
+	for _, key := range []string{"zones", "nodes"} {
+		if _, ok := doc.vals[key]; ok {
+			return "`" + key + "`"
+		}
+	}
+	for i, p := range viewItems(doc, "placements") {
+		if s := oldPlacementShape(p); s != "" {
+			return fmt.Sprintf("placements[%d]: %s", i, s)
+		}
+	}
+	for i, e := range viewItems(doc, "edges") {
+		for _, key := range []string{"from", "to", "type"} {
+			if _, ok := e.vals[key]; ok {
+				return fmt.Sprintf("%s%d] (%s): `%s` — запись edges была полной копией связи", edgesShapePrefix, i, e.str("id"), key)
+			}
+		}
+	}
+	return ""
+}
+
+// edgesShapePrefix starts what oldViewShape says of an `edges` entry that still
+// has from/to/type: a shape of the earlier contract 5, not of contract 3.
+const edgesShapePrefix = "edges["
+
+func oldPlacementShape(p *object) string {
+	for _, key := range []string{"zone", "container"} {
+		if _, ok := p.vals[key]; ok {
+			return "`" + key + "`"
+		}
+	}
+	if _, ok := p.vals["id"]; ok && p.str("entity") == "" {
+		return "`id` вместо `entity`"
+	}
+	return ""
+}
+
+// containersFileError is the answer of the loader and of semaps check to a
+// project directory that still has a containers.json: a container is an entity now.
+var containersFileError = fmt.Sprintf("containers.json — контейнер это сущность с типом-контейнером, файл упразднён в контракте %d (`semaps migrate`, ADR_20260927-6)", ContractVersion)
+
+// RelationTypesFile is the file a project had before relation types moved to
+// the dictionary; it is not read.
+const RelationTypesFile = "relation-types.json"
+
+// relationTypesFileError is the answer of the loader and of semaps check to a
+// project directory that still has a relation-types.json: a relation type is a
+// string on the relation and everything about it is in the dictionary.
+var relationTypesFileError = fmt.Sprintf("%s — тип связи описан в словаре (kinds.json, relationGroups), у проекта своего перечня типов нет: файл упразднён в контракте %d (`semaps migrate`, ADR_20260930-6)", RelationTypesFile, ContractVersion)
+
+// oldShapeError is the one text of the loader and of semaps check about a view
+// of an old contract (ADR_20260927-3).
+func oldShapeError(file, what string) string {
+	if strings.HasPrefix(what, edgesShapePrefix) {
+		return fmt.Sprintf("%s: %s — теперь запись `edges` вида есть ссылка на связь реестра {id, styleId?, override?, routing?}, видимость решает relations (CONTRACT §8.5; `semaps migrate`, ADR_20260930-7)", file, what)
+	}
+	return fmt.Sprintf("%s: %s — форма контракта 3, нужен %d (`semaps migrate`, ADR_20260927-3)", file, what, ContractVersion)
 }

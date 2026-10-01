@@ -1,12 +1,83 @@
 import type { EntityEntry } from "../model/wire-types.js";
 import type { DiagramEditor } from "./DiagramEditor.js";
 import { relationShownByDefault } from "../model/relationVisibility.js";
+import { KindCatalog } from "../model/KindCatalog.js";
+import { canvas } from "../constants/canvas.js";
+import { realizationsOf } from "../model/realizations.js";
 
-const WIDTH = 180;
-const HEIGHT = 60;
-const GAP_X = 40;
-const GAP_Y = 40;
+/** Default box size and the gap between boxes, from the canvas numbers (`/canvas.json`). */
+export function boxMetrics(): { WIDTH: number; HEIGHT: number; GAP_X: number; GAP_Y: number } {
+  const c = canvas();
+  return { WIDTH: c.node.width, HEIGHT: c.node.height, GAP_X: c.gap.node, GAP_Y: c.gap.node };
+}
 const PER_ROW = 4;
+
+/** A container made or placed in the editor: room for what will go into it (`canvas.json` has only its minimum). */
+export const NEW_CONTAINER_SIZE = { width: 420, height: 300 } as const;
+const CONTAINER_WIDTH = NEW_CONTAINER_SIZE.width;
+const CONTAINER_HEIGHT = NEW_CONTAINER_SIZE.height;
+
+/**
+ * The nearest spot at or below-right of (x, y) where a new box of this size
+ * lands on nothing. One rule for blocks and containers: the new box may touch
+ * an existing one only by lying wholly inside a container — that is nesting.
+ * Any other overlap hides one box under another, or puts a block on a frame,
+ * or makes a container swallow boxes that are not its children. The spot steps
+ * diagonally by the grid gap, so boxes inserted one after another fan out
+ * where the eye can count them.
+ */
+export function freeSpot(
+  doc: NonNullable<DiagramEditor["canvas"]["model"]>,
+  x: number,
+  y: number,
+  width: number,
+  height: number,
+): { x: number; y: number } {
+  const step = canvas().gap.node;
+  const fits = (cx: number, cy: number): boolean => {
+    for (const el of doc.elements()) {
+      const apart = cx >= el.x + el.width || cx + width <= el.x || cy >= el.y + el.height || cy + height <= el.y;
+      if (apart) continue;
+      const within = cx >= el.x && cy >= el.y && cx + width <= el.x + el.width && cy + height <= el.y + el.height;
+      if (!(el.kind === "zone" && within)) return false;
+    }
+    return true;
+  };
+  for (let i = 0; i < 200; i++) {
+    const cx = x + i * step;
+    const cy = y + i * step;
+    if (fits(cx, cy)) return { x: cx, y: cy };
+  }
+  return { x, y };
+}
+
+/**
+ * The box of a registry entity at (x, y). Frame or block is the kind's to say
+ * (CONTRACT.md §8.2). Its name is the display name in the current text
+ * language (`entityDisplayName`); its description comes from the view's texts.
+ */
+export function blockFor(doc: NonNullable<DiagramEditor["canvas"]["model"]>, entity: EntityEntry, x: number, y: number): any {
+  const { WIDTH, HEIGHT } = boxMetrics();
+  const container = KindCatalog.active.isContainer(entity.kind);
+  const text = (doc.bundle?.text?.entries || {})[entity.id] as { description?: string } | undefined;
+  const code = realizationsOf(entity);
+  return {
+    id: entity.id,
+    kind: container ? "zone" as const : "node" as const,
+    type: entity.kind,
+    label: doc.nameOfEntity(entity),
+    tags: [],
+    metadata: { description: text?.description, ...(code.length > 0 ? { code } : {}) },
+    x,
+    y,
+    width: container ? CONTAINER_WIDTH : WIDTH,
+    height: container ? CONTAINER_HEIGHT : HEIGHT,
+    parent: null,
+    children: [],
+    wireOrder: Number.POSITIVE_INFINITY,
+    raw: { _entity: entity },
+  };
+}
 
 /**
  * Put registry entities on the open view as boxes, one undo step for all of
@@ -22,34 +93,27 @@ export function placeEntities(
 ): string[] {
   const doc = editor.canvas.model;
   if (!doc) return [];
-  const texts = doc.bundle?.text?.entries || {};
+  const { WIDTH, HEIGHT, GAP_X, GAP_Y } = boxMetrics();
+  // A grid with a container in it is spaced for the container.
+  const anyContainer = entities.some((e) => KindCatalog.active.isContainer(e.kind));
+  const cellW = anyContainer ? CONTAINER_WIDTH : WIDTH;
+  const cellH = anyContainer ? CONTAINER_HEIGHT : HEIGHT;
 
   const placed: string[] = [];
   for (const entity of entities) {
     if (doc.element(entity.id) !== undefined || placed.includes(entity.id)) continue;
-    const text = texts[entity.id] as { name?: string; description?: string } | undefined;
     const i = placed.length;
-    const x = at.x + (i % PER_ROW) * (WIDTH + GAP_X);
-    const y = at.y + Math.floor(i / PER_ROW) * (HEIGHT + GAP_Y);
-    doc.add(
-      {
-        id: entity.id,
-        kind: "node" as const,
-        type: entity.kind,
-        label: text?.name || entity.name || entity.id,
-        tags: [],
-        metadata: { description: text?.description, codeRef: entity.codeRef },
-        x,
-        y,
-        width: WIDTH,
-        height: HEIGHT,
-        parent: null,
-        children: [],
-        wireOrder: Number.POSITIVE_INFINITY,
-        raw: { _entity: entity },
-      } as any,
-      doc.containerAt({ x: x + WIDTH / 2, y: y + HEIGHT / 2 }),
+    const box = blockFor(doc, entity, 0, 0);
+    const { x, y } = freeSpot(
+      doc,
+      at.x + (i % PER_ROW) * (cellW + GAP_X),
+      at.y + Math.floor(i / PER_ROW) * (cellH + GAP_Y),
+      box.width,
+      box.height,
     );
+    box.x = x;
+    box.y = y;
+    doc.add(box, doc.containerAt({ x: x + box.width / 2, y: y + box.height / 2 }));
     placed.push(entity.id);
   }
 
@@ -75,6 +139,7 @@ export function placeAround(
   const doc = editor.canvas.model;
   const anchor = doc?.element(anchorId);
   if (!doc || !anchor) return placeEntities(editor, entities);
+  const { WIDTH, HEIGHT, GAP_X, GAP_Y } = boxMetrics();
   const n = entities.filter((e) => doc.element(e.id) === undefined).length;
   if (n === 0) return [];
   const cols = Math.min(n, PER_ROW);
@@ -93,15 +158,14 @@ export function placeAround(
 /**
  * Give the newly placed boxes the lines of their registry relations to
  * everything already on the view: a relation shows once both its ends do
- * (CONTRACT.md §8.5). A view saved with its own `edges` list would otherwise
- * never show a relation that reached the registry after that save.
- * The type's `visibility` and the view's `relations.default` / `except` still decide.
+ * (CONTRACT.md §8.5). Saving works out what differs from the rule and writes it
+ * as the view's `relations.except`; nothing here writes.
+ * The type's `visibility` in the dictionary and the view's `relations.default` / `except` still decide.
  */
-function drawRelations(editor: DiagramEditor, placed: readonly string[]): void {
+export function drawRelations(editor: DiagramEditor, placed: readonly string[]): void {
   const doc = editor.canvas.model;
   if (!doc) return;
   const policy = doc.bundle?.view?.relations as { default?: string; except?: string[] } | undefined;
-  const types = doc.bundle?.relationTypes;
   const fresh = new Set(placed);
   const have = new Set(doc.edges.map((e) => e.id));
 
@@ -109,7 +173,7 @@ function drawRelations(editor: DiagramEditor, placed: readonly string[]): void {
     if (!r || have.has(r.id) || r.from === r.to) continue;
     if (!fresh.has(r.from) && !fresh.has(r.to)) continue;
     if (doc.element(r.from) === undefined || doc.element(r.to) === undefined) continue;
-    if (!relationShownByDefault(r, policy, types)) continue;
+    if (!relationShownByDefault(r, policy, KindCatalog.active)) continue;
     doc.addEdge({
       id: r.id,
       from: r.from,

@@ -57,7 +57,7 @@ func TestMCPCallRecordsTheWire(t *testing.T) {
 	os.WriteFile(file, []byte("version: 1\nname: t\nworkspace: ws\n"), 0o644)
 	p := filepath.Join(dir, "ws", "projects", "p")
 	os.MkdirAll(p, 0o755)
-	os.WriteFile(filepath.Join(p, "project.json"), []byte(`{"id":"p"}`), 0o644)
+	os.WriteFile(filepath.Join(p, "project.json"), []byte(`{"id":"p","contractVersion":5}`), 0o644)
 	os.WriteFile(filepath.Join(p, "entities.json"), []byte(`{"entities":[{"id":"e_a","name":"A","kind":"class"}]}`), 0o644)
 	models, err := newModelService(filepath.Join(dir, "ws"))
 	if err != nil {
@@ -65,7 +65,7 @@ func TestMCPCallRecordsTheWire(t *testing.T) {
 	}
 	api := &toolAPI{file: file, workspace: filepath.Join(dir, "ws"), models: models}
 	mux := http.NewServeMux()
-	registerMCPHTTP(mux, project{Root: dir}, api.workspace, dir, models)
+	registerMCPHTTP(mux, project{Root: dir}, api.workspace, dir, models, nil, nil)
 	mux.HandleFunc("POST /api/mcp/call", api.callMCP)
 	srv := httptest.NewServer(mux)
 	defer srv.Close()

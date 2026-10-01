@@ -12,6 +12,9 @@ export class WorkspaceLayoutService {
   private container!: HTMLElement;
   private defaultFactory!: () => void;
 
+  /** Another dock (the graph mode's) keeps its layout under its own key. */
+  constructor(private readonly storageKey: string = STORAGE_KEY) {}
+
   init(
     host: { dockview: DockviewApi; container: HTMLElement },
     defaultFactory: () => void,
@@ -28,7 +31,7 @@ export class WorkspaceLayoutService {
         dockview: this.dockview.toJSON(),
         visible: !this.container.classList.contains("is-collapsed"),
       };
-      localStorage.setItem(STORAGE_KEY, JSON.stringify(state));
+      localStorage.setItem(this.storageKey, JSON.stringify(state));
     } catch (err) {
       console.warn("Failed to save dockview layout:", err);
     }
@@ -36,7 +39,7 @@ export class WorkspaceLayoutService {
 
   loadLayout(): boolean {
     if (!this.dockview) return false;
-    const raw = localStorage.getItem(STORAGE_KEY);
+    const raw = localStorage.getItem(this.storageKey);
     if (!raw) return false;
     try {
       const parsed = JSON.parse(raw) as DockLayoutState;
@@ -63,7 +66,7 @@ export class WorkspaceLayoutService {
 
   resetLayout(): void {
     try {
-      localStorage.removeItem(STORAGE_KEY);
+      localStorage.removeItem(this.storageKey);
       if (this.dockview) this.dockview.clear();
       this.container.classList.remove("is-collapsed");
       this.container.style.display = "";

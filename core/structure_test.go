@@ -10,7 +10,7 @@ import (
 func TestStructuralRenamesKeepIdsAndTextPosition(t *testing.T) {
 	ws := editWorkspace(t)
 	dir := filepath.Join(ws, "projects", "p")
-	text := `{"contractVersion":3,"language":"ru","entries":{"e_a":{"description":{"v":"A"}},"v_main":{"name":{"v":"Main"}},"e_b":{"description":{"v":"B"}}}}`
+	text := `{"contractVersion":5,"language":"ru","entries":{"e_a":{"description":{"v":"A"}},"v_main":{"name":{"v":"Main"}},"e_b":{"description":{"v":"B"}}}}`
 	if err := os.WriteFile(filepath.Join(dir, "text.ru.json"), []byte(text), 0644); err != nil {
 		t.Fatal(err)
 	}
@@ -27,7 +27,7 @@ func TestStructuralRenamesKeepIdsAndTextPosition(t *testing.T) {
 	if err := RenameProject(ws, "p", "renamed"); err != nil {
 		t.Fatal(err)
 	}
-	m, err := LoadModel(ws, "renamed")
+	m, err := LoadModel(ws, "renamed", defaultKindsJSON(t))
 	if err != nil {
 		t.Fatal(err)
 	}

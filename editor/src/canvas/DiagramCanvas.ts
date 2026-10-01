@@ -23,7 +23,7 @@ import { dashArray, textAttrs } from "./render/textAttrs.js";
 import { marquee, resizeGuide, type ResizeGuide, resizeHandles, selectionOutline } from "./render/handles.js";
 import { UniformPortAssigner } from "./ports/assigners.js";
 import { portKey, type PortAssigner, type PortRequest } from "./ports/PortAssigner.js";
-import { BezierRouter, type EdgeRouter, type Route } from "./routing/EdgeRouter.js";
+import { BezierRouter, type EdgeRouter, type EndSide, type Route } from "./routing/EdgeRouter.js";
 import type { Slide } from "./routing/VisibilityGraph.js";
 import {
   OrthogonalRouter,
@@ -32,7 +32,8 @@ import {
   filletedPath,
   polylinePath,
 } from "./routing/routers.js";
-import { borderZones, laneZones, solidZone, nudgeWalls, zonesFor, LANE_GAP, SOLID, type RouteScene, type RouteZone } from "./routing/Scene.js";
+import { areaZone, borderZones, haloZones, laneZones, solidZone, nudgeWalls, zonesFor, SOLID, type RouteScene, type RouteZone } from "./routing/Scene.js";
+import { routingTuning } from "./routing/tuning.js";
 import { nudgeRoutes } from "./routing/nudge.js";
 import type { ResolvedEdgeStyle } from "../model/StyleLibrary.js";
 import type { RoutingMode } from "../model/style-types.js";
@@ -40,7 +41,10 @@ import { getMarkerOffset } from "./render/PaintRegistry.js";
 import { EDGE_ATTR } from "../interaction/roles.js";
 import { InteractionController } from "../interaction/InteractionController.js";
 import { SourceCodeService } from "../editor/code/SourceCodeService.js";
+import { fileRealizations, refOf } from "../model/realizations.js";
 import { DIAGRAM_CONFIG } from "../constants/diagram-constants.js";
+import { canvas } from "../constants/canvas.js";
+import { iconSvg } from "../ui/icons.js";
 
 export type SelectionKind = "zone" | "node" | "edge";
 
@@ -55,6 +59,8 @@ export interface Selection {
 export interface CanvasEvents {
   /** Selection changed, including to nothing. */
   select: Selection | null;
+  /** The selected object changed in place: panels showing it redraw (no selection change). */
+  inspect: Selection | null;
   /** The model was mutated by a canvas interaction. */
   modelchange: { reason: string };
   /** A direct-manipulation gesture began; a good moment to snapshot. */
@@ -66,9 +72,11 @@ export interface CanvasEvents {
   openDocEditor: { id: string; kind?: "node" | "zone" | "edge" };
   /** Double click on a line, shown or ghost: its owner decides whether to show or hide it. */
   edgeToggle: { id: string };
-  openCodeViewer: { id: string; codeRef: string; label?: string };
+  openCodeViewer: { id: string; ref: string; label?: string };
   /** Right click on a box, a line or the empty canvas: whoever owns menus decides what to offer. */
   contextmenu: { target: "element" | "edge" | "canvas"; id: string | null; clientX: number; clientY: number };
+  /** A connection drag was released over another element: whoever owns menus asks for the relation type. */
+  connect: { from: string; to: string; clientX: number; clientY: number };
 }
 
 export interface DiagramCanvasOptions {
@@ -84,6 +92,9 @@ export interface DiagramCanvasOptions {
    * content directory. Same value the stores get; see `DiagramEditorOptions`.
    */
   modelsBase?: string;
+  /** Registries of another canvas to draw with (unsaved edits included); not read again. */
+  templates?: TemplateLibrary;
+  assets?: AssetRegistry;
 }
 
 /**
@@ -121,6 +132,16 @@ export class DiagramCanvas {
   private readonly overlayLayer: SVGGElement;
   /** Routing debug picture: what the search sees. Empty unless `debugRouting`. */
   private readonly debugLayer: SVGGElement;
+  /**
+   * The line and the target mark of a connection drag. Not cleared by `render`
+   * (that runs on every pointer move of other gestures), never part of a view,
+   * and out of the pointer's way so the element under it can still be hit.
+   */
+  private readonly connectLayer: SVGGElement;
+  /** The arrow offered under a hovered block; HTML so it keeps its size at any zoom. */
+  readonly connectHandleEl: HTMLElement;
+  /** The block the handle is shown for, if shown. */
+  connectHandleFor: string | null = null;
 
   /**
    * Draw what the line search sees: forbidden block zones, priced bands along
@@ -191,6 +212,19 @@ export class DiagramCanvas {
   private activeTags = new Set<string>();
   private ghostNodeId: string | null = null;
   private showOverviewShadows = false;
+  /** The lines of the last repaint, as routed. */
+  private lastLines: { id: string; from: string; to: string; path: string; points?: readonly Point[] }[] = [];
+  /**
+   * The sides each line's ends used in the last repaint, by edge id. Handed back
+   * to the router so keeping a side is cheaper than changing it — a line then
+   * does not jump between sides while a block is dragged (ADR_20261001-2).
+   */
+  private lastSides = new Map<string, { from: Side; to: Side }>();
+  /** The routes of the last full repaint, finished (separated), by edge id. */
+  private routeCache = new Map<string, Route>();
+  /** While a drag is on: the elements moving, their descendants included. */
+  private liveMoved: ReadonlySet<string> | null = null;
+  private frameRequest: number | null = null;
 
   /** Rubber band in model coordinates while a selection sweep is running. */
   marqueeRect: Rect | null = null;
@@ -205,12 +239,12 @@ export class DiagramCanvas {
 
   constructor(host: HTMLElement, options: DiagramCanvasOptions = {}) {
     this.host = host;
-    this.gridStep = options.gridStep ?? DIAGRAM_CONFIG.handles.defaultGridStep;
+    this.gridStep = options.gridStep ?? canvas().grid;
     this.portAssigner = options.portAssigner ?? new UniformPortAssigner();
     this.router = options.router ?? new BezierRouter();
     this.registry = options.registry ?? defaultRegistry();
-    this._templates = new TemplateLibrary(options.modelsBase);
-    this._assets = new AssetRegistry(options.modelsBase);
+    this._templates = options.templates ?? new TemplateLibrary(options.modelsBase);
+    this._assets = options.assets ?? new AssetRegistry(options.modelsBase);
 
     this.zonesLayer = svg("g", { class: "semaps-layer-zones" });
     this.edgesLayer = svg("g", { class: "semaps-layer-edges" });
@@ -218,12 +252,15 @@ export class DiagramCanvas {
     this.overlayLayer = svg("g", { class: "semaps-layer-overlay" });
     this.debugLayer = svg("g", { class: "semaps-layer-debug", "pointer-events": "none" });
 
+    this.connectLayer = svg("g", { class: "semaps-layer-connect", "pointer-events": "none" });
+
     this.viewportGroup = svg("g", { class: "semaps-viewport" }, [
       this.zonesLayer,
       this.debugLayer,
       this.edgesLayer,
       this.nodesLayer,
       this.overlayLayer,
+      this.connectLayer,
     ]);
 
     // Held rather than inlined: gradients and arrow heads are created on demand
@@ -242,13 +279,23 @@ export class DiagramCanvas {
     host.appendChild(this.svgEl);
 
     this.viewport = new Viewport(this.viewportGroup);
-    this.viewport.changed.on("change", (state) => this.events.emit("viewport", state));
+    this.viewport.changed.on("change", (state) => {
+      // The handle sits at a screen position computed for the old pan and zoom.
+      this.hideConnectHandle();
+      this.events.emit("viewport", state);
+    });
+
+    this.connectHandleEl = document.createElement("div");
+    this.connectHandleEl.className = "semaps-connect-handle";
+    this.connectHandleEl.style.display = "none";
+    this.connectHandleEl.innerHTML = iconSvg("arrowDown");
+    host.appendChild(this.connectHandleEl);
 
     // Templates are read once; a picture arrives whenever it arrives, and the
     // frame that needed it has long been drawn. Repainting on arrival is why
     // `AssetRegistry.peek` may answer "not yet" without anything going wrong.
-    void this._templates.load().then(() => this.render());
-    this._assets.onLoaded(() => this.render());
+    if (options.templates === undefined) void this._templates.load().then(() => this.render());
+    this.stopAssetRepaint = this._assets.onLoaded(() => this.render());
 
     this.tooltipEl = document.createElement("div");
     this.tooltipEl.className = "semaps-tooltip";
@@ -375,7 +422,7 @@ export class DiagramCanvas {
     this.edgeControlsEl.innerHTML = `
       <span class="semaps-edge-ctrl-type">${escapeCanvasHtml(type)}</span>
       <button type="button" class="semaps-edge-ctrl-btn semaps-edge-doc-btn${hasDoc ? " has-doc" : ""}" data-edge-id="${escapeCanvasHtml(edgeId)}" title="Документация (клик — редактор, наведение — просмотр)">
-        ${hasDoc ? "📝" : "📄"}
+        <span class="ui-icon">${iconSvg(hasDoc ? "notes" : "doc")}</span>
       </button>
     `;
 
@@ -414,6 +461,7 @@ export class DiagramCanvas {
 
   setModel(doc: DiagramDocument): void {
     this.doc = doc;
+    this.adoptNames(doc);
     this.selection = null;
     this.selectionIds.clear();
     this.collapsed = new Set();
@@ -421,7 +469,7 @@ export class DiagramCanvas {
     this.render();
     this.fit();
     this.events.emit("select", null);
-    this.validateModelCodeRefs(doc);
+    this.validateModelRefs(doc);
   }
 
   /**
@@ -434,6 +482,7 @@ export class DiagramCanvas {
    */
   replaceModel(doc: DiagramDocument): void {
     this.doc = doc;
+    this.adoptNames(doc);
     const alive = (id: string): boolean =>
       doc.element(id) !== undefined || doc.edge(id) !== undefined;
 
@@ -447,20 +496,23 @@ export class DiagramCanvas {
     this.events.emit("select", this.selection);
     // Undo and redo land here: every list built from the model must redraw.
     this.events.emit("modelchange", { reason: "replace" });
-    this.validateModelCodeRefs(doc);
+    this.validateModelRefs(doc);
   }
 
-  private validateModelCodeRefs(doc: DiagramDocument): void {
-    const codeRefs: string[] = [];
-    for (const el of doc.elements()) {
-      if (typeof el.metadata?.codeRef === "string") {
-        const ref = el.metadata.codeRef.trim();
-        if (ref) codeRefs.push(ref);
-      }
-    }
-    if (codeRefs.length === 0) return;
+  /** A model shows names in the language the viewer chose, whatever it was loaded or restored in. */
+  private adoptNames(doc: DiagramDocument): void {
+    doc.lang = this.dataLang || "ru";
+    doc.refreshNames();
+  }
 
-    void SourceCodeService.validateCodeRefs(codeRefs).then((hasUpdates) => {
+  private validateModelRefs(doc: DiagramDocument): void {
+    const refs: string[] = [];
+    for (const el of doc.elements()) {
+      for (const r of fileRealizations(el.metadata)) refs.push(refOf(r));
+    }
+    if (refs.length === 0) return;
+
+    void SourceCodeService.validateRefs(refs).then((hasUpdates) => {
       if (hasUpdates && this.doc === doc) {
         this.render();
       }
@@ -702,6 +754,32 @@ export class DiagramCanvas {
     });
   }
 
+  /**
+   * Select an object and bring it to the middle of the viewport: an element
+   * by itself, a line by its two ends. False when it is not on this view.
+   */
+  reveal(id: string): boolean {
+    const doc = this.doc;
+    if (doc === null) return false;
+    const edge = doc.edge(id);
+    const relation = doc.relations.find((r) => r.id === id);
+    const ids = doc.element(id) !== undefined ? [id]
+      : edge !== undefined ? [edge.from, edge.to]
+      : relation !== undefined ? [relation.from, relation.to] : [];
+    const ctx = this.context();
+    let bounds: Rect | null = null;
+    for (const eid of ids) {
+      const el = doc.element(eid);
+      if (el === undefined || ctx.isHidden(el)) continue;
+      const r = this.rendererFor(el).visibleRect(el, ctx);
+      bounds = bounds === null ? r : unionRect(bounds, r);
+    }
+    if (bounds === null) return false;
+    this.select(id);
+    this.viewport.centerOn(bounds, { width: this.host.clientWidth, height: this.host.clientHeight });
+    return true;
+  }
+
   zoomTo(zoom: number): void {
     this.viewport.zoomTo(zoom);
   }
@@ -730,6 +808,58 @@ export class DiagramCanvas {
     this.render();
   }
 
+  /** Below this zoom the arrow would be a speck next to a block it can hardly be told from. */
+  static readonly CONNECT_MIN_ZOOM = 0.4;
+
+  /** Offer the connection arrow just below a block's bottom side, outside its outline. */
+  showConnectHandle(id: string): void {
+    const el = this.doc?.element(id);
+    if (el === undefined || this.viewport.zoom < DiagramCanvas.CONNECT_MIN_ZOOM) return;
+    const z = this.viewport.zoom;
+    const handle = this.connectHandleEl;
+    // Screen-sized: the position follows the zoom, the size does not.
+    handle.style.left = `${this.viewport.panX + (el.x + el.width / 2) * z}px`;
+    handle.style.top = `${this.viewport.panY + (el.y + el.height) * z}px`;
+    handle.style.display = "flex";
+    this.connectHandleFor = id;
+  }
+
+  hideConnectHandle(): void {
+    this.connectHandleEl.style.display = "none";
+    this.connectHandleFor = null;
+  }
+
+  /**
+   * Draw the dashed line of a connection drag from a block's bottom middle to
+   * the pointer, and mark the block under it; `null` removes both.
+   */
+  setConnectPreview(preview: { fromId: string; to: Point; targetId: string | null } | null): void {
+    clear(this.connectLayer);
+    const from = preview === null ? undefined : this.doc?.element(preview.fromId);
+    if (preview === null || from === undefined) return;
+    const k = this.viewport.zoom || 1;
+    const target = preview.targetId === null ? undefined : this.doc?.element(preview.targetId);
+    if (target !== undefined) {
+      this.connectLayer.appendChild(svg("rect", {
+        class: "semaps-connect-target",
+        x: target.x,
+        y: target.y,
+        width: target.width,
+        height: target.height,
+        "stroke-width": 3 / k,
+      }));
+    }
+    this.connectLayer.appendChild(svg("line", {
+      class: "semaps-connect-line",
+      x1: from.x + from.width / 2,
+      y1: from.y + from.height,
+      x2: preview.to.x,
+      y2: preview.to.y,
+      "stroke-width": 2 / k,
+      "stroke-dasharray": `${6 / k},${4 / k}`,
+    }));
+  }
+
   /** Screen point (client coordinates) to model coordinates. */
   toModel(clientX: number, clientY: number): Point {
     const box = this.host.getBoundingClientRect();
@@ -745,12 +875,58 @@ export class DiagramCanvas {
   }
 
   notifyModelChanged(reason: string): void {
-    this.render();
+    // A drag reports more often than the screen repaints: one repaint per frame.
+    if (this.liveMoved !== null) this.renderNextFrame();
+    else this.render();
     this.events.emit("modelchange", { reason });
   }
 
+  private renderNextFrame(): void {
+    if (this.frameRequest !== null) return;
+    this.frameRequest = requestAnimationFrame(() => {
+      this.frameRequest = null;
+      this.render();
+    });
+  }
+
+  /**
+   * A drag of these elements begins: until `endLiveMove`, a repaint lays again
+   * only the lines with an end among them (or their descendants) and keeps every
+   * other line as the last full repaint left it, without the passes that settle
+   * lines against each other. Laying the whole picture on every pointer move is
+   * what made dragging stutter; the picture is laid whole again on release.
+   */
+  beginLiveMove(ids: Iterable<string>): void {
+    if (this.liveMoved !== null || this.doc === null) return;
+    const moved = new Set<string>();
+    for (const id of ids) {
+      const el = this.doc.element(id);
+      if (el === undefined) continue;
+      moved.add(el.id);
+      for (const d of this.doc.descendants(el)) moved.add(d.id);
+    }
+    this.liveMoved = moved;
+  }
+
+  endLiveMove(): void {
+    if (this.liveMoved === null) return;
+    this.liveMoved = null;
+    if (this.frameRequest !== null) {
+      cancelAnimationFrame(this.frameRequest);
+      this.frameRequest = null;
+    }
+    this.render();
+  }
+
+  private stopAssetRepaint: () => void = () => {};
+
   destroy(): void {
     this.interaction.destroy();
+    this.stopAssetRepaint();
+    this.tooltipEl.remove();
+    this.richTooltipEl.remove();
+    this.edgeControlsEl.remove();
+    this.connectHandleEl.remove();
     this.svgEl.remove();
     this.events.clear();
   }
@@ -763,6 +939,8 @@ export class DiagramCanvas {
     clear(this.debugLayer);
     clear(this.nodesLayer);
     clear(this.overlayLayer);
+    // A repaint may move or remove the block the arrow hangs under.
+    this.hideConnectHandle();
     if (this.doc === null) return;
 
     const ctx = this.context();
@@ -943,7 +1121,8 @@ export class DiagramCanvas {
     routes: Map<string, Route>,
     lanesOf: Map<string, RouteZone[]>,
     endsOf: Map<string, { fromKey: string; from: number; toKey: string; to: number }>,
-    record: (id: string, route: Route, fromKey: string, fromSide: Side, toKey: string, toSide: Side) => void,
+    record: (id: string, route: Route) => void,
+    keysFor: (id: string, route: Route) => { fromKey: string; toKey: string },
   ): void {
     const MAX_PASSES = 3;
     const FUSE_MS = 40;
@@ -980,10 +1159,10 @@ export class DiagramCanvas {
       return { lanes, takenNow };
     };
 
+    // A line laid again may have chosen other sides; `record` keys it by the ones it chose.
     const keep = (id: string, route: Route) => {
-      const ends = endsOf.get(id);
-      if (!ends) return;
-      record(id, route, ends.fromKey, sideOf(ends.fromKey), ends.toKey, sideOf(ends.toKey));
+      if (!endsOf.has(id)) return;
+      record(id, route);
     };
 
     /** Lay `first` then `second` from scratch; both ripped up, the rest in place. */
@@ -997,8 +1176,9 @@ export class DiagramCanvas {
       const pa = a.points;
       if (pa && pa.length >= 2) {
         lanes.push(...laneZones(pa, `lane:${first}`));
-        pushTaken(takenNow, endsA.fromKey, along(sideOf(endsA.fromKey), pa[0]!));
-        pushTaken(takenNow, endsA.toKey, along(sideOf(endsA.toKey), pa[pa.length - 1]!));
+        const keys = keysFor(first, a);
+        pushTaken(takenNow, keys.fromKey, along(sideOf(keys.fromKey), pa[0]!));
+        pushTaken(takenNow, keys.toKey, along(sideOf(keys.toKey), pa[pa.length - 1]!));
       }
       return [a, jobB(lanes, takenNow)];
     };
@@ -1071,7 +1251,9 @@ export class DiagramCanvas {
       this.debugLayer.appendChild(r);
     };
     for (const z of scene.zones) {
-      if (z.weight === SOLID) rect(z, "rgba(220,38,38,0.10)", "rgba(220,38,38,0.7)", `нельзя: ${z.ownerId}`);
+      if (z.area) continue;
+      if (z.halo) rect(z, "rgba(234,179,8,0.06)", "rgba(234,179,8,0.35)", `около ${z.ownerId}: вес ${z.weight} вдоль`);
+      else if (z.weight === SOLID) rect(z, "rgba(220,38,38,0.10)", "rgba(220,38,38,0.7)", `нельзя: ${z.ownerId}`);
       else rect(z, "rgba(234,88,12,0.14)", "rgba(234,88,12,0.6)", `рамка ${z.ownerId}: вес ${z.weight} за единицу длины`);
     }
     for (const z of lanes) rect(z, "rgba(37,99,235,0.10)", "rgba(37,99,235,0.45)", `линия ${z.ownerId.replace(/^lane:/, "")}: вес ${z.weight} вдоль`);
@@ -1107,8 +1289,8 @@ export class DiagramCanvas {
         this.debugLayer.appendChild(svg("line", { ...tick, stroke: "#111", "stroke-width": px(2) }));
       }
     };
-    side(edge.fromRect, edge.fromSide, edge.fromSlide);
-    side(edge.toRect, edge.toSide, edge.toSlide);
+    for (const e of edge.from) side(edge.fromRect, e.side, e.slide);
+    for (const e of edge.to) side(edge.toRect, e.side, e.slide);
   }
 
   /**
@@ -1116,22 +1298,45 @@ export class DiagramCanvas {
    * rounded corners. Rectangles only — on an ellipse or a diamond a point
    * moved along the bounding side is no longer on the outline.
    */
-  private slidesFor(
+  private slideFor(
     owner: DiagramElement,
     rect: Rect,
     side: Side,
     inset: number,
-    key: "fromSlide" | "toSlide",
     taken: ReadonlyMap<string, number[]>,
-  ): Partial<Record<"fromSlide" | "toSlide", Slide>> {
+  ): Slide | undefined {
     const shape = this.styleLibrary.blockStyle(owner).shape ?? "rect";
-    if (shape !== "rect") return {};
+    // A shape slides when its side is straight or it can say where its outline is.
+    if (shape !== "rect" && !this.rendererFor(owner).outlineDepth) return undefined;
     const margin = Math.max(inset, 0) + 6;
     const horizontal = side === "north" || side === "south";
     const lo = (horizontal ? rect.x : rect.y) + margin;
     const hi = (horizontal ? rect.x + rect.width : rect.y + rect.height) - margin;
-    if (!(lo <= hi)) return {};
-    return { [key]: { lo, hi, taken: taken.get(`${owner.id}#${side}`) ?? [] } };
+    if (!(lo <= hi)) return undefined;
+    return { lo, hi, taken: taken.get(`${owner.id}#${side}`) ?? [] };
+  }
+
+  /**
+   * All four sides of one end for a router that chooses (ADR_20261001-2). The
+   * parts that do not change while lines are laid again — anchor, outline depth,
+   * corner inset — are worked out once; `sides` then attaches the current
+   * occupancy to each side's slide.
+   */
+  private endSidesFor(owner: DiagramElement, rect: Rect): (taken: ReadonlyMap<string, number[]>) => EndSide[] {
+    const renderer = this.rendererFor(owner);
+    const style = this.styleLibrary.blockStyle(owner);
+    const fixed = SIDES.map((side) => {
+      const inset = renderer.cornerInset?.(side, style) ?? style.radius;
+      // A shape without straight sides gives its one point; pointAt knows where that is.
+      const port = renderer.pointAt(rect, { side, t: 0.5 });
+      const depth = depthOf(renderer, rect, side, port);
+      return { side, port, inset, ...(depth ? { depth } : {}) };
+    });
+    return (taken) =>
+      fixed.map((e) => {
+        const slide = this.slideFor(owner, rect, e.side, e.inset, taken);
+        return slide ? { ...e, slide } : e;
+      });
   }
 
   /**
@@ -1151,7 +1356,7 @@ export class DiagramCanvas {
       .map(([id, route]) => ({ id, points: route.points! }));
     if (nudgeable.length < 2) return;
 
-    const moved = nudgeRoutes({ routes: nudgeable, walls: nudgeWalls(scene.zones), gap: LANE_GAP });
+    const moved = nudgeRoutes({ routes: nudgeable, walls: nudgeWalls(scene.zones), gap: routingTuning.laneGap });
     for (const [id, points] of moved) {
       const route = routes.get(id);
       if (route === undefined || points.length < 2) continue;
@@ -1175,16 +1380,16 @@ export class DiagramCanvas {
    * shared scene rather than rebuilding it, so the scene stays one thing built
    * once (ADR_20260903 §2.8).
    */
-  private exclusionsFor(from: DiagramElement, to: DiagramElement): Set<string> {
-    const ids = new Set<string>();
+  /** The edge's own two shapes, and the containers holding either of them. */
+  private exclusionsFor(from: DiagramElement, to: DiagramElement): { ends: Set<string>; holders: Set<string> } {
+    const ends = new Set([from.id, to.id]);
+    const holders = new Set<string>();
     for (const start of [from, to]) {
-      let cursor: DiagramElement | null = start;
-      while (cursor !== null) {
-        ids.add(cursor.id);
-        cursor = cursor.parent;
+      for (let cursor = start.parent; cursor !== null; cursor = cursor.parent) {
+        if (!ends.has(cursor.id)) holders.add(cursor.id);
       }
     }
-    return ids;
+    return { ends, holders };
   }
 
   /**
@@ -1406,8 +1611,7 @@ export class DiagramCanvas {
             shouldInclude = true;
           } else if (this.showOverviewShadows) {
             // Global overview includes relations whose style has overview === true
-            const relType = rel.type || rel.relation || "relates";
-            const edgeStyle = this.styleLibrary.resolveEdge(rel.styleId || relType);
+            const edgeStyle = this.styleLibrary.resolveEdge(this.styleLibrary.edgeStyleIdFor({ type: rel.type }));
             if (edgeStyle.overview) {
               shouldInclude = true;
             }
@@ -1415,7 +1619,7 @@ export class DiagramCanvas {
 
           if (!shouldInclude) continue;
 
-          const relType = rel.type || rel.relation || "relates";
+          const relType = rel.type;
           const alreadyPresent = resolved.some((r) => {
             if (rel.id && r.edge.id === rel.id) return true;
             return (
@@ -1436,7 +1640,6 @@ export class DiagramCanvas {
                 to: canvasTo,
                 type: relType,
                 label: rel.label || "",
-                styleId: rel.styleId,
               };
               resolved.push({ edge: potentialEdge, from, to, isPotential: true });
             }
@@ -1475,8 +1678,13 @@ export class DiagramCanvas {
     for (const el of doc.elements()) {
       if (ctx.isHidden(el)) continue;
       const rect = this.rendererFor(el).visibleRect(el, ctx);
-      if (isContainer(el)) zones.push(...borderZones(rect, el.id));
-      else zones.push(solidZone(rect, el.id));
+      // A container gets the blocks' halo outside its frame too: pricing its inside pushes a
+      // route out, and without the halo it would settle tracing the frame from outside.
+      if (isContainer(el)) {
+        const header = this.styleLibrary.blockStyle(el).header?.height ?? 0;
+        zones.push(areaZone(rect, el.id), ...borderZones(rect, el.id, header), ...haloZones(rect, el.id));
+      }
+      else zones.push(solidZone(rect, el.id), ...haloZones(rect, el.id));
     }
     const scene: RouteScene = { zones };
 
@@ -1495,12 +1703,25 @@ export class DiagramCanvas {
     const order: string[] = [];
     let debugEdge: DebugEdge | null = null;
 
-    const record = (id: string, route: Route, fromKey: string, fromSide: Side, toKey: string, toSide: Side) => {
+    // Each line's owners and the sides the port assigner gave it. A router that
+    // chooses sides says which it chose; occupancy is keyed by those, not by the assigned ones.
+    const assigned = new Map<string, { fromOwner: string; toOwner: string; fromSide: Side; toSide: Side }>();
+    const sidesOf = (id: string, route: Route) => {
+      const a = assigned.get(id)!;
+      return { fromSide: route.fromSide ?? a.fromSide, toSide: route.toSide ?? a.toSide };
+    };
+    const keysFor = (id: string, route: Route) => {
+      const a = assigned.get(id)!;
+      const s = sidesOf(id, route);
+      return { fromKey: `${a.fromOwner}#${s.fromSide}`, toKey: `${a.toOwner}#${s.toSide}` };
+    };
+    const record = (id: string, route: Route) => {
       routes.set(id, route);
       const pts = route.points;
       if (!pts || pts.length < 2) return;
       const along = (side: Side, p: Point) => (side === "north" || side === "south" ? p.x : p.y);
-      endsOf.set(id, { fromKey, from: along(fromSide, pts[0]!), toKey, to: along(toSide, pts[pts.length - 1]!) });
+      const s = sidesOf(id, route);
+      endsOf.set(id, { ...keysFor(id, route), from: along(s.fromSide, pts[0]!), to: along(s.toSide, pts[pts.length - 1]!) });
       lanesOf.set(id, laneZones(pts, `lane:${id}`));
     };
 
@@ -1517,43 +1738,62 @@ export class DiagramCanvas {
       const edgeStyle = this.styleLibrary.edgeStyle(r.edge);
       const router = this.routerFor(r.edge, edgeStyle);
       const watched = this._debugRouting && this.selection?.kind === "edge" && this.selection.id === r.edge.id;
-      const fromKey = `${r.from.owner.id}#${fromSlot.side}`;
-      const toKey = `${r.to.owner.id}#${toSlot.side}`;
+      assigned.set(r.edge.id, { fromOwner: r.from.owner.id, toOwner: r.to.owner.id, fromSide: fromSlot.side, toSide: toSlot.side });
+      // The orthogonal search chooses the sides itself and is given all four of each end.
+      const searching = router.id === "orthogonal";
+      const fromSides = searching ? this.endSidesFor(r.from.owner, r.from.rect) : null;
+      const toSides = searching ? this.endSidesFor(r.to.owner, r.to.rect) : null;
+      const before = this.lastSides.get(r.edge.id);
+      const fromPoint = this.rendererFor(r.from.owner).pointAt(r.from.rect, fromSlot);
+      const toPoint = this.rendererFor(r.to.owner).pointAt(r.to.rect, toSlot);
       const base = {
-        from: this.rendererFor(r.from.owner).pointAt(r.from.rect, fromSlot),
-        to: this.rendererFor(r.to.owner).pointAt(r.to.rect, toSlot),
+        from: fromPoint,
+        to: toPoint,
+        ...depthFrom("fromDepth", this.rendererFor(r.from.owner), r.from.rect, fromSlot.side, fromPoint),
+        ...depthFrom("toDepth", this.rendererFor(r.to.owner), r.to.rect, toSlot.side, toPoint),
         fromSide: fromSlot.side, toSide: toSlot.side,
         fromRect: r.from.rect, toRect: r.to.rect,
         fromInset, toInset,
         fromMarkerOffset: getMarkerOffset(edgeStyle.source.shape, edgeStyle.source.size ?? DIAGRAM_CONFIG.routing.defaultMarkerSize),
         toMarkerOffset: getMarkerOffset(edgeStyle.target.shape, edgeStyle.target.size ?? DIAGRAM_CONFIG.routing.defaultMarkerSize),
       };
-      const own = zonesFor(scene, this.exclusionsFor(r.from.owner, r.to.owner));
+      const excluded = this.exclusionsFor(r.from.owner, r.to.owner);
+      const own = zonesFor(scene, excluded.ends, excluded.holders);
       const job = (lanes: readonly RouteZone[], takenNow: ReadonlyMap<string, number[]>): Route => {
-        const fromSlide = this.slidesFor(r.from.owner, r.from.rect, fromSlot.side, fromInset, "fromSlide", takenNow);
-        const toSlide = this.slidesFor(r.to.owner, r.to.rect, toSlot.side, toInset, "toSlide", takenNow);
+        const fromEnds = fromSides?.(takenNow);
+        const toEnds = toSides?.(takenNow);
+        // Without a search the assigned side is the only one, as it always was.
+        const fromSlide = fromEnds ? undefined : this.slideFor(r.from.owner, r.from.rect, fromSlot.side, fromInset, takenNow);
+        const toSlide = toEnds ? undefined : this.slideFor(r.to.owner, r.to.rect, toSlot.side, toInset, takenNow);
         if (watched) {
           debugEdge = {
             fromRect: r.from.rect, toRect: r.to.rect,
-            fromSide: fromSlot.side, toSide: toSlot.side,
-            fromSlide: fromSlide.fromSlide, toSlide: toSlide.toSlide,
+            from: fromEnds ? fromEnds.map((e) => ({ side: e.side, slide: e.slide })) : [{ side: fromSlot.side, slide: fromSlide }],
+            to: toEnds ? toEnds.map((e) => ({ side: e.side, slide: e.slide })) : [{ side: toSlot.side, slide: toSlide }],
             grid: null,
           };
         }
         return router.route({
           ...base,
           zones: [...own, ...lanesNear(lanes, r.from.rect, r.to.rect)],
-          ...fromSlide,
-          ...toSlide,
+          ...(fromSlide ? { fromSlide } : {}),
+          ...(toSlide ? { toSlide } : {}),
+          ...(fromEnds && toEnds ? { fromEnds, toEnds } : {}),
+          ...(before ? { prevFromSide: before.from, prevToSide: before.to } : {}),
           ...(watched ? { onGrid: (xs: readonly number[], ys: readonly number[]) => { if (debugEdge) debugEdge.grid = { xs, ys }; } } : {}),
         });
       };
       jobs.set(r.edge.id, job);
       order.push(r.edge.id);
 
+      // During a drag a line with no end moving keeps the route of the last full repaint.
+      const live = this.liveMoved;
+      const cached = live !== null && !live.has(r.from.owner.id) && !live.has(r.to.owner.id)
+        ? this.routeCache.get(r.edge.id)
+        : undefined;
       // First pass: in order, each line seeing only the ones before it.
-      const route = job([...lanesOf.values()].flat(), taken);
-      record(r.edge.id, route, fromKey, fromSlot.side, toKey, toSlot.side);
+      const route = cached ?? job([...lanesOf.values()].flat(), taken);
+      record(r.edge.id, route);
       const ends = endsOf.get(r.edge.id);
       if (ends) {
         pushTaken(taken, ends.fromKey, ends.from);
@@ -1564,8 +1804,25 @@ export class DiagramCanvas {
     // Later passes: lay again every line that crosses or crowds another, now
     // seeing all the others, not only the ones laid before it. The first pass
     // depends on order; this is what takes the order out of it.
-    this.rerouteConflicts(order, jobs, routes, lanesOf, endsOf, record);
-    this.separateSharedCorridors(routes, scene);
+    // Not during a drag: settling lines against each other is the expensive part,
+    // and the cached lines are already settled.
+    if (this.liveMoved === null) {
+      this.rerouteConflicts(order, jobs, routes, lanesOf, endsOf, record, keysFor);
+      this.separateSharedCorridors(routes, scene);
+      this.routeCache = new Map(routes);
+    }
+    // The sides the lines settled on: next repaint they are the cheaper ones to keep.
+    this.lastSides = new Map();
+    for (const [id, route] of routes) {
+      if (route.fromSide && route.toSide) this.lastSides.set(id, { from: route.fromSide, to: route.toSide });
+    }
+    // What was drawn, kept for `routedLines`: the same routes, not a second computation.
+    this.lastLines = [];
+    for (const r of resolved) {
+      const route = routes.get(r.edge.id);
+      if (route === undefined || r.isPotential) continue;
+      this.lastLines.push({ id: r.edge.id, from: r.from.owner.id, to: r.to.owner.id, path: route.path, ...(route.points ? { points: route.points } : {}) });
+    }
     if (this._debugRouting) this.drawRoutingDebug(scene, [...lanesOf.values()].flat(), debugEdge);
 
     for (const r of resolved) {
@@ -1713,6 +1970,42 @@ export class DiagramCanvas {
     return out;
   }
 
+  /** The SVG surface, for a caller that draws it elsewhere (a picture of a region). */
+  get svgElement(): SVGSVGElement {
+    return this.svgEl;
+  }
+
+  /** Bounds of everything shown, or null for an empty view. */
+  contentBounds(): Rect | null {
+    return this.visibleBounds();
+  }
+
+  /** Every shown element with the rectangle it is drawn in (a collapsed zone counts as its header). */
+  shownBoxes(): { el: DiagramElement; rect: Rect }[] {
+    if (this.doc === null) return [];
+    const ctx = this.context();
+    const out: { el: DiagramElement; rect: Rect }[] = [];
+    for (const el of this.doc.elements()) {
+      if (ctx.isHidden(el)) continue;
+      out.push({ el, rect: this.rendererFor(el).visibleRect(el, ctx) });
+    }
+    return out;
+  }
+
+  /**
+   * The lines as last drawn, by the router that drew them: the end elements
+   * (a collapsed zone stands for what it hides) and the polyline. A router that
+   * makes curves has no corner points, so its drawn path is sampled instead.
+   */
+  routedLines(): { id: string; from: string; to: string; points: Point[] }[] {
+    return this.lastLines.map((l) => ({
+      id: l.id,
+      from: l.from,
+      to: l.to,
+      points: l.points ? [...l.points] : samplePath(l.path),
+    }));
+  }
+
   /** Used by the interaction controller. */
   elementRectOf(el: DiagramElement): Rect {
     return elementRect(el);
@@ -1730,6 +2023,24 @@ export class DiagramCanvas {
 
   emitGestureEnd(reason: string): void {
     this.events.emit("gestureend", { reason });
+  }
+}
+
+/** A drawn SVG path as points, every few units along it. */
+function samplePath(d: string): Point[] {
+  try {
+    const path = document.createElementNS("http://www.w3.org/2000/svg", "path");
+    path.setAttribute("d", d);
+    const length = path.getTotalLength();
+    const n = Math.max(2, Math.ceil(length / 6));
+    const out: Point[] = [];
+    for (let i = 0; i <= n; i++) {
+      const p = path.getPointAtLength((length * i) / n);
+      out.push({ x: p.x, y: p.y });
+    }
+    return out;
+  } catch {
+    return [];
   }
 }
 
@@ -1806,6 +2117,38 @@ function overlap(a1: number, a2: number, b1: number, b2: number): number {
   return Math.min(Math.max(a1, a2), Math.max(b1, b2)) - Math.max(Math.min(a1, a2), Math.min(b1, b2));
 }
 
+/**
+ * The route request's depth for one end: how much deeper the shape's outline
+ * lies at a coordinate along the side than at the port it was given. Nothing for
+ * a shape whose side is the outline.
+ */
+function depthFrom(
+  key: "fromDepth" | "toDepth",
+  renderer: ElementRenderer,
+  rect: Rect,
+  side: Side,
+  port: Point,
+): Partial<Record<"fromDepth" | "toDepth", (along: number) => number>> {
+  const depth = depthOf(renderer, rect, side, port);
+  return depth ? { [key]: depth } : {};
+}
+
+/** The same for one side, as a function or nothing. */
+function depthOf(
+  renderer: ElementRenderer,
+  rect: Rect,
+  side: Side,
+  port: Point,
+): ((along: number) => number) | undefined {
+  const depth = renderer.outlineDepth?.bind(renderer);
+  if (!depth) return undefined;
+  const horizontal = side === "east" || side === "west";
+  const at = depth(rect, side, horizontal ? port.y : port.x);
+  return (along: number) => depth(rect, side, along) - at;
+}
+
+const SIDES: readonly Side[] = ["north", "east", "south", "west"];
+
 function pushTaken(taken: Map<string, number[]>, key: string, value: number): void {
   const list = taken.get(key);
   if (list) list.push(value);
@@ -1827,9 +2170,8 @@ function lanesNear(lanes: readonly RouteZone[], a: Rect, b: Rect): RouteZone[] {
 interface DebugEdge {
   fromRect: Rect;
   toRect: Rect;
-  fromSide: Side;
-  toSide: Side;
-  fromSlide: Slide | undefined;
-  toSlide: Slide | undefined;
+  /** Every side offered to each end, with its slide range (one side when the router does not choose). */
+  from: { side: Side; slide: Slide | undefined }[];
+  to: { side: Side; slide: Slide | undefined }[];
   grid: { xs: readonly number[]; ys: readonly number[] } | null;
 }

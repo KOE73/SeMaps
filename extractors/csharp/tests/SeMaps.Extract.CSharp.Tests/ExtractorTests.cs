@@ -73,6 +73,40 @@ public sealed class ExtractorTests
         Assert.True(evaluation.IsValid, DescribeErrors(evaluation));
     }
 
+    [Fact]
+    public void Output_WithCalls_MatchesGoldenFile()
+    {
+        var result = ToolHost.Run(TestPaths.SampleRoot, "--root", ".", "--edges", "calls");
+
+        Assert.Equal(0, result.ExitCode);
+        var expected = File.ReadAllText(TestPaths.ExpectedCallsJsonPath);
+        Assert.Equal(expected, result.StdOut);
+    }
+
+    [Fact]
+    public void Output_WithCalls_IsValidPerSchema()
+    {
+        var result = ToolHost.Run(TestPaths.SampleRoot, "--root", ".", "--edges", "calls");
+        Assert.Equal(0, result.ExitCode);
+
+        var schema = JsonSchema.FromFile(TestPaths.SchemaPath);
+        var instance = System.Text.Json.Nodes.JsonNode.Parse(result.StdOut);
+        var evaluation = schema.Evaluate(instance, new EvaluationOptions { OutputFormat = OutputFormat.List });
+
+        Assert.True(evaluation.IsValid, DescribeErrors(evaluation));
+    }
+
+    [Fact]
+    public void Output_WithCalls_IsDeterministicAcrossRuns()
+    {
+        var first = ToolHost.Run(TestPaths.SampleRoot, "--root", ".", "--edges", "calls");
+        var second = ToolHost.Run(TestPaths.SampleRoot, "--root", ".", "--edges", "calls");
+
+        Assert.Equal(0, first.ExitCode);
+        Assert.Equal(0, second.ExitCode);
+        Assert.Equal(first.StdOut, second.StdOut);
+    }
+
     private static string DescribeErrors(EvaluationResults evaluation)
     {
         var details = evaluation.Details

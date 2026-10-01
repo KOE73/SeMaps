@@ -6,9 +6,12 @@ import "../styles/canvas-filters.css";
 import "../styles/doc-editor.css";
 import "../styles/code-viewer.css";
 import "../styles/shell.css";
+import "../styles/graph.css";
 
 import { Workbench } from "../workbench/Workbench.js";
 import { HostModelStore, HttpProjectStore, HttpStyleStore, HttpWorkspaceStore } from "../editor/io/index.js";
+import { renderView } from "../editor/render/renderView.js";
+import { loadCanvas } from "../constants/canvas.js";
 import { toolApi } from "../shell/api.js";
 import { addToolModes } from "./toolModes.js";
 
@@ -25,15 +28,22 @@ async function main(): Promise<void> {
   const root = document.getElementById("app");
   if (root === null) throw new Error("Missing #app root");
 
+  // The canvas numbers are needed synchronously by the editor: read them first.
+  await loadCanvas(MODELS_BASE);
+
+  const hostStore = import.meta.env.DEV ? null : new HostModelStore(MODELS_BASE);
   const workbench = new Workbench(root, {
     workspace: new HttpWorkspaceStore(MODELS_BASE),
-    store: import.meta.env.DEV ? new HttpProjectStore(MODELS_BASE) : new HostModelStore(MODELS_BASE),
+    store: hostStore ?? new HttpProjectStore(MODELS_BASE),
     // styles.json sits with the models, not with the app bundle.
     styleStore: new HttpStyleStore(MODELS_BASE),
     // …and so do templates.json and the content directory, which the canvas
     // fetches for itself rather than through a store.
     modelsBase: MODELS_BASE,
   });
+
+  // The host may ask for a picture of the open view (render_view).
+  if (hostStore) hostStore.renderer = (request) => renderView(workbench.editor, request);
 
   // With a .semaps file the host also serves the tool modes; the hash of the
   // URL (#extract, #project) says which mode to open.

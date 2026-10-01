@@ -14,6 +14,16 @@ internal sealed class FactsExtractor(string rootArgument, string rootFullPath, P
     private readonly Dictionary<string, NamespaceEntry> _namespaces = new(StringComparer.Ordinal);
     private readonly Dictionary<string, AssemblyEntry> _assemblies = new(StringComparer.Ordinal);
 
+    // Method-or-property id -> the symbol behind it, printed only with --edges
+    // calls (ADR_20260928-4). Kept for later passes (overrides/implements/calls)
+    // that need to resolve a call target back to a symbol of this output.
+    private readonly Dictionary<string, ISymbol> _methodSymbols = new(StringComparer.Ordinal);
+
+    // Which compilation a syntax tree came from, so `calls`/`constructs` (resolved from a
+    // method's own DeclaringSyntaxReferences, discovered only once every type is known) can
+    // get a SemanticModel for that tree without re-loading projects.
+    private readonly Dictionary<SyntaxTree, Compilation> _treeToCompilation = new();
+
     private sealed class AssemblyEntry
     {
         public required string Name;
@@ -27,6 +37,10 @@ internal sealed class FactsExtractor(string rootArgument, string rootFullPath, P
         public required INamedTypeSymbol Symbol;
         public required string File;
         public required int Line;
+        public int EndLine;
+        // Every declaration (partial types have more than one); sorted by
+        // (File, Line) once all syntax trees are processed.
+        public readonly List<(string File, int Line, int EndLine)> Declarations = [];
     }
 
     private sealed class NamespaceEntry
@@ -37,6 +51,14 @@ internal sealed class FactsExtractor(string rootArgument, string rootFullPath, P
     }
 
     private readonly HashSet<string>? _requestedEdgeKinds;
+
+    /// <summary>
+    /// Call/construct sites whose target is not printed in this output (library code, code
+    /// outside <c>--include</c>, or a lambda/local function). Zero until <see cref="Build"/>
+    /// runs with <c>calls</c> requested. Printed in the tool's stderr summary, never in the
+    /// facts (docs/extractors/csharp.md).
+    /// </summary>
+    public int UnresolvedCallTargets { get; private set; }
 
     /// <summary>
     /// Constructor that accepts options for edge kinds filtering.
@@ -78,6 +100,7 @@ internal sealed class FactsExtractor(string rootArgument, string rootFullPath, P
 
             var semanticModel = compilation.GetSemanticModel(tree);
             var root = tree.GetRoot();
+            _treeToCompilation[tree] = compilation;
 
             foreach (var node in root.DescendantNodes().Where(IsTypeLikeDeclaration))
             {
@@ -86,8 +109,10 @@ internal sealed class FactsExtractor(string rootArgument, string rootFullPath, P
                     continue;
                 }
 
-                var line = node.GetLocation().GetLineSpan().StartLinePosition.Line + 1;
-                Consider(symbol, relPath, line);
+                var lineSpan = node.GetLocation().GetLineSpan();
+                var line = lineSpan.StartLinePosition.Line + 1;
+                var endLine = lineSpan.EndLinePosition.Line + 1;
+                Consider(symbol, relPath, line, endLine);
 
                 // A top-level type declared in this project's sources: the project contains it.
                 // A linked file compiled into two projects gives "contains" from both.
@@ -139,7 +164,7 @@ internal sealed class FactsExtractor(string rootArgument, string rootFullPath, P
         return entry;
     }
 
-    private void Consider(INamedTypeSymbol symbol, string relPath, int line)
+    private void Consider(INamedTypeSymbol symbol, string relPath, int line, int endLine)
     {
         if (!IsEligibleKind(symbol.TypeKind))
         {
@@ -154,18 +179,23 @@ internal sealed class FactsExtractor(string rootArgument, string rootFullPath, P
         var id = SymbolIds.TypeId(symbol);
         if (_types.TryGetValue(id, out var existing))
         {
-            // partial declarations: keep the first declaration by path/line ordinal sort.
+            // partial declarations: keep the first declaration by path/line ordinal sort,
+            // but remember every declaration for `spans`.
+            existing.Declarations.Add((relPath, line, endLine));
             if (string.CompareOrdinal(relPath, existing.File) < 0 ||
                 (relPath == existing.File && line < existing.Line))
             {
                 existing.File = relPath;
                 existing.Line = line;
+                existing.EndLine = endLine;
             }
 
             return;
         }
 
-        _types[id] = new TypeEntry { Symbol = symbol, File = relPath, Line = line };
+        var entry = new TypeEntry { Symbol = symbol, File = relPath, Line = line, EndLine = endLine };
+        entry.Declarations.Add((relPath, line, endLine));
+        _types[id] = entry;
 
         if (!symbol.ContainingNamespace.IsGlobalNamespace)
         {
@@ -266,7 +296,7 @@ internal sealed class FactsExtractor(string rootArgument, string rootFullPath, P
 
             foreach (var typeId in entry.TopLevelTypes)
             {
-                edges.Add(new EdgeWithVia { From = asmId, To = typeId, Kind = "contains" });
+                edges.Add(new EdgeWithVia { From = asmId, To = typeId, Kind = "contains", Native = "assembly" });
             }
 
             foreach (var targetId in entry.ReferencedAssemblies)
@@ -285,14 +315,14 @@ internal sealed class FactsExtractor(string rootArgument, string rootFullPath, P
             if (symbol.ContainingType is null && !symbol.ContainingNamespace.IsGlobalNamespace)
             {
                 var nsId = SymbolIds.NamespaceId(symbol.ContainingNamespace);
-                edges.Add(new EdgeWithVia { From = nsId, To = id, Kind = "contains" });
+                edges.Add(new EdgeWithVia { From = nsId, To = id, Kind = "contains", Native = "namespace" });
             }
             else if (symbol.ContainingType is not null)
             {
                 var outerId = SymbolIds.TypeId(symbol.ContainingType);
                 if (outputIds.Contains(outerId))
                 {
-                    edges.Add(new EdgeWithVia { From = outerId, To = id, Kind = "contains" });
+                    edges.Add(new EdgeWithVia { From = outerId, To = id, Kind = "contains", Native = "nested" });
                 }
             }
         }
@@ -300,7 +330,70 @@ internal sealed class FactsExtractor(string rootArgument, string rootFullPath, P
         foreach (var (id, entry) in _types)
         {
             var symbol = entry.Symbol;
-            symbols.Add(BuildTypeSymbolFact(id, symbol, entry.File, entry.Line, outputIds, edges));
+            symbols.Add(BuildTypeSymbolFact(id, symbol, entry, outputIds, edges));
+        }
+
+        var printMethods = _requestedEdgeKinds?.Contains("calls") == true;
+        if (printMethods)
+        {
+            // Two passes: every method symbol of every type first, then
+            // overrides/implements, which need the *target* method (possibly
+            // of a type visited later) already known.
+            foreach (var (id, entry) in _types)
+            {
+                CollectMethods(id, entry.Symbol, entry, symbols, edges);
+            }
+
+            foreach (var (id, entry) in _types)
+            {
+                AddMethodLevelEdges(id, entry.Symbol, edges);
+            }
+
+            // Third pass: calls/constructs, which need every method symbol of
+            // every type known first (a call target may belong to a type
+            // visited earlier or later than its caller). Blind-spot marks
+            // (ADR_20260928-5 §4) are collected over the same bodies.
+            var collector = new CallsCollector();
+            var marksCollector = new DynamicMarksCollector();
+            foreach (var (id, symbol) in _methodSymbols)
+            {
+                foreach (var node in BodyNodesOf(symbol))
+                {
+                    if (!_treeToCompilation.TryGetValue(node.SyntaxTree, out var compilation))
+                    {
+                        continue;
+                    }
+
+                    var model = compilation.GetSemanticModel(node.SyntaxTree);
+                    collector.Collect(id, model, node, outputIds, _methodSymbols);
+                    marksCollector.Collect(id, model, node);
+                }
+            }
+
+            foreach (var edge in collector.BuildEdges())
+            {
+                edges.Add(edge);
+            }
+
+            UnresolvedCallTargets = collector.OutsideOutput;
+
+            if (marksCollector.Marks.Count > 0)
+            {
+                foreach (var symbolFact in symbols)
+                {
+                    if (symbolFact.Kind != "method")
+                    {
+                        continue;
+                    }
+
+                    if (marksCollector.Marks.TryGetValue(symbolFact.Id, out var marks) && marks.Count > 0)
+                    {
+                        symbolFact.Dynamic = marks
+                            .Select(m => new DynamicMarkFact { Kind = m.Kind, Line = m.Line })
+                            .ToList();
+                    }
+                }
+            }
         }
 
         symbols.Sort((a, b) => string.CompareOrdinal(a.Id, b.Id));
@@ -311,12 +404,31 @@ internal sealed class FactsExtractor(string rootArgument, string rootFullPath, P
             .ThenBy(e => e.Kind, StringComparer.Ordinal)
             .ThenBy(e => e.Via?.Member ?? "", StringComparer.Ordinal)
             .ThenBy(e => string.Join("/", e.Via?.Path ?? []), StringComparer.Ordinal)
+            // Ties on the identity key below are broken by the rest of `via`, so which
+            // of two look-alike edges survives does not depend on hash order.
+            .ThenBy(e => e.Via?.MemberKind ?? "", StringComparer.Ordinal)
+            .ThenBy(e => e.Via?.Text ?? "", StringComparer.Ordinal)
+            .ThenBy(e => e.Via?.Cardinality ?? "", StringComparer.Ordinal)
+            .ThenBy(e => e.Via?.Mutability ?? "", StringComparer.Ordinal)
+            .ThenBy(e => e.Via?.Deferred == true ? 1 : 0)
+            // An edge is identified by (from, to, kind, via.member, via.path)
+            // (EXTRACTOR.md §3): two that differ only in other `via` details
+            // (a field and a constructor parameter of the same name, say) are one
+            // edge, the first of them — the output must not repeat an edge.
+            .DistinctBy(e => (e.From, e.To, e.Kind, e.Via?.Member ?? "", string.Join("/", e.Via?.Path ?? [])))
             .Select(e => new EdgeFact
             {
                 From = e.From,
                 To = e.To,
                 Kind = e.Kind,
+                // holds/uses: the member construct (field, property, event, parameter, return,
+                // constructor) is what C# used. The method layer (calls, constructs, overrides,
+                // contains/implements with a method end) carries no native.
+                Native = e.Native ?? (e.Kind is "holds" or "uses" ? e.Via?.MemberKind : null),
                 Via = e.Via,
+                Line = e.Line,
+                File = e.File,
+                Lines = e.Lines,
             })
             .ToList();
 
@@ -335,6 +447,10 @@ internal sealed class FactsExtractor(string rootArgument, string rootFullPath, P
             if (_requestedEdgeKinds.Contains("injects"))
             {
                 edgeKinds.Add("injects");
+            }
+            if (_requestedEdgeKinds.Contains("calls"))
+            {
+                edgeKinds.Add("calls");
             }
         }
         edgeKinds.Sort();
@@ -411,16 +527,34 @@ internal sealed class FactsExtractor(string rootArgument, string rootFullPath, P
     private SymbolFact BuildTypeSymbolFact(
         string id,
         INamedTypeSymbol symbol,
-        string file,
-        int line,
+        TypeEntry entry,
         HashSet<string> outputIds,
         HashSet<EdgeWithVia> edges)
     {
         var (kind, nativeKind) = ClassifyType(symbol);
-        var members = MembersBuilder.Build(symbol, kind);
+        var (members, memberLines) = MembersBuilder.Build(symbol, kind, entry.File, m => SourceLocation(m));
 
-        AddStructuralEdges(id, symbol, outputIds, edges);
-        ReferenceEdgeCollector.Collect(id, symbol, outputIds, edges, _requestedEdgeKinds);
+        var baseListLocation = BaseListLocation(symbol);
+        AddStructuralEdges(id, symbol, outputIds, edges, entry.File, baseListLocation);
+        ReferenceEdgeCollector.Collect(id, symbol, outputIds, edges, _requestedEdgeKinds, entry.File, m => SourceLocation(m));
+
+        // A file linked into two projects yields one Consider() call per project for the
+        // same physical declaration: dedupe by (file, line) before deciding whether there
+        // is more than one real declaration.
+        var distinctDeclarations = entry.Declarations
+            .GroupBy(d => (d.File, d.Line))
+            .Select(g => g.First())
+            .ToList();
+
+        List<SpanFact>? spans = null;
+        if (distinctDeclarations.Count > 1)
+        {
+            spans = distinctDeclarations
+                .OrderBy(d => d.File, StringComparer.Ordinal)
+                .ThenBy(d => d.Line)
+                .Select(d => new SpanFact { File = d.File, Line = d.Line, EndLine = d.EndLine })
+                .ToList();
+        }
 
         return new SymbolFact
         {
@@ -429,25 +563,95 @@ internal sealed class FactsExtractor(string rootArgument, string rootFullPath, P
             NativeKind = nativeKind,
             Name = symbol.Name,
             Namespace = SymbolIds.NamespaceDottedName(symbol.ContainingNamespace),
-            File = file,
-            Line = line,
+            File = entry.File,
+            Line = entry.Line,
+            EndLine = entry.EndLine,
+            Spans = spans,
             Visibility = SymbolDisplayHelpers.Visibility(symbol.DeclaredAccessibility),
             Members = members,
+            MemberLines = memberLines,
         };
+    }
+
+    /// <summary>
+    /// Resolves a symbol's declaration to (file, line) within the root, for
+    /// `memberLines` and edge `line`/`file`. The first location that lies
+    /// under the root wins; a symbol with none (e.g. from metadata) yields
+    /// null.
+    /// </summary>
+    private (string File, int Line)? SourceLocation(ISymbol symbol)
+    {
+        foreach (var location in symbol.Locations)
+        {
+            if (location.SourceTree is null)
+            {
+                continue;
+            }
+
+            var relPath = RelativePath(location.SourceTree.FilePath);
+            if (relPath is null)
+            {
+                continue;
+            }
+
+            var line = location.GetLineSpan().StartLinePosition.Line + 1;
+            return (relPath, line);
+        }
+
+        return null;
+    }
+
+    /// <summary>
+    /// Finds where the base list (`: Base, IFoo`) is written, across every
+    /// partial declaration; the first one that has a base list wins.
+    /// </summary>
+    private (string File, int Line)? BaseListLocation(INamedTypeSymbol symbol)
+    {
+        foreach (var syntaxRef in symbol.DeclaringSyntaxReferences)
+        {
+            var baseList = syntaxRef.GetSyntax() switch
+            {
+                ClassDeclarationSyntax c => c.BaseList,
+                StructDeclarationSyntax s => s.BaseList,
+                RecordDeclarationSyntax r => r.BaseList,
+                InterfaceDeclarationSyntax i => i.BaseList,
+                _ => null,
+            };
+            if (baseList is null)
+            {
+                continue;
+            }
+
+            var relPath = RelativePath(baseList.SyntaxTree.FilePath);
+            if (relPath is null)
+            {
+                continue;
+            }
+
+            var line = baseList.GetLocation().GetLineSpan().StartLinePosition.Line + 1;
+            return (relPath, line);
+        }
+
+        return null;
     }
 
     private static void AddStructuralEdges(
         string id,
         INamedTypeSymbol symbol,
         HashSet<string> outputIds,
-        HashSet<EdgeWithVia> edges)
+        HashSet<EdgeWithVia> edges,
+        string fromFile,
+        (string File, int Line)? baseListLocation)
     {
+        int? line = baseListLocation?.Line;
+        string? file = baseListLocation is { } loc && loc.File != fromFile ? loc.File : null;
+
         if (symbol.TypeKind == TypeKind.Class && symbol.BaseType is { } baseType && IsExtendableBase(baseType))
         {
             var baseId = SymbolIds.TypeId(baseType);
             if (outputIds.Contains(baseId) && baseId != id)
             {
-                edges.Add(new EdgeWithVia { From = id, To = baseId, Kind = "extends" });
+                edges.Add(new EdgeWithVia { From = id, To = baseId, Kind = "extends", Native = "class", Line = line, File = file });
             }
         }
 
@@ -456,8 +660,306 @@ internal sealed class FactsExtractor(string rootArgument, string rootFullPath, P
             var ifaceId = SymbolIds.TypeId(iface);
             if (outputIds.Contains(ifaceId) && ifaceId != id)
             {
-                edges.Add(new EdgeWithVia { From = id, To = ifaceId, Kind = "implements" });
+                // interface IA : IB extends the contract; class/struct : IA implements it.
+                edges.Add(symbol.TypeKind == TypeKind.Interface
+                    ? new EdgeWithVia { From = id, To = ifaceId, Kind = "extends", Native = "interface", Line = line, File = file }
+                    : new EdgeWithVia { From = id, To = ifaceId, Kind = "implements", Native = "interface", Line = line, File = file });
             }
+        }
+    }
+
+    /// <summary>
+    /// Methods, constructors, properties, indexers and operators of <paramref name="symbol"/>
+    /// (ADR_20260928-4 §1), plus the `contains` edge from the type. Property and indexer
+    /// accessors are not separate symbols: get/set is one symbol (EXTRACTOR.md §3). A
+    /// `partial` method's declaration and implementation are one symbol keyed by the
+    /// implementation part, with `spans` when there is more than one declaration under
+    /// the root.
+    /// </summary>
+    private void CollectMethods(
+        string typeId,
+        INamedTypeSymbol symbol,
+        TypeEntry entry,
+        List<SymbolFact> symbols,
+        HashSet<EdgeWithVia> edges)
+    {
+        var seen = new HashSet<string>(StringComparer.Ordinal);
+
+        foreach (var member in symbol.GetMembers())
+        {
+            switch (member)
+            {
+                case IMethodSymbol method when IsCallsEligibleMethod(method):
+                {
+                    var canonical = method.PartialImplementationPart ?? method;
+                    var id = SymbolIds.MethodId(canonical);
+                    if (!seen.Add(id))
+                    {
+                        break;
+                    }
+
+                    var name = canonical.ExplicitInterfaceImplementations.Length > 0
+                        ? canonical.ExplicitInterfaceImplementations[0].Name
+                        : canonical.Name;
+                    AddMethodSymbol(id, typeId, canonical, name, NativeKindOf(canonical),
+                        symbols, edges, PartialSyntaxRefs(canonical));
+                    break;
+                }
+
+                case IPropertySymbol property when !property.IsImplicitlyDeclared:
+                {
+                    var id = property.IsIndexer ? SymbolIds.IndexerId(property) : SymbolIds.PropertyId(property);
+                    if (!seen.Add(id))
+                    {
+                        break;
+                    }
+
+                    var name = property.IsIndexer ? "this" : property.Name;
+                    AddMethodSymbol(id, typeId, property, name, property.IsIndexer ? "indexer" : "property",
+                        symbols, edges, property.DeclaringSyntaxReferences.ToList());
+                    break;
+                }
+            }
+        }
+
+        AddImplicitConstructorIfNeeded(typeId, symbol, entry, symbols, edges, seen);
+    }
+
+    /// <summary>
+    /// ADR_20260928-4 §3: a `new T(...)` naming no constructor of its own still constructs a
+    /// real object, and that constructor is a symbol of this output when the type is — so a
+    /// type declaring no instance constructor prints Roslyn's implicit parameterless one, with
+    /// the type's own location (it has no declaration of its own). This is the case that used
+    /// to have zero edges: a static factory returning `new Circle()` now gets a `calls` edge to
+    /// Circle's constructor, not just `constructs` to Circle.
+    ///
+    /// Not implemented in this run: attributing field/property initialisers to this
+    /// constructor (or to an explicit one) — documented as a known gap in
+    /// docs/extractors/csharp.md, tracked for a follow-up.
+    /// </summary>
+    private void AddImplicitConstructorIfNeeded(
+        string typeId,
+        INamedTypeSymbol symbol,
+        TypeEntry entry,
+        List<SymbolFact> symbols,
+        HashSet<EdgeWithVia> edges,
+        HashSet<string> seen)
+    {
+        if (symbol.TypeKind is not (TypeKind.Class or TypeKind.Struct) || symbol.IsStatic)
+        {
+            return;
+        }
+
+        if (symbol.InstanceConstructors.Length != 1 || !symbol.InstanceConstructors[0].IsImplicitlyDeclared)
+        {
+            return; // an explicit instance constructor exists: nothing implicit to add
+        }
+
+        var implicitCtor = symbol.InstanceConstructors[0];
+        var id = SymbolIds.MethodId(implicitCtor);
+        if (!seen.Add(id))
+        {
+            return;
+        }
+
+        symbols.Add(new SymbolFact
+        {
+            Id = id,
+            Kind = "method",
+            NativeKind = "constructor",
+            Name = ".ctor",
+            Namespace = "",
+            File = entry.File,
+            Line = entry.Line,
+            EndLine = entry.Line,
+            Visibility = SymbolDisplayHelpers.Visibility(implicitCtor.DeclaredAccessibility),
+        });
+        edges.Add(new EdgeWithVia { From = typeId, To = id, Kind = "contains" });
+        _methodSymbols[id] = implicitCtor;
+    }
+
+    internal static bool IsCallsEligibleMethod(IMethodSymbol method)
+    {
+        // The implicit parameterless constructor is handled where field/property
+        // initialisers are attributed to it (docs/extractors/csharp.md); every
+        // other implicitly declared method (accessors, event add/remove, the
+        // default Equals/GetHashCode of a record, …) is not a symbol of its own.
+        if (method.IsImplicitlyDeclared)
+        {
+            return false;
+        }
+
+        return method.MethodKind is MethodKind.Ordinary or MethodKind.Constructor or
+            MethodKind.StaticConstructor or MethodKind.UserDefinedOperator or MethodKind.Conversion or
+            MethodKind.ExplicitInterfaceImplementation;
+    }
+
+    private static string NativeKindOf(IMethodSymbol method) => method.MethodKind switch
+    {
+        MethodKind.Constructor or MethodKind.StaticConstructor => "constructor",
+        MethodKind.UserDefinedOperator or MethodKind.Conversion => "operator",
+        _ => "method",
+    };
+
+    /// <summary>
+    /// Every declaring syntax reference of a partial method's canonical (implementation)
+    /// part, plus its definition part's — so `spans` sees both halves of a `partial` pair.
+    /// </summary>
+    internal static List<SyntaxReference> PartialSyntaxRefs(IMethodSymbol canonical)
+    {
+        var refs = canonical.DeclaringSyntaxReferences.ToList();
+        if (canonical.PartialDefinitionPart is { } definition)
+        {
+            refs.AddRange(definition.DeclaringSyntaxReferences);
+        }
+
+        return refs;
+    }
+
+    private void AddMethodSymbol(
+        string id,
+        string typeId,
+        ISymbol symbol,
+        string name,
+        string nativeKind,
+        List<SymbolFact> symbols,
+        HashSet<EdgeWithVia> edges,
+        List<SyntaxReference> syntaxRefs)
+    {
+        var declarations = syntaxRefs
+            .Select(r => r.GetSyntax())
+            .Select(node => (RelativePath(node.SyntaxTree.FilePath), node.GetLocation().GetLineSpan()))
+            .Where(t => t.Item1 is not null)
+            .Select(t => (File: t.Item1!, Line: t.Item2.StartLinePosition.Line + 1, EndLine: t.Item2.EndLinePosition.Line + 1))
+            .Distinct()
+            .OrderBy(t => t.File, StringComparer.Ordinal)
+            .ThenBy(t => t.Line)
+            .ToList();
+
+        if (declarations.Count == 0)
+        {
+            // No location under root (e.g. from metadata): not this output's to print.
+            return;
+        }
+
+        var first = declarations[0];
+        List<SpanFact>? spans = declarations.Count > 1
+            ? declarations.Select(d => new SpanFact { File = d.File, Line = d.Line, EndLine = d.EndLine }).ToList()
+            : null;
+
+        symbols.Add(new SymbolFact
+        {
+            Id = id,
+            Kind = "method",
+            NativeKind = nativeKind,
+            Name = name,
+            Namespace = "",
+            File = first.File,
+            Line = first.Line,
+            EndLine = first.EndLine,
+            Spans = spans,
+            Visibility = SymbolDisplayHelpers.Visibility(symbol.DeclaredAccessibility),
+        });
+
+        edges.Add(new EdgeWithVia { From = typeId, To = id, Kind = "contains" });
+        _methodSymbols[id] = symbol;
+    }
+
+    /// <summary>
+    /// `overrides` (method -> the base virtual method it overrides) and `implements`
+    /// (method -> the interface method it implements, implicit and explicit alike)
+    /// for the methods of <paramref name="symbol"/> already collected by
+    /// <see cref="CollectMethods"/> (ADR_20260928-4 §1, §3). Both ends must be
+    /// symbols of this output; an edge is only added from the type that actually
+    /// declares the overriding/implementing method, not from a subclass that
+    /// merely inherits it.
+    /// </summary>
+    private void AddMethodLevelEdges(string typeId, INamedTypeSymbol symbol, HashSet<EdgeWithVia> edges)
+    {
+        foreach (var member in symbol.GetMembers().OfType<IMethodSymbol>())
+        {
+            if (member.OverriddenMethod is not { } overridden || !IsCallsEligibleMethod(member))
+            {
+                continue;
+            }
+
+            var fromId = SymbolIds.MethodId(member.PartialImplementationPart ?? member);
+            var toId = SymbolIds.MethodId(overridden.OriginalDefinition);
+            if (fromId != toId && _methodSymbols.ContainsKey(fromId) && _methodSymbols.ContainsKey(toId))
+            {
+                edges.Add(new EdgeWithVia { From = fromId, To = toId, Kind = "overrides" });
+            }
+        }
+
+        foreach (var iface in symbol.Interfaces)
+        {
+            foreach (var ifaceMethod in iface.GetMembers().OfType<IMethodSymbol>().Where(m => m.MethodKind == MethodKind.Ordinary))
+            {
+                if (symbol.FindImplementationForInterfaceMember(ifaceMethod) is not IMethodSymbol impl ||
+                    !SymbolEqualityComparer.Default.Equals(impl.ContainingType, symbol))
+                {
+                    continue; // not declared on this type: no edge from here
+                }
+
+                var fromId = SymbolIds.MethodId(impl.PartialImplementationPart ?? impl);
+                var toId = SymbolIds.MethodId(ifaceMethod);
+                if (fromId != toId && _methodSymbols.ContainsKey(fromId) && _methodSymbols.ContainsKey(toId))
+                {
+                    edges.Add(new EdgeWithVia { From = fromId, To = toId, Kind = "implements" });
+                }
+            }
+
+            foreach (var ifaceProperty in iface.GetMembers().OfType<IPropertySymbol>())
+            {
+                if (symbol.FindImplementationForInterfaceMember(ifaceProperty) is not IPropertySymbol impl ||
+                    !SymbolEqualityComparer.Default.Equals(impl.ContainingType, symbol))
+                {
+                    continue;
+                }
+
+                var fromId = impl.IsIndexer ? SymbolIds.IndexerId(impl) : SymbolIds.PropertyId(impl);
+                var toId = ifaceProperty.IsIndexer ? SymbolIds.IndexerId(ifaceProperty) : SymbolIds.PropertyId(ifaceProperty);
+                if (fromId != toId && _methodSymbols.ContainsKey(fromId) && _methodSymbols.ContainsKey(toId))
+                {
+                    edges.Add(new EdgeWithVia { From = fromId, To = toId, Kind = "implements" });
+                }
+            }
+        }
+    }
+
+    /// <summary>
+    /// Every syntax node whose body the calls pass should walk for <paramref name="symbol"/>:
+    /// a method's own declaration(s) (both halves of a `partial` pair), or a property/indexer's
+    /// get and set accessors. An implicit constructor (no declaration at all) yields nothing —
+    /// this run does not attribute field/property initialisers to it (docs/extractors/csharp.md).
+    /// </summary>
+    private static IEnumerable<SyntaxNode> BodyNodesOf(ISymbol symbol)
+    {
+        switch (symbol)
+        {
+            case IMethodSymbol method:
+                foreach (var syntaxRef in PartialSyntaxRefs(method))
+                {
+                    yield return syntaxRef.GetSyntax();
+                }
+
+                break;
+
+            case IPropertySymbol property:
+                foreach (var accessor in new[] { property.GetMethod, property.SetMethod })
+                {
+                    if (accessor is null)
+                    {
+                        continue;
+                    }
+
+                    foreach (var syntaxRef in accessor.DeclaringSyntaxReferences)
+                    {
+                        yield return syntaxRef.GetSyntax();
+                    }
+                }
+
+                break;
         }
     }
 

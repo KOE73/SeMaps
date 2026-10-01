@@ -1,0 +1,51 @@
+{
+  "contractVersion": 5,
+  "relationGroups": [
+    {
+      "id": "relations.project",
+      "name": {
+        "ru": "Типы связей проектов",
+        "en": "Relation types of the projects"
+      },
+      "description": {
+        "ru": "Типы связей, которые проекты объявляли у себя до того, как типы связей перешли в словарь.",
+        "en": "Relation types the projects declared themselves before relation types moved to the dictionary."
+      },
+      "types": [
+        {
+          "id": "call",
+          "name": {
+            "ru": "вызов",
+            "en": "calls"
+          },
+          "description": {
+            "ru": "Одна сторона обращается к другой и ждёт ответа.",
+            "en": "One part calls another and waits for the answer."
+          }
+        },
+        {
+          "id": "data-flow",
+          "name": {
+            "ru": "поток данных",
+            "en": "data flow"
+          },
+          "description": {
+            "ru": "Данные едут в указанную сторону; кто кого вызвал — не утверждается.",
+            "en": "Data moves from one part to another."
+          }
+        },
+        {
+          "id": "storage",
+          "name": {
+            "ru": "чтение и запись",
+            "en": "stores"
+          },
+          "description": {
+            "ru": "Обращение к хранилищу в обе стороны — одно ребро, головки с двух концов.",
+            "en": "A part reads or writes data in a store."
+          }
+        }
+      ]
+    }
+  ]
+}

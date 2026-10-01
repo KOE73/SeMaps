@@ -84,12 +84,23 @@ export class AssetRegistry {
     if (cached !== undefined) return cached;
 
     if (!this.loaded.has(id)) {
-      void this.get(id).then((asset) => {
+      const settling: Promise<void> = this.get(id).then((asset) => {
         this.ready.set(id, asset);
+        // A repaint from a listener may peek at the next picture: it is registered
+        // in `peeking` before this one leaves it, so `settled` never sees a gap.
         this.listeners.forEach((fn) => fn(id));
+        this.peeking.delete(settling);
       });
+      this.peeking.add(settling);
     }
     return undefined;
+  }
+
+  private readonly peeking = new Set<Promise<void>>();
+
+  /** Settles when every picture asked for through `peek` has arrived and its listeners have run. */
+  async settled(): Promise<void> {
+    while (this.peeking.size > 0) await Promise.all([...this.peeking]);
   }
 
   /** Called when a picture finishes loading, so the canvas can repaint. */

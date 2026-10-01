@@ -32,6 +32,10 @@ type Ref struct {
 	View   string `json:"view,omitempty"`
 	Lang   string `json:"lang,omitempty"`
 	Author string `json:"author"`
+	// Removed: the record is gone from the working registry but still in the saved
+	// file (ADR_20261001); Save writes the file without it. Set only on the
+	// registry refs of entity and relation.
+	Removed bool `json:"removed,omitempty"`
 }
 
 type DirtySummary struct {
@@ -45,7 +49,13 @@ type modelView struct {
 }
 
 type Model struct {
-	mu         stdsync.Mutex
+	mu stdsync.Mutex
+	// editMu serialises the edits that read a value, change it and write it back
+	// through Apply (which takes mu only for the write): without it two calls at
+	// once both read the same old value and the later write loses the earlier
+	// one (SetRelationsVisible).
+	editMu stdsync.Mutex
+
 	workspace  string
 	project    string
 	dir        string
@@ -56,16 +66,22 @@ type Model struct {
 	loaded     map[string]bool
 	journal    [][]Op
 	dirty      DirtySummary
+	canvas     Canvas // given by the host (SetCanvas); geometry needs it
+	// kinds is the merged dictionary (CONTRACT §6); defaultKinds the tool's
+	// default it was merged from, kept for Discard's reload.
+	kinds        *KindCatalog
+	defaultKinds []byte
 }
 
 var modelRegistries = map[string]struct{ file, key string }{
-	"entity":       {"entities.json", "entities"},
-	"relation":     {"relations.json", "relations"},
-	"relationType": {"relation-types.json", "relationTypes"},
+	"entity":   {"entities.json", "entities"},
+	"relation": {"relations.json", "relations"},
 }
 
-func LoadModel(workspace, project string) (*Model, error) {
-	m, err := LoadModelWithoutJournal(workspace, project)
+// LoadModel loads a project with its work journal. defaultKinds is the tool's
+// dictionary (host/defaults/kinds.json); <workspace>/kinds.json adds to it.
+func LoadModel(workspace, project string, defaultKinds []byte) (*Model, error) {
+	m, err := LoadModelWithoutJournal(workspace, project, defaultKinds)
 	if err != nil {
 		return nil, err
 	}
@@ -96,6 +112,15 @@ func (m *Model) journalFile() string {
 	return filepath.Join(m.workspace, ".semaps", "work", m.project+".jsonl")
 }
 
+// ensureJournalDir creates <workspace>/.semaps/work and makes .semaps ignore itself.
+func (m *Model) ensureJournalDir() error {
+	if err := os.MkdirAll(filepath.Dir(m.journalFile()), 0o755); err != nil {
+		return err
+	}
+	EnsureSelfIgnore(filepath.Join(m.workspace, ".semaps"))
+	return nil
+}
+
 func cloneObject(o *object) *object {
 	b, _ := o.MarshalJSON()
 	c := newObject()
@@ -104,7 +129,7 @@ func cloneObject(o *object) *object {
 }
 
 func (m *Model) copy() *Model {
-	c := &Model{workspace: m.workspace, project: m.project, dir: m.dir, manifest: cloneObject(m.manifest),
+	c := &Model{workspace: m.workspace, project: m.project, dir: m.dir, manifest: cloneObject(m.manifest), canvas: m.canvas, kinds: m.kinds, defaultKinds: m.defaultKinds,
 		registries: map[string]*registry{}, texts: map[string]*object{}, views: map[string]*modelView{}, loaded: map[string]bool{},
 		journal: append([][]Op(nil), m.journal...), dirty: DirtySummary{Registry: append([]Ref(nil), m.dirty.Registry...), Views: map[string][]Ref{}}}
 	for k, r := range m.registries {
@@ -139,6 +164,9 @@ func (m *Model) loadView(id string) (*modelView, error) {
 	if err != nil {
 		return nil, err
 	}
+	if old := oldViewShape(doc); old != "" {
+		return nil, refuse("%s", oldShapeError("views/"+filepath.Base(file), old))
+	}
 	v := &modelView{file: file, doc: doc}
 	m.views[id] = v
 	return v, nil
@@ -146,7 +174,7 @@ func (m *Model) loadView(id string) (*modelView, error) {
 
 func (m *Model) loadText(lang string) (*object, error) {
 	if strings.ContainsAny(lang, `/\.`) || lang == "" {
-		return nil, refuse("invalid language %q", lang)
+		return nil, refuse("language %q: expected a code like ru or en", lang)
 	}
 	if m.loaded[lang] {
 		return m.texts[lang], nil
@@ -157,7 +185,7 @@ func (m *Model) loadText(lang string) (*object, error) {
 	}
 	if o == nil {
 		o = newObject()
-		o.set("contractVersion", 3)
+		o.set("contractVersion", ContractVersion)
 		o.set("language", lang)
 		o.set("entries", newObject())
 	}
@@ -165,8 +193,10 @@ func (m *Model) loadText(lang string) (*object, error) {
 	return o, nil
 }
 
-// Apply validates a complete batch on a copy. No partial mutation or journal
-// line is produced when one operation fails.
+// Apply validates a complete batch on a copy — its operations, then the
+// contract rules for what the batch created or changed (rules.go,
+// ADR_20260926). No partial mutation or journal line is produced when one
+// operation or rule fails.
 func (m *Model) Apply(ops []Op, author string) ([]Ref, error) {
 	m.mu.Lock()
 	defer m.mu.Unlock()
@@ -184,7 +214,10 @@ func (m *Model) Apply(ops []Op, author string) ([]Ref, error) {
 	if err != nil {
 		return nil, err
 	}
-	if err := os.MkdirAll(filepath.Dir(m.journalFile()), 0o755); err != nil {
+	if err := c.validate(m, ops); err != nil {
+		return nil, err
+	}
+	if err := m.ensureJournalDir(); err != nil {
 		return nil, err
 	}
 	f, err := os.OpenFile(m.journalFile(), os.O_CREATE|os.O_APPEND|os.O_WRONLY, 0o644)
@@ -227,7 +260,14 @@ func (m *Model) apply(ops []Op, author string, record bool) ([]Ref, error) {
 		}
 		ref := Ref{Kind: op.Kind, ID: op.ID, View: op.View, Lang: op.Lang, Author: op.Author}
 		refs = append(refs, ref)
-		if op.View == "" {
+		if _, reg := modelRegistries[op.Kind]; reg && bytes.Equal(bytes.TrimSpace(op.Value), []byte("null")) {
+			// a withdrawn record is not unsaved: withdraw took it off the list;
+			// the removal of a saved one is, and stays on it
+			if m.registries[op.Kind].saved[op.ID] {
+				ref.Removed = true
+				m.dirty.Registry = upsertRef(m.dirty.Registry, ref)
+			}
+		} else if op.View == "" {
 			m.dirty.Registry = upsertRef(m.dirty.Registry, ref)
 		} else {
 			m.dirty.Views[op.View] = upsertRef(m.dirty.Views[op.View], ref)
@@ -281,12 +321,23 @@ func (m *Model) applyOne(op Op) error {
 		if o.str("id") != m.project {
 			return refuse("project id differs from folder; use structural rename")
 		}
+		// contractVersion is the loader's, not the editor's: kept when left out
+		if _, ok := o.vals["contractVersion"]; !ok {
+			if cv, ok := m.manifest.vals["contractVersion"]; ok {
+				o.set("contractVersion", cv)
+			}
+		} else if err := checkContractVersion(o); err != nil {
+			return err
+		}
 		m.manifest = orderedReplacement(m.manifest, o)
 		return nil
 	}
 	if spec, ok := modelRegistries[op.Kind]; ok {
-		if op.View != "" || bytes.Equal(bytes.TrimSpace(op.Value), []byte("null")) {
-			return refuse("registry %s cannot be removed or scoped to a view", op.Kind)
+		if op.View != "" {
+			return refuse("registry %s cannot be scoped to a view", op.Kind)
+		}
+		if bytes.Equal(bytes.TrimSpace(op.Value), []byte("null")) {
+			return m.withdraw(op)
 		}
 		o := newObject()
 		if err := json.Unmarshal(op.Value, o); err != nil {
@@ -319,11 +370,11 @@ func (m *Model) applyOne(op Op) error {
 				return refuse("no relation %s", op.ID)
 			}
 			if r.str("origin") == "code" {
-				return refuse("relation %s comes from code: it has no texts", op.ID)
+				return refuse("relation %s comes from code: it has no texts, its label is drawn from the `via` of its evidence (CONTRACT §4)", op.ID)
 			}
-		case strings.HasPrefix(op.ID, "c_"), strings.HasPrefix(op.ID, "rt_"), strings.HasPrefix(op.ID, "v_"), strings.HasPrefix(op.ID, "z_"):
+		case strings.HasPrefix(op.ID, "v_"):
 		default:
-			return refuse("invalid text key %q", op.ID)
+			return refuse("key %q: expected a prefix e_, r_ or v_ (CONTRACT §7.1)", op.ID)
 		}
 		doc, err := m.loadText(op.Lang)
 		if err != nil {
@@ -343,10 +394,7 @@ func (m *Model) applyOne(op Op) error {
 		}
 		for _, field := range entry.keys {
 			if !slices.Contains(TextFields, field) {
-				return refuse("invalid text field %q", field)
-			}
-			if strings.HasPrefix(op.ID, "e_") && (field == "name" || field == "title") && len(old.vals[field]) == 0 {
-				return refuse("an entity's name lives in entities.json")
+				return refuse("field %q: allowed %s (CONTRACT §7.2)", field, strings.Join(TextFields, ", "))
 			}
 		}
 		if len(old.keys) > 0 {
@@ -355,6 +403,9 @@ func (m *Model) applyOne(op Op) error {
 		entries.set(op.ID, entry)
 		doc.set("entries", entries)
 		return nil
+	}
+	if op.Kind != "view" && op.Kind != "placement" {
+		return refuse("unknown operation kind %q", op.Kind)
 	}
 	if op.View == "" {
 		return refuse("%s needs a view", op.Kind)
@@ -374,9 +425,9 @@ func (m *Model) applyOne(op Op) error {
 		if n.str("id") != op.View {
 			return refuse("view id differs from operation id")
 		}
-		for _, key := range []string{"zones", "nodes", "placements"} {
+		for _, key := range []string{"placements", "zones", "nodes"} {
 			if _, ok := n.vals[key]; ok {
-				return refuse("view properties cannot replace geometry")
+				return refuse("view properties cannot carry `%s`: placements change one by one, op kind placement", key)
 			}
 		}
 		for _, key := range n.keys {
@@ -388,24 +439,10 @@ func (m *Model) applyOne(op Op) error {
 		}
 		return nil
 	}
-	key := map[string]string{"zone": "zones", "node": "nodes"}[op.Kind]
-	if key == "" {
-		return refuse("unknown operation kind %q", op.Kind)
-	}
-	if op.Kind == "node" {
-		if _, ok := v.doc.vals["placements"]; ok {
-			key = "placements"
-		}
-	}
-	var items []*object
-	if raw := v.doc.vals[key]; len(raw) > 0 && string(raw) != "null" {
-		if err := json.Unmarshal(raw, &items); err != nil {
-			return err
-		}
-	}
+	items := viewItems(v.doc, "placements")
 	index := -1
 	for i, item := range items {
-		if item.str("id") == op.ID || (op.Kind == "node" && item.str("entity") == op.ID) {
+		if item.str("entity") == op.ID {
 			index = i
 			break
 		}
@@ -419,12 +456,8 @@ func (m *Model) applyOne(op Op) error {
 		if err := json.Unmarshal(op.Value, o); err != nil {
 			return err
 		}
-		id := o.str("id")
-		if op.Kind == "node" {
-			id = orDefault(o.str("entity"), id)
-		}
-		if id != op.ID {
-			return refuse("%s id differs from operation id", op.Kind)
+		if o.str("entity") != op.ID {
+			return refuse("placement entity differs from operation id")
 		}
 		if index >= 0 {
 			items[index] = orderedReplacement(items[index], o)
@@ -435,7 +468,78 @@ func (m *Model) applyOne(op Op) error {
 	if items == nil {
 		items = []*object{}
 	}
-	v.doc.set(key, items)
+	v.doc.set("placements", items)
+	return nil
+}
+
+// withdraw takes a record out of the registry (value: null).
+//
+// One created in the unsaved working state is withdrawn as if it had never been
+// created (ADR_20260930-8): from the registry, from the dirty list, and with it
+// every text under its id in the loaded catalogues (a text has no life of its
+// own: the same batch takes it away).
+//
+// A record of the saved file is removed only when it is authored
+// (ADR_20261001): a code record is the next sync's to bring back, and
+// references to it must live. The removal is an unsaved change like any other:
+// the registry and the text catalogues become dirty, Save writes them without
+// the record, Discard replays the journal over the file and so brings it back.
+// Removing what is not there is not an error: a journal replay after a partial
+// Discard meets it. Whether a view or a relation still names the record is the
+// batch rule's (checkWithdrawn), not this one's.
+func (m *Model) withdraw(op Op) error {
+	r := m.registries[op.Kind]
+	saved := r.saved[op.ID]
+	if saved {
+		if item := findByID(r.items, op.ID); item != nil && !isAuthored(item) {
+			return refuse("%s %s comes from code (origin %q): only an authored record can be removed from the registry; the next sync would bring a code one back (API.md §3.4)", op.Kind, op.ID, item.str("origin"))
+		}
+	}
+	for i, item := range r.items {
+		if item.str("id") == op.ID {
+			r.items = append(r.items[:i:i], r.items[i+1:]...)
+			break
+		}
+	}
+	keep := m.dirty.Registry[:0:0]
+	for _, ref := range m.dirty.Registry {
+		if ref.ID == op.ID && (ref.Kind == op.Kind || ref.Kind == "text") {
+			continue
+		}
+		keep = append(keep, ref)
+	}
+	// the texts of a saved record are in files not loaded yet: load them all, so
+	// none keeps an entry of a record that is gone
+	langs := m.textLanguages()
+	if saved {
+		for _, lang := range langs {
+			if _, err := m.loadText(lang); err != nil {
+				return err
+			}
+		}
+	}
+	for lang, doc := range m.texts {
+		if entries, err := child(doc, "entries"); err == nil {
+			if _, ok := entries.vals[op.ID]; ok {
+				entries.del(op.ID)
+				doc.set("entries", entries)
+				if saved {
+					keep = append(keep, Ref{Kind: "text", ID: op.ID, Lang: lang, Author: op.Author})
+				}
+			}
+		}
+	}
+	m.dirty.Registry = keep
+	// the registry is dirty while something else of its kind is still unsaved
+	r.dirty = false
+	for _, ref := range keep {
+		if ref.Kind == op.Kind {
+			r.dirty = true
+		}
+	}
+	if saved {
+		r.dirty = true
+	}
 	return nil
 }
 
@@ -476,6 +580,9 @@ func (m *Model) Save() error {
 	}
 	for id := range m.dirty.Views {
 		v := m.views[id]
+		if err := os.MkdirAll(filepath.Dir(v.file), 0o755); err != nil {
+			return err
+		}
 		if err := saveDoc(v.file, v.doc); err != nil {
 			return err
 		}
@@ -487,6 +594,7 @@ func (m *Model) Save() error {
 	m.dirty = DirtySummary{Views: map[string][]Ref{}}
 	for _, r := range m.registries {
 		r.dirty = false
+		r.markSaved()
 	}
 	return nil
 }
@@ -501,7 +609,7 @@ func (m *Model) Discard(scope, view string) error {
 	if scope == "view" && view == "" {
 		return refuse("view id is empty")
 	}
-	fresh, err := LoadModelWithoutJournal(m.workspace, m.project)
+	fresh, err := LoadModelWithoutJournal(m.workspace, m.project, m.defaultKinds)
 	if err != nil {
 		return err
 	}
@@ -519,7 +627,7 @@ func (m *Model) Discard(scope, view string) error {
 			}
 		}
 	}
-	if err := os.MkdirAll(filepath.Dir(m.journalFile()), 0o755); err != nil {
+	if err := m.ensureJournalDir(); err != nil {
 		return err
 	}
 	var b bytes.Buffer
@@ -538,12 +646,17 @@ func (m *Model) Discard(scope, view string) error {
 	return nil
 }
 
-func LoadModelWithoutJournal(workspace, project string) (*Model, error) {
+func LoadModelWithoutJournal(workspace, project string, defaultKinds []byte) (*Model, error) {
 	id, err := pickProject(workspace, project)
 	if err != nil {
 		return nil, err
 	}
-	m := &Model{workspace: workspace, project: id, dir: filepath.Join(workspace, "projects", id), registries: map[string]*registry{}, texts: map[string]*object{}, views: map[string]*modelView{}, loaded: map[string]bool{}, dirty: DirtySummary{Views: map[string][]Ref{}}}
+	kinds, err := LoadKinds(workspace, defaultKinds)
+	if err != nil {
+		return nil, err
+	}
+	m := &Model{workspace: workspace, project: id, dir: filepath.Join(workspace, "projects", id), registries: map[string]*registry{}, texts: map[string]*object{}, views: map[string]*modelView{}, loaded: map[string]bool{}, dirty: DirtySummary{Views: map[string][]Ref{}},
+		kinds: kinds, defaultKinds: defaultKinds}
 	m.manifest, err = loadDoc(filepath.Join(m.dir, "project.json"))
 	if err != nil {
 		return nil, err
@@ -551,12 +664,48 @@ func LoadModelWithoutJournal(workspace, project string) (*Model, error) {
 	if m.manifest == nil {
 		return nil, refuse("no project manifest %s", id)
 	}
+	if err := checkContractVersion(m.manifest); err != nil {
+		return nil, err
+	}
+	if exists(filepath.Join(m.dir, "containers.json")) {
+		return nil, refuse("%s", containersFileError)
+	}
+	if exists(filepath.Join(m.dir, RelationTypesFile)) {
+		return nil, refuse("%s", relationTypesFileError)
+	}
 	for kind, spec := range modelRegistries {
 		r, err := loadRegistry(m.dir, spec.file, spec.key, freshList(spec.key))
 		if err != nil {
 			return nil, err
 		}
 		m.registries[kind] = r
+		for _, item := range r.items {
+			if old := oldShape(kind, item); old != "" {
+				return nil, refuse("%s: %s: %s — форма до ADR_20260930-4/5, нужна текущая (`semaps migrate`, ADR_20260927-3)", spec.file, item.str("id"), old)
+			}
+		}
 	}
 	return m, nil
 }
+
+// checkContractVersion refuses a project.json of any other contract version,
+// naming the file, the field and the version (ADR_20260927-3).
+func checkContractVersion(manifest *object) error {
+	var v struct {
+		ContractVersion *int `json:"contractVersion"`
+	}
+	raw, _ := manifest.MarshalJSON()
+	if err := json.Unmarshal(raw, &v); err != nil {
+		return refuse("project.json: contractVersion: %v", err)
+	}
+	if v.ContractVersion == nil {
+		return refuse("project.json: contractVersion is missing — нужен %d (`semaps migrate`, ADR_20260927-3)", ContractVersion)
+	}
+	if *v.ContractVersion != ContractVersion {
+		return refuse("project.json: contractVersion %d — форма контракта %d, нужен %d (`semaps migrate`, ADR_20260927-3)", *v.ContractVersion, *v.ContractVersion, ContractVersion)
+	}
+	return nil
+}
+
+// Kinds is the merged dictionary of the workspace.
+func (m *Model) Kinds() *KindCatalog { return m.kinds }

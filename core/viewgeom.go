@@ -5,18 +5,11 @@ import (
 	"math"
 )
 
-// The numbers of docs/LAYOUT.md, in one place. The editor uses the same ones.
-const (
-	GridStep      = 10.0
-	NodeWidth     = 180.0
-	NodeHeight    = 60.0
-	MinNodeWidth  = 100.0
-	MinNodeHeight = 40.0
-	MinZoneWidth  = 160.0
-	MinZoneHeight = 100.0
-	ZoneHeader    = 28.0
-	ZonePadding   = 16.0
-)
+// The numbers of the canvas (grid, block and container sizes, caption strip,
+// padding) are not written here: they come from canvas.json as a Canvas
+// (canvas.go), the one place they are defined; the editor reads the same file.
+// The host does not snap to the grid — that is the editor's habit (the MCP tool
+// `layout_guide` says so).
 
 // Rect is a box in the absolute model coordinates of a view.
 type Rect struct {
@@ -38,9 +31,6 @@ func (r Rect) Contains(o Rect) bool {
 	return o.X >= r.X && o.Y >= r.Y && o.Right() <= r.Right() && o.Bottom() <= r.Bottom()
 }
 
-// Snap rounds to the grid.
-func Snap(v float64) float64 { return math.Round(v/GridStep) * GridStep }
-
 func (o *object) num(key string) (float64, bool) {
 	var f float64
 	if raw, ok := o.vals[key]; ok && json.Unmarshal(raw, &f) == nil {
@@ -56,13 +46,11 @@ func (o *object) numOr(key string, def float64) float64 {
 	return def
 }
 
-// zoneRect and nodeRect read the box of an object; a node without a size has the default one.
-func zoneRect(o *object) Rect {
-	return Rect{o.numOr("x", 0), o.numOr("y", 0), o.numOr("width", MinZoneWidth), o.numOr("height", MinZoneHeight)}
+// placementRect reads the box of a placement; one without a size has the
+// default size of its sort — a container's minimum or a block's default.
+func placementRect(o *object, container bool, cv Canvas) Rect {
+	if container {
+		return Rect{o.numOr("x", 0), o.numOr("y", 0), o.numOr("width", cv.Container.MinWidth), o.numOr("height", cv.Container.MinHeight)}
+	}
+	return Rect{o.numOr("x", 0), o.numOr("y", 0), o.numOr("width", cv.Node.Width), o.numOr("height", cv.Node.Height)}
 }
-
-func nodeRect(o *object) Rect {
-	return Rect{o.numOr("x", 0), o.numOr("y", 0), o.numOr("width", NodeWidth), o.numOr("height", NodeHeight)}
-}
-
-func nodeZone(o *object) string { return orDefault(o.str("zone"), o.str("container")) }
