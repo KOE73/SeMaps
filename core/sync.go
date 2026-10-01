@@ -185,6 +185,9 @@ func Sync(model *Model, facts *Facts, opt SyncOptions) (*SyncReport, error) {
 	if opt.Project != "" && opt.Project != model.project {
 		return nil, &UsageError{fmt.Sprintf("model project %q differs from %q", model.project, opt.Project)}
 	}
+	// snapshot, diff and Apply are one edit: see Model.editMu
+	model.editMu.Lock()
+	defer model.editMu.Unlock()
 	model.mu.Lock()
 	base := model.copy()
 	model.mu.Unlock()

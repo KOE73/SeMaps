@@ -293,6 +293,8 @@ func (m *Model) MoveElements(view string, elements []string, dx, dy, x, y *float
 	if !human {
 		return GeomReport{}, refuse(needHuman)
 	}
+	m.editMu.Lock()
+	defer m.editMu.Unlock()
 	l, err := m.loadLayout(view)
 	if err != nil {
 		return GeomReport{}, err
@@ -341,6 +343,8 @@ func (m *Model) ResizeElements(view string, elements []string, width, height *fl
 	if width == nil && height == nil {
 		return GeomReport{}, refuse("give width and/or height")
 	}
+	m.editMu.Lock()
+	defer m.editMu.Unlock()
 	l, err := m.loadLayout(view)
 	if err != nil {
 		return GeomReport{}, err
@@ -374,6 +378,8 @@ func (m *Model) SetParent(view string, elements []string, parent string, human b
 	if !human {
 		return GeomReport{}, refuse(needHuman)
 	}
+	m.editMu.Lock()
+	defer m.editMu.Unlock()
 	l, err := m.loadLayout(view)
 	if err != nil {
 		return GeomReport{}, err
@@ -432,6 +438,8 @@ func (m *Model) AddContainer(view string, spec ContainerSpec, human bool, author
 	if !human {
 		return "", GeomReport{}, refuse(needHuman)
 	}
+	m.editMu.Lock()
+	defer m.editMu.Unlock()
 	l, err := m.loadLayout(view)
 	if err != nil {
 		return "", GeomReport{}, err
@@ -640,6 +648,8 @@ func (m *Model) FitContainer(view string, containers []string, human bool, autho
 	if !human {
 		return GeomReport{}, refuse(needHuman)
 	}
+	m.editMu.Lock()
+	defer m.editMu.Unlock()
 	l, err := m.loadLayout(view)
 	if err != nil {
 		return GeomReport{}, err
@@ -667,6 +677,8 @@ func (m *Model) AlignElements(view string, elements []string, mode string, human
 	if !slices.Contains(alignModes, mode) {
 		return GeomReport{}, refuse("mode is one of %s", strings.Join(alignModes, ", "))
 	}
+	m.editMu.Lock()
+	defer m.editMu.Unlock()
 	l, err := m.loadLayout(view)
 	if err != nil {
 		return GeomReport{}, err

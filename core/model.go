@@ -45,7 +45,13 @@ type modelView struct {
 }
 
 type Model struct {
-	mu         stdsync.Mutex
+	mu stdsync.Mutex
+	// editMu serialises the edits that read a value, change it and write it back
+	// through Apply (which takes mu only for the write): without it two calls at
+	// once both read the same old value and the later write loses the earlier
+	// one (SetRelationsVisible).
+	editMu stdsync.Mutex
+
 	workspace  string
 	project    string
 	dir        string
