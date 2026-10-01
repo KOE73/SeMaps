@@ -438,6 +438,8 @@ export const ruDictionary: UiDictionary = {
     connectFrom: "От первого выбранного",
     connectDrag: "Потяните к другому элементу, чтобы создать связь",
     remove: "Удалить",
+    removeFromRegistry: "Удалить из реестра",
+    removeFromRegistryHint: "Нарисованная запись исчезает из проекта и со всех видов; до сохранения её возвращает отмена несохранённого",
     lineShape: "Форма этой линии",
     inherited: "как у схемы",
     resetShape: "Сбросить: как у схемы",

@@ -273,15 +273,19 @@ func TestModelAPIWithdrawUnsavedCreation(t *testing.T) {
 	if !bytes.Equal(before, after) {
 		t.Fatalf("relations.json changed:\n%s", after)
 	}
-	// once saved, the same line is a saved record: not removable
+	// once saved, the same authored line is removed as an unsaved change that
+	// says it is a removal (ADR_20261001); a code record is refused
 	if code, b := post("ops", draw); code != 200 {
 		t.Fatalf("draw 3: %d %s", code, b)
 	}
 	if code, b := post("save", ""); code != 200 {
 		t.Fatalf("save 3: %d %s", code, b)
 	}
-	if code, b := post("ops", undo); code != 422 || !strings.Contains(b, "saved registry") {
-		t.Fatalf("saved record withdrawn: %d %s", code, b)
+	if code, b := post("ops", undo); code != 200 || !strings.Contains(b, `"removed":true`) {
+		t.Fatalf("saved authored record not removed: %d %s", code, b)
+	}
+	if code, b := post("ops", `{"client":"one","ops":[{"kind":"entity","id":"e_b","value":null}]}`); code != 422 || !strings.Contains(b, "comes from code") {
+		t.Fatalf("code record removed: %d %s", code, b)
 	}
 }
 

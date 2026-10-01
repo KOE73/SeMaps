@@ -121,6 +121,13 @@ type visibleIn struct {
 	List      bool     `json:"list,omitempty" jsonschema:"true: the answer also lists the relations acted on, in full (id, from -> to, type), split into changed and already so; default false"`
 }
 
+type removeIn struct {
+	Project          string   `json:"project,omitempty"`
+	IDs              []string `json:"ids" jsonschema:"ids of authored entities (e_…) and relations (r_…) to remove from the registry, at least one; all or nothing. A record from code is refused"`
+	Cascade          bool     `json:"cascade,omitempty" jsonschema:"true: an entity's authored relations are removed with it; false (default): an entity that still has relations is refused and they are listed"`
+	RequestedByHuman bool     `json:"requestedByHuman" jsonschema:"true only when a human asked to remove these in so many words"`
+}
+
 type renameIn struct {
 	Project  string `json:"project,omitempty"`
 	Entity   string `json:"entity,omitempty" jsonschema:"old entity id: takes the new symbol"`
@@ -344,7 +351,8 @@ func (s *mcpServer) server() *mcp.Server {
 		"Membership is a fact of the registry, the grid only a starting arrangement to be adjusted. One step: it applies whole or not at all. requestedByHuman."), s.addContainer)
 	mcp.AddTool(srv, write("fit_container", "Fit a container to its content (caption strip and padding); ancestors grow if they no longer hold it. requestedByHuman."), s.fitContainer)
 	mcp.AddTool(srv, write("align_elements", "Align elements to the first one: left, right, top, bottom, width, height. requestedByHuman."), s.alignElements)
-	mcp.AddTool(srv, write("create_view", viewToolDescriptions["create_view"].at(level)), s.createView)
+	mcp.AddTool(srv, write("remove", viewToolDescriptions["remove"].at(level)), s.remove)
+	mcp.AddTool(srv, write("create_view",viewToolDescriptions["create_view"].at(level)), s.createView)
 	mcp.AddTool(srv, write("create_project", viewToolDescriptions["create_project"].at(level)), s.createProject)
 	mcp.AddTool(srv, write("save", "Save all unsaved project changes only when a human explicitly requested it."), s.save)
 	mcp.AddTool(srv, write("discard", "Discard unsaved changes only when a human explicitly requested it."), s.discard)
@@ -1079,6 +1087,37 @@ func (s *mcpServer) addRelation(_ context.Context, _ *mcp.CallToolRequest, in ad
 	}
 	s.changed(in.Project, m)
 	return done("%s added, not saved; review and Save: %s", id, s.reviewLink(m, id))
+}
+
+func (s *mcpServer) remove(_ context.Context, _ *mcp.CallToolRequest, in removeIn) (*mcp.CallToolResult, any, error) {
+	if !in.RequestedByHuman {
+		return nil, nil, errors.New("remove requires requestedByHuman: true")
+	}
+	m, err := s.model(in.Project)
+	if err != nil {
+		return nil, nil, err
+	}
+	res, err := m.RemoveRecords(in.IDs, in.Cascade, "agent")
+	if err != nil {
+		return nil, nil, err
+	}
+	s.changed(in.Project, m)
+	return done("%s; not saved (discard brings it back); review and Save: %s", removalText(res), s.reviewLink(m, in.IDs[0]))
+}
+
+// removalText says what a removal took away: the records, then the places that
+// named them.
+func removalText(r core.Removal) string {
+	text := fmt.Sprintf("removed %d entit(ies) %s and %d relation(s) %s", len(r.Entities), nameIDs(r.Entities, 10), len(r.Relations), nameIDs(r.Relations, 10))
+	for _, part := range []struct {
+		what string
+		refs []string
+	}{{"placements", r.Placements}, {"edges entries", r.Edges}, {"relations.except names", r.Except}} {
+		if len(part.refs) > 0 {
+			text += fmt.Sprintf("; %s dropped (%d): %s", part.what, len(part.refs), nameIDs(part.refs, 10))
+		}
+	}
+	return text
 }
 
 func (s *mcpServer) setRelationVisible(_ context.Context, _ *mcp.CallToolRequest, in visibleIn) (*mcp.CallToolResult, any, error) {

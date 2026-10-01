@@ -169,11 +169,11 @@ func TestWithdrawRefusals(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	// a saved record is never removed
+	// a saved record of code is never removed (an authored one is: remove_test.go)
 	_, err = m.Apply([]Op{modelOp("relation", "r_a_b_items_item", "", "", "null")}, "human")
-	refused(t, err, "saved registry")
-	_, err = m.Apply([]Op{modelOp("entity", "e_x", "", "", "null")}, "human")
-	refused(t, err, "saved registry")
+	refused(t, err, "comes from code")
+	_, err = m.Apply([]Op{modelOp("entity", "e_a", "", "", "null")}, "human")
+	refused(t, err, "comes from code")
 	// a text is still not removable by itself
 	_, err = m.Apply([]Op{modelOp("text", "e_x", "", "ru", "null")}, "human")
 	refused(t, err, "cannot be removed")

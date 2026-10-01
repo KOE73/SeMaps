@@ -244,6 +244,20 @@ export class HostModelStore extends HttpProjectStore {
     this.invalidate(project);
   }
 
+  /**
+   * Remove authored records from the registry (ADR_20261001). The host builds the whole batch —
+   * placements and entries on every view, the entity's own relations when `cascade` — with the
+   * rule the MCP tool `remove` uses; this editor sends ids only. The local snapshot is dropped:
+   * the caller reloads the view.
+   */
+  async removeRecords(project: string, ids: string[], cascade: boolean): Promise<void> {
+    await this.pending;
+    await this.request(`/api/model/${encodeURIComponent(project)}/remove`, {
+      method: "POST", body: JSON.stringify({ client: this.client, ids, cascade }),
+    });
+    this.invalidate(project);
+  }
+
   invalidate(project: string): void {
     this.snapshots.delete(project);
     for (const file of this.views.keys()) if (this.projectOf(file) === project) {

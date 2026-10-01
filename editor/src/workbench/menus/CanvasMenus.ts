@@ -205,6 +205,7 @@ function blockItems(editor: DiagramEditor, host: MenuHost, el: DiagramElement): 
   if (entity) items.push({ label: t.neighbourhood, icon: icons.hierarchy, onSelect: () => host.openPanel("neighbourhood") });
   if (isZone) items.push(pasteItem(editor));
   items.push({ kind: "separator" }, { label: t.remove, icon: icons.trash, onSelect: () => editor.deleteSelection() });
+  items.push(...removeFromRegistryItems(editor, el.id));
   return items;
 }
 
@@ -267,7 +268,19 @@ function edgeItems(editor: DiagramEditor, host: MenuHost, edge: DiagramEdge): Me
     { label: t.edgeStyle, icon: icons.palette, onSelect: () => host.openStyleEditor(styles.edgeStyleIdFor(edge)) },
     { kind: "separator" },
     { label: t.remove, icon: icons.trash, onSelect: () => editor.deleteSelection() },
+    ...removeFromRegistryItems(editor, edge.id),
   ];
+}
+
+/**
+ * «Remove from registry» (ADR_20261001), only where the clicked line or block is an authored
+ * record; «Delete» above takes it off this view alone. A record from code has no such entry.
+ */
+function removeFromRegistryItems(editor: DiagramEditor, clicked: string): MenuItem[] {
+  const t = i18n.d.canvasMenu;
+  // the right click selects what it hit, so the selection is what the command acts on
+  if (!editor.authoredSelection().includes(clicked)) return [];
+  return [{ label: t.removeFromRegistry, icon: icons.trash, title: t.removeFromRegistryHint, onSelect: () => void editor.removeSelectionFromRegistry() }];
 }
 
 /** A ghost line: known in the registry, not on the view. */

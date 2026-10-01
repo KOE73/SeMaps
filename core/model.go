@@ -32,6 +32,10 @@ type Ref struct {
 	View   string `json:"view,omitempty"`
 	Lang   string `json:"lang,omitempty"`
 	Author string `json:"author"`
+	// Removed: the record is gone from the working registry but still in the saved
+	// file (ADR_20261001); Save writes the file without it. Set only on the
+	// registry refs of entity and relation.
+	Removed bool `json:"removed,omitempty"`
 }
 
 type DirtySummary struct {
@@ -248,7 +252,12 @@ func (m *Model) apply(ops []Op, author string, record bool) ([]Ref, error) {
 		ref := Ref{Kind: op.Kind, ID: op.ID, View: op.View, Lang: op.Lang, Author: op.Author}
 		refs = append(refs, ref)
 		if _, reg := modelRegistries[op.Kind]; reg && bytes.Equal(bytes.TrimSpace(op.Value), []byte("null")) {
-			// a withdrawn record is not unsaved: withdraw took it off the list
+			// a withdrawn record is not unsaved: withdraw took it off the list;
+			// the removal of a saved one is, and stays on it
+			if m.registries[op.Kind].saved[op.ID] {
+				ref.Removed = true
+				m.dirty.Registry = upsertRef(m.dirty.Registry, ref)
+			}
 		} else if op.View == "" {
 			m.dirty.Registry = upsertRef(m.dirty.Registry, ref)
 		} else {
@@ -454,17 +463,28 @@ func (m *Model) applyOne(op Op) error {
 	return nil
 }
 
-// withdraw removes a record created in the unsaved working state, as if it had
-// never been created (ADR_20260930-8): from the registry, from the dirty list,
-// and with it every text under its id in the loaded catalogues (a text has no
-// life of its own: the same batch takes it away). A record of the saved file is
-// never removed. Withdrawing what is not there is not an error: a journal replay
-// after a partial Discard meets it. Whether a view or a relation still names
-// the record is the batch rule's (checkWithdrawn), not this one's.
+// withdraw takes a record out of the registry (value: null).
+//
+// One created in the unsaved working state is withdrawn as if it had never been
+// created (ADR_20260930-8): from the registry, from the dirty list, and with it
+// every text under its id in the loaded catalogues (a text has no life of its
+// own: the same batch takes it away).
+//
+// A record of the saved file is removed only when it is authored
+// (ADR_20261001): a code record is the next sync's to bring back, and
+// references to it must live. The removal is an unsaved change like any other:
+// the registry and the text catalogues become dirty, Save writes them without
+// the record, Discard replays the journal over the file and so brings it back.
+// Removing what is not there is not an error: a journal replay after a partial
+// Discard meets it. Whether a view or a relation still names the record is the
+// batch rule's (checkWithdrawn), not this one's.
 func (m *Model) withdraw(op Op) error {
 	r := m.registries[op.Kind]
-	if r.saved[op.ID] {
-		return refuse("%s %s is in the saved registry: a saved record is never removed; only one created in the unsaved state can be withdrawn (API.md §3.4)", op.Kind, op.ID)
+	saved := r.saved[op.ID]
+	if saved {
+		if item := findByID(r.items, op.ID); item != nil && !isAuthored(item) {
+			return refuse("%s %s comes from code (origin %q): only an authored record can be removed from the registry; the next sync would bring a code one back (API.md §3.4)", op.Kind, op.ID, item.str("origin"))
+		}
 	}
 	for i, item := range r.items {
 		if item.str("id") == op.ID {
@@ -479,6 +499,27 @@ func (m *Model) withdraw(op Op) error {
 		}
 		keep = append(keep, ref)
 	}
+	// the texts of a saved record are in files not loaded yet: load them all, so
+	// none keeps an entry of a record that is gone
+	langs := m.textLanguages()
+	if saved {
+		for _, lang := range langs {
+			if _, err := m.loadText(lang); err != nil {
+				return err
+			}
+		}
+	}
+	for lang, doc := range m.texts {
+		if entries, err := child(doc, "entries"); err == nil {
+			if _, ok := entries.vals[op.ID]; ok {
+				entries.del(op.ID)
+				doc.set("entries", entries)
+				if saved {
+					keep = append(keep, Ref{Kind: "text", ID: op.ID, Lang: lang, Author: op.Author})
+				}
+			}
+		}
+	}
 	m.dirty.Registry = keep
 	// the registry is dirty while something else of its kind is still unsaved
 	r.dirty = false
@@ -487,13 +528,8 @@ func (m *Model) withdraw(op Op) error {
 			r.dirty = true
 		}
 	}
-	for _, doc := range m.texts {
-		if entries, err := child(doc, "entries"); err == nil {
-			if _, ok := entries.vals[op.ID]; ok {
-				entries.del(op.ID)
-				doc.set("entries", entries)
-			}
-		}
+	if saved {
+		r.dirty = true
 	}
 	return nil
 }

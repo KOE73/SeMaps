@@ -23,7 +23,7 @@ import (
 
 // serverPreamble opens the server Instructions.
 const serverPreamble = "SeMaps registry of this repository. Read with list_*/get_*/find_*; write only through these tools. " +
-	"Nothing can be deleted; view geometry only with requestedByHuman when a human asked. " +
+	"Nothing from code can be deleted, an authored entity or relation only through `remove` when a human asked; view geometry only with requestedByHuman when a human asked. " +
 	"Work on a view only through the tools, never by editing files; call `layout_guide` before you move, resize or place anything, and check the result with `get_view` and `render_view` (any view of a project an editor has open, not only the one on screen). " +
 	"`create_view` and `create_project` only when a human explicitly asked for a new view or project. "
 
@@ -52,6 +52,17 @@ var viewToolDescriptions = map[string]toolDescriptions{
 			"It shows the editor's current, unsaved state, including your own unsaved changes. `view` is the view id (or give `ref`); `scale` (0.25 to 4, default 1) and `maxSize` (pixels of the longer side, default 1600, at most 4096) bound the picture. " +
 			"Any view of the project can be drawn, not only the one on the human's screen: the editor draws it on a hidden canvas and the human's view, selection and zoom stay as they are. " +
 			"The answer states the model rectangle that was drawn (margin included) and the scale in pixels per model unit. Without an editor open on the project it fails and says which link to open; if the editor does not answer within 20 seconds it fails too.",
+	},
+	"remove": {
+		Brief: "Remove authored entities and relations from the registry, with their placements and view entries. Only when a human asked; requestedByHuman. Records from code are refused.",
+		Standard: "remove takes authored entities and relations (`ids`) out of the registry in one batch, all or nothing: their placements on every view, their `edges` entries and their names in `relations.except`, and their texts go with them. " +
+			"An entity that still has relations is refused unless `cascade` is true, which removes those relations too; a relation from code at an entity's end makes it unremovable. A record from code (not authored) is always refused. " +
+			"Only when a human asked: requestedByHuman must be true. The removal is unsaved until `save`; `discard` brings it back. The answer lists what was removed and gives the link.",
+		Full: "remove takes authored entities and relations (`ids`, each an e_ or r_ id) out of the registry in one batch, all or nothing. For every view of the project it drops the placements of the removed entities, the `edges` entries and the `relations.except` names of the removed relations; " +
+			"the texts under the removed ids go too. An entity with relations is refused and the relations that hold it are listed, unless `cascade` is true: then its authored relations are removed with it. " +
+			"A relation that comes from code at an entity's end makes the entity unremovable, and a record that is not authored is never removed (the next sync would bring it back). " +
+			"Only when a human asked for it: requestedByHuman must be true. Like every write it is not saved: it is an unsaved change the human reviews and saves, and `discard` restores the records. " +
+			"The answer lists the removed entities and relations, the placements and view entries dropped, and the link to review.",
 	},
 	"create_view": {
 		Brief: "Create a new, empty view. Only when a human explicitly asked for a new view; requestedByHuman.",
@@ -147,6 +158,7 @@ blocks the straight line from the lower one.
 | change the look of placements already on the view: style, override, template, collapsed (containers only); only the fields you give change, null drops one | `+"`set_placement`"+` |
 | change the shape of lines: the whole view's routing, or of chosen relations (`+"`relations`"+`), or of all lines of given relation types now on the view (`+"`types`"+`) | `+"`set_routing`"+` |
 | show or hide lines on a view: chosen relations (`+"`relations`"+`) or all of given relation types now on the view (`+"`types`"+`), in one call | `+"`set_relation_visible`"+` |
+| take authored entities or relations out of the registry for good (placements and view entries go with them; `+"`cascade`"+` for an entity's own relations) — only when a human explicitly asked | `+"`remove`"+` |
 | make a container as tight as its content (caption strip and padding), ancestors grow | `+"`fit_container`"+` |
 | line elements up on the first one: left, right, top, bottom, width, height | `+"`align_elements`"+` |
 | put entities on a view | `+"`place_entities`"+` |

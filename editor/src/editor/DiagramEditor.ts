@@ -1771,6 +1771,53 @@ export class DiagramEditor implements InspectorHost, StylePanelHost, DiagramEdit
     catch(err){this.notify(`Не удалось отменить изменения вида: ${(err as Error).message}`)}
   }
 
+  /**
+   * The ids of the selected lines and blocks that are authored records of the registry: the ones
+   * «Удалить из реестра» may take away (ADR_20261001). A record from code is never among them.
+   */
+  authoredSelection(): string[] {
+    const doc = this.canvas.model;
+    if (doc === null) return [];
+    const ids: string[] = [];
+    for (const id of this.canvas.selectedIds) {
+      const edge = doc.edge(id);
+      const el = doc.element(id);
+      if (edge !== undefined) {
+        if (edge.origin === "authored") ids.push(id);
+      } else if (el !== undefined) {
+        const entity = entityOf(el) ?? doc.entities.find((e) => e.id === el.id);
+        if (entity?.origin === "authored") ids.push(id);
+      }
+    }
+    return ids;
+  }
+
+  /**
+   * Remove the selected authored lines and blocks from the registry, not only from this view. The
+   * host builds the batch (HostModelStore.removeRecords); a block's own authored relations go with
+   * it after one question. Unsaved like any edit: «Сохранить» writes it, discarding brings it back.
+   */
+  async removeSelectionFromRegistry(): Promise<void> {
+    const doc = this.canvas.model;
+    if (!(this.store instanceof HostModelStore) || !this.currentView || doc === null) return;
+    const project = this.projectOf(this.currentView)?.id;
+    const ids = this.authoredSelection();
+    if (!project || ids.length === 0) return;
+    const held = new Set(doc.relations
+      .filter((r) => !ids.includes(r.id) && (ids.includes(r.from) || ids.includes(r.to)))
+      .map((r) => r.id));
+    if (held.size > 0 && !window.confirm(`Вместе с записью будут удалены связи, которые на ней стоят: ${held.size}. Продолжить?`)) return;
+    try {
+      // what the editor changed a moment ago must reach the host before the host builds the batch
+      await this.store.sync(this.currentView.file, serializeDocument(doc));
+      await this.store.removeRecords(project, ids, held.size > 0);
+      await this.loadView(this.currentView);
+      this.workspaceEvents.emit("change", null);
+    } catch (err) {
+      this.notify(`Не удалось удалить из реестра: ${(err as Error).message}`);
+    }
+  }
+
   async discardRegistry(): Promise<void> {
     if(!(this.store instanceof HostModelStore)||!this.currentView)return;
     const project=this.projectOf(this.currentView)?.id;if(!project)return;

@@ -289,6 +289,7 @@ func (s *modelService) register(mux *http.ServeMux) {
 	mux.HandleFunc("GET /api/model/{project}", s.snapshot)
 	mux.HandleFunc("GET /api/model/{project}/views/{id}", s.view)
 	mux.HandleFunc("POST /api/model/{project}/ops", s.ops)
+	mux.HandleFunc("POST /api/model/{project}/remove", s.remove)
 	mux.HandleFunc("GET /api/model/{project}/save", s.summary)
 	mux.HandleFunc("POST /api/model/{project}/save", s.save)
 	mux.HandleFunc("POST /api/model/{project}/discard", s.discard)
@@ -407,6 +408,44 @@ func (s *modelService) ops(w http.ResponseWriter, r *http.Request) {
 	dirty := m.Dirty()
 	s.publish(m.ProjectID(), modelEvent{Client: body.Client, Author: "human", Changed: changed, Dirty: dirty})
 	writeJSON(w, map[string]any{"changed": changed, "dirty": dirty})
+}
+
+// remove takes authored records out of the registry with every name views and
+// relations hold of them (ADR_20261001). The batch is the core's, the same the
+// MCP tool `remove` runs; the editor sends ids, not operations, so the rule is
+// not written twice.
+func (s *modelService) remove(w http.ResponseWriter, r *http.Request) {
+	s.structureMu.RLock()
+	defer s.structureMu.RUnlock()
+	if !s.authorize(w, r) {
+		return
+	}
+	var body struct {
+		Client  string   `json:"client"`
+		IDs     []string `json:"ids"`
+		Cascade bool     `json:"cascade"`
+	}
+	if err := readJSON(r, &body); err != nil {
+		http.Error(w, err.Error(), 400)
+		return
+	}
+	m, err := s.get(r.PathValue("project"))
+	if err != nil {
+		modelError(w, err)
+		return
+	}
+	removal, err := m.RemoveRecords(body.IDs, body.Cascade, "human")
+	if err != nil {
+		modelError(w, err)
+		return
+	}
+	dirty := m.Dirty()
+	changed := append([]core.Ref{}, dirty.Registry...)
+	for _, refs := range dirty.Views {
+		changed = append(changed, refs...)
+	}
+	s.publish(m.ProjectID(), modelEvent{Client: body.Client, Author: "human", Changed: changed, Dirty: dirty})
+	writeJSON(w, map[string]any{"removal": removal, "changed": changed, "dirty": dirty})
 }
 
 func (s *modelService) summary(w http.ResponseWriter, r *http.Request) {

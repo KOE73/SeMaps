@@ -440,6 +440,8 @@ export interface UiDictionary {
     readonly connectFrom: string;
     readonly connectDrag: string;
     readonly remove: string;
+    readonly removeFromRegistry: string;
+    readonly removeFromRegistryHint: string;
     readonly lineShape: string;
     readonly inherited: string;
     readonly resetShape: string;

@@ -438,6 +438,8 @@ export const enDictionary: UiDictionary = {
     connectFrom: "From the first selected",
     connectDrag: "Drag to another element to create a relation",
     remove: "Delete",
+    removeFromRegistry: "Remove from registry",
+    removeFromRegistryHint: "A drawn record leaves the project and every view; until you save, discarding the unsaved changes brings it back",
     lineShape: "Shape of this line",
     inherited: "as the diagram",
     resetShape: "Reset: as the diagram",
