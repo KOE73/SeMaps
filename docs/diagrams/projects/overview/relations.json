@@ -315,6 +315,38 @@
       "to": "e_map",
       "type": "call",
       "origin": "authored"
+    },
+    {
+      "id": "r_code_graph_mcp_server_data_flow",
+      "from": "e_code_graph",
+      "to": "e_mcp_server",
+      "type": "data-flow",
+      "origin": "authored",
+      "status": "present"
+    },
+    {
+      "id": "r_mcp_proxy_agent_data_flow",
+      "from": "e_mcp_proxy",
+      "to": "e_agent",
+      "type": "data-flow",
+      "origin": "authored",
+      "status": "present"
+    },
+    {
+      "id": "r_mcp_server_mcp_proxy_data_flow",
+      "from": "e_mcp_server",
+      "to": "e_mcp_proxy",
+      "type": "data-flow",
+      "origin": "authored",
+      "status": "present"
+    },
+    {
+      "id": "r_code_graph_editor_data_flow",
+      "from": "e_code_graph",
+      "to": "e_editor",
+      "type": "data-flow",
+      "origin": "authored",
+      "status": "present"
     }
   ]
 }

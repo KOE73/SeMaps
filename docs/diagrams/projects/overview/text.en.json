@@ -5,301 +5,389 @@
     "e_clients": {
       "name": {
         "v": "Clients",
-        "at": "2026-10-01T10:15:09Z",
-        "origin": "authored"
+        "at": "2026-10-01T11:56:52Z",
+        "origin": "translated",
+        "from": "ru",
+        "fromHash": "2b559e0b"
       }
     },
     "v_overview": {
       "name": {
         "v": "Architecture overview",
-        "at": "2026-10-01T10:15:13Z",
-        "origin": "authored"
+        "at": "2026-10-01T11:56:52Z",
+        "origin": "translated",
+        "from": "ru",
+        "fromHash": "12bdd3c7"
       }
     },
     "v_internals": {
       "name": {
         "v": "Inside SeMaps: storage and data",
-        "at": "2026-10-01T10:15:13Z",
-        "origin": "authored"
+        "at": "2026-10-01T11:56:52Z",
+        "origin": "translated",
+        "from": "ru",
+        "fromHash": "bbf12635"
       }
     },
     "e_host": {
       "name": {
         "v": "Host process (semaps.exe)",
-        "at": "2026-10-01T10:24:05Z",
-        "origin": "authored"
+        "at": "2026-10-01T11:56:52Z",
+        "origin": "translated",
+        "from": "ru",
+        "fromHash": "4ed9c49d"
       }
     },
     "e_core": {
       "name": {
         "v": "Core (core/)",
-        "at": "2026-10-01T10:15:15Z",
-        "origin": "authored"
+        "at": "2026-10-01T11:56:52Z",
+        "origin": "translated",
+        "from": "ru",
+        "fromHash": "54c9e327"
       }
     },
     "e_storage": {
       "name": {
         "v": "Storage",
-        "at": "2026-10-01T10:15:16Z",
-        "origin": "authored"
+        "at": "2026-10-01T11:56:52Z",
+        "origin": "translated",
+        "from": "ru",
+        "fromHash": "edcea6ca"
       }
     },
     "e_extractors": {
       "name": {
         "v": "Extractors (extractors/)",
-        "at": "2026-10-01T10:15:17Z",
-        "origin": "authored"
+        "at": "2026-10-01T11:56:52Z",
+        "origin": "translated",
+        "from": "ru",
+        "fromHash": "cc4b4179"
       }
     },
     "e_g_memory": {
       "name": {
         "v": "Host memory (lives while the host runs)",
-        "at": "2026-10-01T10:15:18Z",
-        "origin": "authored"
+        "at": "2026-10-01T11:56:52Z",
+        "origin": "translated",
+        "from": "ru",
+        "fromHash": "33fca496"
       }
     },
     "e_g_git": {
       "name": {
         "v": "On disk, in git (static)",
-        "at": "2026-10-01T10:15:19Z",
-        "origin": "authored"
+        "at": "2026-10-01T11:56:52Z",
+        "origin": "translated",
+        "from": "ru",
+        "fromHash": "8180ed78"
       }
     },
     "e_g_local": {
       "name": {
         "v": "On disk, outside git (dynamic)",
-        "at": "2026-10-01T10:15:20Z",
-        "origin": "authored"
+        "at": "2026-10-01T11:56:52Z",
+        "origin": "translated",
+        "from": "ru",
+        "fromHash": "8d1d6eec"
       }
     },
     "e_defaults": {
       "name": {
         "v": "Built-in defaults",
-        "at": "2026-10-01T10:15:21Z",
-        "origin": "authored"
+        "at": "2026-10-01T11:56:52Z",
+        "origin": "translated",
+        "from": "ru",
+        "fromHash": "51d9014e"
       },
       "description": {
         "v": "kinds, styles, canvas, templates, graph-filters inside semaps.exe. The kinds dictionary merges with the workspace file by entry; the workspace file replaces the others whole.",
-        "at": "2026-10-01T10:15:47Z",
-        "origin": "authored"
+        "at": "2026-10-01T11:56:52Z",
+        "origin": "translated",
+        "from": "ru",
+        "fromHash": "f2e452ec"
       }
     },
     "e_editor": {
       "description": {
         "v": "Browser diagram editor (TypeScript): canvas, views, styles. Reads and writes the model only through the host.",
-        "at": "2026-10-01T10:15:24Z",
-        "origin": "authored"
+        "at": "2026-10-01T11:56:52Z",
+        "origin": "translated",
+        "from": "ru",
+        "fromHash": "7b0638d1"
       },
       "name": {
         "v": "Editor (Browser)",
-        "at": "2026-10-01T10:57:55Z",
-        "origin": "authored"
+        "at": "2026-10-01T11:56:52Z",
+        "origin": "translated",
+        "from": "ru",
+        "fromHash": "4968bf98"
       }
     },
     "e_agent": {
       "description": {
         "v": "An agent (Claude Code and others): reads the map before work and records what it built, through MCP tools.",
-        "at": "2026-10-01T10:15:25Z",
-        "origin": "authored"
+        "at": "2026-10-01T11:56:52Z",
+        "origin": "translated",
+        "from": "ru",
+        "fromHash": "b73bcd6e"
       }
     },
     "e_http_api": {
       "description": {
         "v": "/api/workspace, /api/model/*, /api/projects: the editor's entrance. Writes only with the host key.",
-        "at": "2026-10-01T10:15:26Z",
-        "origin": "authored"
+        "at": "2026-10-01T11:56:52Z",
+        "origin": "translated",
+        "from": "ru",
+        "fromHash": "a6f6247f"
       }
     },
     "e_mcp_server": {
       "description": {
         "v": "/mcp (Streamable HTTP) in the same process: agent tools over the same model.",
-        "at": "2026-10-01T10:15:27Z",
-        "origin": "authored"
+        "at": "2026-10-01T11:56:52Z",
+        "origin": "translated",
+        "from": "ru",
+        "fromHash": "61f35d83"
       }
     },
     "e_mcp_proxy": {
       "description": {
         "v": "stdio proxy from .mcp.json to the host's /mcp; with no host running it starts one in the background.",
-        "at": "2026-10-01T10:15:28Z",
-        "origin": "authored"
+        "at": "2026-10-01T11:56:52Z",
+        "origin": "translated",
+        "from": "ru",
+        "fromHash": "59d27f4b"
       }
     },
     "e_model_service": {
       "description": {
         "v": "One working model per project for all clients: creating projects and views, the live catalogue, SSE events.",
-        "at": "2026-10-01T10:15:29Z",
-        "origin": "authored"
+        "at": "2026-10-01T11:56:52Z",
+        "origin": "translated",
+        "from": "ru",
+        "fromHash": "254ce144"
       }
     },
     "e_model": {
       "description": {
         "v": "The project's working state: operation batches, the journal, unsaved changes, Save and Discard.",
-        "at": "2026-10-01T10:15:30Z",
-        "origin": "authored"
+        "at": "2026-10-01T11:56:52Z",
+        "origin": "translated",
+        "from": "ru",
+        "fromHash": "eb6e19a5"
       }
     },
     "e_rules": {
       "description": {
         "v": "Checks every batch in Apply for every writer: the editor, the agent, sync (ADR_20260926).",
-        "at": "2026-10-01T10:15:32Z",
-        "origin": "authored"
+        "at": "2026-10-01T11:56:52Z",
+        "origin": "translated",
+        "from": "ru",
+        "fromHash": "d1a9a259"
       }
     },
     "e_sync": {
       "description": {
         "v": "Reconciles the registry with extractor facts: new, missing and renamed entities and relations.",
-        "at": "2026-10-01T10:15:33Z",
-        "origin": "authored"
+        "at": "2026-10-01T11:56:52Z",
+        "origin": "translated",
+        "from": "ru",
+        "fromHash": "a9734b0a"
       }
     },
     "e_check": {
       "description": {
         "v": "semaps check: stale texts, broken codeRefs, views without an axis.",
-        "at": "2026-10-01T10:15:34Z",
-        "origin": "authored"
+        "at": "2026-10-01T11:56:52Z",
+        "origin": "translated",
+        "from": "ru",
+        "fromHash": "62ad1e7f"
       }
     },
     "e_extract_csharp": {
       "description": {
         "v": "Roslyn: facts about the types and member relations of C# projects.",
-        "at": "2026-10-01T10:15:35Z",
-        "origin": "authored"
+        "at": "2026-10-01T11:56:52Z",
+        "origin": "translated",
+        "from": "ru",
+        "fromHash": "41ba74f9"
       }
     },
     "e_extract_ts": {
       "description": {
         "v": "TypeScript compiler API: facts about the types and relations of TS code.",
-        "at": "2026-10-01T10:15:36Z",
-        "origin": "authored"
+        "at": "2026-10-01T11:56:52Z",
+        "origin": "translated",
+        "from": "ru",
+        "fromHash": "d1af8789"
       }
     },
     "e_extract_go": {
       "description": {
         "v": "Reads Go sources and prints code facts by the normative mapping table.",
-        "at": "2026-10-01T10:15:37Z",
-        "origin": "authored"
+        "at": "2026-10-01T11:56:52Z",
+        "origin": "translated",
+        "from": "ru",
+        "fromHash": "073c3a80"
       }
     },
     "e_workspace": {
       "description": {
         "v": "Contract files: project.json, entities, relations, texts, views. This is what goes into git.",
-        "at": "2026-10-01T10:15:38Z",
-        "origin": "authored"
+        "at": "2026-10-01T11:56:52Z",
+        "origin": "translated",
+        "from": "ru",
+        "fromHash": "df9f5129"
       }
     },
     "e_journal": {
       "description": {
         "v": ".semaps/work/*.jsonl: accepted but unsaved batches; they survive a host restart.",
-        "at": "2026-10-01T10:15:39Z",
-        "origin": "authored"
+        "at": "2026-10-01T11:56:52Z",
+        "origin": "translated",
+        "from": "ru",
+        "fromHash": "0df56187"
       }
     },
     "e_source": {
       "description": {
         "v": "The consuming project's code: the extractors' input and the target of codeRefs.",
-        "at": "2026-10-01T10:15:40Z",
-        "origin": "authored"
+        "at": "2026-10-01T11:56:52Z",
+        "origin": "translated",
+        "from": "ru",
+        "fromHash": "3147be03"
       }
     },
     "e_code_graph": {
       "description": {
         "v": "Live code graph from extractor facts: types, members, methods and calls with their places in code. Answers agents and feeds the graph page; never written to git.",
-        "at": "2026-10-01T10:15:41Z",
-        "origin": "authored"
+        "at": "2026-10-01T11:56:52Z",
+        "origin": "translated",
+        "from": "ru",
+        "fromHash": "cee69da9"
       }
     },
     "e_watcher": {
       "description": {
         "v": "Watches the sources of extractors with watch on and reruns them on a change, updating only the code graph.",
-        "at": "2026-10-01T10:15:42Z",
-        "origin": "authored"
+        "at": "2026-10-01T11:56:52Z",
+        "origin": "translated",
+        "from": "ru",
+        "fromHash": "0b82fcb4"
       }
     },
     "e_runs": {
       "description": {
         "v": "Extractor runs in a temp folder: facts (facts.json), log and run description. Sync and the code graph take facts from here; never in git.",
-        "at": "2026-10-01T10:15:43Z",
-        "origin": "authored"
+        "at": "2026-10-01T11:56:52Z",
+        "origin": "translated",
+        "from": "ru",
+        "fromHash": "d79323d7"
       }
     },
     "e_semaps_file": {
       "description": {
         "v": "Project file (YAML): workspace, source root, port, extractors, MCP settings. Read by the host, the CLI and the watcher; written by the setup screen.",
-        "at": "2026-10-01T10:15:45Z",
-        "origin": "authored"
+        "at": "2026-10-01T11:56:52Z",
+        "origin": "translated",
+        "from": "ru",
+        "fromHash": "561ce721"
       }
     },
     "e_mcp_json": {
       "description": {
         "v": "How an agent starts semaps mcp; lies at the project root.",
-        "at": "2026-10-01T10:15:46Z",
-        "origin": "authored"
+        "at": "2026-10-01T11:56:52Z",
+        "origin": "translated",
+        "from": "ru",
+        "fromHash": "8089c4b6"
       }
     },
     "e_host_json": {
       "description": {
         "v": ".semaps/host.json: pid, port and key of the running host. The proxy finds the host by it.",
-        "at": "2026-10-01T10:15:48Z",
-        "origin": "authored"
+        "at": "2026-10-01T11:56:52Z",
+        "origin": "translated",
+        "from": "ru",
+        "fromHash": "23885ee5"
       }
     },
     "e_mcp_log": {
       "description": {
         "v": ".semaps/logs/mcp-<date>.jsonl: every tool call by an agent.",
-        "at": "2026-10-01T10:15:49Z",
-        "origin": "authored"
+        "at": "2026-10-01T11:56:52Z",
+        "origin": "translated",
+        "from": "ru",
+        "fromHash": "340d1a3c"
       }
     },
     "e_mcp_settings": {
       "description": {
         "v": "Tool set, format and limits from the mcp section of .semaps; applied on the fly.",
-        "at": "2026-10-01T10:15:50Z",
-        "origin": "authored"
+        "at": "2026-10-01T11:56:52Z",
+        "origin": "translated",
+        "from": "ru",
+        "fromHash": "a6a06205"
       }
     },
     "e_editor_local": {
       "description": {
         "v": "The editor tab's own state: local undo and settings in localStorage. Never sent to the host.",
-        "at": "2026-10-01T10:15:51Z",
-        "origin": "authored"
+        "at": "2026-10-01T11:56:52Z",
+        "origin": "translated",
+        "from": "ru",
+        "fromHash": "9a8cb950"
       }
     },
     "v_glance": {
       "name": {
         "v": "SeMaps at a glance",
-        "at": "2026-10-01T10:45:51Z",
-        "origin": "authored"
+        "at": "2026-10-01T11:56:52Z",
+        "origin": "translated",
+        "from": "ru",
+        "fromHash": "3478234a"
       }
     },
     "e_human": {
       "name": {
         "v": "Human",
-        "at": "2026-10-01T10:46:05Z",
-        "origin": "authored"
+        "at": "2026-10-01T11:56:52Z",
+        "origin": "translated",
+        "from": "ru",
+        "fromHash": "a388ff51"
       },
       "description": {
         "v": "An architect or developer: draws and reads views in the editor, asks the agent, saves and commits.",
-        "at": "2026-10-01T10:46:06Z",
-        "origin": "authored"
+        "at": "2026-10-01T11:56:52Z",
+        "origin": "translated",
+        "from": "ru",
+        "fromHash": "b6841e46"
       }
     },
     "e_map": {
       "name": {
         "v": "Map: registry and views",
-        "at": "2026-10-01T10:46:07Z",
-        "origin": "authored"
+        "at": "2026-10-01T11:56:52Z",
+        "origin": "translated",
+        "from": "ru",
+        "fromHash": "70485ce6"
       },
       "description": {
         "v": "The shared model: registry entities and relations and the views over them. One for the human and the agent, kept in git.",
-        "at": "2026-10-01T10:46:08Z",
-        "origin": "authored"
+        "at": "2026-10-01T11:56:52Z",
+        "origin": "translated",
+        "from": "ru",
+        "fromHash": "2be01ed8"
       }
     },
     "e_semaps": {
       "name": {
         "v": "SeMaps",
-        "at": "2026-10-01T10:46:29Z",
-        "origin": "authored"
+        "at": "2026-10-01T11:56:52Z",
+        "origin": "translated",
+        "from": "ru",
+        "fromHash": "4ca57086"
       }
     }
   }
