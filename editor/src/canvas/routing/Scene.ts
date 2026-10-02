@@ -217,6 +217,108 @@ export function segmentPenalty(a: Point, b: Point, zones: readonly RouteZone[]):
   return penalty;
 }
 
+/**
+ * `segmentPenalty` over a uniform grid of buckets, built once for a list of zones.
+ *
+ * A segment only meets the zones in the buckets it passes through, so a query
+ * stops scanning every zone of the picture. The answer is the same as the scan's,
+ * to the last bit: the candidates are summed in the zones' own order, and a solid
+ * overlap still gives `null`. Anything the grid cannot place (a non-finite
+ * coordinate) falls back to the plain scan.
+ */
+export class ZoneIndex {
+  private readonly cols: number;
+  private readonly rows: number;
+  private readonly minX: number;
+  private readonly minY: number;
+  private readonly cw: number;
+  private readonly ch: number;
+  private readonly cells: number[][];
+  private readonly stamp: Int32Array;
+  private readonly found: Int32Array;
+  private visit = 0;
+  private readonly usable: boolean;
+
+  constructor(private readonly zones: readonly RouteZone[]) {
+    const n = zones.length;
+    this.stamp = new Int32Array(n);
+    this.found = new Int32Array(n);
+    let minX = Infinity, minY = Infinity, maxX = -Infinity, maxY = -Infinity;
+    let finiteAll = true;
+    for (const z of zones) {
+      const r = z.rect;
+      if (!Number.isFinite(r.x) || !Number.isFinite(r.y) || !Number.isFinite(r.width) || !Number.isFinite(r.height)) {
+        finiteAll = false;
+        break;
+      }
+      if (r.x < minX) minX = r.x;
+      if (r.y < minY) minY = r.y;
+      if (r.x + r.width > maxX) maxX = r.x + r.width;
+      if (r.y + r.height > maxY) maxY = r.y + r.height;
+    }
+    this.usable = finiteAll && n > 8;
+    const side = this.usable ? Math.max(1, Math.min(32, Math.ceil(Math.sqrt(n / 2)))) : 1;
+    this.cols = side;
+    this.rows = side;
+    this.minX = minX;
+    this.minY = minY;
+    this.cw = Math.max((maxX - minX) / side, 1e-9);
+    this.ch = Math.max((maxY - minY) / side, 1e-9);
+    this.cells = [];
+    if (!this.usable) return;
+    for (let i = 0; i < side * side; i++) this.cells.push([]);
+    for (let i = 0; i < n; i++) {
+      const r = zones[i]!.rect;
+      const x0 = this.col(r.x), x1 = this.col(r.x + r.width);
+      const y0 = this.row(r.y), y1 = this.row(r.y + r.height);
+      for (let cx = x0; cx <= x1; cx++) for (let cy = y0; cy <= y1; cy++) this.cells[cx * side + cy]!.push(i);
+    }
+  }
+
+  private col(x: number): number {
+    const c = Math.floor((x - this.minX) / this.cw);
+    return c < 0 ? 0 : c >= this.cols ? this.cols - 1 : c;
+  }
+
+  private row(y: number): number {
+    const c = Math.floor((y - this.minY) / this.ch);
+    return c < 0 ? 0 : c >= this.rows ? this.rows - 1 : c;
+  }
+
+  penalty(a: Point, b: Point): number | null {
+    if (!this.usable || !Number.isFinite(a.x) || !Number.isFinite(a.y) || !Number.isFinite(b.x) || !Number.isFinite(b.y)) {
+      return segmentPenalty(a, b, this.zones);
+    }
+    const horizontal = Math.abs(a.y - b.y) < 1e-6;
+    const x0 = this.col(horizontal ? Math.min(a.x, b.x) : a.x);
+    const x1 = this.col(horizontal ? Math.max(a.x, b.x) : a.x);
+    const y0 = this.row(horizontal ? a.y : Math.min(a.y, b.y));
+    const y1 = this.row(horizontal ? a.y : Math.max(a.y, b.y));
+    const stamp = ++this.visit;
+    let count = 0;
+    for (let cx = x0; cx <= x1; cx++) {
+      for (let cy = y0; cy <= y1; cy++) {
+        for (const i of this.cells[cx * this.rows + cy]!) {
+          if (this.stamp[i] === stamp) continue;
+          this.stamp[i] = stamp;
+          this.found[count++] = i;
+        }
+      }
+    }
+    // Zones' own order: the sum must add up in the same sequence as the plain scan.
+    const hits = this.found.subarray(0, count).sort();
+    let penalty = 0;
+    for (let k = 0; k < count; k++) {
+      const zone = this.zones[hits[k]!]!;
+      const overlap = horizontal ? overlapAlongX(a, b, zone.rect) : overlapAlongY(a, b, zone.rect);
+      if (overlap <= 0) continue;
+      if (zone.weight === SOLID) return null;
+      penalty += overlap * zone.weight;
+    }
+    return penalty;
+  }
+}
+
 function overlapAlongX(a: Point, b: Point, rect: Rect): number {
   if (a.y < rect.y || a.y > bottom(rect)) return 0;
   const lo = Math.max(Math.min(a.x, b.x), rect.x);

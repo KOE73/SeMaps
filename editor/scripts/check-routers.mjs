@@ -329,5 +329,40 @@ const bz = (fromRect, toRect, from, to, fromSide, toSide, zones) =>
 const again = orthogonal.route({ ...upward, fromSlide: upSlide(lower), toSlide: upSlide(top) });
 check("sliding :: deterministic", JSON.stringify(again.points) === JSON.stringify(slid.points));
 
+// ------------------------------------------- the spatial index changes no answer
+//
+// `ZoneIndex` is `segmentPenalty` over buckets, and the search caches the price
+// of a segment. Neither may change a number: the index is compared with the plain
+// scan on random zones and segments (same sum to the last bit, same null).
+{
+  const { ZoneIndex, segmentPenalty, SOLID } = await load("src/canvas/routing/Scene.ts", "semaps-index-");
+  let seed = 12345;
+  const rnd = () => ((seed = (seed * 1664525 + 1013904223) >>> 0) / 4294967296);
+  const pick = (lo, hi) => Math.round((lo + rnd() * (hi - lo)) * 2) / 2;
+  const randomZones = (n) => Array.from({ length: n }, () => ({
+    rect: { x: pick(-200, 1800), y: pick(-200, 1200), width: pick(2, rnd() < 0.1 ? 1500 : 220), height: pick(2, rnd() < 0.1 ? 900 : 160) },
+    weight: rnd() < 0.3 ? SOLID : pick(0.1, 9),
+    ownerId: "z",
+  }));
+
+  let same = true;
+  let detail = "";
+  for (let round = 0; round < 60 && same; round++) {
+    const zones = randomZones(round % 3 === 0 ? 5 : 20 + Math.floor(rnd() * 400));
+    // Mostly priced zones, so sums (not just nulls) are compared.
+    for (const z of zones) if (rnd() < 0.8) z.weight = pick(0.1, 9) + rnd();
+    const index = new ZoneIndex(zones);
+    for (let i = 0; i < 400; i++) {
+      const a = { x: pick(-300, 1900), y: pick(-300, 1300) };
+      const horizontal = rnd() < 0.5;
+      const b = horizontal ? { x: pick(-300, 1900), y: a.y } : { x: a.x, y: pick(-300, 1300) };
+      const want = segmentPenalty(a, b, zones);
+      const got = index.penalty(a, b);
+      if (!Object.is(want, got)) { same = false; detail = `${JSON.stringify([a, b])} ${want} / ${got}`; break; }
+    }
+  }
+  check("index :: segment price equals the plain scan on random zones", same, detail);
+}
+
 console.log(failures === 0 ? "\nВсе случаи прошли." : `\n${failures} провалов`);
 process.exit(failures === 0 ? 0 : 1);

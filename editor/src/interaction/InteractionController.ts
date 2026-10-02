@@ -775,11 +775,12 @@ export class InteractionController {
       return;
     }
 
-    // The drag is over: the next repaint lays the whole picture again.
-    this.canvas.endLiveMove();
+    // The drop's own repaints (reparenting) are still the cheap live ones; the drag
+    // ends after them, and its one repaint lays the whole picture again.
     if (gesture.kind === "move") {
       this.finishMove(gesture);
     }
+    this.canvas.endLiveMove();
     if (this.canvas.resizeGuides.length > 0) {
       this.canvas.resizeGuides = [];
       this.canvas.render();

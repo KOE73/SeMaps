@@ -223,6 +223,8 @@ export class DiagramCanvas {
   private lastSides = new Map<string, { from: Side; to: Side }>();
   /** The routes of the last full repaint, finished (separated), by edge id. */
   private routeCache = new Map<string, Route>();
+  /** What the routing read when `routeCache` was made; the same again means the cache is still right. */
+  private routeKey: string | null = null;
   /** While a drag is on: the elements moving, their descendants included. */
   private liveMoved: ReadonlySet<string> | null = null;
   private frameRequest: number | null = null;
@@ -811,11 +813,13 @@ export class DiagramCanvas {
 
   setPortAssigner(assigner: PortAssigner): void {
     this.portAssigner = assigner;
+    this.routeKey = null;
     this.render();
   }
 
   setRouter(router: EdgeRouter): void {
     this.router = router;
+    this.routeKey = null;
     this.render();
   }
 
@@ -1551,6 +1555,50 @@ export class DiagramCanvas {
     return { owner, rect: renderer.visibleRect(owner, this.context()) };
   }
 
+  /**
+   * Everything routing reads, flattened to one string: the tuning, each line's
+   * ends (blocks, rects, ports, corner insets, shape, ancestors), its router and
+   * marker sizes, and every priced zone. Equal keys give equal routes, so
+   * repaints that only change selection, text or colour need not search again.
+   */
+  private routingKeyOf(
+    resolved: readonly { edge: DiagramEdge; from: { owner: DiagramElement; rect: Rect }; to: { owner: DiagramElement; rect: Rect } }[],
+    ports: ReadonlyMap<string, unknown>,
+    zones: readonly RouteZone[],
+  ): string {
+    const rect = (r: Rect) => `${r.x},${r.y},${r.width},${r.height}`;
+    const chain = (el: DiagramElement) => {
+      let s = "";
+      for (let c = el.parent; c !== null; c = c.parent) s += `${c.id}>`;
+      return s;
+    };
+    const parts: string[] = [JSON.stringify(routingTuning), JSON.stringify(this.viewport.markerClamp), this.router.id];
+    for (const r of resolved) {
+      const edgeStyle = this.styleLibrary.edgeStyle(r.edge);
+      const end = (owner: DiagramElement, box: Rect) => {
+        const style = this.styleLibrary.blockStyle(owner);
+        const renderer = this.rendererFor(owner);
+        const insets = SIDES.map((side) => renderer.cornerInset?.(side, style) ?? style.radius).join(",");
+        return `${owner.id}|${rect(box)}|${style.shape ?? "rect"}|${style.radius}|${insets}|${chain(owner)}`;
+      };
+      const size = (m: { shape: string; size?: number }) => `${m.shape}:${m.size ?? DIAGRAM_CONFIG.routing.defaultMarkerSize}`;
+      parts.push([
+        r.edge.id,
+        end(r.from.owner, r.from.rect),
+        end(r.to.owner, r.to.rect),
+        JSON.stringify(ports.get(portKey(r.edge.id, "from"))),
+        JSON.stringify(ports.get(portKey(r.edge.id, "to"))),
+        this.routerFor(r.edge, edgeStyle).id,
+        size(edgeStyle.source),
+        size(edgeStyle.target),
+      ].join("|"));
+    }
+    for (const z of zones) {
+      parts.push(`${rect(z.rect)}|${z.weight}|${z.ownerId}|${z.lane ? "l" : ""}${z.area ? "a" : ""}${z.halo ? "h" : ""}${z.frame ? "f" : ""}`);
+    }
+    return parts.join("\n");
+  }
+
   private renderEdges(ctx: RenderContext): void {
     const doc = this.doc;
     if (doc === null) return;
@@ -1699,11 +1747,20 @@ export class DiagramCanvas {
     }
     const scene: RouteScene = { zones };
 
+    // Everything the routing reads, as one string. A repaint that changes none of it
+    // (a selection, a hover, a label, a colour) keeps the routes of the last full one.
+    const routingKey = this.liveMoved === null && !this._debugRouting
+      ? this.routingKeyOf(resolved, ports, zones)
+      : null;
+    const reuse = routingKey !== null && routingKey === this.routeKey
+      && resolved.every((r) => !ports.has(portKey(r.edge.id, "from")) || !ports.has(portKey(r.edge.id, "to")) || this.routeCache.has(r.edge.id));
+
     // Routes are computed for the whole picture before any of them is drawn,
     // because separating lines that share a corridor is a decision about
     // several routes at once — no amount of improving one route in isolation
     // can stop two of them from merging into one stroke.
     const routes = new Map<string, Route>();
+    if (reuse) for (const [id, route] of this.routeCache) routes.set(id, route);
     // Where lines already meet each block side, so the next one does not land on top of them.
     const taken = new Map<string, number[]>();
     // Lines already drawn, as bands the next ones would rather not follow — kept per line,
@@ -1736,7 +1793,7 @@ export class DiagramCanvas {
       lanesOf.set(id, laneZones(pts, `lane:${id}`));
     };
 
-    for (const r of resolved) {
+    for (const r of reuse ? [] : resolved) {
       const fromSlot = ports.get(portKey(r.edge.id, "from"));
       const toSlot = ports.get(portKey(r.edge.id, "to"));
       if (fromSlot === undefined || toSlot === undefined) continue;
@@ -1817,10 +1874,11 @@ export class DiagramCanvas {
     // depends on order; this is what takes the order out of it.
     // Not during a drag: settling lines against each other is the expensive part,
     // and the cached lines are already settled.
-    if (this.liveMoved === null) {
+    if (this.liveMoved === null && !reuse) {
       this.rerouteConflicts(order, jobs, routes, lanesOf, endsOf, record, keysFor);
       this.separateSharedCorridors(routes, scene);
       this.routeCache = new Map(routes);
+      this.routeKey = routingKey;
     }
     // The sides the lines settled on: next repaint they are the cheaper ones to keep.
     this.lastSides = new Map();

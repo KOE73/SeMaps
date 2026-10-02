@@ -1,6 +1,6 @@
 import { bottom, right } from "../../geometry/rect.js";
 import type { Point, Rect, Side } from "../../geometry/types.js";
-import { segmentPenalty, type RouteZone } from "./Scene.js";
+import { ZoneIndex, type RouteZone } from "./Scene.js";
 import { routingTuning } from "./tuning.js";
 
 /**
@@ -168,7 +168,7 @@ function findPlainRoute(query: RouteQuery): Point[] | null {
   const goal = index(xs, ys, exit);
   if (start === null || goal === null) return null;
 
-  const middle = search(xs, ys, start, goal, zones);
+  const middle = search(xs, ys, start, goal, new ZoneIndex(zones));
   if (middle === null) return null;
 
   return simplify([from, ...middle, to]);
@@ -209,11 +209,12 @@ function findSlidingRoute(query: RouteQuery): Point[] | null {
   query.onGrid?.(xs, ys);
   if (xs.length === 0 || ys.length === 0) return null;
 
-  const starts = endChoices(xs, ys, from, fromSide, outward(fromSide), enter, fromSpan, query.fromSlide?.taken, 0, zones);
-  const goals = endChoices(xs, ys, to, toSide, inward(toSide), exit, toSpan, query.toSlide?.taken, 0, zones);
+  const index = new ZoneIndex(zones);
+  const starts = endChoices(xs, ys, from, fromSide, outward(fromSide), enter, fromSpan, query.fromSlide?.taken, 0, index);
+  const goals = endChoices(xs, ys, to, toSide, inward(toSide), exit, toSpan, query.toSlide?.taken, 0, index);
   if (starts.length === 0 || goals.length === 0) return null;
 
-  const found = searchMany(xs, ys, starts, goals, zones);
+  const found = searchMany(xs, ys, starts, goals, index);
   if (found === null) return null;
   return simplify([found.startPort, ...found.middle, found.goalPort]);
 }
@@ -272,12 +273,13 @@ function findChoosingRoute(query: RouteQuery, fromEnds: readonly RouteEnd[], toE
   query.onGrid?.(xs, ys);
   if (xs.length === 0 || ys.length === 0) return null;
 
+  const zoneIndex = new ZoneIndex(zones);
   const starts = fromPlan.flatMap((p) =>
     endChoices(xs, ys, p.end.port, p.end.side, outward(p.end.side), p.enter, p.span, p.end.slide?.taken,
-      p.end.side === query.prevFromSide || !query.prevFromSide ? 0 : routingTuning.sideChangeCost, zones));
+      p.end.side === query.prevFromSide || !query.prevFromSide ? 0 : routingTuning.sideChangeCost, zoneIndex));
   const goals = toPlan.flatMap((p) =>
     endChoices(xs, ys, p.end.port, p.end.side, inward(p.end.side), p.enter, p.span, p.end.slide?.taken,
-      p.end.side === query.prevToSide || !query.prevToSide ? 0 : routingTuning.sideChangeCost, zones));
+      p.end.side === query.prevToSide || !query.prevToSide ? 0 : routingTuning.sideChangeCost, zoneIndex));
   if (starts.length === 0 || goals.length === 0) return null;
 
   // The blocks themselves are walls for the middle of the route: the end's own
@@ -288,7 +290,7 @@ function findChoosingRoute(query: RouteQuery, fromEnds: readonly RouteEnd[], toE
     own && !(other && contains(own, other))
       ? [{ rect: { x: own.x + 1, y: own.y + 1, width: Math.max(own.width - 2, 0), height: Math.max(own.height - 2, 0) }, weight: Number.POSITIVE_INFINITY, ownerId: "end" }]
       : [];
-  const found = searchMany(xs, ys, starts, goals, [...zones, ...walls(fromRect, toRect), ...walls(toRect, fromRect)]);
+  const found = searchMany(xs, ys, starts, goals, new ZoneIndex([...zones, ...walls(fromRect, toRect), ...walls(toRect, fromRect)]));
   if (found === null) return null;
   return {
     points: simplify([found.startPort, ...found.middle, found.goalPort]),
@@ -330,7 +332,7 @@ function endChoices(
   taken: readonly number[] | undefined,
   /** A price every choice on this side pays: leaving the side the end had before. */
   bias: number,
-  zones: readonly RouteZone[],
+  zones: ZoneIndex,
 ): EndChoice[] {
   const axis = alongAxis(side);
   const lines = axis === "x" ? xs : ys;
@@ -340,7 +342,7 @@ function endChoices(
     const p = axis === "x" ? { x: v, y: port.y } : { x: port.x, y: v };
     const s = axis === "x" ? { x: v, y: stub.y } : { x: stub.x, y: v };
     // The short run from the side to the stub must itself be clear.
-    const penalty = segmentPenalty(p, s, zones);
+    const penalty = zones.penalty(p, s);
     if (penalty === null) continue;
     const node = index(xs, ys, s);
     if (node === null) continue;
@@ -505,6 +507,24 @@ function reverse(dir: Dir): Dir {
 }
 
 /**
+ * The price of the segment between two neighbouring grid nodes, worked out once
+ * per segment: A* meets the same one from both ends and from every direction.
+ * The price does not depend on which end it is read from.
+ */
+function edgeCost(index: ZoneIndex, nodes: number, height: number): (a: number, b: number, from: Point, to: Point) => number | null {
+  const known = new Float64Array(nodes * 2).fill(Number.NaN);
+  return (a, b, from, to) => {
+    const low = a < b ? a : b;
+    const slot = low * 2 + (Math.abs(a - b) === height ? 0 : 1);
+    const hit = known[slot]!;
+    if (hit === hit) return hit < 0 ? null : hit;
+    const penalty = index.penalty(from, to);
+    known[slot] = penalty === null ? -1 : penalty;
+    return penalty;
+  };
+}
+
+/**
  * A* over the sparse grid, with the arrival direction part of the state.
  *
  * Direction has to be in the state: without it the search cannot tell a
@@ -516,10 +536,11 @@ function search(
   ys: readonly number[],
   start: number,
   goal: number,
-  zones: readonly RouteZone[],
+  zones: ZoneIndex,
 ): Point[] | null {
   const height = ys.length;
   const at = (node: number): Point => ({ x: xs[Math.floor(node / height)]!, y: ys[node % height]! });
+  const stepPenalty = edgeCost(zones, xs.length * height, height);
   if (start === goal) return [at(start)];
 
   const goalPoint = at(goal);
@@ -548,7 +569,7 @@ function search(
 
       const next = nx * height + ny;
       const there = at(next);
-      const penalty = segmentPenalty(here, there, zones);
+      const penalty = stepPenalty(node, next, here, there);
       if (penalty === null) continue;
 
       const length = Math.abs(there.x - here.x) + Math.abs(there.y - here.y);
@@ -577,9 +598,10 @@ function searchMany(
   ys: readonly number[],
   starts: readonly EndChoice[],
   goals: readonly EndChoice[],
-  zones: readonly RouteZone[],
+  zones: ZoneIndex,
 ): { startPort: Point; goalPort: Point; startSide: Side; goalSide: Side; middle: Point[] } | null {
   const height = ys.length;
+  const stepPenalty = edgeCost(zones, xs.length * height, height);
   const at = (node: number): Point => ({ x: xs[Math.floor(node / height)]!, y: ys[node % height]! });
   const FINISH = -1;
 
@@ -657,7 +679,7 @@ function searchMany(
 
       const next = nx * height + ny;
       const there = at(next);
-      const penalty = segmentPenalty(here, there, zones);
+      const penalty = stepPenalty(node, next, here, there);
       if (penalty === null) continue;
 
       const length = Math.abs(there.x - here.x) + Math.abs(there.y - here.y);
