@@ -258,6 +258,27 @@ export class HostModelStore extends HttpProjectStore {
     this.invalidate(project);
   }
 
+  /**
+   * Whether `id` is an authored entity of the registry that no view other than `file`'s places
+   * any more (after the pending sync): the one case in which taking its block off this view
+   * leaves a record nobody draws. Reads the host's working views, so other views' unsaved edits count.
+   */
+  async isOrphanAuthored(file: string, id: string): Promise<boolean> {
+    await this.pending;
+    const project = this.projectOf(file);
+    const snapshot = this.snapshots.get(project);
+    if (!snapshot) return false;
+    const entities = (snapshot.registry["entities.json"] as EntityCatalog | undefined)?.entities ?? [];
+    const record = entities.find((e) => (e as { id?: string }).id === id) as { origin?: string } | undefined;
+    if (record?.origin !== "authored") return false;
+    for (const [viewId, path] of Object.entries(snapshot.viewFiles ?? {})) {
+      if (path === file) continue;
+      const view = await (await this.request(`/api/model/${encodeURIComponent(project)}/views/${encodeURIComponent(viewId)}`)).json() as ViewDocument;
+      if ((view.placements ?? []).some((p) => (p as { entity?: string }).entity === id)) return false;
+    }
+    return true;
+  }
+
   invalidate(project: string): void {
     this.snapshots.delete(project);
     for (const file of this.views.keys()) if (this.projectOf(file) === project) {

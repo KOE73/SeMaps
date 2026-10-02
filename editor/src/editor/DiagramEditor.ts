@@ -1036,13 +1036,15 @@ export class DiagramEditor implements InspectorHost, StylePanelHost, DiagramEdit
     this.workspaceEvents.emit("change",null);
   }
 
-  private queueModelSync(): void {
-    if (!(this.store instanceof HostModelStore) || !this.currentView || !this.canvas.model) return;
+  /** Hands the change to the host; resolves false when the host refused it (the error is shown). */
+  private queueModelSync(): Promise<boolean> {
+    if (!(this.store instanceof HostModelStore) || !this.currentView || !this.canvas.model) return Promise.resolve(true);
     const store=this.store;
-    void store.sync(this.currentView.file,serializeDocument(this.canvas.model)).then(async()=>{
+    return store.sync(this.currentView.file,serializeDocument(this.canvas.model)).then(async()=>{
       const project=this.projectOf(this.currentView!)?.id;
       if(project){this.modelDirty.set(project,await store.dirty(project));this.workspaceEvents.emit("change",null)}
-    }).catch((err)=>this.notify(`Не удалось передать изменение хосту: ${(err as Error).message}`));
+      return true;
+    }).catch((err)=>{this.notify(`Не удалось передать изменение хосту: ${(err as Error).message}`);return false});
   }
 
   private loadWire(wire: WireDocument, title: string): void {
@@ -1222,6 +1224,88 @@ export class DiagramEditor implements InspectorHost, StylePanelHost, DiagramEdit
     doc.setText(container.id, { name: container.label }, doc.textLang);
     this.commit("create-container");
     this.canvas.select(container.id);
+  }
+
+  /**
+   * A new container around the selected blocks and containers (right click → «Поместить в
+   * контейнер»). It is made as createContainer makes one, placed on the union of their boxes
+   * with the caption strip and padding around it, and only the top-level members of the selection
+   * go into it (one whose ancestor is selected too stays under that ancestor). Its parent is the
+   * members' common parent, else none. Nothing moves; one undo step. When the host refuses the
+   * result (an axis or nesting rule of the core) the step is taken back and the error is shown.
+   */
+  async putSelectionIntoContainer(): Promise<void> {
+    const doc = this.canvas.model;
+    if (doc === null) return;
+    const selected = this.canvas.selectedElements();
+    const set = new Set(selected);
+    const members = selected.filter((el) => {
+      for (let p = el.parent; p !== null; p = p.parent) if (set.has(p)) return false;
+      return true;
+    });
+    if (members.length === 0) return;
+    const parent = members.every((m) => m.parent === members[0]!.parent) ? members[0]!.parent : null;
+
+    const cc = canvasNumbers().container;
+    const left = Math.min(...members.map((m) => m.x));
+    const top = Math.min(...members.map((m) => m.y));
+    const right = Math.max(...members.map((m) => m.x + m.width));
+    const bottom = Math.max(...members.map((m) => m.y + m.height));
+    const x = left - cc.padding;
+    const y = top - cc.padding - cc.headerHeight;
+    const container: DiagramElement = {
+      id: `e_${Date.now().toString(36)}`,
+      kind: "zone",
+      type: NEW_CONTAINER_KIND,
+      label: "Новый контейнер",
+      tags: [],
+      metadata: {},
+      x, y,
+      width: Math.max(right + cc.padding - x, cc.minWidth),
+      height: Math.max(bottom + cc.padding - y, cc.minHeight),
+      parent: null,
+      children: [],
+      wireOrder: Number.POSITIVE_INFINITY,
+    };
+    doc.add(container, parent);
+    doc.setText(container.id, { name: container.label }, doc.textLang);
+    for (const m of members) doc.reparent(m, container);
+    this.canvas.select(container.id);
+    if (!(await this.commit("put-into-container"))) this.undo();
+  }
+
+  /**
+   * «Убрать контейнер»: the selected containers go off this view and their direct contents move
+   * to the container's parent, where they are. An authored container that no other view places is
+   * removed from the registry too, by the core's removal (unsaved, like any edit); one that sits
+   * on another view, comes from code or has relations standing on it only leaves this view.
+   * One undo step, except that a registry removal reloads the view and so ends the undo history.
+   */
+  async unwrapSelectedContainers(): Promise<void> {
+    const doc = this.canvas.model;
+    if (doc === null) return;
+    const zones = this.canvas.selectedElements().filter((el) => el.kind === "zone");
+    if (zones.length === 0) return;
+    const ids = zones.map((z) => z.id);
+    const heldBy = new Set(doc.relations.filter((r) => ids.includes(r.from) || ids.includes(r.to)).map((r) => r.id));
+    for (const zone of zones) doc.remove(zone);
+    this.canvas.select(null);
+    if (!(await this.commit("unwrap-container"))) { this.undo(); return; }
+    const view = this.currentView;
+    if (!(this.store instanceof HostModelStore) || !view) return;
+    const project = this.projectOf(view)?.id;
+    if (!project) return;
+    try {
+      const orphans: string[] = [];
+      for (const id of ids) if (await this.store.isOrphanAuthored(view.file, id)) orphans.push(id);
+      const removable = orphans.filter((id) => !doc.relations.some((r) => (r.from === id || r.to === id) && heldBy.has(r.id)));
+      if (removable.length === 0) return;
+      await this.store.removeRecords(project, removable, false);
+      await this.loadView(view);
+      this.workspaceEvents.emit("change", null);
+    } catch (err) {
+      this.notify(`Контейнер убран с вида, но не из реестра: ${(err as Error).message}`);
+    }
   }
 
   /**
@@ -1712,15 +1796,16 @@ export class DiagramEditor implements InspectorHost, StylePanelHost, DiagramEdit
     this.openStyle(styleId);
   }
 
-  private commit(reason: string): void {
+  private commit(reason: string): Promise<boolean> {
     this.flushFieldEdit();
     this.canvas.notifyModelChanged(reason);
     this.history.push(this.snapshot());
     this.markDirty();
-    this.queueModelSync();
+    const synced = this.queueModelSync();
     this.syncToolbar(this.canvas.selected);
     this.basePanel.render();
     this.edgesPanel.render();
+    return synced;
   }
 
   get isDirty(): boolean {

@@ -468,6 +468,10 @@ export interface UiDictionary {
     readonly remove: string;
     readonly removeFromRegistry: string;
     readonly removeFromRegistryHint: string;
+    readonly putIntoContainer: string;
+    readonly putIntoContainerHint: string;
+    readonly unwrapContainer: string;
+    readonly unwrapContainerHint: string;
     readonly lineShape: string;
     readonly inherited: string;
     readonly resetShape: string;

@@ -204,6 +204,9 @@ function blockItems(editor: DiagramEditor, host: MenuHost, el: DiagramElement): 
   items.push({ label: t.blockStyle, icon: icons.palette, onSelect: () => host.openStyleEditor(styles.blockStyleIdFor(el)) });
   if (entity) items.push({ label: t.neighbourhood, icon: icons.hierarchy, onSelect: () => host.openPanel("neighbourhood") });
   if (isZone) items.push(pasteItem(editor));
+  items.push({ kind: "separator" });
+  items.push({ label: t.putIntoContainer, icon: icons.boxMultiple, title: t.putIntoContainerHint, onSelect: () => void editor.putSelectionIntoContainer() });
+  if (isZone) items.push({ label: t.unwrapContainer, icon: icons.boxModel, title: t.unwrapContainerHint, onSelect: () => void editor.unwrapSelectedContainers() });
   items.push({ kind: "separator" }, { label: t.remove, icon: icons.trash, onSelect: () => editor.deleteSelection() });
   items.push(...removeFromRegistryItems(editor, el.id));
   return items;
