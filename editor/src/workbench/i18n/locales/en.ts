@@ -127,6 +127,8 @@ export const enDictionary: UiDictionary = {
       addView: "New diagram in this project",
       editProject: "Project properties",
       editView: "Diagram properties",
+      deleteView: "Delete diagram",
+      confirmDeleteView: "Delete diagram \"{caption}\" ({id})? Its file and captions are removed; registry records stay. This cannot be undone.",
       hintDragContainer: "• Drag a container by its header to move nested items",
       hintDragBlock: "• Dragging a block into a container re-parents it",
       hintCollapseContainer: "• [ − / + ] in the header collapses/expands the container",

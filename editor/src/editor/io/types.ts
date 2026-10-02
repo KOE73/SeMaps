@@ -73,6 +73,8 @@ export interface WorkspaceStore {
   createProject(project: NewProject): Promise<void>;
   /** Returns the new view's file. */
   createView(view: NewView): Promise<string>;
+  /** Removes the view's file, its captions and a defaultView naming it; the registry stays. */
+  deleteView(project: string, id: string): Promise<void>;
   /** A new `id` renames the folder and rewrites `project` in every view. */
   updateProject(oldId: string, project: NewProject): Promise<void>;
   /** A new `id` renames the file and moves its texts in every language. Returns the view's file. */

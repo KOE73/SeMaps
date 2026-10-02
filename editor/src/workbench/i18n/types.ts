@@ -128,6 +128,8 @@ export interface UiDictionary {
       readonly addView: string;
       readonly editProject: string;
       readonly editView: string;
+      readonly deleteView: string;
+      readonly confirmDeleteView: string;
       readonly hintDragContainer: string;
       readonly hintDragBlock: string;
       readonly hintCollapseContainer: string;

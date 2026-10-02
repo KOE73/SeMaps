@@ -27,7 +27,7 @@ const serverPreamble = "SeMaps registry of this repository. Read with list_*/get
 	"faster and in far fewer tokens than grep and reading files — then open only the lines the answer names. What a part is for and which interactions are intended come from the registry and its views, which the code alone does not tell. " +
 	"Nothing from code can be deleted, an authored entity or relation only through `remove` when a human asked; view geometry only with requestedByHuman when a human asked. " +
 	"Work on a view only through the tools, never by editing files; call `layout_guide` before you move, resize or place anything, and check the result with `get_view` and `render_view` (any view of a project an editor has open, not only the one on screen). " +
-	"`create_view` and `create_project` only when a human explicitly asked for a new view or project. "
+	"`create_view` and `create_project` only when a human explicitly asked for a new view or project, `delete_view` only when a human explicitly asked to delete that view. "
 
 // viewToolDescriptions: the three description levels (mcp.description) of the
 // view tools that are not graph tools. Same rules as mcp_descriptions.go: what
@@ -39,7 +39,7 @@ var viewToolDescriptions = map[string]toolDescriptions{
 			"(look at the sample, decide, apply in steps, check, say what is unsaved and give the link), when `requestedByHuman` is needed, and the numbers of the canvas " +
 			"(units, grid, default and minimum sizes, caption strip, padding, gaps). Call it once before moving, resizing or placing anything. No parameters; it does not depend on the project.",
 		Full: "layout_guide returns a Markdown guide for working on a view: how to look at one (`get_view`, `render_view`), what each geometry tool does " +
-			"(`move_elements`, `resize_elements`, `set_parent`, `set_placement`, `set_routing`, `add_container`, `fit_container`, `align_elements`, `place_entities`, `create_view`, `create_project`, `save`, `discard`, `set_text`, `add_entity`, `get_kinds`), " +
+			"(`move_elements`, `resize_elements`, `set_parent`, `set_placement`, `set_routing`, `add_container`, `fit_container`, `align_elements`, `place_entities`, `create_view`, `delete_view`, `create_project`, `save`, `discard`, `set_text`, `add_entity`, `get_kinds`), " +
 			"recommendations for composing an architecture view — only habits, since systems differ (one question per view, zones as containers with a pale colour each and the same colour on every view, one direction of flow, kinds and short names, relation types from the dictionary, orthogonal lines with corridors), " +
 			"the workflow (look at the sample, decide, apply in steps, check with `get_view` or `render_view`, say what is unsaved and give the link), when `requestedByHuman` is needed, " +
 			"that the host does not snap to the grid, and the numbers of the canvas (units, grid, default and minimum sizes, caption strip, padding, gaps) — the same block that heads every `get_view` answer. " +
@@ -76,6 +76,15 @@ var viewToolDescriptions = map[string]toolDescriptions{
 			"`names` gives several languages at once, language code to text), `axis` (default: the project's default axis, which the view then inherits; refused when neither is given), `icon`, `theme`, " +
 			"`setDefault` (also make it the project's default view). Only when a human explicitly asked for a new view: requestedByHuman must be true. A view is a file of the project, so it is written at once " +
 			"and every open editor lists it; the caption is an ordinary unsaved change of the shared model — `save` writes it, `discard` drops it. Refused while the project has unsaved changes: save or discard them first. The answer gives the link.",
+	},
+	"delete_view": {
+		Brief: "Delete a view. Only when a human explicitly asked to delete that view; requestedByHuman. The registry is not touched.",
+		Standard: "delete_view removes one view of a project: its file, its caption in every language and, when it is the project's default view, that setting. Entities and relations of the registry stay. " +
+			"Only when a human explicitly asked to delete this view: requestedByHuman must be true. It is written at once, not held unsaved, and cannot be discarded; refused while the project has unsaved changes. Parameters: `project`, `view`.",
+		Full: "delete_view removes the view `view` of `project`: the file views/<id>.view.json, its key in every text catalogue (the other keys keep their order) and the project's `defaultView` when it names this view. " +
+			"The registry — entities, relations — is not touched, and neither are other views. Only when a human explicitly asked to delete this very view: requestedByHuman must be true. " +
+			"A view is a file of the project, so, like create_view, the deletion is written at once and every open editor drops the view (one that shows it falls back to another); `discard` cannot bring it back. " +
+			"Refused while the project has unsaved changes: save or discard them first. An unknown view is an error.",
 	},
 	"create_project": {
 		Brief: "Create a new project in the workspace. Only when a human explicitly asked for a new project; requestedByHuman.",
@@ -169,6 +178,7 @@ blocks the straight line from the lower one.
 | caption a view (a text under its id, field name), in every language of the project; a container is captioned by the name of its entity — for one drawn by hand a text under the entity's id, field name, which changes freely while the id stays | `+"`set_text`"+` |
 | say that a text in one language is a translation of the same text in another (`+"`from`"+` of `+"`set_text`"+` for a new one; for texts already written, authored in both languages: `+"`mark_translated`"+`, only when a human asked) | `+"`set_text`"+`, `+"`mark_translated`"+` |
 | a new view or project — only when a human explicitly asked | `+"`create_view`"+`, `+"`create_project`"+` |
+| delete a view (file, captions, default) — only when a human explicitly asked; the registry stays | `+"`delete_view`"+` |
 | write what is unsaved / drop it — only when a human explicitly asked | `+"`save`"+`, `+"`discard`"+` |
 
 ## The shape of lines
@@ -191,7 +201,7 @@ Each step is one batch: it applies whole or not at all. Geometry you were not as
 
 ## requestedByHuman
 
-Every geometry tool, `+"`place_entities`"+`, `+"`create_view`"+`, `+"`create_project`"+`, `+"`save`"+` and `+"`discard`"+` refuses unless `+"`requestedByHuman: true`"+`, which you
+Every geometry tool, `+"`place_entities`"+`, `+"`create_view`"+`, `+"`delete_view`"+`, `+"`create_project`"+`, `+"`save`"+` and `+"`discard`"+` refuses unless `+"`requestedByHuman: true`"+`, which you
 pass only when a person asked for exactly this. Without such a request do not write geometry at all.
 
 ## Grid: the host does not snap
@@ -418,6 +428,31 @@ func (s *mcpServer) createView(_ context.Context, _ *mcp.CallToolRequest, in cre
 	}
 	return &mcp.CallToolResult{Content: []mcp.Content{&mcp.TextContent{Text: text}}},
 		map[string]any{"view": in.ID, "project": project, "saved": !unsaved, "link": link}, nil
+}
+
+type deleteViewIn struct {
+	Project          string `json:"project,omitempty"`
+	View             string `json:"view" jsonschema:"the id of the view to delete, v_..."`
+	RequestedByHuman bool   `json:"requestedByHuman" jsonschema:"true only when a human explicitly asked to delete this view"`
+}
+
+// deleteView is the editor's delete path (DELETE /api/model/{project}/views/{id})
+// with the agent's policy in front: only on a human's request.
+func (s *mcpServer) deleteView(_ context.Context, _ *mcp.CallToolRequest, in deleteViewIn) (*mcp.CallToolResult, any, error) {
+	if !in.RequestedByHuman {
+		return nil, nil, errors.New("delete_view requires requestedByHuman: true, and only when a human explicitly asked to delete this view")
+	}
+	dir, err := core.ProjectDir(s.workspace, s.pick(in.Project))
+	if err != nil {
+		return nil, nil, err
+	}
+	project := filepath.Base(dir)
+	if err := s.service().deleteView(project, in.View, "agent"); err != nil {
+		return nil, nil, err
+	}
+	text := fmt.Sprintf("view %s deleted from project %s and written at once; the registry is untouched", in.View, project)
+	return &mcp.CallToolResult{Content: []mcp.Content{&mcp.TextContent{Text: text}}},
+		map[string]any{"view": in.View, "project": project, "deleted": true}, nil
 }
 
 type createProjectIn struct {

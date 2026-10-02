@@ -2,6 +2,7 @@ package core
 
 import (
 	"errors"
+	"fmt"
 	"io/fs"
 	"os"
 	"path/filepath"
@@ -134,6 +135,64 @@ func RenameView(workspace, project, oldID, newID string) error {
 			if err := saveDoc(file, doc); err != nil {
 				return err
 			}
+		}
+	}
+	return nil
+}
+
+// ErrNotFound: a delete named a view that is not there.
+var ErrNotFound = fs.ErrNotExist
+
+// DeleteView removes one clean view: its file, its key in every text
+// catalogue (the others keep their order) and the project's defaultView when
+// it points at it. The registry is not touched. Like RenameView it is a
+// clean-state structural operation: the host checks and serializes first.
+func DeleteView(workspace, project, id string) error {
+	if id == "" || strings.ContainsAny(id, `/\`) || id == ".." {
+		return refuse("invalid view id %q", id)
+	}
+	dir := filepath.Join(workspace, "projects", project)
+	file, _, err := loadView(dir, id)
+	if err != nil {
+		var e *EditError
+		if errors.As(err, &e) && strings.HasPrefix(e.msg, "no view ") {
+			return fmt.Errorf("%w: view %s", ErrNotFound, id)
+		}
+		return err
+	}
+	manifest, err := loadDoc(filepath.Join(dir, "project.json"))
+	if err != nil {
+		return err
+	}
+	texts, _ := filepath.Glob(filepath.Join(dir, "text.*.json"))
+	textDocs := map[string]*object{}
+	for _, f := range texts {
+		doc, err := loadDoc(f)
+		if err != nil {
+			return err
+		}
+		entries, err := child(doc, "entries")
+		if err != nil {
+			return err
+		}
+		if _, ok := entries.vals[id]; ok {
+			entries.del(id)
+			doc.set("entries", entries)
+			textDocs[f] = doc
+		}
+	}
+	if err := os.Remove(file); err != nil {
+		return err
+	}
+	if manifest != nil && manifest.str("defaultView") == id {
+		manifest.del("defaultView")
+		if err := saveDoc(filepath.Join(dir, "project.json"), manifest); err != nil {
+			return err
+		}
+	}
+	for f, doc := range textDocs {
+		if err := saveDoc(f, doc); err != nil {
+			return err
 		}
 	}
 	return nil

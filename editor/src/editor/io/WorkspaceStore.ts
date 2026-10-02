@@ -88,6 +88,14 @@ export class HttpWorkspaceStore implements WorkspaceStore {
     return created.file as string;
   }
 
+  async deleteView(project: string, id: string): Promise<void> {
+    const res = await fetch(`/api/model/${encodeURIComponent(project)}/views/${encodeURIComponent(id)}`, {
+      method: "DELETE", headers: hostWriteHeaders(),
+    });
+    if (res.status === 409 || res.status === 404) throw new Error((await res.text()).trim() || `${id}: HTTP ${res.status}`);
+    await check(res, id);
+  }
+
   async updateProject(oldId: string, p: NewProject): Promise<void> {
     if (!PROJECT_ID.test(p.id)) throw new Error(`Недопустимый id проекта «${p.id}»`);
     if (p.id !== oldId) await move(`projects/${oldId}`, `projects/${p.id}`);

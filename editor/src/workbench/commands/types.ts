@@ -129,6 +129,7 @@ export interface DiagramEditorFacade {
   openView(view: ViewEntry, pos?: { clientX: number; clientY: number }): void;
   createProject(project: NewProject): Promise<void>;
   createView(view: NewView): Promise<void>;
+  deleteView(view: ViewEntry): Promise<void>;
   updateProject(oldId: string, project: NewProject): Promise<void>;
   updateView(oldId: string, view: NewView): Promise<void>;
   toggleOverviewShadows?(on?: boolean): boolean;

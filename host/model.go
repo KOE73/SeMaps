@@ -189,6 +189,32 @@ func (s *modelService) createView(project string, v core.NewView, names map[stri
 	return nil
 }
 
+// deleteView removes a view from disk (core.DeleteView) and tells every open
+// editor: projectReloaded with an OldView and no NewView means the view is
+// gone. It refuses while the project has unsaved changes, like createView.
+func (s *modelService) deleteView(project, id, author string) error {
+	s.structureMu.Lock()
+	defer s.structureMu.Unlock()
+	if err := s.clean(project); err != nil {
+		return err
+	}
+	if err := core.DeleteView(s.workspace, project, id); err != nil {
+		return err
+	}
+	return s.reload(projectReloaded{OldProject: project, NewProject: project, OldView: id})
+}
+
+func (s *modelService) deleteViewHTTP(w http.ResponseWriter, r *http.Request) {
+	if !s.authorize(w, r) {
+		return
+	}
+	if err := s.deleteView(r.PathValue("project"), r.PathValue("id"), "human"); err != nil {
+		createError(w, err)
+		return
+	}
+	w.WriteHeader(http.StatusNoContent)
+}
+
 func (s *modelService) publishDirty(m *core.Model, author string) {
 	dirty := m.Dirty()
 	refs := append([]core.Ref{}, dirty.Registry...)
@@ -242,6 +268,10 @@ func createError(w http.ResponseWriter, err error) {
 		http.Error(w, err.Error(), http.StatusConflict)
 		return
 	}
+	if errors.Is(err, core.ErrNotFound) {
+		http.Error(w, err.Error(), http.StatusNotFound)
+		return
+	}
 	modelError(w, err)
 }
 
@@ -287,6 +317,7 @@ func (s *modelService) hostFile(root string, port int) error {
 func (s *modelService) register(mux *http.ServeMux) {
 	mux.HandleFunc("POST /api/projects", s.postProject)
 	mux.HandleFunc("POST /api/model/{project}/views", s.postView)
+	mux.HandleFunc("DELETE /api/model/{project}/views/{id}", s.deleteViewHTTP)
 	mux.HandleFunc("GET /api/model/{project}", s.snapshot)
 	mux.HandleFunc("GET /api/model/{project}/views/{id}", s.view)
 	mux.HandleFunc("POST /api/model/{project}/ops", s.ops)

@@ -239,12 +239,15 @@ Renames use `/api/move`; creation uses §3.4a. These structural operations requi
 
 One create path for every client: these endpoints and the MCP tools `create_project` /
 `create_view` (§6) call the same host service, which calls `core.CreateProject` /
-`core.CreateView`. No client writes `project.json` or a view file itself.
+`core.CreateView`. Deleting a view is the same: `DELETE /api/model/{project}/views/{id}` and the MCP
+tool `delete_view` call one host service over `core.DeleteView`. No client writes `project.json` or a
+view file itself.
 
 | Path | Method | Body → answer |
 |---|---|---|
 | `/api/projects` | `POST` | `{id, title, subtitle?, defaultAxis?, language?, icon?, theme?}` → `{id}`. Writes `project.json` only: no views, no entities, no extractor |
 | `/api/model/{project}/views` | `POST` | `{id, axis?, icon?, theme?, setDefault?, name?, language?}` → `{id, file}`. Writes an empty view (`placements: []`, no `edges` key: CONTRACT §8.5); `setDefault` rewrites `defaultView` in `project.json`; `name` goes into the working model as a text under the view's id in `language` (default: the project's first language), unsaved |
+| `/api/model/{project}/views/{id}` | `DELETE` | no body → `204`. Removes `views/<id>.view.json`, the view's key in `entries` of every `text.<lang>.json` (the other keys keep their order) and `defaultView` in `project.json` when it equals `id`; the registry is untouched. Written at once (not an unsaved change) and not discardable. `409` «сначала сохраните» while the project has unsaved changes, `404` for an unknown view or project, host key required. Emits `projectReloaded` with `oldView` and no `newView`: an editor showing that view falls back to another |
 
 - Ids: project `^[a-z][a-z0-9_]*$`, view `^v_[a-z0-9_]+$` (`core.ProjectIDPattern`,
   `core.ViewIDPattern`); otherwise `422`. A project needs a non-empty `title`. A view needs
@@ -584,7 +587,7 @@ then.
   p. 3). An agent works on the canvas **only through these tools**, never by editing files;
   `layout_guide` says how. The host does not snap to the grid (§2.1a).
 - A new view or project only with `create_view` / `create_project` and `requestedByHuman: true`, when
-  a human explicitly asked.
+  a human explicitly asked; deleting a view only with `delete_view`, likewise.
 - Files keep every key they had, in the order they had it. Tool edits are unsaved until `save`; a new project or view file is the exception (§3.4a).
 
 **Object references.** A tool that takes an object of a view takes it as `<view>#<id>`
@@ -729,6 +732,7 @@ editor's sandbox land in the same file.
 
 Every geometry step is one batch — a bad element applies nothing — authored `agent`, and answers `{touched:[view#id…], saved:false, link}` with the link that opens the view and highlights the touched objects.
 | `create_view` | `project?`, `id` (`v_…`), `name?`, `lang?`, `names?` (language → text), `axis?` (else the project's `defaultAxis`; neither is refused), `icon?`, `theme?`, `setDefault?`, `requestedByHuman` | a new empty view, as `POST /api/model/{project}/views` (§3.4a): the file is written at once and every open editor lists it; `name`/`names` are texts of the working model and stay unsaved. Refused while the project has unsaved changes. Answers `{view, project, saved, link}` (`saved: false` only when a name is left unsaved). Only when a human explicitly asked for a new view |
+| `delete_view` | `project?`, `view`, `requestedByHuman` | deletes a view, as `DELETE /api/model/{project}/views/{id}` (§3.4a): its file, its caption in every language and a `defaultView` naming it; the registry is untouched. Written at once, not discardable; refused while the project has unsaved changes and for an unknown view. Answers `{view, project, deleted:true}`. Only when a human explicitly asked to delete that view |
 | `create_project` | `id`, `title?` (default: the id), `subtitle?`, `defaultAxis?`, `language?` = `ru`, `icon?`, `theme?`, `requestedByHuman` | a new hand-authored project, as `POST /api/projects` (§3.4a): writes `projects/<id>/project.json` at once (a project is a folder, not a change of another project's model, so it cannot be unsaved; the answer says so) and returns `{project, saved:true}`; an existing id is refused. Only when a human explicitly asked for a new project |
 | `save` | `project?`, `requestedByHuman: true` | saves all dirty project files and clears the journal; refused without explicit human request |
 | `discard` | `project?`, `scope: registry \| view \| all`, `view?`, `requestedByHuman: true` | drops the requested unsaved changes; refused without explicit human request |

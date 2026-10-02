@@ -138,6 +138,11 @@ export class CatalogPanel implements IContentRenderer {
         view.error ? null : el("button", { class: "btn-icon catalog-edit catalog-eye", title: t.showChanges,
           on: { click: () => this.editor.showChanges(view) } }, [iconEl("eye")]),
         view.error ? null : editBtn(t.editView, () => openEditViewDialog(this.editor, view)),
+        el("button", { class: "btn-icon catalog-edit", title: t.deleteView, on: { click: () => {
+          const caption = this.editor.viewName(view);
+          if (!window.confirm(t.confirmDeleteView.replace("{caption}", caption).replace("{id}", view.id))) return;
+          this.editor.deleteView(view).catch((err: Error) => this.editor.notify(err.message));
+        } } }, [iconEl("trash")]),
       ]),
     );
 

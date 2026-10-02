@@ -127,6 +127,8 @@ export const ruDictionary: UiDictionary = {
       addView: "Новая схема в этом проекте",
       editProject: "Свойства проекта",
       editView: "Свойства схемы",
+      deleteView: "Удалить схему",
+      confirmDeleteView: "Удалить схему «{caption}» ({id})? Файл схемы и её названия будут удалены; записи реестра останутся. Отменить нельзя.",
       hintDragContainer: "• Контейнер тащится за шапку и несёт вложенное",
       hintDragBlock: "• Блок при переносе в контейнер меняет родителя",
       hintCollapseContainer: "• [ − / + ] в шапке сворачивает контейнер",

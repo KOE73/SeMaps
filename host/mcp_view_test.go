@@ -24,7 +24,7 @@ func TestLayoutGuideAndCanvasBlock(t *testing.T) {
 		t.Fatal(text)
 	}
 	for _, want := range []string{"get_view", "render_view", "move_elements", "resize_elements", "set_parent", "set_placement", "set_routing", "add_container", "fit_container", "align_elements",
-		"place_entities", "create_view", "create_project", "save", "set_text", "get_kinds", "requestedByHuman", "does not snap",
+		"place_entities", "create_view", "delete_view", "create_project", "save", "set_text", "get_kinds", "requestedByHuman", "does not snap",
 		"`set_placement`", "`set_routing`", "## The shape of lines", "`tree-horizontal`", "`tree-vertical`", "`orthogonal`", "`bezier`", "`view.routing`", "never stored",
 		"Look at the sample", "Grid step 10", "180x60", "28 high", "40 between containers", "3 x 180 + 2 x 40 = 620"} {
 		if !strings.Contains(text, want) {
@@ -123,6 +123,29 @@ func TestCreateViewAndProject(t *testing.T) {
 	_, text = call(t, cs, "get_text", map[string]any{"project": "other", "lang": "en", "key": "v_new"})
 	if !strings.Contains(text, "New") {
 		t.Fatalf("view name: %s", text)
+	}
+
+	res, text = call(t, cs, "delete_view", map[string]any{"project": "other", "view": "v_new"})
+	if !res.IsError || !strings.Contains(text, "requestedByHuman") {
+		t.Fatalf("delete without a human: %v %s", res.IsError, text)
+	}
+	if _, err := os.Stat(filepath.Join(ws, "projects", "other", "views", "v_new.view.json")); err != nil {
+		t.Fatalf("view deleted without a human: %v", err)
+	}
+	res, text = call(t, cs, "delete_view", map[string]any{"project": "other", "view": "v_nope", "requestedByHuman": true})
+	if !res.IsError || !strings.Contains(text, "v_nope") {
+		t.Fatalf("unknown view: %v %s", res.IsError, text)
+	}
+	res, text = call(t, cs, "delete_view", map[string]any{"project": "other", "view": "v_new", "requestedByHuman": true})
+	if res.IsError || !strings.Contains(text, "deleted") {
+		t.Fatalf("delete_view: %v %s", res.IsError, text)
+	}
+	if _, err := os.Stat(filepath.Join(ws, "projects", "other", "views", "v_new.view.json")); !os.IsNotExist(err) {
+		t.Fatalf("view file stays: %v", err)
+	}
+	_, text = call(t, cs, "list_projects", map[string]any{})
+	if strings.Contains(text, `"v_new"`) {
+		t.Fatalf("list_projects still shows the view: %s", text)
 	}
 }
 

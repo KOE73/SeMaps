@@ -73,7 +73,7 @@ func TestMCPListsAllTools(t *testing.T) {
 	for _, n := range []string{"list_projects", "list_views", "get_entity", "find_entities", "get_relations",
 		"get_text", "sync_preview", "doctor", "set_text", "add_entity", "add_relation",
 		"set_relation_visible", "confirm_rename", "extract", "sync", "place_entities", "get_view", "move_elements", "resize_elements", "set_parent", "set_placement", "set_routing", "add_container", "fit_container", "align_elements",
-		"get_kinds", "layout_guide", "render_view", "create_view", "create_project"} {
+		"get_kinds", "layout_guide", "render_view", "create_view", "delete_view", "create_project"} {
 		if !have[n] {
 			t.Errorf("no tool %s", n)
 		}

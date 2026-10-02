@@ -446,6 +446,26 @@ export class DiagramEditor implements InspectorHost, StylePanelHost, DiagramEdit
     if (created) this.openView(created);
   }
 
+  /** Delete a view on the host; if it is the open one, fall back to another. The host refuses while the project has unsaved changes. */
+  async deleteView(view: ViewEntry): Promise<void> {
+    const project = this.projectOf(view);
+    if (!project) throw new Error(`Проекта вида «${view.id}» нет`);
+    await this.workspaceStore.deleteView(project.id, view.id);
+    await this.reloadWorkspace();
+    await this.dropOpenView(view.file, project.id);
+  }
+
+  /** The open view is gone from disk: open the first view left (its project's first), or an empty canvas. */
+  private async dropOpenView(file: string, projectId: string): Promise<void> {
+    if (this.currentView?.file !== file) return;
+    const next = this.workspace.projects.find((p) => p.id === projectId)?.views.find((v) => !v.error)
+      ?? this.workspace.projects.flatMap((p) => p.views).find((v) => !v.error);
+    if (next) { await this.loadView(next); return; }
+    this.currentView = null;
+    this.loadWire({} as WireDocument, "");
+    this.workspaceEvents.emit("change", null);
+  }
+
   // ---------------------------------------------------------------- wiring
 
   private slot(name: Slot): HTMLElement {
@@ -963,6 +983,17 @@ export class DiagramEditor implements InspectorHost, StylePanelHost, DiagramEdit
     this.modelDirty.set(reload?.newProject ?? project,event.dirty);
     if (reload) {
       await this.reloadWorkspace();
+      if (reload.oldView && !reload.newView) {
+        // The view was deleted (by this editor's own request or an agent's).
+        const gone = this.currentView;
+        if (gone && gone.file.endsWith(`/views/${reload.oldView}.view.json`) && gone.file.includes(`projects/${reload.oldProject}/`)) {
+          await this.dropOpenView(gone.file, reload.newProject);
+        } else if (gone) {
+          await this.reopen(gone.file);
+        }
+        this.workspaceEvents.emit("change", null);
+        return;
+      }
       const file = this.currentView?.file
         .replace(`projects/${reload.oldProject}/`, `projects/${reload.newProject}/`)
         .replace(`/views/${reload.oldView}.view.json`, `/views/${reload.newView}.view.json`);

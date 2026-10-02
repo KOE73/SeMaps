@@ -103,6 +103,35 @@ func TestCreateThroughHTTPAndMCPShareOneCatalog(t *testing.T) {
 	if _, _, err := mcpSide.createView(nil, nil, createViewIn{Project: "ov", ID: "v_two", Axis: "axis_x", RequestedByHuman: true}); err != nil {
 		t.Fatalf("MCP view on a clean project: %v", err)
 	}
+
+	// deleting: the project is clean now, so v_all goes; an unknown view is 404
+	if code := post("/api/model/ov/views/v_nope", ""); code != http.StatusMethodNotAllowed {
+		t.Fatalf("POST on a view: %d", code)
+	}
+	del := func(path string) int {
+		res := modelRequest(t, c, srv.URL+path, s.key, http.MethodDelete, "")
+		res.Body.Close()
+		return res.StatusCode
+	}
+	if code := del("/api/model/ov/views/v_nope"); code != http.StatusNotFound {
+		t.Fatalf("delete unknown view: %d", code)
+	}
+	if code := del("/api/model/nope/views/v_all"); code != http.StatusNotFound {
+		t.Fatalf("delete in a missing project: %d", code)
+	}
+	if code := del("/api/model/ov/views/v_all"); code != http.StatusNoContent {
+		t.Fatalf("delete view: %d", code)
+	}
+	if _, err := os.Stat(filepath.Join(s.workspace, "projects", "ov", "views", "v_all.view.json")); !os.IsNotExist(err) {
+		t.Fatalf("view file stays: %v", err)
+	}
+	// an unsaved change in the project: the delete waits for Save (409)
+	if _, _, err := mcpSide.createView(nil, nil, createViewIn{Project: "ov", ID: "v_three", Axis: "axis_x", Name: "Три", RequestedByHuman: true}); err != nil {
+		t.Fatal(err)
+	}
+	if code := del("/api/model/ov/views/v_two"); code != http.StatusConflict {
+		t.Fatalf("delete on a dirty project: %d", code)
+	}
 }
 
 func hostModelFixture(t *testing.T) (*modelService, *httptest.Server) {

@@ -48,7 +48,8 @@ and for SeMaps itself — an agent does not need it, since it never edits those 
   project or view needs a clean working model: on «сначала сохраните», ask for a save first.
 - **Geometry only on request.** Unasked, the agent never places, moves or sizes anything and never
   adds containers to a view. When the human asks ("spread these subclasses into frames by meaning"),
-  read `layout_guide` first and do what was asked and nothing more. `remove` likewise only on request.
+  read `layout_guide` first and do what was asked and nothing more. `remove` likewise only on request, and `delete_view` (a view's file, its captions; the registry
+  stays) only when the human asked to delete that view.
 - **References.** The human points at an object of a view with a reference copied in the editor
   («🔗» in Properties, or «Копировать ссылку» in the block menu): `v_ops#e_undistort`. Every view
   tool takes such references.

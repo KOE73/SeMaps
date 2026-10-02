@@ -380,6 +380,7 @@ func (s *mcpServer) server() *mcp.Server {
 	mcp.AddTool(srv, write("align_elements", "Align elements to the first one: left, right, top, bottom, width, height. requestedByHuman."), s.alignElements)
 	mcp.AddTool(srv, write("remove", viewToolDescriptions["remove"].at(level)), s.remove)
 	mcp.AddTool(srv, write("create_view", viewToolDescriptions["create_view"].at(level)), s.createView)
+	mcp.AddTool(srv, write("delete_view", viewToolDescriptions["delete_view"].at(level)), s.deleteView)
 	mcp.AddTool(srv, write("create_project", viewToolDescriptions["create_project"].at(level)), s.createProject)
 	mcp.AddTool(srv, write("save", "Save all unsaved project changes only when a human explicitly requested it."), s.save)
 	mcp.AddTool(srv, write("discard", "Discard unsaved changes only when a human explicitly requested it."), s.discard)
