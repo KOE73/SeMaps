@@ -1594,6 +1594,9 @@ textarea {
 }
 
 .readonly-box {
+  /* Read-only is not unselectable: a name from code or an id is copied from here. */
+  user-select: text;
+  cursor: text;
   padding: calc(6px * var(--ui-space)) calc(10px * var(--ui-space));
   border: 1px solid var(--line);
   border-radius: 6px;
