@@ -1,6 +1,6 @@
 import type { Point, Rect, Side } from "../../geometry/types.js";
 import { DIAGRAM_CONFIG } from "../../constants/diagram-constants.js";
-import type { RouteZone } from "./Scene.js";
+import { SOLID, type RouteZone } from "./Scene.js";
 import type { Slide } from "./VisibilityGraph.js";
 
 /**
@@ -43,8 +43,8 @@ export interface RouteRequest {
    * a kind, and the phases that consume them — search and nudging — must not be
    * free to disagree about what either means.
    *
-   * Optional: `BezierRouter` never reasons about the scene, and a caller with
-   * nothing to say leaves it out.
+   * Optional: `BezierRouter` only looks at the solid zones, to draw a straight
+   * line when one is free; a caller with nothing to say leaves it out.
    */
   readonly zones?: readonly RouteZone[];
   /**
@@ -175,6 +175,27 @@ export class BezierRouter implements EdgeRouter {
     const fromOffset = req.fromMarkerOffset ?? 0;
     const toOffset = req.toMarkerOffset ?? 0;
 
+    // With a scene: a straight line between the boxes, if one clears every block.
+    const free = req.zones ? freeStraightLine(req) : null;
+    if (free !== null) {
+      const dx = free.b.x - free.a.x;
+      const dy = free.b.y - free.a.y;
+      const len = Math.hypot(dx, dy);
+      if (len > fromOffset + toOffset + 1) {
+        const ux = dx / len;
+        const uy = dy / len;
+        const a = { x: free.a.x + ux * fromOffset, y: free.a.y + uy * fromOffset };
+        const b = { x: free.b.x - ux * toOffset, y: free.b.y - uy * toOffset };
+        const sideOf = (x: number, y: number): Side =>
+          Math.abs(x) >= Math.abs(y) ? (x >= 0 ? "east" : "west") : (y >= 0 ? "south" : "north");
+        return {
+          ...straightLine(a, b),
+          fromLabelAt: endLabelPoint(a, sideOf(dx, dy), BezierRouter.END_LABEL_ALONG, BezierRouter.END_LABEL_PERP),
+          toLabelAt: endLabelPoint(b, sideOf(-dx, -dy), BezierRouter.END_LABEL_ALONG, BezierRouter.END_LABEL_PERP),
+        };
+      }
+    }
+
     const pFrom = offsetPoint(from, fromSide, fromOffset);
     const pTo = offsetPoint(to, toSide, toOffset);
 
@@ -215,6 +236,104 @@ export class BezierRouter implements EdgeRouter {
       ...endLabels,
     };
   }
+}
+
+/** Whether the segment a-b passes through `r` grown by `pad` (Liang-Barsky). */
+function segmentHitsRect(a: Point, b: Point, r: Rect, pad: number): boolean {
+  const dx = b.x - a.x;
+  const dy = b.y - a.y;
+  const p = [-dx, dx, -dy, dy];
+  const q = [a.x - (r.x - pad), r.x + r.width + pad - a.x, a.y - (r.y - pad), r.y + r.height + pad - a.y];
+  let t0 = 0;
+  let t1 = 1;
+  for (let i = 0; i < 4; i++) {
+    if (p[i] === 0) {
+      if (q[i]! < 0) return false;
+    } else {
+      const t = q[i]! / p[i]!;
+      if (p[i]! < 0) { if (t > t1) return false; if (t > t0) t0 = t; }
+      else { if (t < t0) return false; if (t < t1) t1 = t; }
+    }
+  }
+  return true;
+}
+
+/**
+ * A straight segment from the source box to the target box that crosses no
+ * block, or null. Candidates, in order of preference: a line along the overlap
+ * of the boxes' extents (square to the facing sides), the side midpoints (and
+ * the ports the assigner gave), a few points spread along the facing sides.
+ * The shortest free one of the first group that has any wins. Few candidates
+ * on purpose: this runs for every edge on every drag.
+ */
+function freeStraightLine(req: RouteRequest): { a: Point; b: Point } | null {
+  const fr = req.fromRect;
+  const tr = req.toRect;
+  const walls: Rect[] = [];
+  for (const z of req.zones ?? []) if (z.weight === SOLID) walls.push(z.rect);
+  const free = (a: Point, b: Point) => {
+    for (const w of walls) if (segmentHitsRect(a, b, w, 2)) return false;
+    return true;
+  };
+  const MARGIN = 6;
+
+  const below = tr.y >= fr.y + fr.height;
+  const above = tr.y + tr.height <= fr.y;
+  const right = tr.x >= fr.x + fr.width;
+  const left = tr.x + tr.width <= fr.x;
+  const vertical = below || above;
+  const horizontal = right || left;
+  if (!vertical && !horizontal) return null;
+  const fy = below ? fr.y + fr.height : fr.y;
+  const ty = below ? tr.y : tr.y + tr.height;
+  const fx = right ? fr.x + fr.width : fr.x;
+  const tx = right ? tr.x : tr.x + tr.width;
+
+  const along = (lo: number, size: number, f: number) => lo + MARGIN + (size - 2 * MARGIN) * f;
+  const best = (cands: Array<[Point, Point]>): { a: Point; b: Point } | null => {
+    let found: { a: Point; b: Point } | null = null;
+    let bestLen = Infinity;
+    for (const [a, b] of cands) {
+      const len = Math.hypot(b.x - a.x, b.y - a.y);
+      if (len < bestLen && free(a, b)) { bestLen = len; found = { a, b }; }
+    }
+    return found;
+  };
+
+  // 1. Along the overlap of the extents.
+  const overlap: Array<[Point, Point]> = [];
+  const xLo = Math.max(fr.x, tr.x);
+  const xHi = Math.min(fr.x + fr.width, tr.x + tr.width);
+  const yLo = Math.max(fr.y, tr.y);
+  const yHi = Math.min(fr.y + fr.height, tr.y + tr.height);
+  for (const f of [0.5, 0.25, 0.75, 0.1, 0.9]) {
+    if (vertical && xHi - xLo > 2 * MARGIN) {
+      const x = along(xLo, xHi - xLo, f);
+      overlap.push([{ x, y: fy }, { x, y: ty }]);
+    }
+    if (horizontal && yHi - yLo > 2 * MARGIN) {
+      const y = along(yLo, yHi - yLo, f);
+      overlap.push([{ x: fx, y }, { x: tx, y }]);
+    }
+  }
+  // The first free one in preference order (the middle first); they differ little in length.
+  for (const [a, b] of overlap) if (free(a, b)) return { a, b };
+
+  // 2. Side midpoints, and the ports the assigner chose.
+  const mids: Array<[Point, Point]> = [[req.from, req.to]];
+  if (vertical) mids.push([{ x: fr.x + fr.width / 2, y: fy }, { x: tr.x + tr.width / 2, y: ty }]);
+  if (horizontal) mids.push([{ x: fx, y: fr.y + fr.height / 2 }, { x: tx, y: tr.y + tr.height / 2 }]);
+  const m = best(mids);
+  if (m !== null) return m;
+
+  // 3. A few points along the facing sides.
+  const spread: Array<[Point, Point]> = [];
+  const fs = [0.15, 0.5, 0.85];
+  for (const f of fs) for (const g of fs) {
+    if (vertical) spread.push([{ x: along(fr.x, fr.width, f), y: fy }, { x: along(tr.x, tr.width, g), y: ty }]);
+    if (horizontal) spread.push([{ x: fx, y: along(fr.y, fr.height, f) }, { x: tx, y: along(tr.y, tr.height, g) }]);
+  }
+  return best(spread);
 }
 
 function straightLine(from: Point, to: Point): Route {

@@ -289,6 +289,43 @@ check("lanes :: with lanes the second runs beside the first",
 check("lanes :: and still clear of the blocks",
   !entersRect(secondLine.points, trackBox) && !entersRect(secondLine.points, inferBox), JSON.stringify(secondLine.points));
 
+// ------------------------------------------------------------- curved router
+const { BezierRouter } = await load("src/canvas/routing/EdgeRouter.ts", "semaps-bezier-");
+const bezier = new BezierRouter();
+const isStraight = (route) => /^M [^C]*L [^C]*$/.test(route.path);
+const bz = (fromRect, toRect, from, to, fromSide, toSide, zones) =>
+  bezier.route({ from, to, fromSide, toSide, fromRect, toRect, zones });
+
+// Free straight vertical: x ranges overlap, assigned ports off-axis.
+{
+  const a = { x: 0, y: 0, width: 100, height: 50 };
+  const b = { x: 40, y: 300, width: 100, height: 50 };
+  const r = bz(a, b, { x: 20, y: 50 }, { x: 120, y: 300 }, "south", "north", []);
+  check("bezier :: free vertical gives a straight line", isStraight(r) && finitePath(r), r.path);
+  check("bezier :: the vertical line is square", /^M (\S+) 50 L \1 300$/.test(r.path), r.path);
+}
+// No overlap in either extent: straight via side midpoints (diagonal).
+{
+  const a = { x: 0, y: 0, width: 100, height: 50 };
+  const b = { x: 300, y: 200, width: 100, height: 50 };
+  const r = bz(a, b, { x: 100, y: 10 }, { x: 300, y: 240 }, "east", "west", []);
+  check("bezier :: free diagonal via side midpoints is straight", isStraight(r) && finitePath(r), r.path);
+}
+// Blocked everywhere: back to the curve.
+{
+  const a = { x: 0, y: 0, width: 100, height: 50 };
+  const b = { x: 300, y: 200, width: 100, height: 50 };
+  const wall = { x: -1000, y: 60, width: 3000, height: 100 };
+  const r = bz(a, b, { x: 100, y: 25 }, { x: 300, y: 225 }, "east", "west", [solidZone(wall, "w")]);
+  check("bezier :: blocked falls back to the curve", r.path.includes(" C ") && finitePath(r), r.path);
+  // Only the midline is in the way: another point on the facing sides is free.
+  const b2 = { x: 300, y: 60, width: 100, height: 50 };
+  const free = bz(a, b2, { x: 100, y: 25 }, { x: 300, y: 85 }, "east", "west", [solidZone({ x: 190, y: 30, width: 20, height: 20 }, "side")]);
+  check("bezier :: a small obstacle is dodged by choosing another line", isStraight(free), free.path);
+  const noScene = bezier.route({ from: { x: 100, y: 25 }, to: { x: 300, y: 225 }, fromSide: "east", toSide: "west", fromRect: a, toRect: b });
+  check("bezier :: without a scene, the curve as before", noScene.path.includes(" C "), noScene.path);
+}
+
 const again = orthogonal.route({ ...upward, fromSlide: upSlide(lower), toSlide: upSlide(top) });
 check("sliding :: deterministic", JSON.stringify(again.points) === JSON.stringify(slid.points));
 
