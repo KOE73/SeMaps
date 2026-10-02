@@ -6,6 +6,8 @@ Layout and purpose: [README.md](README.md).
 
 - **Git: do not commit, amend, push, merge, tag or reset unless the user asked for it in the
   message you are answering.** Stage explicit paths, never `git add -A` / `git add .`.
+- **Commit to the current branch, `main` included. Do not create branches** unless the user asks
+  or there is a real need.
 - **Look for forgotten branches first.** At the start of a session run `git fetch --all --prune`
   and `git branch -a -vv`; if any local or remote branch holds commits that are neither in the
   current branch nor in `main`, tell the user before starting work — name the branch, its commit
