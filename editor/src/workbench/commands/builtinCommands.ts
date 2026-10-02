@@ -263,6 +263,32 @@ export function createBuiltinCommands(): CommandDefinition[] {
       execute: (ctx, args) => ctx.editor.applyStrokeScaling(String(args || "zoom")),
     },
 
+    {
+      id: "view.markerClamp.toggle",
+      get title() { return i18n.d.commands.markerClampToggle.title; },
+      get description() { return i18n.d.commands.markerClampToggle.desc; },
+      icon: icons.arrowNarrowRight,
+      category: "View",
+      isChecked: (ctx) => ctx.editor.getMarkerClamp().on,
+      execute: (ctx) => ctx.editor.applyMarkerClamp({ on: !ctx.editor.getMarkerClamp().on }),
+    },
+    {
+      id: "view.markerClamp.min",
+      get title() { return i18n.d.commands.markerClampMin.title; },
+      get description() { return i18n.d.commands.markerClampMin.desc; },
+      icon: icons.arrowNarrowRight,
+      category: "View",
+      execute: (ctx, args) => ctx.editor.applyMarkerClamp({ min: Number(args) }),
+    },
+    {
+      id: "view.markerClamp.max",
+      get title() { return i18n.d.commands.markerClampMax.title; },
+      get description() { return i18n.d.commands.markerClampMax.desc; },
+      icon: icons.arrowNarrowRight,
+      category: "View",
+      execute: (ctx, args) => ctx.editor.applyMarkerClamp({ max: Number(args) }),
+    },
+
     // ----------------------------------------------------------------- View
     {
       id: "view.grid.toggle",

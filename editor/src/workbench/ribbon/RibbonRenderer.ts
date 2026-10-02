@@ -7,6 +7,8 @@ import type {
   RibbonButtonSpec,
   RibbonToggleSpec,
   RibbonSelectSpec,
+  RibbonChoiceSpec,
+  RibbonNumberSpec,
   RibbonThemeGallerySpec,
 } from "./types.js";
 import { el } from "../../util/dom.js";
@@ -149,11 +151,61 @@ export class RibbonRenderer {
       return this.renderSelect(item, ctx);
     }
 
+    if (item.type === "choice") {
+      return this.renderChoice(item, ctx);
+    }
+
+    if (item.type === "number") {
+      return this.renderNumber(item, ctx);
+    }
+
     if (item.type === "theme-gallery") {
       return this.renderThemeGallery(item, ctx);
     }
 
     return null;
+  }
+
+  private renderChoice(spec: RibbonChoiceSpec, ctx: CommandContext): HTMLElement {
+    const current = spec.getValue(ctx);
+    const buttons = spec.options.map((opt) => {
+      const checked = opt.value === current;
+      const iconSpan = el("span", { class: "ribbon-btn-icon" });
+      iconSpan.innerHTML = opt.icon;
+      return el(
+        "button",
+        {
+          class: `ribbon-btn ribbon-btn-small ribbon-toggle ${checked ? "is-checked" : ""}`,
+          dataset: { tooltipTitle: opt.label, tooltipDesc: spec.label },
+          attrs: { "aria-label": `${spec.label}: ${opt.label}`, "aria-pressed": String(checked) },
+          on: { click: () => void this.registry.execute(spec.command, opt.value) },
+        },
+        [iconSpan],
+      );
+    });
+    return el("div", { class: "ribbon-choice", attrs: { role: "group", "aria-label": spec.label } }, buttons);
+  }
+
+  private renderNumber(spec: RibbonNumberSpec, ctx: CommandContext): HTMLElement {
+    const state = this.registry.getState(spec.command, ctx);
+    const input = el("input", {
+      class: "ribbon-number",
+      dataset: { tooltipCommand: spec.command, commandId: spec.command },
+      attrs: {
+        type: "number",
+        "aria-label": state.title,
+        value: String(spec.getValue(ctx)),
+        ...(spec.min !== undefined ? { min: String(spec.min) } : {}),
+        ...(spec.max !== undefined ? { max: String(spec.max) } : {}),
+      },
+      on: {
+        change: (e) => {
+          const v = Number((e.target as HTMLInputElement).value);
+          if (Number.isFinite(v)) void this.registry.execute(spec.command, v);
+        },
+      },
+    });
+    return input;
   }
 
   private renderThemeGallery(spec: RibbonThemeGallerySpec, ctx: CommandContext): HTMLElement {

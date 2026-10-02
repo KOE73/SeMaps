@@ -51,6 +51,24 @@ export interface RibbonSelectSpec {
   readonly dimmed?: (context: CommandContext) => boolean;
 }
 
+/** A segmented row of icon-only buttons, one per option; the option label is the tooltip. */
+export interface RibbonChoiceSpec {
+  readonly type: "choice";
+  readonly command: string;
+  readonly label: string;
+  readonly options: readonly (RibbonSelectOption & { readonly icon: string })[];
+  readonly getValue: (context: CommandContext) => string;
+}
+
+/** A compact number field; the command's title and description are its tooltip. */
+export interface RibbonNumberSpec {
+  readonly type: "number";
+  readonly command: string;
+  readonly min?: number;
+  readonly max?: number;
+  readonly getValue: (context: CommandContext) => number;
+}
+
 export interface RibbonSeparatorSpec {
   readonly type: "separator";
 }
@@ -71,6 +89,8 @@ export type RibbonItemSpec =
   | RibbonButtonSpec
   | RibbonToggleSpec
   | RibbonSelectSpec
+  | RibbonChoiceSpec
+  | RibbonNumberSpec
   | RibbonSeparatorSpec
   | RibbonThemeGallerySpec;
 

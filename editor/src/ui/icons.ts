@@ -126,6 +126,8 @@ const names = {
   binaryTree: "binary-tree",
   boxMultiple: "box-multiple",
   brackets: "brackets",
+  arrowNarrowRight: "arrow-narrow-right",
+  arrowsMaximize: "arrows-maximize",
 } as const;
 
 export const icons = Object.fromEntries(Object.entries(names).map(([key, name]) => [key, tablerSvg(name)])) as { [K in keyof typeof names]: string };

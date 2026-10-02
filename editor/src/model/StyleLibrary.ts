@@ -159,8 +159,8 @@ export const FALLBACK_EDGE: ResolvedEdgeStyle = {
   id: "—",
   name: "Без стиля",
   line: { color: "#cbd5e1", width: 1.5, dash: "none", opacity: 1 },
-  source: { shape: "none", size: 6, color: null },
-  target: { shape: "arrow", size: 6, color: null },
+  source: { shape: "none", size: 10, color: null },
+  target: { shape: "arrow", size: 10, color: null },
   label: {
     family: SANS, size: 10, weight: 500, italic: false,
     color: "#475569", align: "middle", opacity: 1, show: true,

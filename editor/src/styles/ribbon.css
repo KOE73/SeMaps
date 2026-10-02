@@ -431,6 +431,23 @@
   font-size: var(--rb-select-font);
 }
 
+.ribbon-choice {
+  display: inline-flex;
+  gap: 1px;
+}
+
+.ribbon-number {
+  width: 3.2em;
+  height: var(--rb-ctl-h);
+  box-sizing: border-box;
+  padding: 0 2px 0 4px;
+  background: var(--input-bg, #1a1a1a);
+  color: var(--text, #e6e6e6);
+  border: 1px solid var(--border, #3a3a3c);
+  border-radius: 4px;
+  font-size: var(--rb-select-font);
+}
+
 .ribbon-separator {
   width: 1px;
   height: var(--rb-sep-h);

@@ -220,6 +220,20 @@
   stroke-width: calc(var(--sw) * var(--semaps-stroke-k, 1) * 1px);
 }
 
+/* ------------------------------------------------------- relation heads */
+
+/* The head's on-screen size is clamp(size × zoom, min, max) px. The body is the
+   styled size scaled by that ratio around the tip (12,6 in the marker box), then
+   pulled back so the tip stays on the box edge: the line is cut for the smallest
+   head (--kmin, see markerMinScale), larger ones overlap it. --ms is the styled
+   size, --mt the tail-to-tip length in box units; the viewport sets the rest. */
+.semaps-marker-body {
+  --k: calc(clamp(var(--semaps-marker-min), var(--ms) * var(--semaps-zoom), var(--semaps-marker-max)) / (var(--ms) * var(--semaps-zoom)));
+  --kmin: min(1, calc(var(--semaps-marker-max) / (var(--ms) * 3)));
+  transform: translate(calc(var(--mt) * (var(--kmin) - 1) * 1px), 0)
+    translate(12px, 6px) scale(var(--k)) translate(-12px, -6px);
+}
+
 /* ------------------------------------------------------------------ edges */
 
 .semaps-edge {

@@ -38,6 +38,7 @@ import { nudgeRoutes } from "./routing/nudge.js";
 import type { ResolvedEdgeStyle } from "../model/StyleLibrary.js";
 import type { RoutingMode } from "../model/style-types.js";
 import { getMarkerOffset } from "./render/PaintRegistry.js";
+import type { MarkerClamp } from "./render/markerClamp.js";
 import { EDGE_ATTR } from "../interaction/roles.js";
 import { InteractionController } from "../interaction/InteractionController.js";
 import { SourceCodeService } from "../editor/code/SourceCodeService.js";
@@ -607,6 +608,16 @@ export class DiagramCanvas {
       this.ghostNodeId = null;
       this.render();
     }
+  }
+
+  get markerClamp(): MarkerClamp {
+    return this.viewport.markerClamp;
+  }
+
+  /** Head size limits in screen px. Zooming needs no rebuild, but the line ends move, so this renders. */
+  set markerClamp(clamp: MarkerClamp) {
+    this.viewport.markerClamp = clamp;
+    this.render();
   }
 
   get isOverviewShadowsEnabled(): boolean {
@@ -1754,8 +1765,8 @@ export class DiagramCanvas {
         fromSide: fromSlot.side, toSide: toSlot.side,
         fromRect: r.from.rect, toRect: r.to.rect,
         fromInset, toInset,
-        fromMarkerOffset: getMarkerOffset(edgeStyle.source.shape, edgeStyle.source.size ?? DIAGRAM_CONFIG.routing.defaultMarkerSize),
-        toMarkerOffset: getMarkerOffset(edgeStyle.target.shape, edgeStyle.target.size ?? DIAGRAM_CONFIG.routing.defaultMarkerSize),
+        fromMarkerOffset: getMarkerOffset(edgeStyle.source.shape, edgeStyle.source.size ?? DIAGRAM_CONFIG.routing.defaultMarkerSize, this.viewport.markerClamp),
+        toMarkerOffset: getMarkerOffset(edgeStyle.target.shape, edgeStyle.target.size ?? DIAGRAM_CONFIG.routing.defaultMarkerSize, this.viewport.markerClamp),
       };
       const excluded = this.exclusionsFor(r.from.owner, r.to.owner);
       const own = zonesFor(scene, excluded.ends, excluded.holders);

@@ -1,6 +1,8 @@
 import type { CommandRegistry } from "../commands/CommandRegistry.js";
 import { el } from "../../util/dom.js";
 
+const TIP_SELECTOR = "[data-tooltip-command],[data-tooltip-title]";
+
 export class TooltipManager {
   private readonly tooltipEl: HTMLElement;
   private readonly titleEl: HTMLElement;
@@ -48,14 +50,14 @@ export class TooltipManager {
 
   private bindGlobal(): void {
     document.addEventListener("pointerover", (e) => {
-      const target = (e.target as Element)?.closest<HTMLElement>("[data-tooltip-command]");
+      const target = (e.target as Element)?.closest<HTMLElement>(TIP_SELECTOR);
       if (target && target !== this.currentTarget) {
         this.showFor(target);
       }
     });
 
     document.addEventListener("pointerout", (e) => {
-      const target = (e.target as Element)?.closest<HTMLElement>("[data-tooltip-command]");
+      const target = (e.target as Element)?.closest<HTMLElement>(TIP_SELECTOR);
       if (target && target === this.currentTarget) {
         this.hide();
       }
@@ -67,10 +69,14 @@ export class TooltipManager {
   }
 
   private showFor(target: HTMLElement): void {
+    // A command's own title/description, or a literal one (an option of a choice).
     const cmdId = target.dataset.tooltipCommand;
-    if (!cmdId) return;
+    const literal = target.dataset.tooltipTitle;
+    if (!cmdId && !literal) return;
 
-    const state = this.registry.getState(cmdId);
+    const state = cmdId
+      ? this.registry.getState(cmdId)
+      : { title: literal ?? "", description: target.dataset.tooltipDesc ?? "", shortcut: "" };
     if (!state.title && !state.description) return;
 
     this.currentTarget = target;

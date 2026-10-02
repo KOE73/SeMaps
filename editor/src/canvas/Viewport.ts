@@ -1,5 +1,6 @@
 import type { Point, Rect } from "../geometry/types.js";
 import { Emitter } from "../util/emitter.js";
+import { DEFAULT_MARKER_CLAMP, type MarkerClamp } from "./render/markerClamp.js";
 
 export const ZOOM_MIN = 0.2;
 export const ZOOM_MAX = 3.0;
@@ -33,6 +34,7 @@ export class Viewport {
 
   private state: ViewportState = INITIAL;
   private scaling: StrokeScaling = "zoom";
+  private clamp: MarkerClamp = DEFAULT_MARKER_CLAMP;
 
   constructor(private readonly group: SVGGElement) {
     this.apply();
@@ -56,6 +58,15 @@ export class Viewport {
 
   set strokeScaling(mode: StrokeScaling) {
     this.scaling = mode;
+    this.apply();
+  }
+
+  get markerClamp(): MarkerClamp {
+    return this.clamp;
+  }
+
+  set markerClamp(clamp: MarkerClamp) {
+    this.clamp = clamp;
     this.apply();
   }
 
@@ -161,6 +172,14 @@ export class Viewport {
     // undoes all or part of the zoom without touching the rendered diagram.
     const k = this.scaling === "fixed" ? 1 / zoom : this.scaling === "soft" ? 1 / Math.sqrt(zoom) : 1;
     this.group.style.setProperty("--semaps-stroke-k", String(k));
+    // Relation heads read these (canvas.css) from the svg root, where their defs live.
+    // "Off" is a range no head can leave, so the same rule yields a factor of 1.
+    const root = this.group.ownerSVGElement;
+    if (root !== null) {
+      root.style.setProperty("--semaps-zoom", String(zoom));
+      root.style.setProperty("--semaps-marker-min", this.clamp.on ? String(this.clamp.min) : "0");
+      root.style.setProperty("--semaps-marker-max", this.clamp.on ? String(this.clamp.max) : "100000");
+    }
     this.changed.emit("change", this.state);
   }
 }

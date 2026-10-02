@@ -32,7 +32,7 @@
       "appliesTo": "edge",
       "description": "Запасной стиль связи, тип которой стиля не имеет. В выборе стиля его нет.",
       "line": { "color": "#cbd5e1", "width": 1.5 },
-      "target": { "shape": "arrow", "size": 6 }
+      "target": { "shape": "arrow", "size": 10 }
     },
     {
       "id": "class",
@@ -293,8 +293,8 @@
       "forKinds": ["implements"],
       "description": "Класс реализует контракт. Самая частая связь — держим тихой.",
       "family": "structure",
-      "line": { "color": "#cbd5e1", "width": 1.2, "dash": "6,4" },
-      "target": { "shape": "triangle-hollow", "size": 9 }
+      "line": { "color": "#cbd5e1", "width": 1.5, "dash": "6,4" },
+      "target": { "shape": "triangle-hollow", "size": 10 }
     },
     {
       "id": "realizes",
@@ -309,7 +309,7 @@
       "appliesTo": "edge",
       "forKinds": ["extends"],
       "family": "structure",
-      "line": { "color": "#94a3b8", "width": 1.4 },
+      "line": { "color": "#94a3b8", "width": 1.5 },
       "target": { "shape": "triangle-hollow", "size": 10 }
     },
     {
@@ -319,8 +319,8 @@
       "forKinds": ["composes"],
       "description": "Ромб на стороне владельца, как в UML.",
       "family": "structure",
-      "line": { "color": "#0f766e", "width": 1.8 },
-      "source": { "shape": "diamond", "size": 12 },
+      "line": { "color": "#0f766e", "width": 2 },
+      "source": { "shape": "diamond", "size": 10 },
       "target": { "shape": "none" }
     },
     {
@@ -329,8 +329,8 @@
       "appliesTo": "edge",
       "forKinds": ["call"],
       "family": "flow",
-      "line": { "color": "#64748b", "width": 1.6, "dash": "4,4" },
-      "target": { "shape": "arrow", "size": 7 }
+      "line": { "color": "#64748b", "width": 1.5, "dash": "4,4" },
+      "target": { "shape": "arrow", "size": 10 }
     },
     {
       "id": "data-flow",
@@ -338,8 +338,8 @@
       "appliesTo": "edge",
       "forKinds": ["data-flow"],
       "family": "flow",
-      "line": { "color": "#3b82f6", "width": 2.2 },
-      "target": { "shape": "arrow", "size": 8 },
+      "line": { "color": "#3b82f6", "width": 2.5 },
+      "target": { "shape": "arrow", "size": 10 },
       "label": { "color": "#1d4ed8", "weight": 600 }
     },
     {
@@ -349,7 +349,7 @@
       "forKinds": ["event"],
       "family": "flow",
       "line": { "color": "#ea580c", "width": 2, "dash": "2,3" },
-      "target": { "shape": "arrow-open", "size": 9 },
+      "target": { "shape": "arrow-open", "size": 10 },
       "label": { "color": "#c2410c", "weight": 600 }
     },
     {
@@ -358,8 +358,8 @@
       "appliesTo": "edge",
       "forKinds": ["security"],
       "family": "flow",
-      "line": { "color": "#f43f5e", "width": 1.8, "dash": "3,3" },
-      "target": { "shape": "arrow", "size": 7 },
+      "line": { "color": "#f43f5e", "width": 2, "dash": "3,3" },
+      "target": { "shape": "arrow", "size": 10 },
       "label": { "color": "#be123c", "weight": 600 }
     },
     {
@@ -369,9 +369,9 @@
       "forKinds": ["storage"],
       "description": "Головки с обеих сторон: чтение и запись — одно ребро.",
       "family": "flow",
-      "line": { "color": "#a855f7", "width": 2.2 },
-      "source": { "shape": "circle-hollow", "size": 7 },
-      "target": { "shape": "arrow", "size": 8 },
+      "line": { "color": "#a855f7", "width": 2.5 },
+      "source": { "shape": "circle-hollow", "size": 10 },
+      "target": { "shape": "arrow", "size": 10 },
       "label": { "color": "#7e22ce", "weight": 600 }
     },
     {
@@ -381,8 +381,8 @@
       "forKinds": ["runs"],
       "description": "Часть запускает другую отдельным процессом.",
       "family": "flow",
-      "line": { "color": "#16a34a", "width": 1.8 },
-      "target": { "shape": "arrow", "size": 8 },
+      "line": { "color": "#16a34a", "width": 2 },
+      "target": { "shape": "arrow", "size": 10 },
       "label": { "color": "#15803d", "weight": 600 }
     },
     {
@@ -391,8 +391,8 @@
       "appliesTo": "edge",
       "forKinds": ["depends"],
       "family": "structure",
-      "line": { "color": "#94a3b8", "width": 1.6 },
-      "target": { "shape": "arrow", "size": 8 }
+      "line": { "color": "#94a3b8", "width": 1.5 },
+      "target": { "shape": "arrow", "size": 10 }
     },
     {
       "id": "holds.one",
@@ -401,7 +401,7 @@
       "forKinds": ["holds.one"],
       "family": "structure",
       "line": { "color": "#7c3aed", "width": 1.5 },
-      "target": { "shape": "arrow", "size": 7 }
+      "target": { "shape": "arrow", "size": 10 }
     },
     {
       "id": "holds.optional",
@@ -410,7 +410,7 @@
       "forKinds": ["holds.optional"],
       "family": "structure",
       "line": { "color": "#7c3aed", "width": 1.5, "dash": "2,2" },
-      "target": { "shape": "arrow", "size": 7 }
+      "target": { "shape": "arrow", "size": 10 }
     },
     {
       "id": "holds.many",
@@ -418,8 +418,8 @@
       "appliesTo": "edge",
       "forKinds": ["holds.many"],
       "family": "structure",
-      "line": { "color": "#7c3aed", "width": 1.8 },
-      "target": { "shape": "arrow", "size": 8 }
+      "line": { "color": "#7c3aed", "width": 2 },
+      "target": { "shape": "arrow", "size": 10 }
     },
     {
       "id": "holds.many.ro",
@@ -428,7 +428,7 @@
       "forKinds": ["holds.many.ro"],
       "family": "structure",
       "line": { "color": "#7c3aed", "width": 1.5, "dash": "4,3" },
-      "target": { "shape": "arrow", "size": 8 }
+      "target": { "shape": "arrow", "size": 10 }
     },
     {
       "id": "holds.keyed",
@@ -437,7 +437,7 @@
       "forKinds": ["holds.keyed"],
       "family": "structure",
       "line": { "color": "#7c3aed", "width": 2 },
-      "target": { "shape": "arrow", "size": 9 }
+      "target": { "shape": "arrow", "size": 10 }
     },
     {
       "id": "holds.keyed.ro",
@@ -445,8 +445,8 @@
       "appliesTo": "edge",
       "forKinds": ["holds.keyed.ro"],
       "family": "structure",
-      "line": { "color": "#7c3aed", "width": 1.6, "dash": "3,4" },
-      "target": { "shape": "arrow", "size": 9 }
+      "line": { "color": "#7c3aed", "width": 1.5, "dash": "3,4" },
+      "target": { "shape": "arrow", "size": 10 }
     },
     {
       "id": "holds.one.internal",
@@ -454,8 +454,8 @@
       "appliesTo": "edge",
       "forKinds": ["holds.one.internal"],
       "family": "structure",
-      "line": { "color": "#d8b4fe", "width": 1.2, "opacity": 0.6 },
-      "target": { "shape": "arrow", "size": 6 }
+      "line": { "color": "#d8b4fe", "width": 1.5, "opacity": 0.6 },
+      "target": { "shape": "arrow", "size": 10 }
     },
     {
       "id": "holds.optional.internal",
@@ -463,8 +463,8 @@
       "appliesTo": "edge",
       "forKinds": ["holds.optional.internal"],
       "family": "structure",
-      "line": { "color": "#d8b4fe", "width": 1.2, "dash": "2,2", "opacity": 0.6 },
-      "target": { "shape": "arrow", "size": 6 }
+      "line": { "color": "#d8b4fe", "width": 1.5, "dash": "2,2", "opacity": 0.6 },
+      "target": { "shape": "arrow", "size": 10 }
     },
     {
       "id": "holds.many.internal",
@@ -472,8 +472,8 @@
       "appliesTo": "edge",
       "forKinds": ["holds.many.internal"],
       "family": "structure",
-      "line": { "color": "#d8b4fe", "width": 1.4, "opacity": 0.6 },
-      "target": { "shape": "arrow", "size": 7 }
+      "line": { "color": "#d8b4fe", "width": 1.5, "opacity": 0.6 },
+      "target": { "shape": "arrow", "size": 10 }
     },
     {
       "id": "holds.many.ro.internal",
@@ -481,8 +481,8 @@
       "appliesTo": "edge",
       "forKinds": ["holds.many.ro.internal"],
       "family": "structure",
-      "line": { "color": "#d8b4fe", "width": 1.2, "dash": "4,3", "opacity": 0.6 },
-      "target": { "shape": "arrow", "size": 7 }
+      "line": { "color": "#d8b4fe", "width": 1.5, "dash": "4,3", "opacity": 0.6 },
+      "target": { "shape": "arrow", "size": 10 }
     },
     {
       "id": "holds.keyed.internal",
@@ -490,8 +490,8 @@
       "appliesTo": "edge",
       "forKinds": ["holds.keyed.internal"],
       "family": "structure",
-      "line": { "color": "#d8b4fe", "width": 1.6, "opacity": 0.6 },
-      "target": { "shape": "arrow", "size": 8 }
+      "line": { "color": "#d8b4fe", "width": 1.5, "opacity": 0.6 },
+      "target": { "shape": "arrow", "size": 10 }
     },
     {
       "id": "holds.keyed.ro.internal",
@@ -499,8 +499,8 @@
       "appliesTo": "edge",
       "forKinds": ["holds.keyed.ro.internal"],
       "family": "structure",
-      "line": { "color": "#d8b4fe", "width": 1.3, "dash": "3,4", "opacity": 0.6 },
-      "target": { "shape": "arrow", "size": 8 }
+      "line": { "color": "#d8b4fe", "width": 1.5, "dash": "3,4", "opacity": 0.6 },
+      "target": { "shape": "arrow", "size": 10 }
     },
     {
       "id": "uses",
@@ -509,7 +509,7 @@
       "forKinds": ["uses"],
       "family": "structure",
       "line": { "color": "#06b6d4", "width": 1.5, "dash": "3,3" },
-      "target": { "shape": "arrow", "size": 7 }
+      "target": { "shape": "arrow", "size": 10 }
     },
     {
       "id": "injects",
@@ -517,8 +517,8 @@
       "appliesTo": "edge",
       "forKinds": ["injects"],
       "family": "structure",
-      "line": { "color": "#f97316", "width": 1.6, "dash": "4,2" },
-      "target": { "shape": "arrow", "size": 8 }
+      "line": { "color": "#f97316", "width": 1.5, "dash": "4,2" },
+      "target": { "shape": "arrow", "size": 10 }
     }
   ]
 }

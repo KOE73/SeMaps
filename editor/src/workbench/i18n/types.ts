@@ -106,6 +106,9 @@ export interface UiDictionary {
     readonly alignEdgeBottom: { readonly title: string; readonly desc: string };
     readonly densitySet: { readonly title: string; readonly desc: string };
     readonly strokeScalingSet: { readonly title: string; readonly desc: string };
+    readonly markerClampToggle: { readonly title: string; readonly desc: string };
+    readonly markerClampMin: { readonly title: string; readonly desc: string };
+    readonly markerClampMax: { readonly title: string; readonly desc: string };
     readonly toggleStructureEdges: { readonly title: string; readonly desc: string };
     readonly toggleGrid: { readonly title: string; readonly desc: string };
     readonly toggleSnap: { readonly title: string; readonly desc: string };

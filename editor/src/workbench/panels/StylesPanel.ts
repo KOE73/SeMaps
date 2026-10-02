@@ -1,4 +1,5 @@
 import type { IContentRenderer, GroupPanelPartInitParameters } from "dockview-core";
+import type { Selection } from "../../canvas/DiagramCanvas.js";
 import type { DiagramEditor } from "../../editor/DiagramEditor.js";
 import { StyleList, type StylePanelHost } from "../../editor/StyleList.js";
 import { StyleEditor } from "../../editor/StyleEditor.js";
@@ -20,6 +21,7 @@ export class StylesPanel implements IContentRenderer {
   private readonly resizer: HTMLElement;
   private readonly styleList: StyleList;
   private readonly styleEditor: StyleEditor;
+  private panelApi: GroupPanelPartInitParameters["api"] | undefined;
 
   constructor(editor: DiagramEditor & StylePanelHost) {
     this.styleListMount = el("div", {
@@ -77,6 +79,10 @@ export class StylesPanel implements IContentRenderer {
 
     this.bindResizer();
 
+    // Selecting something on the canvas shows its style here — only while this panel is on screen;
+    // a closed or hidden panel is left alone (selecting must never open it).
+    editor.canvas.events.on("select", (selection) => this.followSelection(selection, editor));
+
     // The panel can be built (and shown) before the host's styles and dictionary have arrived.
     editor.libraryEvents.on("loaded", () => this.render());
 
@@ -85,8 +91,32 @@ export class StylesPanel implements IContentRenderer {
     });
   }
 
-  init(_params: GroupPanelPartInitParameters): void {
+  init(params: GroupPanelPartInitParameters): void {
+    this.panelApi = params.api;
     this.render();
+  }
+
+  /**
+   * Open the style that dresses the primary selected element: sub-tab, group,
+   * the style's row (scrolled into view) and the style editor. Multi-selection
+   * follows the primary (first) element.
+   */
+  private followSelection(selection: Selection | null, editor: DiagramEditor): void {
+    if (selection === null || this.panelApi?.isVisible !== true) return;
+    const doc = editor.canvas.model;
+    if (doc === null) return;
+    const lib = editor.styles;
+    let styleId: string | null = null;
+    if (selection.kind === "edge") {
+      const edge = doc.edge(selection.id);
+      const relation = edge === undefined ? doc.relations.find((r) => r.id === selection.id) : undefined;
+      if (edge !== undefined) styleId = lib.edgeStyleIdFor(edge);
+      else if (relation !== undefined) styleId = lib.edgeStyleIdFor({ type: relation.type });
+    } else {
+      const element = doc.element(selection.id);
+      if (element !== undefined) styleId = lib.blockStyleIdFor(element);
+    }
+    if (styleId !== null) this.openStyle(styleId);
   }
 
   onShow(): void {

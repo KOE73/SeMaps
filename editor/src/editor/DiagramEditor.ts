@@ -1,6 +1,7 @@
 import type { RoutingMode } from "../model/style-types.js";
 import { DiagramCanvas, type Selection } from "../canvas/DiagramCanvas.js";
 import type { StrokeScaling } from "../canvas/Viewport.js";
+import { normalizeMarkerClamp, type MarkerClamp } from "../canvas/render/markerClamp.js";
 import { canvas as canvasNumbers } from "../constants/canvas.js";
 import { layoutFreeKey } from "../util/keys.js";
 import { NEW_CONTAINER_SIZE, freeSpot, placeEntities } from "./placeEntity.js";
@@ -230,6 +231,7 @@ export class DiagramEditor implements InspectorHost, StylePanelHost, DiagramEdit
     this.initDensity();
     this.initPorts();
     this.initStrokeScaling();
+    this.initMarkerClamp();
     this.initLang();
     this.setTab("properties");
 
@@ -600,6 +602,27 @@ export class DiagramEditor implements InspectorHost, StylePanelHost, DiagramEdit
     this.canvas.viewport.strokeScaling = next;
     const select = this.root.querySelector<HTMLSelectElement>("[data-select='stroke-scaling']");
     if (select && select.value !== next) select.value = next;
+  }
+
+  /** Head size limits in screen px, a per-viewer preference like the stroke scaling. */
+  private initMarkerClamp(): void {
+    let saved: Partial<MarkerClamp> | null = null;
+    try {
+      saved = JSON.parse(localStorage.getItem("semaps.markerClamp") ?? "null") as Partial<MarkerClamp> | null;
+    } catch {
+      saved = null;
+    }
+    this.canvas.markerClamp = normalizeMarkerClamp(saved);
+  }
+
+  getMarkerClamp(): MarkerClamp {
+    return this.canvas.markerClamp;
+  }
+
+  applyMarkerClamp(patch: Partial<MarkerClamp>): void {
+    const next = normalizeMarkerClamp({ ...this.canvas.markerClamp, ...patch });
+    localStorage.setItem("semaps.markerClamp", JSON.stringify(next));
+    this.canvas.markerClamp = next;
   }
 
   /** UI density, a per-viewer preference like the theme; styles key off data-density. */

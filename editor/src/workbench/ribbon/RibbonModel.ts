@@ -1,6 +1,7 @@
 import type { RibbonSpec, RibbonTabSpec } from "./types.js";
 import type { CommandContext } from "../commands/types.js";
 import { i18n } from "../i18n/I18nService.js";
+import { icons } from "../../ui/icons.js";
 
 export function createDefaultRibbonSpec(): RibbonSpec {
   return {
@@ -123,19 +124,24 @@ export function createDefaultRibbonSpec(): RibbonSpec {
             get title() { return i18n.d.ribbon.groups.canvas; },
             items: [
               {
-                type: "select",
+                type: "choice",
                 command: "view.strokeScaling.set",
                 get label() { return i18n.d.ribbon.labels.strokeScaling; },
                 get options() {
                   return [
-                    { value: "zoom", label: i18n.d.ribbon.labels.strokeScalingZoom },
-                    { value: "soft", label: i18n.d.ribbon.labels.strokeScalingSoft },
-                    { value: "fixed", label: i18n.d.ribbon.labels.strokeScalingFixed },
+                    { value: "zoom", label: i18n.d.ribbon.labels.strokeScalingZoom, icon: icons.arrowsMaximize },
+                    { value: "soft", label: i18n.d.ribbon.labels.strokeScalingSoft, icon: icons.waveSine },
+                    { value: "fixed", label: i18n.d.ribbon.labels.strokeScalingFixed, icon: icons.pin },
                   ];
                 },
                 getValue: () => localStorage.getItem("semaps.strokeScaling") || "zoom",
               },
-              { type: "toggle", command: "view.shadows.global.toggle", size: "medium" },
+              { type: "separator" },
+              { type: "toggle", command: "view.markerClamp.toggle", size: "small" },
+              { type: "number", command: "view.markerClamp.min", min: 1, max: 100, getValue: (ctx) => ctx.editor.getMarkerClamp().min },
+              { type: "number", command: "view.markerClamp.max", min: 1, max: 100, getValue: (ctx) => ctx.editor.getMarkerClamp().max },
+              { type: "separator" },
+              { type: "toggle", command: "view.shadows.global.toggle", size: "small" },
               { type: "toggle", command: "view.grid.toggle", size: "small" },
               { type: "toggle", command: "view.snap.toggle", size: "small" },
               { type: "toggle", command: "view.routing.debug", size: "small" },

@@ -2,6 +2,8 @@ import type { Rect } from "../../geometry/types.js";
 import type { DiagramCanvas } from "../../canvas/DiagramCanvas.js";
 import type { DiagramEditor } from "../DiagramEditor.js";
 import type { RenderRequest } from "../io/HostModelStore.js";
+import { MARKER_BODY_CLASS } from "../../canvas/render/PaintRegistry.js";
+import { markerMinScale } from "../../canvas/render/markerClamp.js";
 import { findProblems, type Problem } from "./problems.js";
 
 export type RenderAnswer =
@@ -93,6 +95,18 @@ async function paint(canvas: DiagramCanvas, region: Rect, width: number, height:
   if (group) {
     group.setAttribute("transform", "translate(0, 0) scale(1)");
     group.style.setProperty("--semaps-stroke-k", "1");
+  }
+  // Heads at their styled size, not the on-screen clamp. The line was cut for the
+  // smallest clamped head, so the body keeps only the shift that puts its tip back
+  // on the box edge; the stylesheet rule is not part of the exported picture.
+  const clampMax = Number.parseFloat(live.style.getPropertyValue("--semaps-marker-max"));
+  for (const body of copy.querySelectorAll<SVGGElement>(`.${MARKER_BODY_CLASS}`)) {
+    const size = Number.parseFloat(body.style.getPropertyValue("--ms"));
+    const tail = Number.parseFloat(body.style.getPropertyValue("--mt"));
+    const kmin = Number.isFinite(clampMax) ? markerMinScale(size, { on: true, min: 0, max: clampMax }) : 1;
+    body.removeAttribute("style");
+    body.removeAttribute("class");
+    if (kmin < 1) body.setAttribute("transform", `translate(${-(1 - kmin) * tail} 0)`);
   }
   copy.setAttribute("xmlns", NS);
   copy.setAttribute("viewBox", `${region.x} ${region.y} ${region.width} ${region.height}`);

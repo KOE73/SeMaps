@@ -2,6 +2,9 @@ import type { Endpoint, Paint } from "../../model/StyleLibrary.js";
 import { paintKey } from "../../model/StyleLibrary.js";
 import type { EndShape } from "../../model/style-types.js";
 import { svg } from "../svg.js";
+import { markerMinScale, type MarkerClamp } from "./markerClamp.js";
+
+export const MARKER_BODY_CLASS = "semaps-marker-body";
 
 /**
  * Materialises paints and arrow heads into `<defs>`, on demand.
@@ -144,12 +147,16 @@ const SHAPES: Readonly<Record<Exclude<EndShape, "none">, ShapeSpec>> = {
  * so that the marker's tip touches the box perimeter and the line endpoint lands
  * cleanly at `refX` inside the marker's tail.
  */
-export function getMarkerOffset(shape: EndShape, size: number): number {
+export function getMarkerOffset(shape: EndShape, size: number, clamp: MarkerClamp = DEFAULT_OFF): number {
   if (shape === "none") return 0;
   const spec = SHAPES[shape];
   if (!spec) return 0;
-  return ((12 - spec.refX) / 12) * size;
+  // With the screen-size clamp on, the line stops at the tail of the smallest
+  // head that can be drawn (see markerMinScale); bigger heads overlap it.
+  return ((12 - spec.refX) / 12) * size * markerMinScale(size, clamp);
 }
+
+const DEFAULT_OFF: MarkerClamp = { on: false, min: 0, max: 0 };
 
 function markerFor(id: string, shape: Exclude<EndShape, "none">, size: number, color: string): SVGElement {
   const spec = SHAPES[shape];
@@ -164,20 +171,33 @@ function markerFor(id: string, shape: Exclude<EndShape, "none">, size: number, c
       markerWidth: size,
       markerHeight: size,
       markerUnits: "userSpaceOnUse",
+      // The screen-size clamp scales the body around the tip, which can grow past the box.
+      overflow: "visible",
       // Reversed automatically at the start of a path, so one definition serves
       // both ends and a head at `from` points back the way it should.
       orient: "auto-start-reverse",
     },
     [
-      svg("path", {
-        d: spec.path,
-        // A hollow head is filled with the background colour rather than "none"
-        fill: spec.open === true ? "none" : spec.hollow === true ? "var(--bg, #ffffff)" : color,
-        stroke: stroked ? color : null,
-        "stroke-width": stroked ? 1.5 : null,
-        "stroke-linecap": spec.open === true ? "round" : null,
-        "stroke-linejoin": "round",
-      }),
+      // `.semaps-marker-body` (canvas.css) clamps the head's on-screen size from
+      // CSS variables the viewport sets, so zooming never rebuilds anything.
+      svg(
+        "g",
+        {
+          class: MARKER_BODY_CLASS,
+          style: `--ms:${size};--mt:${12 - spec.refX}`,
+        },
+        [
+          svg("path", {
+            d: spec.path,
+            // A hollow head is filled with the background colour rather than "none"
+            fill: spec.open === true ? "none" : spec.hollow === true ? "var(--bg, #ffffff)" : color,
+            stroke: stroked ? color : null,
+            "stroke-width": stroked ? 1.5 : null,
+            "stroke-linecap": spec.open === true ? "round" : null,
+            "stroke-linejoin": "round",
+          }),
+        ],
+      ),
     ],
   );
 }

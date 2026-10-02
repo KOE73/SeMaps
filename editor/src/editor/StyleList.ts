@@ -118,6 +118,7 @@ export class StyleList {
       }
     }
     this.render();
+    if (id !== null) this.mount.querySelector(".style-row.is-active")?.scrollIntoView({ block: "nearest" });
   }
 
   render(): void {

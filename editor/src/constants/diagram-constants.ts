@@ -76,7 +76,7 @@ export const DIAGRAM_CONFIG = {
     bezierMaxHandle: 60,
 
     /** Default marker / arrowhead size */
-    defaultMarkerSize: 12,
+    defaultMarkerSize: 10,
 
     /** How far an end label sits from the port along the line, in px. */
     endLabelAlong: 14,

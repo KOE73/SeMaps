@@ -112,6 +112,8 @@ export interface DiagramEditorFacade {
   applyToggle(name: string, on: boolean): void;
   applyPortAssigner(mode: string): void;
   applyStrokeScaling(mode: string): void;
+  getMarkerClamp(): { readonly on: boolean; readonly min: number; readonly max: number };
+  applyMarkerClamp(patch: { on?: boolean; min?: number; max?: number }): void;
   alignEdges(side: "left" | "right" | "top" | "bottom"): void;
   alignSelection(mode: "left" | "right" | "top" | "bottom" | "width" | "height"): void;
   openDocEditor(targetId?: string | null): void;
