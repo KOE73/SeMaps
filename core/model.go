@@ -49,7 +49,8 @@ type modelView struct {
 }
 
 type Model struct {
-	mu stdsync.Mutex
+	shared *WorkspaceModel
+	mu     stdsync.Mutex
 	// editMu serialises the edits that read a value, change it and write it back
 	// through Apply (which takes mu only for the write): without it two calls at
 	// once both read the same old value and the later write loses the earlier
@@ -130,7 +131,7 @@ func cloneObject(o *object) *object {
 }
 
 func (m *Model) copy() *Model {
-	c := &Model{workspace: m.workspace, project: m.project, dir: m.dir, manifest: cloneObject(m.manifest), canvas: m.canvas, kinds: m.kinds, defaultKinds: m.defaultKinds,
+	c := &Model{shared: m.shared, workspace: m.workspace, project: m.project, dir: m.dir, manifest: cloneObject(m.manifest), canvas: m.canvas, kinds: m.kinds, defaultKinds: m.defaultKinds,
 		registries: map[string]*registry{}, texts: map[string]*object{}, views: map[string]*modelView{}, loaded: map[string]bool{},
 		journal: append([][]Op(nil), m.journal...), dirty: DirtySummary{Registry: append([]Ref(nil), m.dirty.Registry...), Views: map[string][]Ref{}}}
 	c.libraries = map[string]*object{}
@@ -203,10 +204,19 @@ func (m *Model) loadText(lang string) (*object, error) {
 // ADR_20260926). No partial mutation or journal line is produced when one
 // operation or rule fails.
 func (m *Model) Apply(ops []Op, author string) ([]Ref, error) {
+	if m.shared != nil {
+		m.shared.mu.Lock()
+		defer m.shared.mu.Unlock()
+	}
 	m.mu.Lock()
 	defer m.mu.Unlock()
 	if len(ops) == 0 {
 		return []Ref{}, nil
+	}
+	for _, op := range ops {
+		if op.Kind == "style_ref" {
+			return nil, refuse("style_ref is internal; use workspace style rename/delete")
+		}
 	}
 	ops = append([]Op(nil), ops...)
 	if author != "" {
@@ -221,6 +231,16 @@ func (m *Model) Apply(ops []Op, author string) ([]Ref, error) {
 	}
 	if err := c.validate(m, ops); err != nil {
 		return nil, err
+	}
+	if m.shared != nil {
+		if err := m.shared.checkChangedReferences(m, c, ops); err != nil {
+			return nil, err
+		}
+		if err := m.shared.persistProject(m.project, c.journal); err != nil {
+			return nil, err
+		}
+		m.adopt(c)
+		return refs, nil
 	}
 	if err := m.ensureJournalDir(); err != nil {
 		return nil, err
@@ -260,6 +280,19 @@ func (m *Model) apply(ops []Op, author string, record bool) ([]Ref, error) {
 		}
 		if !json.Valid(op.Value) {
 			return nil, refuse("operation value is invalid JSON")
+		}
+		if op.Kind == "style_ref" {
+			changed, err := m.styleReference(op.ID, decodeStyleReference(op).NewID)
+			if err != nil {
+				return nil, err
+			}
+			for _, ref := range changed {
+				ref.Author = op.Author
+				refs = append(refs, ref)
+				m.dirty.Views[ref.View] = upsertRef(m.dirty.Views[ref.View], ref)
+			}
+			batch[i] = op
+			continue
 		}
 		if err := m.applyOne(op); err != nil {
 			return nil, err
@@ -316,6 +349,10 @@ func orderedReplacement(old, next *object) *object {
 }
 
 func (m *Model) applyOne(op Op) error {
+	if op.Kind == "style_ref" {
+		_, err := m.styleReference(op.ID, decodeStyleReference(op).NewID)
+		return err
+	}
 	if op.Kind == "library" {
 		if op.View != "" || op.Lang != "" {
 			return refuse("library metadata is project-wide")
@@ -583,8 +620,24 @@ func (m *Model) Dirty() DirtySummary {
 }
 
 func (m *Model) Save() error {
+	if m.shared != nil {
+		m.shared.mu.Lock()
+		defer m.shared.mu.Unlock()
+	}
 	m.mu.Lock()
 	defer m.mu.Unlock()
+	if m.shared != nil {
+		for _, batch := range m.journal {
+			for _, op := range batch {
+				if op.Kind == "style_ref" {
+					return refuse("save workspace styles first: this project has a pending style rename/replacement")
+				}
+			}
+		}
+		if err := m.shared.checkAllReferences(m, m.shared.savedStyles); err != nil {
+			return refuse("save workspace styles first: %v", err)
+		}
+	}
 	for _, ref := range m.dirty.Registry {
 		if ref.Kind == "project" {
 			if err := saveDoc(filepath.Join(m.dir, "project.json"), m.manifest); err != nil {
@@ -615,6 +668,11 @@ func (m *Model) Save() error {
 	if err := os.Remove(m.journalFile()); err != nil && !errors.Is(err, fs.ErrNotExist) {
 		return err
 	}
+	if m.shared != nil {
+		if err := m.shared.persistProject(m.project, nil); err != nil {
+			return err
+		}
+	}
 	m.journal = nil
 	m.dirty = DirtySummary{Views: map[string][]Ref{}}
 	for _, r := range m.registries {
@@ -626,6 +684,10 @@ func (m *Model) Save() error {
 
 // Discard reloads contract files, then replays only operations outside scope.
 func (m *Model) Discard(scope, view string) error {
+	if m.shared != nil {
+		m.shared.mu.Lock()
+		defer m.shared.mu.Unlock()
+	}
 	m.mu.Lock()
 	defer m.mu.Unlock()
 	if scope != "all" && scope != "registry" && scope != "view" {
@@ -641,7 +703,7 @@ func (m *Model) Discard(scope, view string) error {
 	for _, batch := range m.journal {
 		keep := []Op{}
 		for _, op := range batch {
-			if scope == "all" || (scope == "registry" && op.View == "") || (scope == "view" && op.View == view) {
+			if op.Kind != "style_ref" && (scope == "all" || (scope == "registry" && op.View == "") || (scope == "view" && op.View == view)) {
 				continue
 			}
 			keep = append(keep, op)
@@ -651,6 +713,13 @@ func (m *Model) Discard(scope, view string) error {
 				return err
 			}
 		}
+	}
+	if m.shared != nil {
+		if err := m.shared.persistProject(m.project, fresh.journal); err != nil {
+			return err
+		}
+		m.adopt(fresh)
+		return nil
 	}
 	if err := m.ensureJournalDir(); err != nil {
 		return err
@@ -738,4 +807,9 @@ func checkContractVersion(manifest *object) error {
 }
 
 // Kinds is the merged dictionary of the workspace.
-func (m *Model) Kinds() *KindCatalog { return m.kinds }
+func (m *Model) Kinds() *KindCatalog {
+	if m.shared != nil {
+		return m.shared.Styles().Kinds
+	}
+	return m.kinds
+}

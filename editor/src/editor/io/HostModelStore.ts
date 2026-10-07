@@ -4,6 +4,7 @@ import { HttpProjectStore } from "./ProjectStore.js";
 import { diffModel, type ModelOp } from "./ModelSync.js";
 import { entityDisplayName, type NamedEntity } from "../../model/entityName.js";
 import { KindCatalog } from "../../model/KindCatalog.js";
+import type { StyleState } from "./HostStyleStore.js";
 
 export interface ChangedRef { kind: string; id: string; view?: string; lang?: string; author: string }
 export interface DirtySummary { registry: ChangedRef[]; views: Record<string, ChangedRef[]> }
@@ -16,7 +17,7 @@ export interface RenderRequest {
   scale?: number;
   maxSize?: number;
 }
-export interface ModelEvent { client: string; author: string; changed: ChangedRef[]; dirty: DirtySummary; render?: RenderRequest; projectReloaded?: { oldProject: string; newProject: string; oldView?: string; newView?: string } }
+export interface ModelEvent { client: string; author: string; changed: ChangedRef[]; dirty: DirtySummary; styles?: StyleState; styleRenamed?: { oldId: string; newId: string }; render?: RenderRequest; projectReloaded?: { oldProject: string; newProject: string; oldView?: string; newView?: string } }
 
 interface Snapshot {
   project: ProjectManifest;
@@ -49,6 +50,7 @@ const clone = <T>(v: T): T => JSON.parse(JSON.stringify(v)) as T;
 
 export class HostModelStore extends HttpProjectStore {
   private readonly client = crypto.randomUUID();
+  get clientId(): string { return this.client; }
   private readonly key = document.querySelector<HTMLMetaElement>('meta[name="semaps-key"]')?.content ?? "";
   private readonly snapshots = new Map<string, Snapshot>();
   private readonly views = new Map<string, ViewDocument>();
@@ -92,7 +94,9 @@ export class HostModelStore extends HttpProjectStore {
     }
     const viewId = Object.entries(snapshot.viewFiles ?? {}).find(([, path]) => path === file)?.[0]
       ?? file.split("/").at(-1)!.replace(/\.view\.json$/, "");
-    const view = await (await this.request(`/api/model/${encodeURIComponent(project)}/views/${encodeURIComponent(viewId)}`)).json() as ViewDocument;
+    const styled = await (await this.request(`/api/model/${encodeURIComponent(project)}/views/${encodeURIComponent(viewId)}/styled`)).json() as { view: ViewDocument; styles: StyleState };
+    this.stylesLoaded?.(styled.styles);
+    const view = styled.view;
     this.views.set(file, clone(view));
     const registry = snapshot.registry;
     const wire = await this.loadProjectBundle(file, view, {
@@ -288,6 +292,7 @@ export class HostModelStore extends HttpProjectStore {
 
   /** Who draws a view when the host asks for a picture of it (set by the app once the editor exists). */
   renderer: ((request: RenderRequest) => Promise<unknown>) | null = null;
+  stylesLoaded: ((state: StyleState)=>void) | null = null;
 
   private async answerRender(request: RenderRequest): Promise<void> {
     let body: unknown;
@@ -305,6 +310,12 @@ export class HostModelStore extends HttpProjectStore {
     if (this.eventProject === project) return;
     this.events?.close(); this.eventProject = project;
     this.events = new EventSource(`/api/events?project=${encodeURIComponent(project)}&render=1`);
+    this.events.onopen=()=>{
+      void this.pending.then(async()=>{
+        const [styles,dirty]=await Promise.all([this.request("/api/styles").then(r=>r.json() as Promise<StyleState>),this.dirty(project)]);
+        this.invalidate(project);onEvent({client:"",author:"host",changed:[],dirty,styles});
+      }).catch(()=>{});
+    };
     this.events.onmessage = (message) => {
       const event = JSON.parse(message.data) as ModelEvent;
       // A render request is not a model change: answer it, do not reload anything.

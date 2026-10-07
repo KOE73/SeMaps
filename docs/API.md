@@ -55,7 +55,7 @@ The backend serves application assets and global workspace JSON. Project model r
 | `/app/` | `GET` | `text/html` | Entry point for the editor application |
 | `/app/assets/*` | `GET` | `application/javascript`, `text/css` | Bundled JavaScript, CSS, and media |
 | `/api/workspace` | `GET` | `application/json` | Projects and their views as the working model sees them (§2.2) |
-| `/styles.json` | `GET` | `application/json` | Shared style stylesheet: the workspace copy, else the tool's default (`host/defaults/styles.json`); saving writes the workspace copy, which then overrides the default |
+| `/styles.json` | `GET` | `application/json` | Shared **working** stylesheet, unsaved edits included; initially the workspace copy, else the tool's default (`host/defaults/styles.json`). Save writes the workspace override (§3.4b) |
 | `/canvas.json` | `GET` | `application/json` | Numbers of the canvas: grid, block and container sizes, caption strip, padding, gaps (§2.1a). Always answers: the workspace copy, else the tool's default |
 | `/kinds.json` | `GET` | `application/json` | The **workspace** dictionary supplement, as written (404 when the workspace has none). It does not replace the default: the merged dictionary is `/api/kinds` (§2.1b) |
 | `/api/kinds` | `GET` | `application/json` | The dictionary — the tool's default with the workspace `kinds.json` added — §2.1b |
@@ -184,7 +184,7 @@ the default view reference, and text keys as needed. It then reloads the model a
 
 ### 3.4. Working model API
 
-The running host owns one in-memory `core.Model` per project. Contract files stay unchanged until Save. Every accepted batch is appended to the work journal `<workspace>/.semaps/work/<project>.jsonl` (inside the workspace, which may lie below the project root); startup replays it. A project-wide Save writes dirty files in contract v5 format (two spaces, no HTML escaping, existing key order), then clears the journal. Discard reloads the selected scope from files and rewrites the journal for remaining edits. There is no host Undo or field merge.
+The running host owns one `core.WorkspaceModel` and one in-memory `core.Model` per project. Contract files stay unchanged until Save. Accepted edits are durable in `<workspace>/.semaps/work/workspace.json`, an atomically replaced checkpoint of working styles, dictionary base-style references, dirty authors and project operation journals. Existing `<project>.jsonl` journals are imported when a project is first loaded; after attachment the checkpoint is authoritative, including an empty journal after Save. A project-wide Save writes dirty files in contract v5 format (two spaces, no HTML escaping, existing key order), then clears that project's journal. Discard reloads the selected scope from files and preserves remaining edits. There is no host Undo. Project operations replace whole records; style updates merge sparse fields (§3.4b).
 
 Separately, the host creates `<project root>/.semaps/host.json` (the folder next to the `.semaps` project file, not the workspace's) containing `{pid, port, key}`. The key is also embedded as `<meta name="semaps-key" content="…">` in `/app/` HTML. Every mutating endpoint requires `Authorization: Bearer <key>` and the existing same-origin check; missing/wrong key returns `401`. This includes `/api/save`, `/api/move`, and the tool API writes. `.semaps/` is never served as workspace static content. Both `.semaps/` folders (the project root's, with `host.json` and the logs, and the workspace's, with the journal) carry their own `.gitignore` containing `*`, written when the host first writes into them. The host listens on localhost.
 
@@ -257,7 +257,57 @@ visibility (`CONTRACT.md` §8.5). Enumerations
 batch with `422`. Journal replay at startup is not checked again. What binds only the agent
 (`requestedByHuman`, not moving someone's placement, minted ids) stays in the MCP tools.
 
-Renames use `/api/move`; creation uses §3.4a. These structural operations require the host key; a rename and a new view also require a clean project model — when dirty, the host returns `409` with «сначала сохраните». A rename onto a taken id is `409`, an id outside the pattern `422`. After success the host reloads the project from files and emits `projectReloaded`. Ordinary manifest edits use a `project` op and the common Save. `styles.json`, `templates.json`, and `content/` remain outside the working model.
+Renames use `/api/move`; creation uses §3.4a. These structural operations require the host key; a rename and a new view also require a clean project model — when dirty, the host returns `409` with «сначала сохраните». A rename onto a taken id is `409`, an id outside the pattern `422`. After success the host reloads the project from files and emits `projectReloaded`. Ordinary manifest edits use a `project` op and the common Save. Shared styles use §3.4b; `templates.json` and `content/` remain outside the working model.
+
+### 3.4b. Shared working styles
+
+The editor and MCP use the same workspace style operations; no client owns a private persisted
+stylesheet. `GET /api/styles` returns `{sheet, kinds, dirty, revision}`: the working stylesheet,
+merged dictionary (including pending base-style renames), workspace dirty refs with authors, and
+the current style revision. `GET /styles.json` returns just the working sheet. Responses are not
+cached. `GET /api/model/{project}/views/{id}/styled` returns `{view, styles}` under the same lock,
+so a placement and the definitions it references arrive together. The editor refreshes this
+state when subscribing/reconnecting to SSE.
+
+`POST /api/styles` accepts `{action, id, definition?, patch?, newId?, replacement?,
+expectedRevision?, client?}`. `action` is `create`, `update`, `rename`, or `delete`.
+Creation takes an explicit id and a sparse definition with a non-empty name; `appliesTo` is
+`block` (default), `container`, or `edge`. Own `forKinds` is required except for the three
+fallbacks. Kinds must exist in the dictionary and match the target. A patch recursively merges
+objects: omitted fields survive, `null` removes an own field, arrays replace. `id` changes only
+through rename. An unknown base, inheritance cycle, target mismatch, unsupported formatting
+field or incompatible existing reference refuses the entire operation (`422`).
+`expectedRevision` is optional for agents and sent by the editor: a stale revision refuses the
+change explicitly; the editor reloads the host state and reports the conflict.
+
+Rename changes all explicit placement/edge references in **every** project, `basedOn` references,
+and explicit or implicit dictionary base styles, in one checkpoint before exposing the result.
+Delete lists uses and requires an explicit compatible `replacement` while used. Replacing a
+base with its descendant is refused. Fallback ids cannot be renamed or deleted. Each successful
+write broadcasts an SSE model event with `styles: {sheet,kinds,dirty,revision}` to all subscribed
+projects, including its authoring editor. Rename adds `styleRenamed: {oldId,newId}` so an open
+style form follows its new identifier. The editor updates filtering, type groups, pickers,
+previews, the selected style form, usage counts and the canvas. Deletion clears the selected
+style. Unknown/mismatched explicit `styleId` assignments are refused; existing broken references
+are displayed as an explicit canvas warning, not inferred successful from a fallback colour.
+
+`POST /api/styles/save` saves workspace definitions, dictionary base-style changes and **only
+the reference patches** of rename/replacement on project files. Unrelated project geometry,
+parents, templates, overrides, registry and text edits remain unsaved.
+Saved placement/edge references hidden by pending project assignments are listed as
+`saved-placement`/`saved-edge` in usage and participate in replacement and Save as well.
+`POST /api/styles/discard` restores saved workspace definitions and reverses those reference patches,
+preserving unrelated project edits. Discard is refused if retained project assignments would
+reference a newly created, now absent style: discard the assignments in the project first.
+Both endpoints use the usual host-key/same-origin authorization.
+
+The editor's **Save** first saves shared styles, then the current project's changes; the
+**Changes** panel labels that scope and workspace style authors. **Discard styles** in that panel
+is workspace-wide. Existing view/registry/all project Discard scopes do not discard shared
+styles or pending reference renames. A project Save is refused while it would persist an unsaved
+style definition or workspace reference rename; save styles first. Project geometry/override
+edits preserve their fields through style Save/Discard. `/api/save?file=styles.json` and
+`/api/save?file=kinds.json` are rejected (`410`) to prevent bypassing the shared model.
 
 ### 3.4a. Creating projects and views
 
@@ -766,8 +816,27 @@ Every geometry step is one batch — a bad element applies nothing — authored 
 | `create_view` | `project?`, `id` (`v_…`), `name?`, `lang?`, `names?` (language → text), `axis?` (else the project's `defaultAxis`; neither is refused), `icon?`, `theme?`, `setDefault?`, `requestedByHuman` | a new empty view, as `POST /api/model/{project}/views` (§3.4a): the file is written at once and every open editor lists it; `name`/`names` are texts of the working model and stay unsaved. Refused while the project has unsaved changes. Answers `{view, project, saved, link}` (`saved: false` only when a name is left unsaved). Only when a human explicitly asked for a new view |
 | `delete_view` | `project?`, `view`, `requestedByHuman` | deletes a view, as `DELETE /api/model/{project}/views/{id}` (§3.4a): its file, its caption in every language and a `defaultView` naming it; the registry is untouched. Written at once, not discardable; refused while the project has unsaved changes and for an unknown view. Answers `{view, project, deleted:true}`. Only when a human explicitly asked to delete that view |
 | `create_project` | `id`, `title?` (default: the id), `subtitle?`, `defaultAxis?`, `language?` = `ru`, `icon?`, `theme?`, `requestedByHuman` | a new hand-authored project, as `POST /api/projects` (§3.4a): writes `projects/<id>/project.json` at once (a project is a folder, not a change of another project's model, so it cannot be unsaved; the answer says so) and returns `{project, saved:true}`; an existing id is refused. Only when a human explicitly asked for a new project |
-| `save` | `project?`, `requestedByHuman: true` | saves all dirty project files and clears the journal; refused without explicit human request |
-| `discard` | `project?`, `scope: registry \| view \| all`, `view?`, `requestedByHuman: true` | drops the requested unsaved changes; refused without explicit human request |
+| `save` | `project?`, `scope?: project \| styles`, `requestedByHuman: true` | default `project`: saves all dirty project files; `styles`: saves workspace definitions and reference renames only (§3.4b). Save styles before projects that reference them. Refused without explicit human request |
+| `discard` | `project?`, `scope: registry \| view \| all \| styles`, `view?`, `requestedByHuman: true` | project scopes retain workspace styles/reference renames; `styles` rolls back shared definitions and renames (§3.4b). Refused without explicit human request |
+
+**Named styles (workspace-wide, no project argument)**
+
+| Tool | Input | Result/effect |
+|---|---|---|
+| `list_styles` | `appliesTo?`, `forKinds?` (any matching kind), `name?` (case-insensitive substring), `id?` (exact) | `{styles, state}`; unsaved definitions included |
+| `get_style` | `id` | `{definition, resolved, dirty, usage, revision}`; definition retains `basedOn`, resolved includes terminal renderer defaults. `forKinds` remains own; dirty includes changes of inherited bases; usage names styles, dictionary types, projects/views/placements/edges |
+| `create_style` | `id`, `name`, `appliesTo`, `forKinds?`, `basedOn?`, `properties?`, `expectedRevision?` | creates the definition; own kinds required except fallbacks; properties are sparse CONTRACT §11.5 fields |
+| `update_style` | `id`, `patch`, `expectedRevision?` | recursive partial definition patch; omitted fields survive, null restores inheritance; `id` is refused in patch |
+| `rename_style` | `id`, `newId`, `expectedRevision?` | atomically updates all workspace references, including closed projects |
+| `delete_style` | `id`, `replacement?`, `expectedRevision?` | unused deletion, or explicit compatible replacement; otherwise an error enumerates usage |
+
+Style writes are authored `agent`, durable and **unsaved**, and return `{style, saved:false,
+scope, link}`. Use `save(scope: styles, requestedByHuman: true)` only when asked. A colour-to-style
+conversion reads entity `code[].library` and library headers, or assembly membership relations;
+never infers assembly from a name substring. Create separate block/container/edge definitions
+when required. Read the placements' `override`, remove only former colour fields and pass back
+its remaining fields through `set_placement` together with `styleId`; geometry, parent, template
+and other fields are preserved by that tool.
 
 **Entry** in the consuming project, `.mcp.json` at its root:
 ```json

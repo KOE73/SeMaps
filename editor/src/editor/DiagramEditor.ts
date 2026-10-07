@@ -1,4 +1,5 @@
 import type { RoutingMode } from "../model/style-types.js";
+import { HostStyleStore, type StyleState } from "./io/HostStyleStore.js";
 import { DiagramCanvas, type Selection } from "../canvas/DiagramCanvas.js";
 import type { StrokeScaling } from "../canvas/Viewport.js";
 import { normalizeMarkerClamp, type MarkerClamp } from "../canvas/render/markerClamp.js";
@@ -164,7 +165,7 @@ export class DiagramEditor implements InspectorHost, StylePanelHost, DiagramEdit
    * The style library and the dictionary of types arrive from the host after
    * the panels are built: whoever drew from them before redraws on `loaded`.
    */
-  readonly libraryEvents = new Emitter<{ loaded: null }>();
+  readonly libraryEvents = new Emitter<{ loaded: null; changed: null; renamed: { oldId: string; newId: string } }>();
   private dirty = false;
   private readonly modelDirty = new Map<string, DirtySummary>();
   private metadataProject: string | null = null;
@@ -191,7 +192,10 @@ export class DiagramEditor implements InspectorHost, StylePanelHost, DiagramEdit
     this.root = root;
     this.workspaceStore = options.workspace ?? new HttpWorkspaceStore("./");
     this.store = options.store ?? new HttpProjectStore("./");
-    this.styleStore = options.styleStore ?? new HttpStyleStore("./");
+    this.styleStore = options.styleStore ?? (this.store instanceof HostModelStore ? new HostStyleStore(this.store.clientId) : new HttpStyleStore("./"));
+    if(this.store instanceof HostModelStore) this.store.stylesLoaded=state=>{
+      if(this.styleStore instanceof HostStyleStore){this.styleStore.accept(state);this.acceptStyleState(state)}
+    };
 
     for (const node of root.querySelectorAll<HTMLElement>("[data-slot]")) {
       this.slots.set(node.dataset.slot as Slot, node);
@@ -290,6 +294,7 @@ export class DiagramEditor implements InspectorHost, StylePanelHost, DiagramEdit
   private async start(): Promise<void> {
     try {
       this.setStyleLibrary(StyleLibrary.parse(await this.styleStore.load()));
+      if (this.styleStore instanceof HostStyleStore && this.styleStore.state) this.acceptStyleState(this.styleStore.state);
     } catch (err) {
       this.notify(
         `Библиотека стилей не загружена: ${(err as Error).message}\n` +
@@ -1004,6 +1009,19 @@ export class DiagramEditor implements InspectorHost, StylePanelHost, DiagramEdit
   }
 
   private async receiveModelEvent(event: ModelEvent): Promise<void> {
+    if (event.styles && this.styleStore instanceof HostStyleStore) {
+      await this.styleStore.load();
+      if(this.styleStore.state) this.acceptStyleState(this.styleStore.state,event.styleRenamed);
+      if(event.changed.length===0){
+        this.history.reset(this.snapshot());
+        const project=this.currentView && this.projectOf(this.currentView)?.id;
+        if(project){
+          this.modelDirty.set(project,event.dirty);
+          this.dirty=event.dirty.registry.length>0 || Object.values(event.dirty.views).some(refs=>refs.length>0);
+        }
+        this.syncSaveButton();this.workspaceEvents.emit("change",null);return;
+      }
+    }
     const project=this.currentView && this.projectOf(this.currentView)?.id;
     if (!project) return;
     const reload = event.projectReloaded;
@@ -1044,7 +1062,8 @@ export class DiagramEditor implements InspectorHost, StylePanelHost, DiagramEdit
   private queueModelSync(): Promise<boolean> {
     if (!(this.store instanceof HostModelStore) || !this.currentView || !this.canvas.model) return Promise.resolve(true);
     const store=this.store;
-    return store.sync(this.currentView.file,serializeDocument(this.canvas.model)).then(async()=>{
+    const file=this.currentView.file,wire=serializeDocument(this.canvas.model);
+    return (this.styleStore instanceof HostStyleStore ? this.styleStore.flush() : Promise.resolve()).then(()=>store.sync(file,wire)).then(async()=>{
       const project=this.projectOf(this.currentView!)?.id;
       if(project){this.modelDirty.set(project,await store.dirty(project));this.workspaceEvents.emit("change",null)}
       return true;
@@ -1070,7 +1089,8 @@ export class DiagramEditor implements InspectorHost, StylePanelHost, DiagramEdit
     // The tree of styles shows how many elements of the new view wear each.
     this.styleList.render();
     this.basePanel.render();
-    this.showModelIssues(wire.bundle?.issues ?? []);
+    this.libraryEvents.emit("loaded",null);
+    this.showModelIssues([...(wire.bundle?.issues ?? []),...this.styleReferenceIssues()]);
   }
 
   /**
@@ -1151,6 +1171,60 @@ export class DiagramEditor implements InspectorHost, StylePanelHost, DiagramEdit
     this.styleLibrary = library;
     this.canvas.setStyles(library);
     this.renderTags();
+  }
+
+  private acceptStyleState(state: StyleState, renamed?: { oldId: string; newId: string }): void {
+    KindCatalog.active=KindCatalog.parse(state.kinds);
+    this.setStyleLibrary(StyleLibrary.parse(state.sheet));
+    this.stylesDirty=state.dirty.length>0;
+    if(renamed){
+      if(this.styleEditor.openId===renamed.oldId)this.openStyle(renamed.newId);
+      this.libraryEvents.emit("renamed",renamed);
+    }
+    if(this.styleEditor.openId && !this.styles.has(this.styleEditor.openId)) this.openStyle(null);
+    this.styleList.render(); this.styleEditor.render();
+    this.refreshInspector(this.canvas.selected);
+    this.libraryEvents.emit("loaded",null);
+    this.syncSaveButton();this.workspaceEvents.emit("change",null);
+  }
+
+  private styleReferenceIssues():ModelIssue[] {
+    const doc=this.canvas.model;if(!doc)return [];
+    const issues:ModelIssue[]=[];
+    const check=(id:string,styleId:string|undefined,kind:string,target:import("../model/style-types.js").StyleTarget):void=>{
+      if(styleId===undefined)return;
+      if(!this.styles.has(styleId)||this.styles.targetOf(styleId)!==target||(!StyleLibrary.isFallback(styleId)&&!this.styles.fits(styleId,kind,target)))
+        issues.push({kind:"style-reference",message:`${id}: стиль «${styleId}» отсутствует или не принадлежит типу ${kind} (${target}). Показанный запасной цвет не означает успешного применения стиля.`});
+    };
+    for(const element of doc.elements())check(element.id,element.styleId,element.type,StyleLibrary.targetOfElement(element));
+    for(const edge of doc.edges)check(edge.id,edge.styleId,edge.type,"edge");
+    return issues;
+  }
+
+  get styleChanges(): readonly ChangedRef[] {return this.styleStore instanceof HostStyleStore ? this.styleStore.state?.dirty ?? [] : []}
+  get sharedStyles(): boolean {return this.styleStore instanceof HostStyleStore}
+
+  async renameStyle(id:string,newId:string):Promise<void> {
+    if(!(this.styleStore instanceof HostStyleStore))return;
+    try {
+      await this.styleStore.edit({action:"rename",id,newId});
+      if(this.styleStore.state)this.acceptStyleState(this.styleStore.state);
+      if(this.currentView && this.store instanceof HostModelStore){const project=this.projectOf(this.currentView)?.id;if(project)this.store.invalidate(project);await this.loadView(this.currentView)}
+      this.openStyle(newId);
+    } catch(e){this.notify(`Стиль не переименован: ${(e as Error).message}`)}
+  }
+  async deleteStyle(id:string,replacement?:string):Promise<void> {
+    if(!(this.styleStore instanceof HostStyleStore))return;
+    try {
+      await this.styleStore.edit({action:"delete",id,...(replacement?{replacement}:{})});
+      if(this.styleStore.state)this.acceptStyleState(this.styleStore.state);
+      if(this.currentView && this.store instanceof HostModelStore){const project=this.projectOf(this.currentView)?.id;if(project)this.store.invalidate(project);await this.loadView(this.currentView)}
+    } catch(e){this.notify(`Стиль не удалён: ${(e as Error).message}`)}
+  }
+  async discardStyles():Promise<void> {
+    if(!(this.styleStore instanceof HostStyleStore))return;
+    if(!window.confirm("Отменить несохранённые определения стилей и переименования ссылок во всём рабочем пространстве? Изменения геометрии, текста и назначения стилей проектам сохраняются."))return;
+    try{await this.styleStore.discard();if(this.styleStore.state)this.acceptStyleState(this.styleStore.state)}catch(e){this.notify(`Стили не отменены: ${(e as Error).message}`)}
   }
 
   private renderViews(_doc: DiagramDocument): void {
@@ -1803,6 +1877,7 @@ export class DiagramEditor implements InspectorHost, StylePanelHost, DiagramEdit
   private commit(reason: string): Promise<boolean> {
     this.flushFieldEdit();
     this.canvas.notifyModelChanged(reason);
+    this.libraryEvents.emit("changed",null);
     this.history.push(this.snapshot());
     this.markDirty();
     const synced = this.queueModelSync();
@@ -1856,6 +1931,7 @@ export class DiagramEditor implements InspectorHost, StylePanelHost, DiagramEdit
     if (this.stylesDirty) {
       try {
         await this.styleStore.save(this.styleLibrary.serialize());
+        if(this.styleStore instanceof HostStyleStore && this.styleStore.state)this.acceptStyleState(this.styleStore.state);
         this.stylesDirty = false;
         stylesSaved = true;
       } catch (err) {
@@ -2002,6 +2078,12 @@ export class DiagramEditor implements InspectorHost, StylePanelHost, DiagramEdit
 
   private markStylesDirty(): void {
     this.stylesDirty = true;
+    if(this.styleStore instanceof HostStyleStore) {
+      const store=this.styleStore;
+      void store.sync(this.styleLibrary.serialize()).then(()=>{
+        if(store.state){this.stylesDirty=store.state.dirty.length>0;this.styleList.render();this.libraryEvents.emit("changed",null);this.workspaceEvents.emit("change",null);this.syncSaveButton()}
+      }).catch(async(e)=>{this.notify(`Хост отклонил изменение стиля: ${(e as Error).message}`);try{await store.load();if(store.state)this.acceptStyleState(store.state)}catch{}});
+    }
     this.syncSaveButton();
   }
 

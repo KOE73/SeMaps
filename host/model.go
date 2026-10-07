@@ -17,11 +17,13 @@ import (
 )
 
 type modelEvent struct {
-	Client          string            `json:"client"`
-	Author          string            `json:"author"`
-	Changed         []core.Ref        `json:"changed"`
-	Dirty           core.DirtySummary `json:"dirty"`
-	ProjectReloaded *projectReloaded  `json:"projectReloaded,omitempty"`
+	Styles          *core.StyleSnapshot `json:"styles,omitempty"`
+	StyleRenamed    *styleRename        `json:"styleRenamed,omitempty"`
+	Client          string              `json:"client"`
+	Author          string              `json:"author"`
+	Changed         []core.Ref          `json:"changed"`
+	Dirty           core.DirtySummary   `json:"dirty"`
+	ProjectReloaded *projectReloaded    `json:"projectReloaded,omitempty"`
 	// Graph carries what changed in the live code graph after a run
 	// (PLAN_20260928_host_graph-provider.md step 5), never the graph
 	// itself. It is a field the current editor's ModelEvent interface does
@@ -36,6 +38,11 @@ type modelEvent struct {
 	Render *renderRequest `json:"render,omitempty"`
 }
 
+type styleRename struct {
+	OldID string `json:"oldId"`
+	NewID string `json:"newId"`
+}
+
 type projectReloaded struct {
 	OldProject string `json:"oldProject"`
 	NewProject string `json:"newProject"`
@@ -44,6 +51,7 @@ type projectReloaded struct {
 }
 
 type modelService struct {
+	shared      *core.WorkspaceModel
 	workspace   string
 	key         string
 	mu          sync.Mutex
@@ -59,11 +67,16 @@ type modelService struct {
 }
 
 func newModelService(workspace string) (*modelService, error) {
+	styles, _ := bundled.ReadFile("defaults/styles.json")
+	shared, err := core.LoadWorkspaceModel(workspace, styles, defaultKinds())
+	if err != nil {
+		return nil, err
+	}
 	b := make([]byte, 32)
 	if _, err := rand.Read(b); err != nil {
 		return nil, err
 	}
-	return &modelService{workspace: workspace, key: hex.EncodeToString(b), models: map[string]*core.Model{}, clients: map[string]map[chan modelEvent]struct{}{},
+	return &modelService{shared: shared, workspace: workspace, key: hex.EncodeToString(b), models: map[string]*core.Model{}, clients: map[string]map[chan modelEvent]struct{}{},
 		renderers: map[chan modelEvent]bool{}, pending: map[string]*renderCall{}}, nil
 }
 
@@ -77,7 +90,7 @@ func (s *modelService) get(id string) (*core.Model, error) {
 		m.SetCanvas(loadCanvas(s.workspace))
 		return m, nil
 	}
-	m, err := core.LoadModel(s.workspace, id, defaultKinds())
+	m, err := s.shared.Project(id)
 	if err != nil {
 		return nil, err
 	}
@@ -89,6 +102,7 @@ func (s *modelService) get(id string) (*core.Model, error) {
 }
 
 func (s *modelService) evict(id string) {
+	s.shared.Evict(id)
 	s.mu.Lock()
 	delete(s.models, id)
 	s.mu.Unlock()
@@ -315,6 +329,7 @@ func (s *modelService) hostFile(root string, port int) error {
 }
 
 func (s *modelService) register(mux *http.ServeMux) {
+	s.registerStyles(mux)
 	mux.HandleFunc("POST /api/projects", s.postProject)
 	mux.HandleFunc("POST /api/model/{project}/views", s.postView)
 	mux.HandleFunc("DELETE /api/model/{project}/views/{id}", s.deleteViewHTTP)
@@ -334,11 +349,7 @@ func (s *modelService) register(mux *http.ServeMux) {
 // workspace kinds.json added (CONTRACT §6). Without `lang` every text comes in
 // all its languages; with it, names and descriptions in that one (as get_kinds).
 func (s *modelService) kinds(w http.ResponseWriter, r *http.Request) {
-	catalog, err := core.LoadKinds(s.workspace, defaultKinds())
-	if err != nil {
-		modelError(w, err)
-		return
-	}
+	catalog := s.shared.Styles().Kinds
 	w.Header().Set("Cache-Control", "no-cache")
 	if lang := r.URL.Query().Get("lang"); lang != "" {
 		writeJSON(w, dictionaryOut(catalog, lang))

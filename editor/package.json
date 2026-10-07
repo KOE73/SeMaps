@@ -29,7 +29,8 @@
     "check:nudge": "node scripts/check-nudge.mjs",
     "check:model-sync": "node scripts/check-model-sync.mjs",
     "check:ide-bridge": "node scripts/check-ide-bridge.mjs",
-    "check:host-session": "node scripts/check-host-session.mjs"
+    "check:host-session": "node scripts/check-host-session.mjs",
+    "check:style-sync": "node scripts/check-style-sync.mjs"
   },
   "devDependencies": {
     "@tabler/icons": "^3.48.0",

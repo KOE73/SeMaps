@@ -79,6 +79,7 @@ export class StyleEditor {
   }
 
   render(): void {
+    if(this.id!==null&&!this.host.styles.has(this.id))this.id=null;
     this.previews = [];
     const style = this.currentStyle();
 
@@ -347,6 +348,7 @@ export class StyleEditor {
    * is the coupling styles exist to remove — so those are reported instead.
    */
   private renameStyle(style: WireStyle, next: string, error: HTMLElement): void {
+    if(this.host.sharedStyles && this.host.renameStyle){void this.host.renameStyle(style.id,next);return}
     if (next === "" || next === style.id) return;
 
     const lib = this.host.styles;

@@ -252,7 +252,7 @@ export interface TextCatalog {
  * not by refusing to show the diagram.
  */
 export interface ModelIssue {
-  kind: "view-without-axis" | "override-field" | "edges-old-shape";
+  kind: "view-without-axis" | "override-field" | "edges-old-shape" | "style-reference";
   /** Human-readable, shown in the editor's banner. */
   message: string;
 }

@@ -584,6 +584,10 @@ func main() {
 			return
 		}
 		rel := filepath.ToSlash(strings.TrimPrefix(strings.TrimPrefix(target, absWorkspace), string(filepath.Separator)))
+		if rel == "styles.json" || rel == "kinds.json" {
+			http.Error(w, "Shared styles: use /api/styles and /api/styles/save", http.StatusGone)
+			return
+		}
 		if strings.HasPrefix(rel, "projects/") {
 			http.Error(w, "Project files: POST /api/projects, /api/model/{project}/views, /api/model/{project}/save", http.StatusGone)
 			return

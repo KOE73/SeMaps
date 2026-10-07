@@ -293,13 +293,14 @@ type addContainerIn struct {
 }
 
 type saveIn struct {
+	Scope            string `json:"scope,omitempty" jsonschema:"project (default) or styles (workspace-wide definitions and reference renames only)"`
 	Project          string `json:"project,omitempty"`
 	RequestedByHuman bool   `json:"requestedByHuman"`
 }
 
 type discardIn struct {
 	Project          string `json:"project,omitempty"`
-	Scope            string `json:"scope" jsonschema:"registry, view or all"`
+	Scope            string `json:"scope" jsonschema:"registry, view or all (project changes), or styles (workspace-wide)"`
 	View             string `json:"view,omitempty"`
 	RequestedByHuman bool   `json:"requestedByHuman"`
 }
@@ -320,6 +321,7 @@ func write(name, desc string) *mcp.Tool {
 }
 
 func (s *mcpServer) server() *mcp.Server {
+	s.service()
 	// settings are read once here, before mcp.NewServer, since Instructions
 	// is fixed for the life of THIS *mcp.Server (the Go SDK gives no way to
 	// change it on a live one): a later PUT /api/setup change of
@@ -336,6 +338,7 @@ func (s *mcpServer) server() *mcp.Server {
 	})
 	// A call with arguments that do not fit says which parameters the tool takes (mcp_errors.go).
 	srv.AddReceivingMiddleware(explainArgumentErrors)
+	s.registerStyleTools(srv)
 	// Reading tools say so (readOnlyHint): a client may run them without asking,
 	// and the editor's sandbox asks before any other.
 	mcp.AddTool(srv, read("list_projects", "Projects of the workspace and their views."), s.listProjects)
@@ -484,6 +487,16 @@ func (s *mcpServer) save(_ context.Context, _ *mcp.CallToolRequest, in saveIn) (
 	if !in.RequestedByHuman {
 		return nil, nil, errors.New("save requires requestedByHuman: true")
 	}
+	if in.Scope == "styles" {
+		if err := s.service().shared.SaveStyles(); err != nil {
+			return nil, nil, err
+		}
+		s.models.publishStyles("agent")
+		return done("workspace styles and style reference renames saved; other project edits remain unsaved")
+	}
+	if in.Scope != "" && in.Scope != "project" {
+		return nil, nil, errors.New("save scope must be project or styles")
+	}
 	m, err := s.model(in.Project)
 	if err != nil {
 		return nil, nil, err
@@ -500,6 +513,16 @@ func (s *mcpServer) save(_ context.Context, _ *mcp.CallToolRequest, in saveIn) (
 func (s *mcpServer) discard(_ context.Context, _ *mcp.CallToolRequest, in discardIn) (*mcp.CallToolResult, any, error) {
 	if !in.RequestedByHuman {
 		return nil, nil, errors.New("discard requires requestedByHuman: true")
+	}
+	if in.Scope == "styles" {
+		s.service().structureMu.Lock()
+		defer s.models.structureMu.Unlock()
+		changes := s.models.styleViewChanges()
+		if err := s.service().shared.DiscardStyles(); err != nil {
+			return nil, nil, err
+		}
+		s.models.publishStyleChange("agent", nil, changes)
+		return done("unsaved workspace styles and reference renames discarded; project edits retained")
 	}
 	m, err := s.model(in.Project)
 	if err != nil {

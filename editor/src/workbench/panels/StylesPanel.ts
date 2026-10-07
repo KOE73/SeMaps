@@ -60,6 +60,9 @@ export class StylesPanel implements IContentRenderer {
     const host: StylePanelHost = {
       get canvas() { return editor.canvas; },
       get styles() { return editor.styles; },
+      get sharedStyles() { return editor.sharedStyles; },
+      renameStyle: (id,next)=>editor.renameStyle(id,next),
+      deleteStyle: (id,replacement)=>editor.deleteStyle(id,replacement),
       editStyle: (apply) => editor.editStyle(apply),
       commitStyle: (apply) => editor.commitStyle(apply),
       openStyle: (id) => {
@@ -85,6 +88,10 @@ export class StylesPanel implements IContentRenderer {
 
     // The panel can be built (and shown) before the host's styles and dictionary have arrived.
     editor.libraryEvents.on("loaded", () => this.render());
+    editor.libraryEvents.on("changed",()=>this.styleList.render());
+    editor.libraryEvents.on("renamed",({oldId,newId})=>{
+      if(this.styleEditor.openId===oldId)this.openStyle(newId);
+    });
 
     i18n.onLanguageChange(() => {
       this.render();
