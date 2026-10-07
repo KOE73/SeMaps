@@ -13,11 +13,23 @@ import (
 // knows nothing about the registry; Sync turns these into entities.json and
 // relations.json.
 type Facts struct {
-	Language  string   `json:"language"`
-	Root      string   `json:"root"`
-	EdgeKinds []string `json:"edgeKinds,omitempty"` // explicit list of edge kinds covered by these facts
-	Symbols   []Symbol `json:"symbols"`
-	Edges     []Edge   `json:"edges"`
+	Language  string    `json:"language"`
+	Root      string    `json:"root"`
+	EdgeKinds []string  `json:"edgeKinds,omitempty"` // explicit list of edge kinds covered by these facts
+	Symbols   []Symbol  `json:"symbols"`
+	Edges     []Edge    `json:"edges"`
+	Libraries []Library `json:"libraries,omitempty"`
+}
+
+// Library describes the metadata snapshot and its coverage. Expanded lists
+// types whose outgoing structural/member edges were read; Complete covers all
+// types of this assembly. Endpoint stubs do not declare coverage.
+type Library struct {
+	ID       string   `json:"id"`
+	Name     string   `json:"name"`
+	Version  string   `json:"version"`
+	Complete bool     `json:"complete,omitempty"`
+	Expanded []string `json:"expanded,omitempty"`
 }
 
 // Symbol is one declaration. ID is the key within one output (ADR_20260923-5),
@@ -32,6 +44,7 @@ type Symbol struct {
 	NativeKind string `json:"nativeKind"`
 	Name       string `json:"name"`
 	Namespace  string `json:"namespace,omitempty"`
+	Library    string `json:"library,omitempty"`
 	File       string `json:"file"`
 	Line       int    `json:"line,omitempty"`
 	EndLine    int    `json:"endLine,omitempty"` // last line of the declaration named by file/line
@@ -205,6 +218,13 @@ func (f *Facts) problems() []string {
 	}
 
 	kinds := setOf(SymbolKinds)
+	libraries := map[string]bool{}
+	for _, l := range f.Libraries {
+		if l.ID == "" || l.Name == "" || l.Version == "" || libraries[l.ID] {
+			bad("library %q: unique id, name and version are required", l.ID)
+		}
+		libraries[l.ID] = true
+	}
 	ids := make(map[string]bool, len(f.Symbols))
 	kindOf := make(map[string]string, len(f.Symbols))
 	for i, s := range f.Symbols {
@@ -229,6 +249,13 @@ func (f *Facts) problems() []string {
 			bad("%s: name is empty", where)
 		}
 		switch {
+		case s.Library != "":
+			if !libraries[s.Library] {
+				bad("%s: unknown library %q", where, s.Library)
+			}
+			if s.File != "" || s.Line != 0 || s.EndLine != 0 || len(s.Spans) != 0 || len(s.MemberLines) != 0 {
+				bad("%s: metadata symbol has no source locations", where)
+			}
 		case s.NativeKind == ExternalKind:
 			// A method's nativeKind is checked above: it is never `external`.
 			if s.File != "" {
@@ -299,6 +326,25 @@ func (f *Facts) problems() []string {
 		}
 		if i > 0 && f.Symbols[i-1].ID > s.ID {
 			bad("%s: symbols are not sorted by id (after %s)", where, f.Symbols[i-1].ID)
+		}
+	}
+	symbolLibraries := make(map[string]string, len(f.Symbols))
+	for _, s := range f.Symbols {
+		symbolLibraries[s.ID] = s.Library
+	}
+	for _, l := range f.Libraries {
+		expanded := map[string]bool{}
+		for _, id := range l.Expanded {
+			if expanded[id] {
+				bad("library %q: repeated expanded symbol %q", l.ID, id)
+			}
+			expanded[id] = true
+			if !ids[id] {
+				bad("library %q: expanded symbol %q is absent", l.ID, id)
+			}
+			if owner, ok := symbolLibraries[id]; ok && owner != l.ID {
+				bad("library %q: expanded symbol %q belongs elsewhere", l.ID, id)
+			}
 		}
 	}
 

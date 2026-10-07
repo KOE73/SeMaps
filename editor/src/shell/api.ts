@@ -55,6 +55,10 @@ export interface ExtractorView {
   exclude: string[];
   edges: string[];
   watch: boolean;
+  external?: "off" | "used" | "expand" | "full";
+  libraries?: string[];
+  externalTypes?: string[];
+  externalDepth?: number;
   command?: string;
   tool: ExtractorTool;
   lastRun?: RunInfo;
@@ -119,6 +123,10 @@ export interface ExtractorPatch {
   exclude?: string[];
   edges?: string[];
   watch?: boolean;
+  external?: "off" | "used" | "expand" | "full";
+  libraries?: string[];
+  externalTypes?: string[];
+  externalDepth?: number;
 }
 
 export interface McpSettingsPatch {

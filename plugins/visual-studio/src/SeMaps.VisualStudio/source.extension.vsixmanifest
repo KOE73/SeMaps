@@ -2,7 +2,7 @@
 <PackageManifest Version="2.0.0" xmlns="http://schemas.microsoft.com/developer/vsx-schema/2011"
                  xmlns:d="http://schemas.microsoft.com/developer/vsx-schema-design/2011">
   <Metadata>
-    <Identity Id="SeMaps.VisualStudio.8e70a8d9-0352-44d3-940c-884a0e4427bd" Version="0.1.0" Language="en-US" Publisher="SeMaps" />
+    <Identity Id="SeMaps.VisualStudio.8e70a8d9-0352-44d3-940c-884a0e4427bd" Version="0.1.2" Language="en-US" Publisher="SeMaps" />
     <DisplayName>SeMaps</DisplayName>
     <Description xml:space="preserve">SeMaps architecture maps inside Visual Studio. Connects to or starts the project's local SeMaps host.</Description>
   </Metadata>

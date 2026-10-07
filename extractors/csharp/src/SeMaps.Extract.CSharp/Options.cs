@@ -7,6 +7,10 @@ internal sealed class Options
     public List<string> Includes { get; init; } = [];
     public List<string> Excludes { get; init; } = [];
     public HashSet<string> EdgeKinds { get; init; } = [];  // holds, uses, injects (subset of holds+uses)
+    public string External { get; init; } = "off"; // off, used, expand, full
+    public List<string> Libraries { get; init; } = [];
+    public List<string> ExternalTypes { get; init; } = [];
+    public int ExternalDepth { get; init; } = 1;
 }
 
 internal static class ArgsParser
@@ -21,12 +25,32 @@ internal static class ArgsParser
         var includes = new List<string>();
         var excludes = new List<string>();
         var edgeKinds = new HashSet<string>();
+        var external = "off";
+        var libraries = new List<string>();
+        var externalTypes = new List<string>();
+        var externalDepth = 1;
 
         for (var i = 0; i < args.Length; i++)
         {
             var arg = args[i];
             switch (arg)
             {
+                case "--external":
+                    if (!TryTakeValue(args, ref i, out external) || external is not ("off" or "used" or "expand" or "full"))
+                    { error = "--external requires off, used, expand or full"; return null; }
+                    break;
+                case "--library":
+                    if (!TryTakeValue(args, ref i, out var library) || string.IsNullOrWhiteSpace(library))
+                    { error = "--library requires an assembly name or library id"; return null; }
+                    libraries.Add(library); break;
+                case "--external-type":
+                    if (!TryTakeValue(args, ref i, out var externalType) || string.IsNullOrWhiteSpace(externalType))
+                    { error = "--external-type requires a metadata type id"; return null; }
+                    externalTypes.Add(externalType); break;
+                case "--external-depth":
+                    if (!TryTakeValue(args, ref i, out var depth) || !int.TryParse(depth,out externalDepth) || externalDepth < 0)
+                    { error = "--external-depth requires a nonnegative integer"; return null; }
+                    break;
                 case "--root":
                     if (!TryTakeValue(args, ref i, out var rootValue))
                     {
@@ -80,7 +104,10 @@ internal static class ArgsParser
         }
 
         error = null;
-        return new Options { Root = root, Includes = includes, Excludes = excludes, EdgeKinds = edgeKinds };
+        if (external == "full" && libraries.Count == 0) { error = "--external full requires --library"; return null; }
+        if (external == "expand" && externalTypes.Count == 0) { error = "--external expand requires --external-type"; return null; }
+        if (external == "off" && (libraries.Count > 0 || externalTypes.Count > 0)) { error = "library/type selection requires --external"; return null; }
+        return new Options { Root = root, Includes = includes, Excludes = excludes, EdgeKinds = edgeKinds, External=external,Libraries=libraries,ExternalTypes=externalTypes,ExternalDepth=externalDepth };
     }
 
     private static bool IsValidEdgeKind(string kind) => kind is "holds" or "uses" or "injects" or "calls";

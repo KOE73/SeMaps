@@ -120,7 +120,11 @@ type extractorConf struct {
 	// Implements lists interfaces outside the read code whose implementations
 	// to report, by full name (`io.Reader`, `error`); only extractors that take
 	// --implements (Go) accept it (ADR_20260927 §5).
-	Implements []string `yaml:"implements,omitempty"`
+	Implements    []string `yaml:"implements,omitempty"`
+	External      string   `yaml:"external,omitempty"`
+	Libraries     []string `yaml:"libraries,omitempty"`
+	ExternalTypes []string `yaml:"external_types,omitempty"`
+	ExternalDepth *int     `yaml:"external_depth,omitempty"`
 	// Watch: the host watches this entry's sources and reruns it on a
 	// change, without a person or an agent asking (PLAN_20260928-4). Default
 	// off; never touches sync or the model (ADR_20260928 §4).
@@ -204,6 +208,24 @@ func validateExtractors(list []extractorConf) error {
 				problems = append(problems, fmt.Sprintf("%s: edge kind %q must be holds, uses, injects, or calls", where, edge))
 			}
 		}
+		if e.External != "" && e.External != "off" && e.External != "used" && e.External != "expand" && e.External != "full" {
+			problems = append(problems, where+": external must be off, used, expand or full")
+		}
+		if e.ExternalDepth != nil && *e.ExternalDepth < 0 {
+			problems = append(problems, where+": external_depth must be nonnegative")
+		}
+		if (e.External != "" && e.External != "off" || len(e.Libraries) > 0 || len(e.ExternalTypes) > 0) && e.Language != "csharp" {
+			problems = append(problems, where+": external metadata options require csharp")
+		}
+		if e.External == "full" && len(e.Libraries) == 0 {
+			problems = append(problems, where+": external full requires libraries")
+		}
+		if e.External == "expand" && len(e.ExternalTypes) == 0 {
+			problems = append(problems, where+": external expand requires external_types")
+		}
+		if (e.External == "" || e.External == "off") && (len(e.Libraries) > 0 || len(e.ExternalTypes) > 0) {
+			problems = append(problems, where+": library/type selection requires external mode")
+		}
 	}
 	if len(problems) > 0 {
 		return errors.New(strings.Join(problems, "; "))
@@ -214,13 +236,17 @@ func validateExtractors(list []extractorConf) error {
 // extractorPatch is what may change in an entry from outside the file: data,
 // never the command line (ADR_20260924-3 §5). Nil leaves a field as it is.
 type extractorPatch struct {
-	Language *string
-	Project  *string
-	Root     *string
-	Include  *[]string
-	Exclude  *[]string
-	Edges    *[]string
-	Watch    *bool
+	Language      *string
+	Project       *string
+	Root          *string
+	Include       *[]string
+	Exclude       *[]string
+	Edges         *[]string
+	Watch         *bool
+	External      *string
+	Libraries     *[]string
+	ExternalTypes *[]string
+	ExternalDepth *int
 }
 
 // patchExtractor changes, or adds, one entry of `extractors:`. The file is
@@ -264,6 +290,12 @@ func patchExtractor(file, id string, patch extractorPatch) error {
 		setList("include", patch.Include)
 		setList("exclude", patch.Exclude)
 		setList("edges", patch.Edges)
+		setString("external", patch.External)
+		setList("libraries", patch.Libraries)
+		setList("external_types", patch.ExternalTypes)
+		if patch.ExternalDepth != nil {
+			setMapValue(entry, "external_depth", &yaml.Node{Kind: yaml.ScalarNode, Tag: "!!int", Value: fmt.Sprint(*patch.ExternalDepth)})
+		}
 		if patch.Watch != nil {
 			setMapValue(entry, "watch", &yaml.Node{Kind: yaml.ScalarNode, Tag: "!!bool", Value: fmt.Sprint(*patch.Watch)})
 		}

@@ -61,6 +61,7 @@ type Model struct {
 	dir        string
 	manifest   *object
 	registries map[string]*registry
+	libraries  map[string]*object
 	texts      map[string]*object
 	views      map[string]*modelView
 	loaded     map[string]bool
@@ -132,6 +133,10 @@ func (m *Model) copy() *Model {
 	c := &Model{workspace: m.workspace, project: m.project, dir: m.dir, manifest: cloneObject(m.manifest), canvas: m.canvas, kinds: m.kinds, defaultKinds: m.defaultKinds,
 		registries: map[string]*registry{}, texts: map[string]*object{}, views: map[string]*modelView{}, loaded: map[string]bool{},
 		journal: append([][]Op(nil), m.journal...), dirty: DirtySummary{Registry: append([]Ref(nil), m.dirty.Registry...), Views: map[string][]Ref{}}}
+	c.libraries = map[string]*object{}
+	for id, doc := range m.libraries {
+		c.libraries[id] = cloneObject(doc)
+	}
 	for k, r := range m.registries {
 		n := *r
 		n.top = cloneObject(r.top)
@@ -233,6 +238,7 @@ func (m *Model) Apply(ops []Op, author string) ([]Ref, error) {
 		return nil, err
 	}
 	m.manifest, m.registries, m.texts, m.views, m.loaded, m.journal, m.dirty = c.manifest, c.registries, c.texts, c.views, c.loaded, c.journal, c.dirty
+	m.libraries = c.libraries
 	return refs, nil
 }
 
@@ -310,6 +316,29 @@ func orderedReplacement(old, next *object) *object {
 }
 
 func (m *Model) applyOne(op Op) error {
+	if op.Kind == "library" {
+		if op.View != "" || op.Lang != "" {
+			return refuse("library metadata is project-wide")
+		}
+		doc := newObject()
+		if err := json.Unmarshal(op.Value, doc); err != nil {
+			return err
+		}
+		if op.ID == "" || doc.str("id") != op.ID || doc.str("name") == "" || doc.str("version") == "" {
+			return refuse("library needs matching id, name and version")
+		}
+		if has(doc, "entities") || has(doc, "relations") {
+			return refuse("library metadata cannot carry registry records")
+		}
+		if err := checkLibraryHeader(doc); err != nil {
+			return err
+		}
+		if old := m.libraries[op.ID]; old != nil {
+			doc = orderedReplacement(old, doc)
+		}
+		m.libraries[op.ID] = doc
+		return nil
+	}
 	if op.Kind == "project" {
 		if op.View != "" || op.ID != m.project || bytes.Equal(bytes.TrimSpace(op.Value), []byte("null")) {
 			return refuse("invalid project operation")
@@ -564,12 +593,8 @@ func (m *Model) Save() error {
 			break
 		}
 	}
-	for kind, r := range m.registries {
-		if r.dirty {
-			if err := r.save(); err != nil {
-				return fmt.Errorf("%s: %w", kind, err)
-			}
-		}
+	if err := m.saveRegistries(); err != nil {
+		return err
 	}
 	for _, ref := range m.dirty.Registry {
 		if ref.Kind == "text" {
@@ -643,6 +668,7 @@ func (m *Model) Discard(scope, view string) error {
 		return err
 	}
 	m.manifest, m.registries, m.texts, m.views, m.loaded, m.journal, m.dirty = fresh.manifest, fresh.registries, fresh.texts, fresh.views, fresh.loaded, fresh.journal, fresh.dirty
+	m.libraries = fresh.libraries
 	return nil
 }
 
@@ -657,6 +683,7 @@ func LoadModelWithoutJournal(workspace, project string, defaultKinds []byte) (*M
 	}
 	m := &Model{workspace: workspace, project: id, dir: filepath.Join(workspace, "projects", id), registries: map[string]*registry{}, texts: map[string]*object{}, views: map[string]*modelView{}, loaded: map[string]bool{}, dirty: DirtySummary{Views: map[string][]Ref{}},
 		kinds: kinds, defaultKinds: defaultKinds}
+	m.libraries = map[string]*object{}
 	m.manifest, err = loadDoc(filepath.Join(m.dir, "project.json"))
 	if err != nil {
 		return nil, err
@@ -684,6 +711,9 @@ func LoadModelWithoutJournal(workspace, project string, defaultKinds []byte) (*M
 				return nil, refuse("%s: %s: %s — форма до ADR_20260930-4/5, нужна текущая (`semaps migrate`, ADR_20260927-3)", spec.file, item.str("id"), old)
 			}
 		}
+	}
+	if err := m.loadExternalRegistries(); err != nil {
+		return nil, err
 	}
 	return m, nil
 }

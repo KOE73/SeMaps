@@ -104,7 +104,7 @@ func codeEntry(lang string, s Symbol) *object {
 func setCodeEntry(c *object, lang string, s Symbol) {
 	rest := newObject()
 	for _, k := range c.keys {
-		if k != "lang" && k != "ref" && k != "symbol" {
+		if k != "lang" && k != "ref" && k != "symbol" && k != "library" {
 			rest.keys, rest.vals[k] = append(rest.keys, k), c.vals[k]
 		}
 	}
@@ -114,6 +114,9 @@ func setCodeEntry(c *object, lang string, s Symbol) {
 		c.set("ref", s.File)
 	}
 	c.set("symbol", s.ID)
+	if s.Library != "" {
+		c.set("library", s.Library)
+	}
 	for _, k := range rest.keys {
 		c.keys, c.vals[k] = append(c.keys, k), rest.vals[k]
 	}

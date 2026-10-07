@@ -159,6 +159,8 @@ export interface EntityCatalog {
 
 /** One realization of an entity in code. */
 export interface CodeRealization {
+  /** Stable assembly identity for a metadata realization, with no source ref. */
+  library?: string;
   /** Language of the extractor facts (`go`, `csharp`, `typescript`, …); comes with `symbol`. */
   lang?: string;
   /**
@@ -174,6 +176,7 @@ export interface CodeRealization {
 
 /** One language's evidence for a relation. */
 export interface RelationEvidence {
+  library?: string;
   lang?: string;
   ref?: string;
   symbol?: string;

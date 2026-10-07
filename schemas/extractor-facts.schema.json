@@ -21,14 +21,30 @@
     "edges": {
       "type": "array",
       "items": { "$ref": "#/$defs/edge" }
+    },
+    "libraries": {
+      "type": "array",
+      "items": { "$ref": "#/$defs/library" }
     }
   },
   "$defs": {
+    "library": {
+      "type": "object",
+      "required": ["id", "name", "version"],
+      "additionalProperties": false,
+      "properties": {
+        "id": { "type": "string", "minLength": 1 },
+        "name": { "type": "string", "minLength": 1 },
+        "version": { "type": "string", "minLength": 1 },
+        "complete": { "type": "boolean" },
+        "expanded": { "type": "array", "uniqueItems": true, "items": { "$ref": "#/$defs/id" } }
+      }
+    },
     "id": { "type": "string", "pattern": "^\\S+$" },
     "symbol": {
       "type": "object",
       "required": ["id", "kind", "nativeKind", "name"],
-      "if": { "properties": { "nativeKind": { "not": { "const": "external" } } } },
+      "if": { "allOf": [ { "not": { "required": ["library"] } }, { "properties": { "nativeKind": { "not": { "const": "external" } } } } ] },
       "then": { "required": ["file"] },
       "additionalProperties": false,
       "properties": {
@@ -37,6 +53,7 @@
         "nativeKind": { "type": "string", "minLength": 1 },
         "name": { "type": "string", "minLength": 1 },
         "namespace": { "type": "string" },
+        "library": { "type": "string", "minLength": 1 },
         "file": { "type": "string", "pattern": "^[^\\\\]+$", "description": "relative to root, forward slashes" },
         "line": { "type": "integer", "minimum": 1 },
         "endLine": { "type": "integer", "minimum": 1, "description": "last line of the declaration named by file/line" },

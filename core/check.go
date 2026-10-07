@@ -225,6 +225,13 @@ func Check(workspace, sourceRoot string, defaultKinds []byte) []Finding {
 			Relations []*object `json:"relations"`
 		}
 		load("relations.json", &rels)
+		m, libraryErr := LoadModelWithoutJournal(workspace, project, defaultKinds)
+		if libraryErr != nil {
+			report(project, "не читается", libraryErr.Error())
+		} else {
+			ents.Entities = m.registries["entity"].items
+			rels.Relations = m.registries["relation"].items
+		}
 		for _, e := range ents.Entities {
 			if old := oldShape("entity", e); old != "" {
 				report(project, "форма контракта", fmt.Sprintf("entities.json: %s: %s (`semaps migrate`, ADR_20260930-4/5)", e.str("id"), old))

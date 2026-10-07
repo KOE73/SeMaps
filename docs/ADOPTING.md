@@ -156,6 +156,45 @@ writes the facts of that run.
   sync does not migrate. Which views should show the new types, and whether the old relations are
   still wanted, is the human's call.
 
+### 3.1 C# library types and their relations
+
+On the **Экстракторы** page, a C# entry has external mode, library names, metadata type names,
+and expansion depth. The same settings in `.semaps` are:
+
+```yaml
+external: used                  # off (default), used, expand, full
+```
+
+For the neighbourhood of a type:
+
+```yaml
+external: expand
+external_types: [Microsoft.ML.OnnxRuntime.OrtMemoryInfo]
+external_depth: 2
+```
+
+For an entire referenced assembly, including unused types:
+
+```yaml
+external: full
+libraries: [Microsoft.ML.OnnxRuntime]
+```
+
+Use the actual assembly name or stable ID returned in facts; a NuGet package can contain
+several assemblies. `expand` depth 1 reads the selected type's members and relations and
+includes their target types; depth 2 also reads those targets. Multiple libraries/types
+are allowed. Dependencies of a `full` selection are endpoints until selected themselves.
+Metadata extraction covers structural relations; calls inside DLL method bodies need IL
+analysis and are outside this mode.
+
+Run extraction to inspect the live graph, then sync to bring the records into the working
+model and Save to persist them. Own records keep their existing files; own-to-external
+relations go to `relations.external.json`; each library has one file under `external/`,
+with its entities and outgoing relations. Views and MCP tools use a single merged registry.
+Keep these generated files with the workspace. Do not copy DLLs into it or create a source
+`ref` for a metadata type. A later partial run preserves previously expanded parts; a changed
+assembly version requires a full extraction before merging.
+
 ## 4. Two languages: link them or `check` fails
 
 If the same field is `authored` in two languages, `check` reports `расхождение`. Decide which one

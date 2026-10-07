@@ -12,6 +12,16 @@ internal sealed class FactsDocument
     [JsonPropertyName("edgeKinds")] public List<string>? EdgeKinds { get; set; }
     [JsonPropertyName("symbols")] public List<SymbolFact> Symbols { get; set; } = [];
     [JsonPropertyName("edges")] public List<EdgeFact> Edges { get; set; } = [];
+    [JsonPropertyName("libraries")] public List<LibraryFact>? Libraries { get; set; }
+}
+
+internal sealed class LibraryFact
+{
+    [JsonPropertyName("id")] public string Id { get; set; } = "";
+    [JsonPropertyName("name")] public string Name { get; set; } = "";
+    [JsonPropertyName("version")] public string Version { get; set; } = "";
+    [JsonPropertyName("complete")] public bool? Complete { get; set; }
+    [JsonPropertyName("expanded")] public List<string>? Expanded { get; set; }
 }
 
 internal sealed class SymbolFact
@@ -21,7 +31,8 @@ internal sealed class SymbolFact
     [JsonPropertyName("nativeKind")] public string NativeKind { get; set; } = "";
     [JsonPropertyName("name")] public string Name { get; set; } = "";
     [JsonPropertyName("namespace")] public string Namespace { get; set; } = "";
-    [JsonPropertyName("file")] public string File { get; set; } = "";
+    [JsonPropertyName("library")] public string? Library { get; set; }
+    [JsonPropertyName("file")] public string? File { get; set; } = "";
     [JsonPropertyName("line")] public int? Line { get; set; }
     [JsonPropertyName("endLine")] public int? EndLine { get; set; }
     [JsonPropertyName("spans")] public List<SpanFact>? Spans { get; set; }

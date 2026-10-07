@@ -96,6 +96,26 @@ function extractorCard(e: ExtractorView, inner: HTMLElement): HTMLElement {
   const root = el("input", { value: e.root, placeholder: "." });
   const include = el("input", { value: listValue(e.include), placeholder: t.listHint });
   const exclude = el("input", { value: listValue(e.exclude), placeholder: t.listHint });
+  const external = el("select", {});
+  for (const [value,text] of [["off",t.externalOff],["used",t.externalUsed],["expand",t.externalExpand],["full",t.externalFull]]) {
+    const option = el("option",{value,text}); option.selected = value === (e.external ?? "off"); external.appendChild(option);
+  }
+  const libraries = el("input",{value:listValue(e.libraries ?? []),placeholder:"Microsoft.ML.OnnxRuntime"});
+  const externalTypes = el("input",{value:listValue(e.externalTypes ?? []),placeholder:"Microsoft.ML.OnnxRuntime.OrtMemoryInfo"});
+  const externalDepth = el("input",{type:"number",value:String(e.externalDepth ?? 1),attrs:{min:"0",step:"1"}});
+  const externalRows = el("div",{class:"tool-form"},[
+    el("label",{text:t.externalMode}),external,
+    el("label",{text:t.externalLibraries}),libraries,
+    el("label",{text:t.externalTypes}),externalTypes,
+    el("label",{text:t.externalDepth}),externalDepth,
+  ]);
+  const externalSection = el("div",{},[externalRows,el("p",{class:"tool-hint",text:t.externalHint})]);
+  const updateExternal = () => {
+    externalSection.hidden = language.value !== "csharp";
+    libraries.disabled = external.value === "off";
+    externalTypes.disabled = externalDepth.disabled = external.value !== "expand";
+  };
+  language.addEventListener("change",updateExternal); external.addEventListener("change",updateExternal); updateExternal();
 
   // What an extractor can be told to print: graph-filters.json `extractorEdgeKinds`
   // (`calls` is the graph's, switched on in its own panel, so it is not offered here).
@@ -139,6 +159,11 @@ function extractorCard(e: ExtractorView, inner: HTMLElement): HTMLElement {
   save.addEventListener("click", async () => {
     save.disabled = true;
     try {
+      if (language.value === "csharp" && !externalDepth.checkValidity()) {
+        externalDepth.reportValidity();
+        save.disabled = false;
+        return;
+      }
       const edges = edgeKinds.filter((k) => edgeChecks[k]?.checked);
       const next = await toolApi.saveExtractor(e.id, {
         language: language.value,
@@ -148,6 +173,12 @@ function extractorCard(e: ExtractorView, inner: HTMLElement): HTMLElement {
         exclude: parseList(exclude.value),
         edges: edges.length > 0 ? edges : undefined,
         watch: watchCb.checked,
+        ...(language.value === "csharp" || e.external ? {
+          external: (language.value === "csharp" ? external.value : "off") as ExtractorView["external"],
+          libraries: language.value === "csharp" && external.value !== "off" ? parseList(libraries.value) : [],
+          externalTypes: language.value === "csharp" && external.value === "expand" ? parseList(externalTypes.value) : [],
+          ...(language.value === "csharp" ? {externalDepth:Number(externalDepth.value)} : {}),
+        } : {}),
       });
       render(inner, next);
     } catch (err) {
@@ -205,6 +236,7 @@ function extractorCard(e: ExtractorView, inner: HTMLElement): HTMLElement {
     ]),
     problems.length ? el("p", { class: "tool-error", text: problems.join("\n") }) : null,
     el("div", { class: "tool-form" }, formRows),
+    externalSection,
     el("div", { class: "tool-actions" }, [save, extract, status]),
     runPanel,
   ]);

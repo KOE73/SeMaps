@@ -13,19 +13,25 @@ has an optional, transport-independent [IDE bridge](../../docs/IDE_BRIDGE.md).
 - Switching/closing the solution disconnects the map. Closing VS leaves the shared
   host running. Reconnect finds configurations created after opening the solution.
 - Selecting a map block selects its single bound file in Solution Explorer without
-  opening the source. Disable the checkbox to stop following selections.
+  opening the source. Disable following selections in the **⋯** menu.
 - Clicking a code binding opens the native editor at the bound line. Browser code
   viewing remains the fallback if the IDE declines or the bridge is unavailable.
-- Drag C# source files from Solution Explorer onto the canvas or the bottom area.
+- Drag C# source files from Solution Explorer directly onto the canvas.
   Roslyn resolves types using the loaded solution and project references. A dialog
   lets you choose types, shows assembly/file/line and marks unsaved buffers. After
   confirmation, existing model entities are placed through normal editor operations
   with one Undo. Repeated drops select existing blocks without duplicates.
-- The button **Выбрать тип из редактора на карте** resolves the containing type at
+- The **◎** button (tooltip: **Выбрать тип из редактора на карте**) resolves the containing type at
   the last active code editor's caret, then selects/reveals its existing block.
   It never creates a placement automatically.
 - Missing facts/model entities and ambiguity are reported. Extraction and sync are
   separate actions; neither runs as a hidden effect of navigation or drop.
+- Plugin controls occupy one 26-DIP row: **↻** reconnect, **◎** locate type,
+  **⋯** settings/details and a connection indicator. Address/diagnostics are in its
+  tooltip and details dialog. Operation messages use the existing VS status bar;
+  there is no plugin footer or separate drop area.
+- **⋯ → Открыть в браузере** opens the current map URL in the default external
+  browser. The command is available while a map is connected.
 
 ## Build and test
 

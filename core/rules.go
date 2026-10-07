@@ -50,7 +50,7 @@ func (after *Model) validate(before *Model, ops []Op) error {
 			return err
 		}
 	}
-	return nil
+	return after.checkLibraryRecords()
 }
 
 // checkWithdrawn: a record withdrawn by the batch is named nowhere (ADR_20260930-8).

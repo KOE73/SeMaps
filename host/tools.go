@@ -240,5 +240,20 @@ func extractorArgs(t extractorTool, e extractorConf, projectRoot string) []strin
 	if len(e.Implements) > 0 {
 		args = append(args, "--implements", strings.Join(e.Implements, ","))
 	}
+	if e.Language != "csharp" {
+		return args
+	}
+	if e.External != "" {
+		args = append(args, "--external", e.External)
+	}
+	for _, lib := range e.Libraries {
+		args = append(args, "--library", lib)
+	}
+	for _, typ := range e.ExternalTypes {
+		args = append(args, "--external-type", typ)
+	}
+	if e.ExternalDepth != nil {
+		args = append(args, "--external-depth", fmt.Sprint(*e.ExternalDepth))
+	}
 	return args
 }

@@ -90,23 +90,28 @@ func readJSON(r *http.Request, v any) error {
 }
 
 type extractorView struct {
-	ID       string        `json:"id"`
-	Language string        `json:"language"`
-	Project  string        `json:"project"`
-	Root     string        `json:"root"`
-	Include  []string      `json:"include"`
-	Exclude  []string      `json:"exclude"`
-	Edges    []string      `json:"edges"`
-	Watch    bool          `json:"watch"`
-	Command  string        `json:"command,omitempty"` // shown, never written through the API
-	Tool     extractorTool `json:"tool"`
-	LastRun  *runInfo      `json:"lastRun,omitempty"`
+	ID            string        `json:"id"`
+	Language      string        `json:"language"`
+	Project       string        `json:"project"`
+	Root          string        `json:"root"`
+	Include       []string      `json:"include"`
+	Exclude       []string      `json:"exclude"`
+	Edges         []string      `json:"edges"`
+	Watch         bool          `json:"watch"`
+	External      string        `json:"external,omitempty"`
+	Libraries     []string      `json:"libraries,omitempty"`
+	ExternalTypes []string      `json:"externalTypes,omitempty"`
+	ExternalDepth *int          `json:"externalDepth,omitempty"`
+	Command       string        `json:"command,omitempty"` // shown, never written through the API
+	Tool          extractorTool `json:"tool"`
+	LastRun       *runInfo      `json:"lastRun,omitempty"`
 }
 
 func (api *toolAPI) extractorViews(list []extractorConf) []extractorView {
 	out := []extractorView{}
 	for _, e := range list {
 		v := extractorView{
+			External: e.External, Libraries: e.Libraries, ExternalTypes: e.ExternalTypes, ExternalDepth: e.ExternalDepth,
 			ID: e.ID, Language: e.Language, Project: e.Project, Root: e.Root,
 			Include: nonNil(e.Include), Exclude: nonNil(e.Exclude), Edges: nonNil(e.Edges), Watch: e.Watch, Command: e.Command,
 			Tool: resolveExtractor(e),
@@ -222,13 +227,17 @@ func (api *toolAPI) putExtractor(w http.ResponseWriter, r *http.Request) {
 	// `command` is not a field here on purpose: through HTTP only data changes,
 	// never what gets executed (ADR_20260924-3 §5). An unknown field is refused.
 	var body struct {
-		Language *string   `json:"language"`
-		Project  *string   `json:"project"`
-		Root     *string   `json:"root"`
-		Include  *[]string `json:"include"`
-		Exclude  *[]string `json:"exclude"`
-		Edges    *[]string `json:"edges"`
-		Watch    *bool     `json:"watch"`
+		Language      *string   `json:"language"`
+		Project       *string   `json:"project"`
+		Root          *string   `json:"root"`
+		Include       *[]string `json:"include"`
+		Exclude       *[]string `json:"exclude"`
+		Edges         *[]string `json:"edges"`
+		Watch         *bool     `json:"watch"`
+		External      *string   `json:"external"`
+		Libraries     *[]string `json:"libraries"`
+		ExternalTypes *[]string `json:"externalTypes"`
+		ExternalDepth *int      `json:"externalDepth"`
 	}
 	dec := json.NewDecoder(io.LimitReader(r.Body, 1<<20))
 	dec.DisallowUnknownFields()
@@ -242,6 +251,7 @@ func (api *toolAPI) putExtractor(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	patch := extractorPatch{Language: body.Language, Project: body.Project, Root: body.Root, Include: body.Include, Exclude: body.Exclude, Edges: body.Edges, Watch: body.Watch}
+	patch.External, patch.Libraries, patch.ExternalTypes, patch.ExternalDepth = body.External, body.Libraries, body.ExternalTypes, body.ExternalDepth
 	if err := patchExtractor(api.file, id, patch); err != nil {
 		http.Error(w, err.Error(), http.StatusBadRequest)
 		return
