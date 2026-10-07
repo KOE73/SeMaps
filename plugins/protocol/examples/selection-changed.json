@@ -1,0 +1,10 @@
+{
+  "protocol": "semaps.ide", "version": 1, "sessionId": "example-session",
+  "kind": "event", "id": "editor-1", "method": "selection.changed",
+  "origin": "ide", "causationId": "drop",
+  "params": {
+    "context": { "contextId": "example-context", "projectId": "example-project", "viewId": "example-view", "mode": "diagram" },
+    "primaryId": "e_example",
+    "objects": [{ "entityId": "e_example", "sources": [{ "language": "csharp", "symbolId": "Example.Type", "file": "src/Type.cs", "line": 7 }] }]
+  }
+}

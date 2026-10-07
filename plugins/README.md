@@ -4,7 +4,8 @@ Each IDE adapter has its own build and release artifact under `plugins/<ide>/`.
 The consuming repository still keeps only its `.semaps` file and workspace.
 
 - [Shared protocol](protocol/README.md): JSON envelopes, examples and transport checks.
-- [Visual Studio](visual-studio/README.md): VSIX prototype and Experimental Instance.
+- [Visual Studio](visual-studio/README.md): VSIX and Experimental Instance.
+- [IDE bridge](../docs/IDE_BRIDGE.md): shared commands, context, events and boundaries.
 
 IDE-specific drag formats, source parsing, symbol services and project UI belong to
 the plugin. SeMaps keeps the model and its editing rules; plugins must not write

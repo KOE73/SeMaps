@@ -14,6 +14,7 @@ import { renderView } from "../editor/render/renderView.js";
 import { loadCanvas } from "../constants/canvas.js";
 import { toolApi } from "../shell/api.js";
 import { addToolModes } from "./toolModes.js";
+import { embeddedTransport } from "../integration/transport.js";
 
 /**
  * Application entry point with Workbench Architecture.
@@ -63,6 +64,12 @@ async function main(): Promise<void> {
     semapsEditor: workbench.editor,
     semapsCommands: workbench.commands,
   });
+  const ideTransport = embeddedTransport();
+  if (ideTransport) {
+    const { attachEditorBridge } = await import("../integration/editorAdapter.js");
+    attachEditorBridge(workbench.editor, ideTransport, () => workbench.currentModeId,
+      (changed) => workbench.modeEvents.on("change", changed));
+  }
 }
 
 void main();

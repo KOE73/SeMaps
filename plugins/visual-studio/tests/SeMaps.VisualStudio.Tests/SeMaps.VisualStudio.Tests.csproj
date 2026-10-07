@@ -8,7 +8,16 @@
   <ItemGroup>
     <Compile Include="../../src/SeMaps.VisualStudio/ProjectDiscovery.cs" Link="ProjectDiscovery.cs" />
     <Compile Include="../../src/SeMaps.VisualStudio/HostConnection.cs" Link="HostConnection.cs" />
+    <Compile Include="../../src/SeMaps.VisualStudio/IdeBridgeClient.cs" Link="IdeBridgeClient.cs" />
+    <Compile Include="../../src/SeMaps.VisualStudio/SourcePaths.cs" Link="SourcePaths.cs" />
+    <Compile Include="../../src/SeMaps.VisualStudio/SymbolResolver.cs" Link="SymbolResolver.cs" />
+    <Compile Include="../../../../extractors/csharp/src/SeMaps.Extract.CSharp/SymbolIds.cs" Link="SymbolIds.cs" />
+    <Compile Include="../../../../extractors/csharp/src/SeMaps.Extract.CSharp/SymbolDisplay.cs" Link="SymbolDisplay.cs" />
+    <Using Include="System" />
+    <Using Include="System.Collections.Generic" />
+    <Using Include="System.Linq" />
     <PackageReference Include="Newtonsoft.Json" Version="13.0.3" />
     <PackageReference Include="YamlDotNet" Version="16.3.0" />
+    <PackageReference Include="Microsoft.CodeAnalysis.CSharp.Workspaces" Version="4.14.0" />
   </ItemGroup>
 </Project>

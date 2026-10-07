@@ -49,7 +49,8 @@ try
     cancelled.Cancel();
     try { await startingConnection.EnsureAsync(project, cancelled.Token); throw new Exception("Cancellation ignored"); }
     catch (OperationCanceledException) { Console.WriteLine("PASS: Cancel obsolete solution request"); }
-    Console.WriteLine("All discovery/host tests passed.");
+    await IntegrationChecks.RunAsync(root);
+    Console.WriteLine("All discovery/host/integration tests passed.");
 }
 finally
 {

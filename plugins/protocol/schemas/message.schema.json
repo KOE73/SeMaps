@@ -16,7 +16,7 @@
     "result": { "type": "object" },
     "error": {
       "type": "object", "required": ["code", "message"],
-      "properties": { "code": { "type": "string" }, "message": { "type": "string" }, "data": {} },
+      "properties": { "code": { "type": "string", "minLength": 1 }, "message": { "type": "string" }, "data": {} },
       "additionalProperties": false
     },
     "origin": { "type": "string", "minLength": 1 },

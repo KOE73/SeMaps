@@ -71,6 +71,7 @@ internal sealed class HostConnection
         catch (Newtonsoft.Json.JsonException) { return null; }
         catch (HttpRequestException) { return null; }
         catch (ArgumentException) { return null; }
+        catch (NotSupportedException) { return null; }
     }
 
     private static bool SamePath(string? actual, string expected) => !string.IsNullOrWhiteSpace(actual)
@@ -79,6 +80,13 @@ internal sealed class HostConnection
 
     private static string FindExecutable()
     {
+        // Per-process development override; normal installations use the stable executable.
+        var trial = Environment.GetEnvironmentVariable("SEMAPS_VS_HOST_EXE");
+        if (!string.IsNullOrWhiteSpace(trial))
+        {
+            if (!Path.IsPathRooted(trial) || !File.Exists(trial)) throw new FileNotFoundException("SEMAPS_VS_HOST_EXE must name an existing absolute executable path.");
+            return trial;
+        }
         var installed = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData),
             "Programs", "SeMaps", "semaps.exe");
         if (File.Exists(installed)) return installed;

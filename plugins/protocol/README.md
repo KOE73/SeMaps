@@ -3,26 +3,26 @@
 Protocol name: `semaps.ide`; version: `1`. IDE plugins live outside the editor.
 JSON message semantics are independent of the WebView technology.
 
-This first prototype implements **only a transport probe** (`bridge.initialize`).
-It advertises an empty capability list. Selection, symbol lookup, navigation and placement
-are planned in [the implementation plan](../../docs/plans/PLAN_20261007_editor_ide-bridge-and-visual-studio.md).
-They must not be claimed as working by an adapter until implemented.
+The optional production adapter implements context, symbol lookup, selection, reveal
+and placement in diagram views, plus source opening through the IDE. The normative
+command contract is [IDE_BRIDGE.md](../../docs/IDE_BRIDGE.md).
 
 `schemas/message.schema.json` defines the common envelope. Requests use `id`;
 responses use `requestId` and exactly one of `result` or `error`. The receiver checks
 protocol, version, session and request correlation. Each new attachment uses a new
 session; an answer from an earlier session is ignored. `origin` and `causationId`
-are reserved for correlating selection events without feedback loops.
+correlate selection events without feedback loops.
 
 The sender negotiates capabilities before sending editor commands. A transport probe
 must not inspect the editor's DOM, intercept internal events or change the model.
-`probe.js` is temporarily embedded by the VSIX, so an installed SeMaps can be tried
-without changing or replacing its executable. The production editor bridge will use
-the same envelope but live in the editor's optional integration adapter.
+`probe.js` and its empty-capability handshake examples remain isolated transport
+fixtures. The VSIX no longer injects this probe into the editor. Production integration
+lives in `editor/src/integration/`; it requires an editor build containing that adapter.
 
 Run the transport contract checks:
 
 ```powershell
 npm ci --prefix plugins/protocol
 npm test --prefix plugins/protocol
+npm run check:ide-bridge --prefix editor
 ```

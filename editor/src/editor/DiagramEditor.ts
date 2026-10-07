@@ -144,6 +144,8 @@ export class DiagramEditor implements InspectorHost, StylePanelHost, DiagramEdit
   readonly history = new History();
   readonly docEditor: DocEditorDialog;
   readonly codeViewer: CodeViewerDialog;
+  /** Optional IDE integration; false/error preserves the built-in code viewer. */
+  sourceOpener?: (ref: string, label?: string) => Promise<boolean>;
   private readonly inspector: Inspector;
   private readonly edgesPanel: EdgesPanel;
   private readonly filtersPanel: FiltersPanel;
@@ -273,7 +275,9 @@ export class DiagramEditor implements InspectorHost, StylePanelHost, DiagramEdit
       return;
     }
     const line = lineOfRef(ref);
-    void (line === undefined ? this.codeViewer.open(ref, label) : this.codeViewer.openAt(ref, line, label));
+    const openInBrowser = () => line === undefined ? this.codeViewer.open(ref!, label) : this.codeViewer.openAt(ref!, line, label);
+    if (this.sourceOpener) void this.sourceOpener(ref, label).then((opened) => { if (!opened) void openInBrowser(); }, () => { void openInBrowser(); });
+    else void openInBrowser();
   }
 
   /**

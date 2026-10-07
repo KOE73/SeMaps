@@ -7,7 +7,7 @@ const read = (path) => JSON.parse(readFileSync(new URL(path, import.meta.url), "
 // Conditional branches refer to properties declared once on the common envelope.
 const validate = new Ajv2020({ strict: true, strictRequired: false }).compile(read("../schemas/message.schema.json"));
 test("request and response fixtures satisfy the common envelope schema", () => {
-  for (const name of ["initialize", "initialized"]) {
+  for (const name of ["initialize", "initialized", "editor-initialized", "place", "selection-changed"]) {
     assert.equal(validate(read(`../examples/${name}.json`)), true, JSON.stringify(validate.errors));
   }
 });

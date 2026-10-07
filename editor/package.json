@@ -27,7 +27,8 @@
     "check:content-template": "node scripts/check-content-template.mjs",
     "check:routers": "node scripts/check-routers.mjs",
     "check:nudge": "node scripts/check-nudge.mjs",
-    "check:model-sync": "node scripts/check-model-sync.mjs"
+    "check:model-sync": "node scripts/check-model-sync.mjs",
+    "check:ide-bridge": "node scripts/check-ide-bridge.mjs"
   },
   "devDependencies": {
     "@tabler/icons": "^3.48.0",
