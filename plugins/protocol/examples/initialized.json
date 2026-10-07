@@ -1,0 +1,5 @@
+{
+  "protocol": "semaps.ide", "version": 1, "sessionId": "example-session",
+  "kind": "response", "requestId": "initialize-1",
+  "result": { "capabilities": [], "transport": "webview2", "probe": true }
+}
