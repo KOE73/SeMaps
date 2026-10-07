@@ -438,6 +438,8 @@ export const ruDictionary: UiDictionary = {
     viewIdHint: "Имя файла: v_ и дальше латиница, цифры, _ (например v_main)",
     titleLabel: "Название",
     subtitleLabel: "Подзаголовок",
+    sourceIncludesLabel: "Папки исходников для сверки",
+    sourceIncludesHint: "Пути от корня исходников, через запятую. Пустое поле — все папки. Изменение действует при следующей сверке; сужение списка может пометить прежние символы как отсутствующие.",
     iconLabel: "Значок",
     nameLabel: "Название схемы",
     axisLabel: "Ось",

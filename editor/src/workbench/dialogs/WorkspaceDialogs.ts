@@ -147,6 +147,7 @@ function projectRows(editor: DiagramEditorFacade, existing: ProjectEntry | undef
   const id = textInput(existing?.id ?? "", "shop");
   const title = textInput(existing?.title ?? "");
   const subtitle = textInput(existing?.subtitle ?? "");
+  const sources = textInput(existing?.sources?.include?.join(", ") ?? "", "src, labs");
   const look = lookPicker(existing?.icon ?? "folder", existing?.theme);
 
   const rows: Row[] = [
@@ -161,12 +162,14 @@ function projectRows(editor: DiagramEditorFacade, existing: ProjectEntry | undef
       return others.some((p) => p.id === v) ? t.idTaken : null;
     } },
     { label: t.subtitleLabel, control: subtitle },
+    ...(existing ? [{ label: t.sourceIncludesLabel, control: sources, hint: t.sourceIncludesHint }] : []),
     { label: t.iconLabel, control: look.element, hint: t.iconHint },
   ];
   const value = () => ({
     id: id.value.trim(),
     title: title.value.trim(),
     subtitle: subtitle.value.trim() || undefined,
+    ...(existing ? { sourceIncludes: sources.value.split(",").map((path) => path.trim()).filter(Boolean) } : {}),
     icon: look.icon() || undefined,
     theme: look.theme(),
     language: editor.dataLang,

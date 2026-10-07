@@ -426,6 +426,8 @@ export interface UiDictionary {
     readonly viewIdHint: string;
     readonly titleLabel: string;
     readonly subtitleLabel: string;
+    readonly sourceIncludesLabel: string;
+    readonly sourceIncludesHint: string;
     readonly iconLabel: string;
     readonly nameLabel: string;
     readonly axisLabel: string;

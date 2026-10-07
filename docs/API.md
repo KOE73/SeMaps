@@ -119,6 +119,9 @@ MCP `list_projects` gives the same answer (§6); clients do not merge anything t
 - `title` falls back to the folder name; `names` holds `name` under the view's id from each
   `text.<lang>.json` of `languages` (empty when there is none).
 - Projects and views are sorted by `order`, entries without one last, then by `id`.
+- Project entries also carry the manifest's optional `sources` object, including
+  `sources.include`, from the working model. The editor exposes this filter in
+  project properties; edits use a `project` op and are persisted by project Save.
 - A file that does not parse stays in the list with an `error` string instead of its fields.
 - No `projects/` folder is an empty list, not an error. Served with `Cache-Control: no-cache`.
 - Reference implementation: `core.LiveIndex` over `core.Index` (`core/index.go`).

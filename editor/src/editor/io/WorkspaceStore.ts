@@ -103,6 +103,13 @@ export class HttpWorkspaceStore implements WorkspaceStore {
     const next = withLook({ ...manifest, id: p.id, title: p.title }, p);
     if (p.subtitle) next.subtitle = p.subtitle;
     else delete next.subtitle;
+    if (p.sourceIncludes !== undefined) {
+      const sources = { ...(manifest.sources as Json | undefined) };
+      if (p.sourceIncludes.length) sources.include = [...p.sourceIncludes];
+      else delete sources.include;
+      if (Object.keys(sources).length) next.sources = sources;
+      else delete next.sources;
+    }
     await this.ops(p.id, [{ kind: "project", id: p.id, value: next }]);
   }
 

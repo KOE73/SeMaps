@@ -19,15 +19,16 @@ type WorkspaceIndex struct {
 }
 
 type ProjectIndex struct {
-	ID        string      `json:"id"`
-	Title     string      `json:"title"`
-	Subtitle  string      `json:"subtitle,omitempty"`
-	Icon      string      `json:"icon,omitempty"`
-	Theme     string      `json:"theme,omitempty"`
-	Order     *float64    `json:"order,omitempty"`
-	Languages []string    `json:"languages"`
-	Views     []ViewIndex `json:"views"`
-	Error     string      `json:"error,omitempty"`
+	ID        string          `json:"id"`
+	Title     string          `json:"title"`
+	Subtitle  string          `json:"subtitle,omitempty"`
+	Sources   json.RawMessage `json:"sources,omitempty"`
+	Icon      string          `json:"icon,omitempty"`
+	Theme     string          `json:"theme,omitempty"`
+	Order     *float64        `json:"order,omitempty"`
+	Languages []string        `json:"languages"`
+	Views     []ViewIndex     `json:"views"`
+	Error     string          `json:"error,omitempty"`
 }
 
 type ViewIndex struct {
@@ -77,9 +78,10 @@ func indexProject(dir, id string) ProjectIndex {
 	p := ProjectIndex{ID: id, Title: id, Languages: []string{"ru"}, Views: []ViewIndex{}}
 	var manifest struct {
 		listed
-		Title     string   `json:"title"`
-		Subtitle  string   `json:"subtitle"`
-		Languages []string `json:"languages"`
+		Title     string          `json:"title"`
+		Subtitle  string          `json:"subtitle"`
+		Sources   json.RawMessage `json:"sources"`
+		Languages []string        `json:"languages"`
 	}
 	if err := readJSON(filepath.Join(dir, "project.json"), &manifest); err != nil {
 		p.Error = "project.json: " + err.Error()
@@ -89,6 +91,7 @@ func indexProject(dir, id string) ProjectIndex {
 		p.Title = manifest.Title
 	}
 	p.Subtitle, p.Icon, p.Theme, p.Order = manifest.Subtitle, manifest.Icon, manifest.Theme, manifest.Order
+	p.Sources = manifest.Sources
 	if len(manifest.Languages) > 0 {
 		p.Languages = manifest.Languages
 	}
@@ -171,14 +174,16 @@ func (m *Model) overlay(p *ProjectIndex) {
 	defer m.mu.Unlock()
 	var manifest struct {
 		listed
-		Title     string   `json:"title"`
-		Subtitle  string   `json:"subtitle"`
-		Languages []string `json:"languages"`
+		Title     string          `json:"title"`
+		Subtitle  string          `json:"subtitle"`
+		Sources   json.RawMessage `json:"sources"`
+		Languages []string        `json:"languages"`
 	}
 	b, _ := m.manifest.MarshalJSON()
 	if json.Unmarshal(b, &manifest) == nil {
 		p.Title = orDefault(manifest.Title, p.ID)
 		p.Subtitle, p.Icon, p.Theme, p.Order = manifest.Subtitle, manifest.Icon, manifest.Theme, manifest.Order
+		p.Sources = manifest.Sources
 		if len(manifest.Languages) > 0 {
 			p.Languages = manifest.Languages
 		}

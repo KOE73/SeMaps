@@ -53,6 +53,9 @@ async function main(): Promise<void> {
     addToolModes(workbench);
   }
   if (!location.hash.startsWith("#v_")) workbench.selectMode(location.hash.slice(1));
+  window.addEventListener("hashchange", () => {
+    if (!location.hash.startsWith("#v_")) workbench.selectMode(location.hash.slice(1));
+  });
 
   // Handy for console debugging and testing
   Object.assign(window, {

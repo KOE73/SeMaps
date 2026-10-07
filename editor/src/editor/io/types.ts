@@ -28,6 +28,7 @@ export interface ProjectEntry {
   readonly id: string;
   readonly title: string;
   readonly subtitle?: string;
+  readonly sources?: { readonly include?: readonly string[] };
   readonly icon?: string;
   readonly theme?: string;
   readonly languages: readonly string[];
@@ -52,6 +53,8 @@ export interface NewProject {
   readonly id: string;
   readonly title: string;
   readonly subtitle?: string;
+  /** Undefined preserves the existing filter; an empty list includes every folder. */
+  readonly sourceIncludes?: readonly string[];
   readonly icon?: string;
   readonly theme?: string;
   readonly language: string;

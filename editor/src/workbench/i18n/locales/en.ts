@@ -438,6 +438,8 @@ export const enDictionary: UiDictionary = {
     viewIdHint: "File name: v_ then latin letters, digits, _ (e.g. v_main)",
     titleLabel: "Title",
     subtitleLabel: "Subtitle",
+    sourceIncludesLabel: "Source folders for reconciliation",
+    sourceIncludesHint: "Paths relative to the source root, separated by commas. Leave empty for all folders. Takes effect on the next reconciliation; narrowing the list may mark previous symbols as missing.",
     iconLabel: "Icon",
     nameLabel: "Diagram name",
     axisLabel: "Axis",

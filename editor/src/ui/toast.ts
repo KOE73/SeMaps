@@ -1,7 +1,8 @@
 /** A short-lived message at the bottom of the window, over whatever mode is shown. */
-export function toast(message: string): void {
+export function toast(message: string | Node): void {
   const box = document.createElement("div");
-  box.textContent = message;
+  if (typeof message === "string") box.textContent = message;
+  else box.append(message);
   box.setAttribute("role", "status");
   Object.assign(box.style, {
     position: "fixed",
@@ -17,5 +18,5 @@ export function toast(message: string): void {
     maxWidth: "80vw",
   });
   document.body.append(box);
-  setTimeout(() => box.remove(), 2600);
+  setTimeout(() => box.remove(), box.querySelector("a") ? 10000 : 2600);
 }

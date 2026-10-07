@@ -2177,7 +2177,20 @@ export class DiagramEditor implements InspectorHost, StylePanelHost, DiagramEdit
     if (this.canvas.model === null) return;
     const r = pasteGraphNodes(this, payload);
     const parts = [fmt(shellStrings.graphPasted, { n: String(r.placed.length) })];
-    if (r.notInModel > 0) parts.push(fmt(shellStrings.graphPasteSkipped, { k: String(r.notInModel) }));
+    if (r.notInModel > 0) {
+      const message = document.createDocumentFragment();
+      message.append(`${parts[0]} · `);
+      const [before = "", after = ""] = shellStrings.graphPasteSkipped.split("{sync}");
+      message.append(fmt(before, { k: String(r.notInModel) }));
+      const link = document.createElement("a");
+      link.href = "#extract";
+      link.textContent = shellStrings.graphPasteSync;
+      link.style.color = "inherit";
+      message.append(link, after);
+      if (r.alreadyOnView > 0) message.append(` · ${fmt(shellStrings.graphPasteExisting, { n: String(r.alreadyOnView) })}`);
+      showToast(message);
+      return;
+    }
     if (r.alreadyOnView > 0) parts.push(fmt(shellStrings.graphPasteExisting, { n: String(r.alreadyOnView) }));
     this.toast(parts.join(" · "));
   }
