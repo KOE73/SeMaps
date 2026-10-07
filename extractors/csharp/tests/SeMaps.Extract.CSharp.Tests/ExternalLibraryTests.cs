@@ -71,7 +71,7 @@ public sealed class ExternalLibraryTests(ExternalLibraryFixture fixture)
         var result=ToolHost.Run(fixture.Root,new[]{"--root",".","--include","Consumer","--edges","holds,uses"}.Concat(extra).ToArray());
         Assert.True(result.ExitCode==0,result.StdErr);
         var json=JsonNode.Parse(result.StdOut)!.AsObject();
-        var evaluation=JsonSchema.FromFile(TestPaths.SchemaPath).Evaluate(json,new EvaluationOptions {OutputFormat=OutputFormat.List});
+        var evaluation=JsonSchema.FromFile(TestPaths.SchemaPath, new BuildOptions { SchemaRegistry = new SchemaRegistry() }).Evaluate(System.Text.Json.JsonSerializer.SerializeToElement(json),new EvaluationOptions {OutputFormat=OutputFormat.List});
         Assert.True(evaluation.IsValid,System.Text.Json.JsonSerializer.Serialize(evaluation));
         return json;
     }
