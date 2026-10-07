@@ -3,14 +3,9 @@
   <Extern href="stdidcmd.h" />
   <Extern href="vsshlids.h" />
   <Commands package="guidSeMapsPackage">
-    <Groups>
-      <Group guid="guidSeMapsCommands" id="SeMapsGroup" priority="0x0600">
-        <Parent guid="guidSHLMainMenu" id="IDG_VS_WNDO_OTRWNDWS1" />
-      </Group>
-    </Groups>
     <Buttons>
       <Button guid="guidSeMapsCommands" id="OpenSeMaps" priority="0x0100" type="Button">
-        <Parent guid="guidSeMapsCommands" id="SeMapsGroup" />
+        <Parent guid="guidSHLMainMenu" id="IDG_VS_WNDO_OTRWNDWS1" />
         <Strings><ButtonText>SeMaps</ButtonText><CommandName>View.SeMaps</CommandName></Strings>
       </Button>
     </Buttons>
@@ -18,7 +13,6 @@
   <Symbols>
     <GuidSymbol name="guidSeMapsPackage" value="{d4690355-5ac0-41bb-ae4a-79c6cd7a4f3a}" />
     <GuidSymbol name="guidSeMapsCommands" value="{30a2c5b4-0609-4f39-b7e3-40724427c2bc}">
-      <IDSymbol name="SeMapsGroup" value="0x1020" />
       <IDSymbol name="OpenSeMaps" value="0x0100" />
     </GuidSymbol>
   </Symbols>

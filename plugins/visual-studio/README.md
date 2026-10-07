@@ -6,7 +6,7 @@ for this prototype. The composition control keeps the page visible across VS doc
 
 ## What works
 
-- On solution open (including an already open solution when the package loads), find
+- Only when the user opens SeMaps or clicks Reconnect, find
   `*.semaps` beside the solution, then in its parent folders. The nearest matching
   directory wins; multiple files require a choice. No file means no server launch.
 - Connect automatically to the host recorded in `.semaps/host.json`, verifying its
@@ -14,7 +14,11 @@ for this prototype. The composition control keeps the page visible across VS doc
 - If no matching host is live, start the installed `semaps.exe --here --no-browser <file>`
   without a console or browser. The executable is found in the user installation,
   then PATH. Closing Visual Studio/solution leaves the shared host running.
-- Open SeMaps via **View → Other Windows → SeMaps** (`View.SeMaps`). Reconnect retries
+- Opening a solution never starts a server, prompts for a project or opens SeMaps.
+  The package has no solution-triggered auto-load. Open the map manually via
+  **View → Other Windows → SeMaps** (`View.SeMaps`); this starts or reuses its host.
+  Switching solutions disconnects the previous map; open SeMaps or click Reconnect
+  to load the new one. Reconnect retries
   discovery; files created after opening the solution are picked up on reconnect.
 - A correlated JSON handshake confirms WebView2 messaging. It advertises **no editor
   commands**; the generic editor bridge is the next stage.
@@ -55,7 +59,8 @@ the temporary folder. Successful SDK compilation alone does not prove UI behavio
 Visual Studio Enterprise 2026 18.10.3, VSSDK, MSBuild, WebView2 Runtime:
 
 - Debug VSIX built and deployed to `18.0_ae73be00SeMapsDev`.
-- Opening this solution automatically started the repository's installed SeMaps host.
+- The initial prototype started the repository's host on solution open. This has since
+  been corrected to start only on explicit Open/Reconnect; live verification of the update is pending.
 - Another experimental launch reused the same server PID and endpoint.
 - Existing editor and architecture view rendered inside the VS window.
 - Release composition control rendered in the document area and survived a transition

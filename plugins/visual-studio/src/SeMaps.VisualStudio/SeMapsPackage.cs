@@ -12,7 +12,6 @@ using Task = System.Threading.Tasks.Task;
 namespace SeMaps.VisualStudio;
 
 [PackageRegistration(UseManagedResourcesOnly = true, AllowsBackgroundLoading = true)]
-[ProvideAutoLoad(UIContextGuids80.SolutionExists, PackageAutoLoadFlags.BackgroundLoad)]
 [ProvideMenuResource("Menus.ctmenu", 1)]
 [ProvideToolWindow(typeof(SeMapsToolWindow), Style = VsDockStyle.MDI, Width = 1100, Height = 750)]
 [Guid(PackageGuid)]
@@ -25,8 +24,6 @@ public sealed class SeMapsPackage : AsyncPackage, IVsSolutionEvents
     private IVsSolution? solution;
     private uint solutionCookie;
     private SeMapsControl? control;
-    private SeMapsProject? currentProject;
-    private Uri? currentEndpoint;
     private string status = "Open a solution containing a .semaps project file.";
 
     protected override async Task InitializeAsync(CancellationToken cancellationToken, IProgress<ServiceProgressData> progress)
@@ -40,10 +37,8 @@ public sealed class SeMapsPackage : AsyncPackage, IVsSolutionEvents
         menu.AddCommand(new MenuCommand((sender, args) => Run(async () =>
         {
             await ShowWindowAsync();
-            if (currentEndpoint == null) await ConnectSolutionAsync();
+            await ConnectSolutionAsync();
         }), new CommandID(CommandSet, 0x0100)));
-        // Background auto-loading can happen after OnAfterOpenSolution has already fired.
-        Run(ConnectSolutionAsync);
     }
 
     private void Run(Func<Task> action) => JoinableTaskFactory.RunAsync(async () =>
@@ -66,8 +61,6 @@ public sealed class SeMapsPackage : AsyncPackage, IVsSolutionEvents
         pending = new CancellationTokenSource();
         var token = pending.Token;
         control?.Disconnect();
-        currentEndpoint = null;
-        currentProject = null;
         if (solution == null) return;
         ErrorHandler.ThrowOnFailure(solution.GetSolutionInfo(out var directory, out var solutionFile, out var optionsFile));
         if (string.IsNullOrWhiteSpace(directory)) return;
@@ -86,11 +79,9 @@ public sealed class SeMapsPackage : AsyncPackage, IVsSolutionEvents
         var project = await Task.Run(() => new SeMapsProject(file), token);
         var endpoint = await Task.Run(() => host.EnsureAsync(project, token), token);
         await JoinableTaskFactory.SwitchToMainThreadAsync(token);
-        currentProject = project;
-        currentEndpoint = endpoint;
-        await ShowWindowAsync();
         SetStatus(System.IO.Path.GetFileName(file) + " · " + endpoint);
-        await control!.ConnectAsync(endpoint, token);
+        // Called only by the explicit Open or Reconnect actions.
+        if (control != null) await control.ConnectAsync(endpoint, token);
         ActivityLog.LogInformation("SeMaps", "Connected " + file + " to " + endpoint);
     }
 
@@ -113,12 +104,15 @@ public sealed class SeMapsPackage : AsyncPackage, IVsSolutionEvents
     public int OnAfterOpenSolution(object reserved, int newSolution)
     {
         ThreadHelper.ThrowIfNotOnUIThread();
-        Run(ConnectSolutionAsync); return VSConstants.S_OK;
+        pending.Cancel();
+        control?.Disconnect();
+        SetStatus("Open SeMaps or click Reconnect to load this solution's map.");
+        return VSConstants.S_OK;
     }
     public int OnAfterCloseSolution(object reserved)
     {
         ThreadHelper.ThrowIfNotOnUIThread();
-        pending.Cancel(); currentEndpoint = null; currentProject = null;
+        pending.Cancel();
         control?.Disconnect(); SetStatus("Solution closed. The shared SeMaps server remains running.");
         return VSConstants.S_OK;
     }
