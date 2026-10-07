@@ -11,6 +11,7 @@ internal sealed class Options
     public List<string> Libraries { get; init; } = [];
     public List<string> ExternalTypes { get; init; } = [];
     public int ExternalDepth { get; init; } = 1;
+    public bool ListLibraries { get; init; }
 }
 
 internal static class ArgsParser
@@ -29,12 +30,15 @@ internal static class ArgsParser
         var libraries = new List<string>();
         var externalTypes = new List<string>();
         var externalDepth = 1;
+        var listLibraries = false;
 
         for (var i = 0; i < args.Length; i++)
         {
             var arg = args[i];
             switch (arg)
             {
+                case "--list-libraries":
+                    listLibraries = true; break;
                 case "--external":
                     if (!TryTakeValue(args, ref i, out external) || external is not ("off" or "used" or "expand" or "full"))
                     { error = "--external requires off, used, expand or full"; return null; }
@@ -107,7 +111,7 @@ internal static class ArgsParser
         if (external == "full" && libraries.Count == 0) { error = "--external full requires --library"; return null; }
         if (external == "expand" && externalTypes.Count == 0) { error = "--external expand requires --external-type"; return null; }
         if (external == "off" && (libraries.Count > 0 || externalTypes.Count > 0)) { error = "library/type selection requires --external"; return null; }
-        return new Options { Root = root, Includes = includes, Excludes = excludes, EdgeKinds = edgeKinds, External=external,Libraries=libraries,ExternalTypes=externalTypes,ExternalDepth=externalDepth };
+        return new Options { Root = root, Includes = includes, Excludes = excludes, EdgeKinds = edgeKinds, External=external,Libraries=libraries,ExternalTypes=externalTypes,ExternalDepth=externalDepth,ListLibraries=listLibraries };
     }
 
     private static bool IsValidEdgeKind(string kind) => kind is "holds" or "uses" or "injects" or "calls";

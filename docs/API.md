@@ -188,6 +188,13 @@ The running host owns one in-memory `core.Model` per project. Contract files sta
 
 Separately, the host creates `<project root>/.semaps/host.json` (the folder next to the `.semaps` project file, not the workspace's) containing `{pid, port, key}`. The key is also embedded as `<meta name="semaps-key" content="…">` in `/app/` HTML. Every mutating endpoint requires `Authorization: Bearer <key>` and the existing same-origin check; missing/wrong key returns `401`. This includes `/api/save`, `/api/move`, and the tool API writes. `.semaps/` is never served as workspace static content. Both `.semaps/` folders (the project root's, with `host.json` and the logs, and the workspace's, with the journal) carry their own `.gitignore` containing `*`, written when the host first writes into them. The host listens on localhost.
 
+The editor's tool API remembers the loaded setup's `projectFile`, `workspace` and `sourceRoot`.
+On the exact host-key `401` rejection, it fetches fresh `/app/` HTML and `/api/setup` from the
+same origin without caching or redirects. Only when all three context fields match does it
+read the HTML meta key and retry the rejected write once, preserving the open form.
+Concurrent rejections share a refresh. Other failures, a different project on the port,
+or a response without a key are not retried. Host authentication requirements remain unchanged.
+
 External library files ([CONTRACT.md](CONTRACT.md) §1.1) are merged into the same logical
 `registry["entities.json"]` and `registry["relations.json"]` documents. `libraries` in the working
 bundle is a sorted array of `{id,name,version,complete?}` snapshot headers. The physical files
@@ -465,6 +472,7 @@ The command line of an extractor cannot be set through the API — only in the f
 | `/api/setup` | `PUT` | `{name?, workspace?, sourceRoot?, port?, mcp?: {tools?, description?, format?, listCap?, limit?}}` → setup. Workspace, source root and port apply after a restart; `mcp` applies at once (step 2 above) |
 | `/api/setup/extractors/{id}` | `PUT` | `{language?, project?, root?, include?, exclude?, edges?, watch?, external?, libraries?, externalTypes?, externalDepth?}` → setup; adds the entry when missing. Any other field (`command`) → `400`. Toggling `watch` starts or stops that extractor's watcher at once, no host restart |
 | `/api/setup/extractors/{id}` | `DELETE` | → setup |
+| `/api/setup/extractors/{id}/libraries` | `POST` | `{root?, include?, exclude?}` → `{libraries:[{id,name,version}]}`. C# only: analyzes current form paths with `--list-libraries`, without saving settings, creating a facts run or changing the registry. Uses the configured extractor command; command overrides are never accepted. Relative paths are validated as for extractor settings. Authenticated and same-origin; cancelled on disconnect or after two minutes. |
 | `/api/runs?extractor=<id>` | `GET` | → `[Run]`, newest first; five person/agent runs and two watch runs (`trigger: "watch"`) kept per extractor, counted apart |
 | `/api/runs` | `POST` | `{extractor}` → `202` `Run` (`state: running`). Only runs the extractor and keeps its facts under the runs directory; it never writes the registry — only `POST /api/runs/{id}/sync` does. The live graph reads these facts, so this is also what the graph mode's «Обновить граф» calls (the same start the watch mode makes, apart from `trigger`) |
 | `/api/runs/{id}` | `GET` | → `Run` |

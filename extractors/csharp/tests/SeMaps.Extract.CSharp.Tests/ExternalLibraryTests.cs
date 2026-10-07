@@ -30,14 +30,31 @@ public sealed class ExternalLibraryFixture : IAsyncLifetime
             }
             namespace Shared { public class Same {} }
             """,refs);
+        Emit("ResolvedOnlyElsewhere","""
+            [assembly: System.Reflection.AssemblyVersion("9.0.0.0")]
+            namespace Elsewhere { public class Marker {} }
+            """,refs);
+        Emit("LibraryWithMissingReference","public class Carrier { public Elsewhere.Marker Value; }",
+            [.. refs, MetadataReference.CreateFromFile(Path.Combine(Root,"ResolvedOnlyElsewhere.dll"))]);
+        Directory.CreateDirectory(Path.Combine(Root,"MetadataContext"));
+        await File.WriteAllTextAsync(Path.Combine(Root,"MetadataContext","MetadataContext.csproj"),"""
+            <Project Sdk="Microsoft.NET.Sdk"><PropertyGroup><TargetFramework>net10.0</TargetFramework></PropertyGroup>
+            <ItemGroup><Reference Include="ResolvedOnlyElsewhere"><HintPath>../ResolvedOnlyElsewhere.dll</HintPath></Reference></ItemGroup></Project>
+            """);
+        await File.WriteAllTextAsync(Path.Combine(Root,"MetadataContext","Source.cs"),"public class MetadataContext {}");
         await File.WriteAllTextAsync(Path.Combine(Root,"Consumer","Consumer.csproj"),"""
             <Project Sdk="Microsoft.NET.Sdk"><PropertyGroup><TargetFramework>net10.0</TargetFramework><AllowUnsafeBlocks>true</AllowUnsafeBlocks></PropertyGroup>
-            <ItemGroup><Reference Include="LibraryA"><HintPath>../LibraryA.dll</HintPath></Reference><Reference Include="LibraryB"><HintPath>../LibraryB.dll</HintPath></Reference></ItemGroup></Project>
+            <ItemGroup><Reference Include="LibraryA"><HintPath>../LibraryA.dll</HintPath></Reference><Reference Include="LibraryB"><HintPath>../LibraryB.dll</HintPath></Reference><Reference Include="LibraryWithMissingReference"><HintPath>../LibraryWithMissingReference.dll</HintPath></Reference></ItemGroup></Project>
             """);
         await File.WriteAllTextAsync(Path.Combine(Root,"Consumer","Source.cs"),"""
             public unsafe class Local { public LibA.A Value; public System.Collections.Generic.List<LibA.A> Items; public LibB.Frame* frame; }
             """);
-        var psi = new ProcessStartInfo("dotnet") { WorkingDirectory=Path.Combine(Root,"Consumer"),RedirectStandardOutput=true,RedirectStandardError=true,UseShellExecute=false };
+        await Restore("Consumer");
+        await Restore("MetadataContext");
+    }
+    private async Task Restore(string project)
+    {
+        var psi = new ProcessStartInfo("dotnet") { WorkingDirectory=Path.Combine(Root,project),RedirectStandardOutput=true,RedirectStandardError=true,UseShellExecute=false };
         foreach (var arg in new[]{"restore","-nodeReuse:false"}) psi.ArgumentList.Add(arg);
         psi.Environment["MSBUILDDISABLENODEREUSE"]="1";
         using var process=Process.Start(psi)!;
@@ -121,6 +138,32 @@ public sealed class ExternalLibraryTests(ExternalLibraryFixture fixture)
         Assert.False(Symbol(json,"[LibraryB]::LibB.Frame"));
         var result=ToolHost.Run(fixture.Root,["--root",".","--include","Consumer","--external","used","--library","NotReferenced"]);
         Assert.Equal(1,result.ExitCode);Assert.Empty(result.StdOut);Assert.Contains("NotReferenced",result.StdErr);
+    }
+    [Fact] public void UnresolvedTransitiveReferenceDoesNotConflictWithLoadedAssemblyInAnotherProject()
+    {
+        var result=ToolHost.Run(fixture.Root,["--root",".","--include","Consumer","--include","MetadataContext","--edges","holds,uses","--external","used"]);
+        Assert.True(result.ExitCode==0,result.StdErr);
+        var json=JsonNode.Parse(result.StdOut)!.AsObject();
+        Assert.True(Edge(json,"Local","[LibraryA]::LibA.A","holds"));
+        Assert.DoesNotContain(json["libraries"]!.AsArray(),l=>l!["id"]!.GetValue<string>()=="ResolvedOnlyElsewhere");
+    }
+    [Fact] public void UnresolvedTransitiveReferenceCannotBeSelectedAsACompleteLibrary()
+    {
+        var result=ToolHost.Run(fixture.Root,["--root",".","--include","Consumer","--external","full","--library","ResolvedOnlyElsewhere"]);
+        Assert.Equal(1,result.ExitCode);Assert.Empty(result.StdOut);
+        Assert.Contains("ResolvedOnlyElsewhere: expected one referenced assembly, found 0",result.StdErr);
+    }
+    [Fact] public void ReferenceCatalogIncludesUnusedLibrariesWithoutPrintingFacts()
+    {
+        var result=ToolHost.Run(fixture.Root,["--root",".","--include","Consumer","--list-libraries"]);
+        Assert.True(result.ExitCode==0,result.StdErr);
+        var json=JsonNode.Parse(result.StdOut)!.AsObject();
+        Assert.Null(json["symbols"]); Assert.Null(json["edges"]);
+        var libraries=json["libraries"]!.AsArray();
+        Assert.Contains(libraries,l=>l!["id"]!.GetValue<string>()=="LibraryWithMissingReference");
+        Assert.DoesNotContain(libraries,l=>l!["id"]!.GetValue<string>()=="ResolvedOnlyElsewhere");
+        Assert.All(libraries,l=>{Assert.False(string.IsNullOrWhiteSpace(l!["version"]!.GetValue<string>()));Assert.Null(l["complete"]);});
+        Assert.Equal(result.StdOut,ToolHost.Run(fixture.Root,["--root",".","--include","Consumer","--list-libraries"]).StdOut);
     }
     [Theory]
     [InlineData("--external","full")]

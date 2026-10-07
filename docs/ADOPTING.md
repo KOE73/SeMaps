@@ -158,8 +158,16 @@ writes the facts of that run.
 
 ### 3.1 C# library types and their relations
 
-On the **Экстракторы** page, a C# entry has external mode, library names, metadata type names,
-and expansion depth. The same settings in `.semaps` are:
+On the **Экстракторы** page, select a C# entry's external mode. `used` needs no names;
+an optional assembly filter is collapsed. `expand` requires full metadata type names and shows
+expansion depth; `full` requires assembly names and hides type/depth controls. Examples are
+labelled separately from editable values. Enter several names separated by commas; an assembly
+name is its DLL name without `.dll`, from the project's references, rather than a package name.
+**Сохранить и извлечь** validates and saves the current settings before running; **Сохранить**
+only saves settings. **Проанализировать ссылки** lists available referenced DLLs with versions:
+filter by name and select checkboxes. It uses current form paths without saving settings or
+changing the registry or latest facts. Manual name entry remains under a separate disclosure;
+unknown saved selections stay visible and can be unchecked. The same settings in `.semaps` are:
 
 ```yaml
 external: used                  # off (default), used, expand, full

@@ -18,11 +18,14 @@ internal sealed class ExternalLibraryCollector(Options options, HashSet<string> 
         var queue = new Queue<IAssemblySymbol>(input);
         while (queue.TryDequeue(out var assembly))
         {
+            // Unresolved transitive references are Roslyn placeholders, often version 0.0.0.0.
+            // They are not another loaded DLL and cannot supply metadata definitions.
+            if (!assembly.Locations.Any(location => location.IsInMetadata)) continue;
             var id = SymbolIds.LibraryId(assembly);
             if (result.TryGetValue(id,out var old))
             {
                 if (old.Identity.Version != assembly.Identity.Version)
-                    throw new InvalidOperationException($"Library {id} resolves to multiple versions; choose one target framework/project.");
+                    throw new InvalidOperationException($"Library {id} resolves to multiple versions: {old.Identity.Version} ({string.Join(", ",old.Locations)}) and {assembly.Identity.Version} ({string.Join(", ",assembly.Locations)}); choose one target framework/project.");
                 continue;
             }
             result[id] = assembly;
@@ -31,6 +34,11 @@ internal sealed class ExternalLibraryCollector(Options options, HashSet<string> 
         }
         return result;
     }
+
+    public static List<LibraryFact> ListLibraries(IEnumerable<IAssemblySymbol> assemblies) =>
+        AssembliesById(assemblies).OrderBy(p => p.Value.Identity.Name, StringComparer.Ordinal)
+        .ThenBy(p => p.Key, StringComparer.Ordinal)
+        .Select(p => new LibraryFact { Id=p.Key,Name=p.Value.Identity.Name,Version=p.Value.Identity.Version.ToString() }).ToList();
 
     public string? Resolve(INamedTypeSymbol type)
     {
