@@ -27,9 +27,9 @@ public sealed class CallsExtractorTests
         var result = ToolHost.Run(TestPaths.CallsSampleRoot, "--root", ".", "--edges", "calls");
         Assert.Equal(0, result.ExitCode);
 
-        var schema = JsonSchema.FromFile(TestPaths.SchemaPath);
-        var instance = System.Text.Json.Nodes.JsonNode.Parse(result.StdOut);
-        var evaluation = schema.Evaluate(instance, new EvaluationOptions { OutputFormat = OutputFormat.List });
+        var schema = JsonSchema.FromFile(TestPaths.SchemaPath, new BuildOptions { SchemaRegistry = new SchemaRegistry() });
+        using var instance = System.Text.Json.JsonDocument.Parse(result.StdOut);
+        var evaluation = schema.Evaluate(instance.RootElement, new EvaluationOptions { OutputFormat = OutputFormat.List });
 
         Assert.True(evaluation.IsValid, DescribeErrors(evaluation));
     }
@@ -47,8 +47,8 @@ public sealed class CallsExtractorTests
 
     private static string DescribeErrors(EvaluationResults evaluation)
     {
-        var details = evaluation.Details
-            .Where(d => !d.IsValid && d.HasErrors)
+        var details = (evaluation.Details ?? [])
+            .Where(d => !d.IsValid && d.Errors is not null)
             .SelectMany(d => d.Errors!.Select(e => $"{d.InstanceLocation}: {e.Key} - {e.Value}"));
         return string.Join("\n", details);
     }

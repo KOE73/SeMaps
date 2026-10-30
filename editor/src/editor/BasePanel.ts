@@ -4,7 +4,8 @@ import { kindIconEl } from "../ui/kindIcons.js";
 import { i18n } from "../workbench/i18n/I18nService.js";
 import type { DiagramEditor } from "./DiagramEditor.js";
 import { placeEntities } from "./placeEntity.js";
-import { realizationSearchText } from "../model/realizations.js";
+import { realizationsOf, realizationSearchText } from "../model/realizations.js";
+import type { EntityEntry } from "../model/wire-types.js";
 
 export class BasePanel {
   /** Kinds the list is narrowed to; empty means every kind. */
@@ -46,7 +47,7 @@ export class BasePanel {
     const found = entities.filter((e: any) => {
       if (!e) return false;
       const id = String(e.id ?? "");
-      const name = doc.nameOfEntity(e);
+      const name = this.listName(e);
       return name.toLowerCase().includes(query) || id.toLowerCase().includes(query) ||
         realizationSearchText(e).toLowerCase().includes(query);
     });
@@ -66,7 +67,7 @@ export class BasePanel {
       this.body,
       ...matches.map((e: any) => {
         const id = String(e?.id ?? "");
-        const name = doc.nameOfEntity(e);
+        const name = this.listName(e);
         const isPlaced = placedIds.has(id);
 
         const row = document.createElement("div");
@@ -86,9 +87,13 @@ export class BasePanel {
         });
         
         const labelCol = document.createElement("div");
+        labelCol.style.flex = "1";
+        labelCol.style.minWidth = "0";
         labelCol.style.overflow = "hidden";
-        labelCol.style.whiteSpace = "nowrap";
+        labelCol.style.whiteSpace = e.kind === "namespace" ? "normal" : "nowrap";
+        if (e.kind === "namespace") labelCol.style.overflowWrap = "anywhere";
         labelCol.style.textOverflow = "ellipsis";
+        labelCol.title = name;
         
         const title = document.createElement("span");
         title.textContent = name;
@@ -130,6 +135,15 @@ export class BasePanel {
         return row;
       })
     );
+  }
+
+  /** Namespace records have a short name; the realization identifies their full path. */
+  private listName(entity: EntityEntry): string {
+    if (entity.kind === "namespace" && entity.origin !== "authored") {
+      const fullName = realizationsOf(entity).find(r => typeof r.symbol === "string" && r.symbol.trim() !== "")?.symbol;
+      if (fullName) return fullName.trim();
+    }
+    return this.editor.canvas.model?.nameOfEntity(entity) ?? entity.name ?? entity.id;
   }
 
   /**

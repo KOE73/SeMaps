@@ -5,6 +5,7 @@ import type { DiagramElement } from "../../model/types.js";
 import type { ContentData } from "../../content/ContentRenderer.js";
 import type { TemplateTree } from "../../content/template-types.js";
 import type { PaintRegistry } from "./PaintRegistry.js";
+import type { AutomaticStyleLayer } from "../../model/style-extensions.js";
 
 /**
  * What a renderer is told about the world outside the element it draws.
@@ -32,6 +33,8 @@ export interface RenderContext {
    * one place so that "why is this box grey" has one answer.
    */
   styleOf(el: DiagramElement): ResolvedBlockStyle;
+  /** Actual automatic layers; presentation only, without any inferred colour matching. */
+  automaticStyles?(el: DiagramElement): readonly AutomaticStyleLayer[];
 
   /**
    * Turns a resolved paint or arrow head into something an SVG attribute can

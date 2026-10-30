@@ -74,6 +74,7 @@ export interface CanvasEvents {
   /** Double click on a line, shown or ghost: its owner decides whether to show or hide it. */
   edgeToggle: { id: string };
   openCodeViewer: { id: string; ref: string; label?: string };
+  openStyleInfo: { id: string };
   /** Right click on a box, a line or the empty canvas: whoever owns menus decides what to offer. */
   contextmenu: { target: "element" | "edge" | "canvas"; id: string | null; clientX: number; clientY: number };
   /** A connection drag was released over another element: whoever owns menus asks for the relation type. */
@@ -1090,6 +1091,7 @@ export class DiagramCanvas {
         return Math.min(viewOpacity, tagOpacity);
       },
       styleOf: (el) => this.styleLibrary.blockStyle(el),
+      automaticStyles: (el) => this.styleLibrary.automaticModifiersFor(el.id),
       paints: this.paintRegistry,
       content: (el) => this.resolveContent(el),
     };
@@ -1506,7 +1508,11 @@ export class DiagramCanvas {
       tree: compiled.tree,
       data: {
         name: el.label,
-        description: typeof el.metadata.description === "string" ? el.metadata.description : undefined,
+        // Metadata may contain the full doc for hover cards. Templates show
+        // only the localized short description from the text registry.
+        description: this.doc?.bundle
+          ? this.doc.getText(el.id, this.doc.textLang)?.description
+          : typeof el.metadata.description === "string" ? el.metadata.description : undefined,
         members,
         asset: (assetId) => this._assets.peek(assetId),
       },

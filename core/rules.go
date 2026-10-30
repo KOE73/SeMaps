@@ -50,7 +50,7 @@ func (after *Model) validate(before *Model, ops []Op) error {
 			return err
 		}
 	}
-	return nil
+	return after.checkLibraryRecords()
 }
 
 // checkWithdrawn: a record withdrawn by the batch is named nowhere (ADR_20260930-8).
@@ -410,7 +410,7 @@ func (after *Model) checkViewEdges(before *Model, view string) error {
 		}
 		override, hasOverride := e.vals["override"]
 		hasOverride = hasOverride && string(override) != "null"
-		if e.str("styleId") == "" && e.str("routing") == "" && !hasOverride {
+		if e.str("styleId") == "" && e.str("routing") == "" && !hasOverride && !has(e, "modifiers") && !has(e, "disabledModifiers") && !has(e, "automaticModifiers") {
 			return refuse("edge %s on %s has none of styleId, override, routing: an entry with nothing of its own is not written (CONTRACT §8.5)", id, view)
 		}
 		if raw, ok := e.vals["routing"]; ok {

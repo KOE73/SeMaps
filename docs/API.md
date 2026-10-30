@@ -55,7 +55,7 @@ The backend serves application assets and global workspace JSON. Project model r
 | `/app/` | `GET` | `text/html` | Entry point for the editor application |
 | `/app/assets/*` | `GET` | `application/javascript`, `text/css` | Bundled JavaScript, CSS, and media |
 | `/api/workspace` | `GET` | `application/json` | Projects and their views as the working model sees them (§2.2) |
-| `/styles.json` | `GET` | `application/json` | Shared style stylesheet: the workspace copy, else the tool's default (`host/defaults/styles.json`); saving writes the workspace copy, which then overrides the default |
+| `/styles.json` | `GET` | `application/json` | Shared **working** stylesheet, unsaved edits included; initially the workspace copy, else the tool's default (`host/defaults/styles.json`). Save writes the workspace override (§3.4b) |
 | `/canvas.json` | `GET` | `application/json` | Numbers of the canvas: grid, block and container sizes, caption strip, padding, gaps (§2.1a). Always answers: the workspace copy, else the tool's default |
 | `/kinds.json` | `GET` | `application/json` | The **workspace** dictionary supplement, as written (404 when the workspace has none). It does not replace the default: the merged dictionary is `/api/kinds` (§2.1b) |
 | `/api/kinds` | `GET` | `application/json` | The dictionary — the tool's default with the workspace `kinds.json` added — §2.1b |
@@ -184,13 +184,34 @@ the default view reference, and text keys as needed. It then reloads the model a
 
 ### 3.4. Working model API
 
-The running host owns one in-memory `core.Model` per project. Contract files stay unchanged until Save. Every accepted batch is appended to the work journal `<workspace>/.semaps/work/<project>.jsonl` (inside the workspace, which may lie below the project root); startup replays it. A project-wide Save writes dirty files in contract v5 format (two spaces, no HTML escaping, existing key order), then clears the journal. Discard reloads the selected scope from files and rewrites the journal for remaining edits. There is no host Undo or field merge.
+The running host owns one `core.WorkspaceModel` and one in-memory `core.Model` per project. Contract files stay unchanged until Save. Accepted edits are durable in `<workspace>/.semaps/work/workspace.json`, an atomically replaced checkpoint of working styles, dictionary base-style references, dirty authors and project operation journals. Existing `<project>.jsonl` journals are imported when a project is first loaded; after attachment the checkpoint is authoritative, including an empty journal after Save. A project-wide Save writes dirty files in contract v5 format (two spaces, no HTML escaping, existing key order), then clears that project's journal. Discard reloads the selected scope from files and preserves remaining edits. There is no host Undo. Project operations replace whole records; style updates merge sparse fields (§3.4b).
 
 Separately, the host creates `<project root>/.semaps/host.json` (the folder next to the `.semaps` project file, not the workspace's) containing `{pid, port, key}`. The key is also embedded as `<meta name="semaps-key" content="…">` in `/app/` HTML. Every mutating endpoint requires `Authorization: Bearer <key>` and the existing same-origin check; missing/wrong key returns `401`. This includes `/api/save`, `/api/move`, and the tool API writes. `.semaps/` is never served as workspace static content. Both `.semaps/` folders (the project root's, with `host.json` and the logs, and the workspace's, with the journal) carry their own `.gitignore` containing `*`, written when the host first writes into them. The host listens on localhost.
 
+The editor's tool API remembers the loaded setup's `projectFile`, `workspace` and `sourceRoot`.
+On the exact host-key `401` rejection, it fetches fresh `/app/` HTML and `/api/setup` from the
+same origin without caching or redirects. Only when all three context fields match does it
+read the HTML meta key and retry the rejected write once, preserving the open form.
+Concurrent rejections share a refresh. Other failures, a different project on the port,
+or a response without a key are not retried. Host authentication requirements remain unchanged.
+
+External library files ([CONTRACT.md](CONTRACT.md) §1.1) are merged into the same logical
+`registry["entities.json"]` and `registry["relations.json"]` documents. `libraries` in the working
+bundle is a sorted array of `{id,name,version,complete?}` snapshot headers. The physical files
+are not separate client models. A project-wide `library` op replaces one header (`value.id == id`,
+non-empty name/version, no entity/relation arrays); it is counted in registry dirt and follows
+the same journal, atomic validation, Save and Discard path. Its value cannot be `null`.
+Entity `code[]` and relation `evidence[]` may carry `library`; a metadata realization requires
+a known library, a symbol, and no source `ref`. A batch can add the header and its records together.
+
+Graph nodes expose optional `library` (`lib` in `json-compact`). Shared metadata nodes have
+keys `library/<language>:<qualified-symbol>` across extractors; an entity-bound node still
+exposes `entity` and `symbol`. Previously synced library nodes remain in the model graph when
+the latest source run omits them. No source path is manufactured for an IDE navigation request.
+
 | Path | Method | Response / effect |
 |---|---|---|
-| `/api/model/{project}` | `GET` | `{project, registry, texts, views, viewFiles, dirty, unsaved}`. `unsaved` is `{entity: [id], relation: [id]}`: the records that are in the working registry and not in the saved one — the ones a `null` op may withdraw (below). `project` is the manifest; `registry` maps registry filenames to full documents; `texts` maps languages to full text documents; `views` maps view ids to view properties without geometry; `viewFiles` maps view ids to workspace-relative paths; `dirty` is below. |
+| `/api/model/{project}` | `GET` | `{project, registry, libraries, texts, views, viewFiles, dirty, unsaved}`. `unsaved` is `{entity: [id], relation: [id]}`: the records that are in the working registry and not in the saved one — the ones a `null` op may withdraw (below). `project` is the manifest; `registry` maps registry filenames to full documents; `texts` maps languages to full text documents; `views` maps view ids to view properties without geometry; `viewFiles` maps view ids to workspace-relative paths; `dirty` is below. |
 | `/api/model/{project}/views/{id}` | `GET` | Full working view document, including `placements` (one array, blocks and containers alike, `CONTRACT.md` §8.2), `edges` when the view has entries (references to relations with their own look, `CONTRACT.md` §8.5), and `relations`. A view of an older shape (also an `edges` entry with `from`/`to`/`type`) is not served: `422` with the file and the field. |
 | `/api/model/{project}/ops` | `POST` | `{client, ops}` applies one atomic batch as `human` → `{changed, dirty}`. A broken rule returns `422` with text and applies nothing. |
 | `/api/model/{project}/remove` | `POST` | `{client, ids, cascade?}` removes authored entities and relations (`ADR_20261001`) as `human`, one atomic batch built by the core: for every view of the project the placements of the removed entities, the `edges` entries and the `relations.except` names of the removed relations; the texts under the ids go too. The authored relations that stand on a removed entity are removed with it when `cascade` is true, otherwise the call is refused and lists them; a relation from code at its end, or any id that is not authored, refuses it. → `{removal:{entities,relations,placements,edges,except}, changed, dirty}`; a refusal is `422` and applies nothing. The removal is unsaved (`dirty` marks it `removed: true`). |
@@ -201,7 +222,7 @@ Separately, the host creates `<project root>/.semaps/host.json` (the folder next
 | `/api/events?project=<id>&render=1` | `GET` | The same stream; `render=1` marks an editor that can draw a view. Only such subscribers receive events carrying `render` (below); graph-mode subscribers omit the parameter. |
 | `/api/events?project=<id>` | `GET` | SSE: one `data:` JSON object per accepted batch/save/discard: `{client,author,changed,dirty}`. Clients ignore their own `client` id. A `render_view` call (§6) adds to render subscribers only an event `{author:"host",changed:[],dirty,render:{id,view,ref?,rect?,scale,maxSize}}`: draw `ref` (a `view#entity` reference: a container draws that container) or the view, or just `rect` (`{x,y,width,height}`, model units) when given, at `scale` (0.25–4), the longer side at most `maxSize` px, from the editor's current unsaved state, and answer `POST /api/render/{id}`. `view` may be any view of the project, not only the one on the editor's screen: an editor draws another view on a hidden canvas and leaves its own canvas, selection, zoom, undo stack and open view untouched. The host waits 20 s for the first successful answer (an error from one editor is kept while the others are awaited; all failed → the first error); no render subscriber for the project is an immediate tool error. Structural changes add `projectReloaded:{oldProject,newProject,oldView?,newView?}`. A run finishing with new facts adds `graph:{addedNodes,removedNodes,changedNodes,addedEdges,removedEdges}` (ids only, node ids for the first three, `{from,to,kind}` for the edges) instead of the whole graph — a subscriber that wants the new content re-reads `GET /api/graph/{project}`. The current editor's `ModelEvent` interface does not declare `graph`; its handler does `JSON.parse(...) as ModelEvent` with no runtime validation, so the field is present in the payload but simply unread — safe today, and there for a future graph page. |
 
-An operation is `{kind,id,view?,lang?,value,author?}`. `kind` is `project`, `entity`, `relation`, `text`, `view`, or `placement`; any other `kind` (`relationType` was one before `ADR_20260930-6`) is refused. `project` replaces the `project.json` manifest and is counted in registry dirt; its `contractVersion` may not be changed by an op. `value` is the whole object; `null` removes a placement (its `id` is the placed entity) or **withdraws an unsaved creation**: for `entity` and `relation` it is accepted only when the record is not in the saved registry (it was created in this working state); afterwards the record is gone from the working model, from `dirty` and from every text catalogue (the texts under its id go with it, the batch need not name them), as if it had never been created — a later `discard` or `save` leaves no trace of it, and the id may be created again. A saved record of the registry is removed by the same `null` only when it is `origin: authored` (`ADR_20261001`): it leaves the working registry and the texts under its id, but stays in the saved files until `save`, so it is an unsaved change — `dirty.registry` lists it as `{kind, id, author, removed: true}`, `save` writes the files without it and `discard` brings it back. `null` for a saved record that is not authored (from code) is refused (`422`): the next sync would bring it back, and references to it must live. Removal and withdrawal alike leave no dangling reference, checked after the whole batch against every view of the project: a withdrawn entity is placed on no view and is an end of no relation; a withdrawn relation is named in no view's `edges` and `relations.except` — the batch takes those mentions away itself, or is refused. `null` for `text`, `view`, the manifest and any registry record of the saved file is refused; the batch for removing records, with every view entry, is built by `POST /api/model/{project}/remove` and the MCP tool `remove` (below), not by hand. `text` requires `lang`; `view` and `placement` require `view`. `view` replaces the view's properties without `placements` (they change one by one). The one op `placement` covers blocks and containers alike: a placement is `{entity, parent, x, y, width, height, styleId?, override?, template?, collapsed?}` (`CONTRACT.md` §8.2). The host sets `author: human` on browser ops; the agent path sets `author: agent`. A changed reference is `{kind,id,view?,lang?,author}`. `dirty` is `{registry:[Ref],views:{<view-id>:[Ref]}}`, with the last author per touched object. The conflict unit is an object: later accepted replacement wins, with no field merge. The SSE event is emitted after the batch is in the journal. A view is loaded lazily when first read or changed.
+An operation is `{kind,id,view?,lang?,value,author?}`. `kind` is `project`, `library`, `entity`, `relation`, `text`, `view`, or `placement`; any other `kind` (`relationType` was one before `ADR_20260930-6`) is refused. `project` replaces the `project.json` manifest and is counted in registry dirt; its `contractVersion` may not be changed by an op. `value` is the whole object; `null` removes a placement (its `id` is the placed entity) or **withdraws an unsaved creation**: for `entity` and `relation` it is accepted only when the record is not in the saved registry (it was created in this working state); afterwards the record is gone from the working model, from `dirty` and from every text catalogue (the texts under its id go with it, the batch need not name them), as if it had never been created — a later `discard` or `save` leaves no trace of it, and the id may be created again. A saved record of the registry is removed by the same `null` only when it is `origin: authored` (`ADR_20261001`): it leaves the working registry and the texts under its id, but stays in the saved files until `save`, so it is an unsaved change — `dirty.registry` lists it as `{kind, id, author, removed: true}`, `save` writes the files without it and `discard` brings it back. `null` for a saved record that is not authored (from code) is refused (`422`): the next sync would bring it back, and references to it must live. Removal and withdrawal alike leave no dangling reference, checked after the whole batch against every view of the project: a withdrawn entity is placed on no view and is an end of no relation; a withdrawn relation is named in no view's `edges` and `relations.except` — the batch takes those mentions away itself, or is refused. `null` for `text`, `view`, the manifest and any registry record of the saved file is refused; the batch for removing records, with every view entry, is built by `POST /api/model/{project}/remove` and the MCP tool `remove` (below), not by hand. `text` requires `lang`; `view` and `placement` require `view`. `view` replaces the view's properties without `placements` (they change one by one). The one op `placement` covers blocks and containers alike: a placement is `{entity, parent, x, y, width, height, styleId?, override?, template?, collapsed?}` (`CONTRACT.md` §8.2). The host sets `author: human` on browser ops; the agent path sets `author: agent`. A changed reference is `{kind,id,view?,lang?,author}`. `dirty` is `{registry:[Ref],views:{<view-id>:[Ref]}}`, with the last author per touched object. The conflict unit is an object: later accepted replacement wins, with no field merge. The SSE event is emitted after the batch is in the journal. A view is loaded lazily when first read or changed.
 
 Every batch is checked against the contract, whoever sends it — editor, agent, sync
 ([`ADR_20260926`](adr/ADR_20260926_core_one-rule-set-for-every-writer.md), `core/rules.go`). The
@@ -236,7 +257,98 @@ visibility (`CONTRACT.md` §8.5). Enumerations
 batch with `422`. Journal replay at startup is not checked again. What binds only the agent
 (`requestedByHuman`, not moving someone's placement, minted ids) stays in the MCP tools.
 
-Renames use `/api/move`; creation uses §3.4a. These structural operations require the host key; a rename and a new view also require a clean project model — when dirty, the host returns `409` with «сначала сохраните». A rename onto a taken id is `409`, an id outside the pattern `422`. After success the host reloads the project from files and emits `projectReloaded`. Ordinary manifest edits use a `project` op and the common Save. `styles.json`, `templates.json`, and `content/` remain outside the working model.
+Renames use `/api/move`; creation uses §3.4a. These structural operations require the host key; a rename and a new view also require a clean project model — when dirty, the host returns `409` with «сначала сохраните». A rename onto a taken id is `409`, an id outside the pattern `422`. After success the host reloads the project from files and emits `projectReloaded`. Ordinary manifest edits use a `project` op and the common Save. Shared styles use §3.4b; `templates.json` and `content/` remain outside the working model.
+
+### 3.4b. Shared working styles
+
+The editor and MCP use the same workspace style operations; no client owns a private persisted
+stylesheet. `GET /api/styles` returns `{sheet, kinds, dirty, revision}`: the working stylesheet,
+merged dictionary (including pending base-style renames), workspace dirty refs with authors, and
+the current style revision. `GET /styles.json` returns just the working sheet. Responses are not
+cached. `GET /api/model/{project}/views/{id}/styled` returns `{view, styles, appearances}` under the same lock,
+so a placement and the definitions it references arrive together. The editor refreshes this
+state when subscribing/reconnecting to SSE.
+
+`POST /api/styles` accepts `{action, id, definition?, patch?, newId?, replacement?,
+expectedRevision?, client?}`. `action` is `create`, `update`, `rename`, or `delete`.
+Creation takes an explicit id and a sparse definition with a non-empty name; `appliesTo` is
+`block` (default), `container`, or `edge`. Own `forKinds` is required except for the three
+fallbacks. Kinds must exist in the dictionary and match the target. A patch recursively merges
+objects: omitted fields survive, `null` removes an own field, arrays replace. `id` changes only
+through rename. An unknown base, inheritance cycle, target mismatch, unsupported formatting
+field or incompatible existing reference refuses the entire operation (`422`).
+`expectedRevision` is optional for agents and sent by the editor: a stale revision refuses the
+change explicitly; the editor reloads the host state and reports the conflict.
+
+Rename changes all explicit placement/edge references in **every** project, `basedOn` references,
+and explicit or implicit dictionary base styles, in one checkpoint before exposing the result.
+Delete lists uses and requires an explicit compatible `replacement` while used. Replacing a
+base with its descendant is refused. Fallback ids cannot be renamed or deleted and keep their
+fixed `appliesTo` family (block, container or edge). Each successful
+write broadcasts an SSE model event with `styles: {sheet,kinds,dirty,revision}` to all subscribed
+projects, including its authoring editor. Rename adds `styleRenamed: {oldId,newId}` so an open
+style form follows its new identifier, even if a newer stylesheet arrived first. Delete adds
+`styleDeleted: id` to clear that selection, including a selection awaiting its rename event.
+The editor updates filtering, type groups, pickers,
+previews, the selected style form, usage counts and the canvas. Deletion clears the selected
+style. Unknown/mismatched explicit `styleId` assignments are refused; existing broken references
+are displayed as an explicit canvas warning, not inferred successful from a fallback colour.
+
+`POST /api/styles/save` saves workspace definitions, dictionary base-style changes and **only
+the reference patches** of rename/replacement on project files. Unrelated project geometry,
+parents, templates, overrides, registry and text edits remain unsaved.
+Saved placement/edge references hidden by pending project assignments are listed as
+`saved-placement`/`saved-edge` in usage and participate in replacement and Save as well.
+`POST /api/styles/discard` restores saved workspace definitions and reverses those reference patches,
+preserving unrelated project edits. Discard is refused if retained project assignments would
+reference a newly created, now absent style: discard the assignments in the project first.
+Both endpoints use the usual host-key/same-origin authorization.
+
+The editor's **Save** first saves shared styles, then the current project's changes; the
+**Changes** panel labels that scope and workspace style authors. **Discard styles** in that panel
+is workspace-wide. Existing view/registry/all project Discard scopes do not discard shared
+styles or pending reference renames. A project Save is refused while it would persist an unsaved
+style definition or workspace reference rename; save styles first. Project geometry/override
+edits preserve their fields through style Save/Discard. `/api/save?file=styles.json` and
+`/api/save?file=kinds.json` are rejected (`410`) to prevent bypassing the shared model.
+
+### 3.4c. Modifiers and application rules
+
+`sheet.modifiers` and `sheet.styleRules` share the stylesheet revision, journal, authoring,
+Save/Discard and SSE model of §3.4b. Definitions and assignments follow CONTRACT §11.7;
+automatic formatting is computed and never persisted in placements.
+
+| Path | Method | Body → answer |
+|---|---|---|
+| `/api/style-selectors` | `GET` | `{version:1, fields:[{id,name,description,operators}], missing, order}`; authoritative field/operator catalogue for the UI and MCP |
+| `/api/style-modifiers` | `POST` | `{action,id,definition?,patch?,newId?,replacement?,expectedRevision?,client?}` → `{detail,state}`; modifier CRUD |
+| `/api/style-rules` | `POST` | same operation envelope → `{detail,state}`; application-rule CRUD |
+| `/api/style-rules/preview` | `POST` | `{project,view,rule}` → `{count,matches}`; substitutes the draft for the rule of the same ID in the normal cascade without writing anything |
+| `/api/model/{project}/views/{id}/modifiers` | `POST` | `{elements?:entityIds,relations?:relationIds,fields:{modifiers?,disabledModifiers?,automaticModifiers?},client?}` → `{changed,dirty}`; existing placements and registry relations, one atomic batch, only supplied fields change, null drops the field |
+| `/api/model/{project}/views/{id}/style-rule-exclusions` | `POST` | `{ids:string[],client?}` → `{changed,dirty}`; complete disabled-rule list of this view; empty clears it |
+
+POST endpoints require the usual host key and same origin. Invalid selectors, fields, values,
+references and incompatible manual-family assignments return `422` without changing the model.
+Rename/replacement includes closed projects and saved references hidden by pending assignments;
+a used definition requires an explicit compatible replacement. HTTP edits have author `human`,
+MCP edits `agent`. `expectedRevision` checks the common library revision.
+
+`appearances` in `/styled` is a map keyed by entity or visible relation ID:
+`{id,family,baseStyleId,applied,skipped,patch,resolved,origins,facts}`. `patch` is the combined
+modifier formatting **before** local override; `resolved` includes defaults, inherited base,
+modifiers and local override. `applied`/`skipped` entries are `{id,name,stage,rule?}`; `stage` is
+`automatic` or `manual`, skipped lists matching automatic applications excluded by the object
+or view. `origins` maps each final property path to `style:<baseId>`, `rule:<ruleId>/<modifierId>`,
+`manual:<modifierId>` or `override`; `facts` exposes the exact multi-valued selector inputs.
+Preview returns placements/visible relations where the draft has an applied or skipped entry,
+with all other active rules, manual modifiers and local overrides retained. Disabled or
+out-of-scope draft rules have no matches.
+
+Successful definition edits broadcast `styles` plus
+`styleExtension:{collection:modifiers|styleRules,action,id,newId?}`. The editor follows open
+forms across rename, refreshes appearance from the view's ID (independent of file name), and
+retains conflicting local drafts for explicit reload/reconciliation. Save/Discard covers all
+three collections; ordinary project Save still requires definitions to be saved first.
 
 ### 3.4a. Creating projects and views
 
@@ -298,7 +410,7 @@ When embedding `@semaps/editor` in non-HTTP hosts (e.g., VSCode Extension WebVie
    }
    ```
 
-Any host fulfilling these three interfaces will provide complete visualizer and editor functionality without requiring a running Go HTTP server.
+These interfaces provide file-based canvas editing without a Go HTTP server. Shared modifier/rule editing and automatic evaluation require the common workspace services of §3.4b–c; file adapters preserve their fields but do not implement that evaluator.
 
 ## Reference host (`host/`)
 
@@ -436,6 +548,10 @@ to it. Requests without `Origin` (curl, agents) pass. Directories are never list
 
 The editor bundle (`app/`) and the defaults (`defaults/`) are embedded into the binary, never taken from the workspace.
 
+Project-relative path validation is independent of the host OS: extractor `root`/`include`
+and settings edits to `workspace`/`source_root` reject Unix-rooted, Windows-rooted, UNC and
+drive-qualified paths (including `C:src`). Relative paths such as `../src` remain valid.
+
 ## 5. Tool API: settings, extractors, runs
 
 Served only when the host was started from a `.semaps` file; with `--workspace` every endpoint
@@ -449,8 +565,9 @@ The command line of an extractor cannot be set through the API — only in the f
 | `/api/tools` | `GET` | → `{projectFile, shipped: [language], runtimes: [{name, ok, version?, hint?}], extractors: [Extractor]}` |
 | `/api/setup` | `GET` | → `{projectFile, name, workspace, sourceRoot, port, extractors: [Extractor], languages, mcp}` — keys as written, `mcp` with its defaults filled in |
 | `/api/setup` | `PUT` | `{name?, workspace?, sourceRoot?, port?, mcp?: {tools?, description?, format?, listCap?, limit?}}` → setup. Workspace, source root and port apply after a restart; `mcp` applies at once (step 2 above) |
-| `/api/setup/extractors/{id}` | `PUT` | `{language?, project?, root?, include?, exclude?, edges?, watch?}` → setup; adds the entry when missing. Any other field (`command`) → `400`. Toggling `watch` starts or stops that extractor's watcher at once, no host restart |
+| `/api/setup/extractors/{id}` | `PUT` | `{language?, project?, root?, include?, exclude?, edges?, watch?, external?, libraries?, externalTypes?, externalDepth?}` → setup; adds the entry when missing. Any other field (`command`) → `400`. Toggling `watch` starts or stops that extractor's watcher at once, no host restart |
 | `/api/setup/extractors/{id}` | `DELETE` | → setup |
+| `/api/setup/extractors/{id}/libraries` | `POST` | `{root?, include?, exclude?}` → `{libraries:[{id,name,version}]}`. C# only: analyzes current form paths with `--list-libraries`, without saving settings, creating a facts run or changing the registry. Uses the configured extractor command; command overrides are never accepted. Relative paths are validated as for extractor settings. Authenticated and same-origin; cancelled on disconnect or after two minutes. |
 | `/api/runs?extractor=<id>` | `GET` | → `[Run]`, newest first; five person/agent runs and two watch runs (`trigger: "watch"`) kept per extractor, counted apart |
 | `/api/runs` | `POST` | `{extractor}` → `202` `Run` (`state: running`). Only runs the extractor and keeps its facts under the runs directory; it never writes the registry — only `POST /api/runs/{id}/sync` does. The live graph reads these facts, so this is also what the graph mode's «Обновить граф» calls (the same start the watch mode makes, apart from `trigger`) |
 | `/api/runs/{id}` | `GET` | → `Run` |
@@ -519,7 +636,14 @@ A node macro `{dynamic}` prints a node's marks of blind spots as `kind @line; �
 
 A malformed template (unmatched `{`/`[`/`]`, or an unknown macro) is a `400` naming the position and the macro. In `facts`, `relation` is the directed name from the point of view of the node the walk came FROM (e.g. `holds`, not `held-by`, read from the holder) — the exact word a `follow=` request would use to continue in that direction; `lines` and `tree` still name a relation from the node's own point of view (unchanged, not part of this pass).
 
-`Extractor`: `{id, language, project, root, include, exclude, edges, watch, command?, tool: {language, found,
+The C# extractor's external settings are `external: off|used|expand|full`, `libraries: [assembly-name-or-id]`,
+`externalTypes: [metadata-name-or-qualified-id]`, `externalDepth: non-negative integer` (default 1).
+Setup `PUT` accepts the same camel-case names and validates the selection: `full` requires libraries,
+`expand` requires types; active metadata settings require C#. `.semaps` stores the type/depth keys
+as `external_types` and `external_depth`. Updating setup does not start extraction. A dormant depth
+setting is allowed with metadata off and is never passed to a non-C# extractor.
+
+`Extractor`: `{id, language, project, root, include, exclude, edges, watch, external?, libraries?, externalTypes?, externalDepth?, command?, tool: {language, found,
 source?: command|bundled|path, where?, runtime?, problem?}, lastRun?: Run}`.
 `Run`: `{id, extractor, project, language, trigger?: "watch", edges?: [kind], started, finished?, seconds?, state: running|done|failed,
 exitCode, error?, stats?: {symbols, edges, symbolKinds, edgeKinds, language}}`. `trigger` is absent for a run a
@@ -674,6 +798,18 @@ and the types of relations with their meaning → `get_kinds`. The `narrow` word
 tools that set has. The vocabulary itself is not repeated there: `graph_formats` answers it
 (`terms`, §5).
 
+**Bidirectional architecture workflow.** Every tool-set/description combination also explains
+SeMaps' role in ordinary coding work: discover and read relevant authored views/texts before
+changing code, even when the task names no diagram; afterward compare the architectural impact
+with the affected map and report discrepancies or explain why no map change is needed. Authored
+intent, fresh implementation facts and agent proposals remain distinct; a planned design need
+not have code yet. Map reconciliation stays within the requested scope. A code change alone
+does not authorize creating/rearranging views, removing records, or Save/Discard.
+
+The stdio proxy copies the upstream `initialize` response's `Instructions` before the first
+agent connection. They remain fixed for that agent session on host reconnect, just like the
+HTTP session's initialized instructions; restart the agent to receive updated wording.
+
 **A call that does not fit.** When a tool call fails input validation (`unexpected additional
 properties ["items"]`, a missing required field), the error text keeps the SDK's message and adds a
 line naming the tool's own parameters, required ones first — `get_view accepts: view (required),
@@ -724,7 +860,7 @@ editor's sandbox land in the same file.
 | `move_elements` | `view?`, `elements`, `dx`/`dy` or `x`/`y`, `requestedByHuman` | shifts placements, or puts the top-left corner of their common box at `x`,`y`; a container goes with everything inside it; a container that stops holding its content grows (ancestors too); written exactly as given, not snapped to the grid |
 | `resize_elements` | `view?`, `elements`, `width?`, `height?`, `requestedByHuman` | a block not below `node.minWidth` × `node.minHeight`, a container not below `container.minWidth` × `container.minHeight` and not below its content (`canvas.json`, §2.1a) |
 | `set_parent` | `view?`, `elements`, `parent` (an entity id of a container placement; `null` takes them out of any), `requestedByHuman` | the `parent` of the placements only, coordinates untouched; a container cannot go into itself or its own content; a parent whose kind is no container kind is refused |
-| `set_placement` | `view?`, `elements`, and any of `styleId`, `override` (the table of `CONTRACT.md` §11.6), `template`, `collapsed` (containers only), `requestedByHuman` | the look of placements already on the view. Only the fields present in the call change — a field given as `null` is dropped, one left out stays; at least one is required. Geometry and `parent` are untouched. What is valid is the write rule of §3.4 (`styleId` and `template` non-empty strings, `override` only of the table, `collapsed` a boolean on a container placement): a refused element refuses the whole step. Answers with what changed, not saved, and a link |
+| `set_placement` | `view?`, `elements`, and any of `styleId`, `override` (the table of `CONTRACT.md` §11.6), `template`, `collapsed` (containers only), `modifiers`, `disabledModifiers`, `automaticModifiers`, `requestedByHuman` | the look of placements already on the view. Only the fields present in the call change — a field given as `null` is dropped, one left out stays; at least one is required. Geometry and `parent` are untouched. What is valid is the write rule of §3.4 (`styleId` and `template` non-empty strings, `override` only of the table, `collapsed` a boolean on a container placement, modifier assignments as CONTRACT §11.7): a refused element refuses the whole step. Answers with what changed, not saved, and a link |
 | `set_routing` | `view`, `routing` (`bezier` \| `orthogonal` \| `tree-horizontal` \| `tree-vertical`, or `null`), `relations?` (relation ids) or `types?` (relation type ids, not both), `requestedByHuman` | the shape of lines (`CONTRACT.md` §11.3). Without `relations` and `types`: the view's own `routing` (`null` removes the key, the relation type's and style's choice applies). With `types` the tool first expands to the registry relations of those types with both ends placed on the view now (a one-time action, no match is an answer) and then acts as with `relations`. Optional `list` (bool, default false) adds the relations whose entry was written, in full: text lines `<id>  <from> -> <to>  <type>` under `written (n):` and structured `written: [{id, from, to, type}]` (empty on zero matches). With `relations`: the `routing` of the view's `edges` entry of each, in one batch — the entry is created when missing, `null` removes the field, an entry left with none of `styleId`, `override`, `routing` is removed, and so is `edges` when the list empties. Each id must be a relation of the registry; one whose line is not drawn on the view now (an end not placed, or hidden) is accepted, and the answer names it. The routed polyline is never stored |
 | `add_container` | `view`, `entity`, `name?`, `kind?`, `parent?`, `styleId?`, `x`, `y`, `width`, `height`, `contents?`, `requestedByHuman` | **`contents: true`** also places what the container directly contains: the entities its `contains` relations (`core.ContainsKind`, the family of the relation type, as the graph reads containment) lead to, one level; a relation or an entity with status `missing` is skipped, and so is an entity already on the view (not moved, not re-parented — a placement made by someone is not moved). Each is placed with `parent` = the container; a member of a container kind comes as an empty frame of the default container size (call again for it). Layout: a plain grid of `ceil(sqrt(n))` columns, members ordered by name, one cell for all (the largest default size) plus `gap.node`, positions on multiples of `grid`, the first cell at the top left of the content area (`container.padding`, below the caption strip `container.headerHeight`); then the container is sized to hold its content exactly as `fit_container` does, growing right and below from the `x`,`y` given — `width` and `height` are then optional and a minimum. Membership is the registry's fact, the grid only a starting arrangement. One batch, whole or nothing. A container **already on the view** is not touched but for the members it lacks: they go in a grid at the left of the existing content under its lowest child, the container and its ancestors grow to hold them; the answer says which. Answer text: `container <id>: N member(s) placed inside it (ids; where the grid went). … Skipped: id (reason); … <n> changed on <view>, not saved; review and Save: <link>`, and `contents: {placed, skipped:[{entity,reason}], note}` in the structured answer. Without `contents`, `width` and `height` are required and it works as follows: places a container by the id of its entity (`entity`, required, `e_` then something — the same rule as `add_entity`; an id is never made from a name). An existing entity must be of a container kind (`get_kinds`: `container: true`) and is placed as it is: a `name` is refused (a name is changed with `set_text`), a `kind` only if it repeats the entity's own. An id that does not exist creates, in one batch with the placement, an authored entity with that id, the `name` (required) as its text in the project's first language, and `kind` (a container kind, default `group`). The id is returned as `entity` |
 | `fit_container` | `view?`, `container` (an entity id or a reference), `requestedByHuman` | the container = its content plus caption strip `container.headerHeight` and padding `container.padding`, exactly, no grid rounding; ancestors grow if they stop holding it |
@@ -737,8 +873,50 @@ Every geometry step is one batch — a bad element applies nothing — authored 
 | `create_view` | `project?`, `id` (`v_…`), `name?`, `lang?`, `names?` (language → text), `axis?` (else the project's `defaultAxis`; neither is refused), `icon?`, `theme?`, `setDefault?`, `requestedByHuman` | a new empty view, as `POST /api/model/{project}/views` (§3.4a): the file is written at once and every open editor lists it; `name`/`names` are texts of the working model and stay unsaved. Refused while the project has unsaved changes. Answers `{view, project, saved, link}` (`saved: false` only when a name is left unsaved). Only when a human explicitly asked for a new view |
 | `delete_view` | `project?`, `view`, `requestedByHuman` | deletes a view, as `DELETE /api/model/{project}/views/{id}` (§3.4a): its file, its caption in every language and a `defaultView` naming it; the registry is untouched. Written at once, not discardable; refused while the project has unsaved changes and for an unknown view. Answers `{view, project, deleted:true}`. Only when a human explicitly asked to delete that view |
 | `create_project` | `id`, `title?` (default: the id), `subtitle?`, `defaultAxis?`, `language?` = `ru`, `icon?`, `theme?`, `requestedByHuman` | a new hand-authored project, as `POST /api/projects` (§3.4a): writes `projects/<id>/project.json` at once (a project is a folder, not a change of another project's model, so it cannot be unsaved; the answer says so) and returns `{project, saved:true}`; an existing id is refused. Only when a human explicitly asked for a new project |
-| `save` | `project?`, `requestedByHuman: true` | saves all dirty project files and clears the journal; refused without explicit human request |
-| `discard` | `project?`, `scope: registry \| view \| all`, `view?`, `requestedByHuman: true` | drops the requested unsaved changes; refused without explicit human request |
+| `save` | `project?`, `scope?: project \| styles`, `requestedByHuman: true` | default `project`: saves all dirty project files; `styles`: saves workspace definitions and reference renames only (§3.4b). Save styles before projects that reference them. Refused without explicit human request |
+| `discard` | `project?`, `scope: registry \| view \| all \| styles`, `view?`, `requestedByHuman: true` | project scopes retain workspace styles/reference renames; `styles` rolls back shared definitions and renames (§3.4b). Refused without explicit human request |
+
+**Named styles (workspace-wide, no project argument)**
+
+| Tool | Input | Result/effect |
+|---|---|---|
+| `list_styles` | `appliesTo?`, `forKinds?` (any matching kind), `name?` (case-insensitive substring), `id?` (exact) | `{styles, state}`; unsaved definitions included |
+| `get_style` | `id` | `{definition, resolved, dirty, usage, revision}`; definition retains `basedOn`, resolved includes terminal renderer defaults. `forKinds` remains own; dirty includes changes of inherited bases; usage names styles, dictionary types, projects/views/placements/edges |
+| `create_style` | `id`, `name`, `appliesTo`, `forKinds?`, `basedOn?`, `properties?`, `expectedRevision?` | creates the definition; own kinds required except fallbacks; properties are sparse CONTRACT §11.5 fields |
+| `update_style` | `id`, `patch`, `expectedRevision?` | recursive partial definition patch; omitted fields survive, null restores inheritance; `id` is refused in patch |
+| `rename_style` | `id`, `newId`, `expectedRevision?` | atomically updates all workspace references, including closed projects |
+| `delete_style` | `id`, `replacement?`, `expectedRevision?` | unused deletion, or explicit compatible replacement; otherwise an error enumerates usage |
+
+Style writes are authored `agent`, durable and **unsaved**, and return `{style, saved:false,
+scope, link}`. Use `save(scope: styles, requestedByHuman: true)` only when asked. Shared library
+palettes use modifiers and rules below: one definition can format several families while type
+styles remain independent. Read exact `code[].library` or structural assembly IDs, never infer
+membership from a name substring. Local colour overrides have final priority; remove only the
+former colour fields when explicitly converting such colouring, keeping all other fields.
+
+**Modifiers and rules (definitions are workspace-wide)**
+
+| Tool | Input | Result/effect |
+|---|---|---|
+| `style_selector_fields` | — | `{version:1,fields}`; selectors and operator vocabulary, CONTRACT §11.7 |
+| `list_modifiers`, `list_style_rules` | — | `{modifiers,state}` / `{style_rules,state}`; includes unsaved definitions |
+| `get_modifier`, `get_style_rule` | `id` | `{definition,usage,dirty,revision}`; working and hidden saved references |
+| `create_modifier` | `id`, `definition`, `expectedRevision?` | name, optional description and sparse patches keyed by block/container/edge |
+| `create_style_rule` | `id`, `definition`, `expectedRevision?` | name, selectorVersion:1, selector tree, ordered modifierIds; optional description/enabled/order/scope |
+| `update_modifier`, `update_style_rule` | `id`, `patch`, `expectedRevision?` | recursive patch; omitted fields stay, null removes; rename required for ID |
+| `rename_modifier`, `rename_style_rule` | `id`, `newId`, `expectedRevision?` | atomic reference replacement across all projects and library definitions |
+| `delete_modifier`, `delete_style_rule` | `id`, `replacement?`, `expectedRevision?` | explicit compatible replacement required while used |
+| `preview_style_rule` | `project`, `view`, `rule` | `{count,matches}`; draft substituted into the normal cascade, no writes (§3.4c) |
+| `explain_style` | `project`, `view`, `id` | appearance of a visible placement/relation, including inputs, layers, exclusions and final-property origins |
+| `set_modifiers` | `project`, `view`, `elements?`, `relations?`, one or more of `modifiers?`, `disabledModifiers?`, `automaticModifiers?`, `requestedByHuman` | arrays of entity/relation IDs; only supplied fields change, null drops a field; geometry/parent/template/override untouched |
+| `set_style_rule_exclusions` | `project`, `view`, `ids`, `requestedByHuman` | complete list of disabled rules on the view; empty restores all |
+
+Definition writes return `{detail,state,saved:false,scope:"workspace styles"}`. Assignment tools
+return `{changed,saved:false}` and are saved/discarded with the project. `save`/`discard` with
+scope `styles` includes both new collections and their rename/replacement references.
+`get_view` exposes modifiers/disabledModifiers/automaticModifiers on placements and edges,
+and `view.disabledStyleRules`. `set_placement` also accepts the three modifier assignment fields
+for placements, with its usual reference syntax and null/omission semantics.
 
 **Entry** in the consuming project, `.mcp.json` at its root:
 ```json

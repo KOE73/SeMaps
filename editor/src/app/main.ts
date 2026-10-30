@@ -10,10 +10,12 @@ import "../styles/graph.css";
 
 import { Workbench } from "../workbench/Workbench.js";
 import { HostModelStore, HttpProjectStore, HttpStyleStore, HttpWorkspaceStore } from "../editor/io/index.js";
+import { HostStyleStore } from "../editor/io/HostStyleStore.js";
 import { renderView } from "../editor/render/renderView.js";
 import { loadCanvas } from "../constants/canvas.js";
 import { toolApi } from "../shell/api.js";
 import { addToolModes } from "./toolModes.js";
+import { embeddedTransport } from "../integration/transport.js";
 
 /**
  * Application entry point with Workbench Architecture.
@@ -36,7 +38,7 @@ async function main(): Promise<void> {
     workspace: new HttpWorkspaceStore(MODELS_BASE),
     store: hostStore ?? new HttpProjectStore(MODELS_BASE),
     // styles.json sits with the models, not with the app bundle.
-    styleStore: new HttpStyleStore(MODELS_BASE),
+    styleStore: hostStore ? new HostStyleStore(hostStore.clientId) : new HttpStyleStore(MODELS_BASE),
     // …and so do templates.json and the content directory, which the canvas
     // fetches for itself rather than through a store.
     modelsBase: MODELS_BASE,
@@ -63,6 +65,12 @@ async function main(): Promise<void> {
     semapsEditor: workbench.editor,
     semapsCommands: workbench.commands,
   });
+  const ideTransport = embeddedTransport();
+  if (ideTransport) {
+    const { attachEditorBridge } = await import("../integration/editorAdapter.js");
+    attachEditorBridge(workbench.editor, ideTransport, () => workbench.currentModeId,
+      (changed) => workbench.modeEvents.on("change", changed));
+  }
 }
 
 void main();

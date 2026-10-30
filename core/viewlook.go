@@ -12,7 +12,7 @@ import (
 // rules.go decide what is valid; a step needs requestedByHuman.
 
 // PlacementLookFields are the fields of a placement that SetPlacement changes.
-var PlacementLookFields = []string{"styleId", "override", "template", "collapsed"}
+var PlacementLookFields = []string{"styleId", "override", "template", "collapsed", "modifiers", "disabledModifiers", "automaticModifiers"}
 
 // SetPlacement changes the look of placements already on the view. fields holds
 // only the fields the caller gave, each as its JSON value; `null` drops the field.

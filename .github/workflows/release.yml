@@ -30,8 +30,11 @@ jobs:
         with:
           go-version-file: go.mod
 
-      - name: Example workspace passes the model check
-        run: go vet ./... && go run ./host check examples/example.semaps
+      - name: Host and core tests; example workspace model check
+        run: |
+          go vet ./...
+          go test ./... -count=1 -timeout 180s
+          go run ./host check examples/example.semaps
 
       - name: Build binaries
         run: |
@@ -59,7 +62,7 @@ jobs:
       - name: Stage the extractors
         run: |
           dotnet publish extractors/csharp/src/SeMaps.Extract.CSharp -c Release -p:UseAppHost=false -o stage/extractors/csharp
-          (cd extractors/typescript && npm ci && npm run build)
+          (cd extractors/typescript && npm ci && npm test)
           mkdir -p stage/extractors/typescript
           cp -r extractors/typescript/dist stage/extractors/typescript/dist
           rm -rf stage/extractors/typescript/dist/test
@@ -79,7 +82,21 @@ jobs:
             (cd pkg && zip -qr "../out/$name.zip" "$name")
           done
 
+      - name: Read release notes from the changelog
+        env:
+          RELEASE_TAG: ${{ github.ref_name }}
+        run: |
+          node --input-type=module <<'NODE'
+          import { readFileSync, writeFileSync } from 'node:fs';
+          const version = process.env.RELEASE_TAG.replace(/^v/, '');
+          const sections = readFileSync('CHANGELOG.md', 'utf8').split(/^## /m);
+          const section = sections.find(part => part.split(/\r?\n/, 1)[0].trim() === version);
+          if (!section) throw new Error(`CHANGELOG.md has no section for ${version}`);
+          writeFileSync('stage/release-notes.md', `## ${section.trim()}\n`);
+          NODE
+
       - uses: softprops/action-gh-release@v3
         with:
           files: out/*
+          body_path: stage/release-notes.md
           generate_release_notes: true

@@ -1,15 +1,18 @@
 package main
 
 import (
+	"context"
 	"encoding/json"
 	"errors"
 	"fmt"
 	"io"
 	"net/http"
 	"os"
+	"os/exec"
 	"path/filepath"
 	"strconv"
 	"sync"
+	"time"
 
 	"semaps/core"
 )
@@ -49,6 +52,7 @@ func registerToolAPI(mux *http.ServeMux, file, workspace string, models *modelSe
 	mux.HandleFunc("PUT /api/setup", api.guard(api.putSetup))
 	mux.HandleFunc("PUT /api/setup/extractors/{id}", api.guard(api.putExtractor))
 	mux.HandleFunc("DELETE /api/setup/extractors/{id}", api.guard(api.deleteExtractor))
+	mux.HandleFunc("POST /api/setup/extractors/{id}/libraries", api.guard(api.listLibraries))
 	mux.HandleFunc("GET /api/runs", api.guard(api.listRuns))
 	mux.HandleFunc("POST /api/runs", api.guard(api.startRun))
 	mux.HandleFunc("GET /api/runs/{id}", api.guard(api.getRun))
@@ -90,23 +94,28 @@ func readJSON(r *http.Request, v any) error {
 }
 
 type extractorView struct {
-	ID       string        `json:"id"`
-	Language string        `json:"language"`
-	Project  string        `json:"project"`
-	Root     string        `json:"root"`
-	Include  []string      `json:"include"`
-	Exclude  []string      `json:"exclude"`
-	Edges    []string      `json:"edges"`
-	Watch    bool          `json:"watch"`
-	Command  string        `json:"command,omitempty"` // shown, never written through the API
-	Tool     extractorTool `json:"tool"`
-	LastRun  *runInfo      `json:"lastRun,omitempty"`
+	ID            string        `json:"id"`
+	Language      string        `json:"language"`
+	Project       string        `json:"project"`
+	Root          string        `json:"root"`
+	Include       []string      `json:"include"`
+	Exclude       []string      `json:"exclude"`
+	Edges         []string      `json:"edges"`
+	Watch         bool          `json:"watch"`
+	External      string        `json:"external,omitempty"`
+	Libraries     []string      `json:"libraries,omitempty"`
+	ExternalTypes []string      `json:"externalTypes,omitempty"`
+	ExternalDepth *int          `json:"externalDepth,omitempty"`
+	Command       string        `json:"command,omitempty"` // shown, never written through the API
+	Tool          extractorTool `json:"tool"`
+	LastRun       *runInfo      `json:"lastRun,omitempty"`
 }
 
 func (api *toolAPI) extractorViews(list []extractorConf) []extractorView {
 	out := []extractorView{}
 	for _, e := range list {
 		v := extractorView{
+			External: e.External, Libraries: e.Libraries, ExternalTypes: e.ExternalTypes, ExternalDepth: e.ExternalDepth,
 			ID: e.ID, Language: e.Language, Project: e.Project, Root: e.Root,
 			Include: nonNil(e.Include), Exclude: nonNil(e.Exclude), Edges: nonNil(e.Edges), Watch: e.Watch, Command: e.Command,
 			Tool: resolveExtractor(e),
@@ -222,13 +231,17 @@ func (api *toolAPI) putExtractor(w http.ResponseWriter, r *http.Request) {
 	// `command` is not a field here on purpose: through HTTP only data changes,
 	// never what gets executed (ADR_20260924-3 §5). An unknown field is refused.
 	var body struct {
-		Language *string   `json:"language"`
-		Project  *string   `json:"project"`
-		Root     *string   `json:"root"`
-		Include  *[]string `json:"include"`
-		Exclude  *[]string `json:"exclude"`
-		Edges    *[]string `json:"edges"`
-		Watch    *bool     `json:"watch"`
+		Language      *string   `json:"language"`
+		Project       *string   `json:"project"`
+		Root          *string   `json:"root"`
+		Include       *[]string `json:"include"`
+		Exclude       *[]string `json:"exclude"`
+		Edges         *[]string `json:"edges"`
+		Watch         *bool     `json:"watch"`
+		External      *string   `json:"external"`
+		Libraries     *[]string `json:"libraries"`
+		ExternalTypes *[]string `json:"externalTypes"`
+		ExternalDepth *int      `json:"externalDepth"`
 	}
 	dec := json.NewDecoder(io.LimitReader(r.Body, 1<<20))
 	dec.DisallowUnknownFields()
@@ -242,12 +255,90 @@ func (api *toolAPI) putExtractor(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	patch := extractorPatch{Language: body.Language, Project: body.Project, Root: body.Root, Include: body.Include, Exclude: body.Exclude, Edges: body.Edges, Watch: body.Watch}
+	patch.External, patch.Libraries, patch.ExternalTypes, patch.ExternalDepth = body.External, body.Libraries, body.ExternalTypes, body.ExternalDepth
 	if err := patchExtractor(api.file, id, patch); err != nil {
 		http.Error(w, err.Error(), http.StatusBadRequest)
 		return
 	}
 	api.reloadWatch()
 	api.getSetup(w, r)
+}
+
+// Analysis uses the current form's paths without changing configuration or facts runs.
+func (api *toolAPI) listLibraries(w http.ResponseWriter, r *http.Request) {
+	var body struct {
+		Root    *string   `json:"root"`
+		Include *[]string `json:"include"`
+		Exclude *[]string `json:"exclude"`
+	}
+	decoder := json.NewDecoder(io.LimitReader(r.Body, 1<<20))
+	decoder.DisallowUnknownFields()
+	if err := decoder.Decode(&body); err != nil {
+		http.Error(w, "Bad JSON: "+err.Error(), http.StatusBadRequest)
+		return
+	}
+	proj, err := loadProject(api.file)
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+		return
+	}
+	entries, err := selectExtractors(proj, r.PathValue("id"))
+	if err != nil || len(entries) != 1 {
+		http.Error(w, "No such extractor", http.StatusNotFound)
+		return
+	}
+	entry := entries[0]
+	if entry.Language != "csharp" {
+		http.Error(w, "Reference analysis requires a C# extractor", http.StatusBadRequest)
+		return
+	}
+	entry.External, entry.Libraries, entry.ExternalTypes, entry.ExternalDepth, entry.Edges = "", nil, nil, nil, nil
+	if body.Root != nil {
+		entry.Root = *body.Root
+	}
+	if body.Include != nil {
+		entry.Include = *body.Include
+	}
+	if body.Exclude != nil {
+		entry.Exclude = *body.Exclude
+	}
+	if err := validateExtractors([]extractorConf{entry}); err != nil {
+		http.Error(w, err.Error(), http.StatusBadRequest)
+		return
+	}
+	tool := resolveExtractor(entry)
+	if !tool.ready() {
+		http.Error(w, "C# extractor or runtime unavailable", http.StatusConflict)
+		return
+	}
+	args := append(extractorArgs(tool, entry, proj.Root), "--list-libraries")
+	ctx, cancel := context.WithTimeout(r.Context(), 2*time.Minute)
+	defer cancel()
+	cmd := exec.CommandContext(ctx, args[0], args[1:]...)
+	cmd.Dir = proj.Root
+	output, err := cmd.Output()
+	if err != nil {
+		http.Error(w, "Could not analyze references: "+err.Error(), http.StatusUnprocessableEntity)
+		return
+	}
+	var result struct {
+		Libraries *[]struct {
+			ID      string `json:"id"`
+			Name    string `json:"name"`
+			Version string `json:"version"`
+		} `json:"libraries"`
+	}
+	if err := json.Unmarshal(output, &result); err != nil || result.Libraries == nil {
+		http.Error(w, "Invalid reference catalog; update the C# extractor", http.StatusBadGateway)
+		return
+	}
+	for _, library := range *result.Libraries {
+		if library.ID == "" || library.Name == "" || library.Version == "" {
+			http.Error(w, "Invalid reference catalog", http.StatusBadGateway)
+			return
+		}
+	}
+	writeJSON(w, result)
 }
 
 func (api *toolAPI) deleteExtractor(w http.ResponseWriter, r *http.Request) {

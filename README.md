@@ -145,6 +145,19 @@ where MCP takes its data from.
 
 What changed in each version is in [CHANGELOG.md](CHANGELOG.md) (in Russian).
 
+### New in 0.5.0
+
+Shared workspace styles now stay synchronized between editors and MCP. Formatting modifiers
+and rules apply palettes by namespace, assembly or library while preserving each type's base
+style; preview and explanation show how the result was obtained. C# extraction can include
+external libraries. A separate [Visual Studio VSIX](plugins/visual-studio/README.md) embeds the
+editor and connects map selections, source navigation and C# file drops to the IDE.
+
+The main application is actively used on Windows. The Visual Studio integration is a preview:
+builds and automated tests pass, but manual use has been limited to Visual Studio 2026.
+VS 2022 and multiple-monitor DPI have not been verified. The VSIX is built separately and is
+not installed by the main installer.
+
 ## What exists today
 
 | Part | Status |
@@ -262,6 +275,15 @@ Do not place nodes on views — leave that to me. Do not commit.
 
 [`docs/ADOPTING.md`](docs/ADOPTING.md) lists the steps and the traps. From then on the agent works
 through MCP and never edits the workspace files by hand.
+
+### Optional experimental architecture skill
+
+The connected MCP server supplies the architecture workflow and tool instructions; a separate
+skill is not required. An experimental free MIT package,
+[`semaps-architecture`](agents/skills/README.md), remains available in source. Comparative
+trials did not establish an advantage over MCP alone. It requires **installed SeMaps and
+connected SeMaps MCP** and supplies instructions only. Map changes remain unsaved until the
+human explicitly requests Save.
 
 ### Try it without a project
 

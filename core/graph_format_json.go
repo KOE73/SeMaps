@@ -50,17 +50,18 @@ func (jsonCompactFormat) MediaType() string { return "application/json; charset=
 // agent can still guess them: i=id, s=symbol, k=kind, n=name, fi=file index,
 // l=line, el=endLine, c=containers, e=entity, st=status, p=presence.
 type compactNode struct {
-	I  string   `json:"i"`
-	S  string   `json:"s,omitempty"`
-	K  string   `json:"k,omitempty"`
-	N  string   `json:"n,omitempty"`
-	FI int      `json:"fi,omitempty"`
-	L  int      `json:"l,omitempty"`
-	EL int      `json:"el,omitempty"`
-	C  []string `json:"c,omitempty"`
-	E  string   `json:"e,omitempty"`
-	St string   `json:"st,omitempty"`
-	P  string   `json:"p,omitempty"`
+	I   string   `json:"i"`
+	S   string   `json:"s,omitempty"`
+	K   string   `json:"k,omitempty"`
+	N   string   `json:"n,omitempty"`
+	Lib string   `json:"lib,omitempty"`
+	FI  int      `json:"fi,omitempty"`
+	L   int      `json:"l,omitempty"`
+	EL  int      `json:"el,omitempty"`
+	C   []string `json:"c,omitempty"`
+	E   string   `json:"e,omitempty"`
+	St  string   `json:"st,omitempty"`
+	P   string   `json:"p,omitempty"`
 	// Dy: blind-spot marks (ADR_20260928-5 §4), GraphNode.Dynamic. Kept
 	// readable — full "kind"/"line"/"method" keys — since compactDynamicMark
 	// is small and rare; only the node-level key is shortened.
@@ -117,7 +118,8 @@ func (jsonCompactFormat) Format(g *Graph, o FormatOptions) ([]byte, error) {
 	for i, n := range g.Nodes {
 		nodes[i] = compactNode{
 			I: n.ID, S: n.Symbol, K: n.Kind, N: n.Name,
-			FI: fileIdx(n.File), L: n.Line, EL: n.EndLine,
+			Lib: n.Library,
+			FI:  fileIdx(n.File), L: n.Line, EL: n.EndLine,
 			C: n.Containers, E: n.Entity, St: n.Status, P: n.Presence,
 			Dy: compactDynamicMarks(n.Dynamic),
 		}

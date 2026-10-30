@@ -159,6 +159,9 @@ func Check(workspace, sourceRoot string, defaultKinds []byte) []Finding {
 		report("workspace", "не читается", err.Error())
 	}
 	checkWorkspaceFiles(workspace, kinds, report)
+	if err := CheckStyleExtensions(workspace, defaultKinds); err != nil {
+		report("workspace", "модификаторы оформления", err.Error())
+	}
 
 	root := filepath.Join(workspace, "projects")
 	projectDirs, err := os.ReadDir(root)
@@ -225,6 +228,13 @@ func Check(workspace, sourceRoot string, defaultKinds []byte) []Finding {
 			Relations []*object `json:"relations"`
 		}
 		load("relations.json", &rels)
+		m, libraryErr := LoadModelWithoutJournal(workspace, project, defaultKinds)
+		if libraryErr != nil {
+			report(project, "не читается", libraryErr.Error())
+		} else {
+			ents.Entities = m.registries["entity"].items
+			rels.Relations = m.registries["relation"].items
+		}
 		for _, e := range ents.Entities {
 			if old := oldShape("entity", e); old != "" {
 				report(project, "форма контракта", fmt.Sprintf("entities.json: %s: %s (`semaps migrate`, ADR_20260930-4/5)", e.str("id"), old))

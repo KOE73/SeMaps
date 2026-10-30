@@ -1,0 +1,3 @@
+[mcp_servers.semaps]
+command = "semaps"
+args = ["mcp"]

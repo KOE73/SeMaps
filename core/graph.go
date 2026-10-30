@@ -29,6 +29,7 @@ type GraphNode struct {
 	NativeKind string `json:"nativeKind,omitempty"`
 	Name       string `json:"name,omitempty"`
 	Namespace  string `json:"namespace,omitempty"`
+	Library    string `json:"library,omitempty"`
 	// Assembly is the name of the nearest containing node of nativeKind
 	// "assembly" (walked once, at build time, via `contains` edges — never
 	// per request: part 1 of the agent-answers rework, "where it lies").
@@ -170,12 +171,21 @@ func BuildGraph(sources []FactsSource, model *Model) (*Graph, error) {
 
 	// -------------------------------------------------- code and both nodes
 	symbolNodeKey := map[[2]string]string{} // (extractor, symbol id) -> node key
+	libraryNodes := map[string]bool{}
 	for _, src := range sources {
 		for _, s := range src.Facts.Symbols {
 			key := nodeKey(src.Extractor, s.ID)
+			if s.Library != "" {
+				key = nodeKey("library/"+src.Facts.Language, s.ID)
+				symbolNodeKey[[2]string{src.Extractor, s.ID}] = key
+				if libraryNodes[key] {
+					continue
+				}
+				libraryNodes[key] = true
+			}
 			n := GraphNode{
 				ID: key, Symbol: s.ID, Kind: s.Kind, NativeKind: s.NativeKind,
-				Name: s.Name, Namespace: s.Namespace, Visibility: s.Visibility,
+				Name: s.Name, Namespace: s.Namespace, Visibility: s.Visibility, Library: s.Library,
 				File: s.File, Line: s.Line, EndLine: s.EndLine, Spans: s.Spans, MemberLines: s.MemberLines, Language: src.Facts.Language, Extractor: src.Extractor,
 			}
 			if len(s.Dynamic) > 0 {
@@ -205,7 +215,24 @@ func BuildGraph(sources []FactsSource, model *Model) (*Graph, error) {
 		}
 		id, name, file := e.str("id"), names[e.str("id")], refFile(firstRef(entries(e, "code")))
 		entityKind[id] = e.str("kind")
-		n := GraphNode{ID: id, Kind: e.str("kind"), Name: name, Status: e.str("status"), Presence: "model"}
+		n := GraphNode{ID: id, Kind: e.str("kind"), Name: name, Status: e.str("status"), Presence: "model", Library: entityLibrary(e)}
+		if n.Library != "" {
+			n.Entity, n.NativeKind, n.Kind = id, e.str("kind"), "type"
+			switch normKind(n.NativeKind) {
+			case "assembly":
+				n.Kind = "module"
+			case "interface":
+				n.Kind = "interface"
+			case "delegate":
+				n.Kind = "function"
+			}
+			for _, c := range entries(e, "code") {
+				if c.str("library") == n.Library {
+					n.Symbol, n.Language = c.str("symbol"), c.str("lang")
+					break
+				}
+			}
+		}
 		if ns := e.str("namespace"); ns != "" {
 			n.Namespace = ns
 		}
@@ -276,6 +303,18 @@ func BuildGraph(sources []FactsSource, model *Model) (*Graph, error) {
 	}
 
 	sort.Slice(edges, func(i, j int) bool { return compareGraphEdges(edges[i], edges[j]) < 0 })
+	// Several source extractors can reference the same metadata library.
+	// A shared library node and its identical outgoing edges occur only once.
+	if len(edges) > 1 {
+		unique := edges[:0]
+		for _, e := range edges {
+			if len(unique) > 0 && libraryNodes[e.From] && compareGraphEdges(unique[len(unique)-1], e) == 0 {
+				continue
+			}
+			unique = append(unique, e)
+		}
+		edges = unique
+	}
 
 	attachAssemblies(nodes, edges)
 	assignContainers(nodes, edges, entityKind, model.Kinds())

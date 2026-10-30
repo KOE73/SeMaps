@@ -93,18 +93,15 @@ func PlaceEntities(workspace, project, viewID string, list []Placement, requeste
 // objects, in file order: entities.json → "entities", relations.json →
 // "relations".
 func Records(workspace, project, file string) ([]json.RawMessage, error) {
-	dir, err := ProjectDir(workspace, project)
-	if err != nil {
-		return nil, err
-	}
 	key := map[string]string{"entities.json": "entities", "relations.json": "relations"}[file]
 	if key == "" {
 		return nil, fmt.Errorf("not a registry file: %s", file)
 	}
-	reg, err := loadRegistry(dir, file, key, freshList(key))
+	m, err := LoadModelWithoutJournal(workspace, project, nil)
 	if err != nil {
 		return nil, err
 	}
+	reg := m.registries[map[string]string{"entities": "entity", "relations": "relation"}[key]]
 	out := make([]json.RawMessage, len(reg.items))
 	for i, o := range reg.items {
 		out[i], _ = o.MarshalJSON()

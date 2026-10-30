@@ -17,6 +17,9 @@ import { i18n } from "../workbench/i18n/I18nService.js";
  * be a second history the user has to know about.
  */
 export interface StylePanelHost {
+  readonly sharedStyles?: boolean;
+  renameStyle?(id:string,newId:string): Promise<void>;
+  deleteStyle?(id:string,replacement?:string): Promise<void>;
   readonly canvas: DiagramCanvas;
   readonly styles: StyleLibrary;
   /**
@@ -97,11 +100,14 @@ export class StyleList {
   constructor(
     private readonly mount: HTMLElement,
     private readonly host: StylePanelHost,
+    private readonly externalTabs = false,
   ) {
     host.canvas.events.on("select", () => {
       for (const refresh of this.applyRefreshers) refresh();
     });
   }
+
+  showMode(mode: Mode): void { this.switchMode(mode); this.render(); }
 
   get shownTarget(): StyleTarget {
     return this.mode === "edge" ? "edge" : "block";
@@ -122,6 +128,7 @@ export class StyleList {
   }
 
   render(): void {
+    if(this.activeId!==null&&!this.host.styles.has(this.activeId)) this.activeId=null;
     this.applyRefreshers = [];
     const usage = this.usageCounts();
 
@@ -149,12 +156,12 @@ export class StyleList {
     replaceChildren(
       this.mount,
       el("div", { class: "style-list-head" }, [
-        el("div", { class: "tab-row segmented" }, [
+        this.externalTabs ? null : el("div", { class: "tab-row segmented" }, [
           this.modeButton("kinds", i18n.d.panels.styles.blocksTab),
           this.modeButton("edge", i18n.d.panels.styles.edgesTab),
         ]),
         el("button", {
-          class: "btn btn-small btn-primary",
+          class: `btn btn-small btn-primary${this.externalTabs ? " style-create-button" : ""}`,
           title: this.createTitle(),
           disabled: shape === null,
           on: { click: () => this.create() },
@@ -559,6 +566,11 @@ export class StyleList {
    * the result, so both are counted before the fact.
    */
   private removeStyle(id: string, count: number): void {
+    if(this.host.sharedStyles && this.host.deleteStyle) {
+      const replacement=window.prompt("Удалить стиль во всём рабочем пространстве. Для используемого стиля укажите совместимый стиль замены (пусто — удалить только неиспользуемый):","");
+      if(replacement===null)return;
+      void this.host.deleteStyle(id,replacement.trim()||undefined);return;
+    }
     const lib = this.host.styles;
     const dependents = lib.dependents(id);
 

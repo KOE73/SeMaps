@@ -58,8 +58,9 @@ static async Task<int> Run(string[] args)
         .ToList();
     var pathFilter = new PathFilter(includeRelative, options.Excludes);
 
-    var extractor = new FactsExtractor(options.Root, rootFullPath, pathFilter, options.EdgeKinds);
+    var extractor = new FactsExtractor(options.Root, rootFullPath, pathFilter, options.EdgeKinds,options);
     var loadedAny = false;
+    var references = new List<IAssemblySymbol>();
 
     foreach (var project in projects)
     {
@@ -69,7 +70,14 @@ static async Task<int> Run(string[] args)
             continue;
         }
 
+        if (options.External != "off") compilation = compilation.WithOptions(compilation.Options.WithMetadataImportOptions(MetadataImportOptions.All));
+
         loadedAny = true;
+        if (options.ListLibraries)
+        {
+            references.AddRange(compilation.SourceModule.ReferencedAssemblySymbols);
+            continue;
+        }
         extractor.ProcessProject(project, compilation);
     }
 
@@ -79,7 +87,19 @@ static async Task<int> Run(string[] args)
         return 1;
     }
 
-    var document = extractor.Build();
+    FactsDocument document;
+    if (options.ListLibraries)
+    {
+        try
+        {
+            Console.WriteLine(JsonSerializer.Serialize(new { libraries=ExternalLibraryCollector.ListLibraries(references) },
+                new JsonSerializerOptions { DefaultIgnoreCondition=JsonIgnoreCondition.WhenWritingNull }));
+            return 0;
+        }
+        catch (InvalidOperationException e) { Console.Error.WriteLine(e.Message); return 1; }
+    }
+    try { document = extractor.Build(); }
+    catch (InvalidOperationException e) { Console.Error.WriteLine(e.Message); return 1; }
 
     if (options.EdgeKinds.Contains("calls"))
     {

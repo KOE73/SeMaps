@@ -21,6 +21,7 @@ const names = {
   arrowUp: "arrow-up",
   shuffle: "arrows-shuffle",
   books: "books",
+  brush: "brush",
   boxModel: "box-model",
   box: "box",
   bank: "building-bank",

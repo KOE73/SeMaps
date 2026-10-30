@@ -1,0 +1,4 @@
+{
+  "protocol": "semaps.ide", "version": 1, "sessionId": "example-session",
+  "kind": "request", "id": "initialize-1", "method": "bridge.initialize", "params": {}
+}

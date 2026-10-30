@@ -1,0 +1,9 @@
+{
+  "protocol": "semaps.ide", "version": 1, "sessionId": "example-session",
+  "kind": "request", "id": "drop", "method": "entities.place",
+  "params": {
+    "context": { "contextId": "example-context", "projectId": "example-project", "viewId": "example-view", "mode": "diagram" },
+    "entityIds": ["e_example"],
+    "at": { "space": "client", "x": 300, "y": 400 }
+  }
+}

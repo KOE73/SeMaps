@@ -3,7 +3,8 @@
  * extractors, their runs and the sync of a run. Paths are relative to the
  * project root; the host never hands out absolute ones.
  */
-import { hostWriteHeaders } from "../util/hostKey.js";
+import { hostFetch, rememberHostContext } from "../util/hostKey.js";
+import { t } from "./strings.js";
 
 export interface RuntimeInfo {
   name: string;
@@ -55,10 +56,16 @@ export interface ExtractorView {
   exclude: string[];
   edges: string[];
   watch: boolean;
+  external?: "off" | "used" | "expand" | "full";
+  libraries?: string[];
+  externalTypes?: string[];
+  externalDepth?: number;
   command?: string;
   tool: ExtractorTool;
   lastRun?: RunInfo;
 }
+
+export interface ReferencedLibrary { id: string; name: string; version: string; }
 
 /**
  * The `mcp` section of the .semaps file (docs/API.md §3): shapes the MCP
@@ -119,6 +126,10 @@ export interface ExtractorPatch {
   exclude?: string[];
   edges?: string[];
   watch?: boolean;
+  external?: "off" | "used" | "expand" | "full";
+  libraries?: string[];
+  externalTypes?: string[];
+  externalDepth?: number;
 }
 
 export interface McpSettingsPatch {
@@ -206,14 +217,19 @@ export class ApiError extends Error {
 }
 
 async function call<T>(method: string, url: string, body?: unknown): Promise<T> {
-  const res = await fetch(url, {
+  const res = await hostFetch(url, {
     method,
-    headers: { ...(body === undefined ? {} : { "Content-Type": "application/json" }), ...(method === "GET" ? {} : hostWriteHeaders()) },
+    headers: body === undefined ? {} : { "Content-Type": "application/json" },
     body: body === undefined ? undefined : JSON.stringify(body),
     cache: "no-store",
   });
-  if (!res.ok) throw new ApiError(res.status, (await res.text()).trim() || res.statusText);
-  return (await res.json()) as T;
+  if (!res.ok) {
+    const message = (await res.text()).trim() || res.statusText;
+    throw new ApiError(res.status, res.status === 401 && message === "Missing or invalid host key" ? t.hostConnectionLost : message);
+  }
+  const value = (await res.json()) as T;
+  if (url === "/api/setup") rememberHostContext(value);
+  return value;
 }
 
 const API = "/api";
@@ -225,6 +241,8 @@ export const toolApi = {
   saveExtractor: (id: string, patch: ExtractorPatch) =>
     call<Setup>("PUT", `${API}/setup/extractors/${encodeURIComponent(id)}`, patch),
   removeExtractor: (id: string) => call<Setup>("DELETE", `${API}/setup/extractors/${encodeURIComponent(id)}`),
+  analyzeLibraries: (id: string, paths: { root: string; include: string[]; exclude: string[] }) =>
+    call<{ libraries: ReferencedLibrary[] }>("POST", `${API}/setup/extractors/${encodeURIComponent(id)}/libraries`, paths),
   runs: (extractor?: string) =>
     call<RunInfo[]>("GET", `${API}/runs${extractor ? `?extractor=${encodeURIComponent(extractor)}` : ""}`),
   startRun: (extractor: string) => call<RunInfo>("POST", `${API}/runs`, { extractor }),

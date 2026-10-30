@@ -13,6 +13,7 @@ import type { WorkbenchMode } from "./modes.js";
 import { DockviewHost } from "./dockview/DockviewHost.js";
 import { CanvasFilterManager } from "./filters/CanvasFilterManager.js";
 import { i18n } from "./i18n/I18nService.js";
+import { Emitter } from "../util/emitter.js";
 
 /**
  * Workbench architecture root.
@@ -38,6 +39,8 @@ export class Workbench {
 
   private readonly modes: WorkbenchMode[] = [];
   private mode: WorkbenchMode;
+  get currentModeId(): string { return this.mode.id; }
+  readonly modeEvents = new Emitter<{ change: string }>();
   private readonly surfaces: HTMLElement;
 
   constructor(
@@ -166,6 +169,7 @@ export class Workbench {
     this.shortcuts.enabled = next.id === "";
     this.ribbon.setSpec({ tabs: next.tabs });
     next.enter?.();
+    this.modeEvents.emit("change", next.id);
     const url = new URL(location.href);
     url.hash = next.id;
     history.replaceState(null, "", next.id ? url : url.href.replace(/#$/, ""));

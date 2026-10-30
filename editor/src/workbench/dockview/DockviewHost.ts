@@ -8,6 +8,7 @@ import {
   RelationsPanel,
   FiltersPanel,
   StylesPanel,
+  StyleRulesPanel,
   TemplatesPanel,
   CatalogPanel,
   ChangesPanel,
@@ -72,6 +73,9 @@ export class DockviewHost {
       });
     }
 
+    const styles = this.dockview.getPanel("styles");
+    if (styles && !this.dockview.getPanel("styleRules")) this.dockview.addPanel({ id: "styleRules", component: "styleRules", title: i18n.currentLanguage === "ru" ? "Правила стилей" : "Style rules", position: { direction: "within", referencePanel: styles }, inactive: true, minimumWidth: 100, minimumHeight: 80 });
+
     // 5. Persist layout changes
     this.dockview.onDidLayoutChange(() => {
       this.layoutService.saveLayout();
@@ -104,6 +108,7 @@ export class DockviewHost {
       relations: i18n.d.panels.relations.title,
       filters: i18n.d.panels.filters.title,
       styles: i18n.d.panels.styles.title,
+      styleRules: i18n.currentLanguage === "ru" ? "Правила стилей" : "Style rules",
       templates: i18n.d.panels.templates.title,
       base: i18n.d.panels.base.title,
       neighbourhood: i18n.d.panels.neighbourhood.title,
@@ -119,6 +124,7 @@ export class DockviewHost {
   }
 
   private registerPanels(): void {
+    this.panelService.register({ id: "styleRules", get title() { return i18n.currentLanguage === "ru" ? "Правила стилей" : "Style rules"; }, minWidth: 100, minHeight: 80, createRenderer: () => new StyleRulesPanel(this.editor) });
     this.panelService.register({
       id: "diagram",
       get title() { return i18n.d.panels.diagram.title; },

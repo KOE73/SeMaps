@@ -35,6 +35,57 @@ func TestLoadProjectEmptyFile(t *testing.T) {
 	}
 }
 
+func TestExternalLibrarySettingsRoundTripAndArguments(t *testing.T) {
+	file := writeProject(t, "# keep this\nextractors:\n  - {id: cs, language: csharp, project: p}\n")
+	mode, depth := "expand", 2
+	libraries, types := []string{"LibA", "LibB"}, []string{"N.A", "[LibB]::N.B"}
+	if err := patchExtractor(file, "cs", extractorPatch{External: &mode, Libraries: &libraries, ExternalTypes: &types, ExternalDepth: &depth}); err != nil {
+		t.Fatal(err)
+	}
+	p, err := loadProject(file)
+	if err != nil {
+		t.Fatal(err)
+	}
+	e := p.Extractors[0]
+	args := strings.Join(extractorArgs(extractorTool{argv: []string{"extract"}}, e, "/root"), " ")
+	if !strings.Contains(args, "--external expand --library LibA --library LibB --external-type N.A --external-type [LibB]::N.B --external-depth 2") {
+		t.Fatal(args)
+	}
+	data, _ := os.ReadFile(file)
+	if !strings.Contains(string(data), "# keep this") {
+		t.Fatal("lost comment")
+	}
+	// Turning metadata off and changing language must not pass C# flags to another extractor.
+	mode, lang := "off", "typescript"
+	empty := []string{}
+	if err := patchExtractor(file, "cs", extractorPatch{External: &mode, Language: &lang, Libraries: &empty, ExternalTypes: &empty}); err != nil {
+		t.Fatal(err)
+	}
+	p, err = loadProject(file)
+	if err != nil {
+		t.Fatal(err)
+	}
+	args = strings.Join(extractorArgs(extractorTool{argv: []string{"extract"}}, p.Extractors[0], "/root"), " ")
+	if strings.Contains(args, "--external") {
+		t.Fatal(args)
+	}
+}
+
+func TestExternalLibraryInvalidSettings(t *testing.T) {
+	for _, fields := range []string{
+		"external: typo", "external: full", "external: expand", "external: off, libraries: [LibA]",
+		"external: used, external_depth: -1", "language: go, external: used",
+	} {
+		base := "id: cs, project: p, "
+		if !strings.Contains(fields, "language:") {
+			base += "language: csharp, "
+		}
+		if _, err := loadProject(writeProject(t, "extractors:\n  - {"+base+fields+"}\n")); err == nil {
+			t.Fatalf("accepted %s", fields)
+		}
+	}
+}
+
 func TestLoadProjectRejects(t *testing.T) {
 	for _, text := range []string{
 		"colour: red\n",
@@ -45,6 +96,51 @@ func TestLoadProjectRejects(t *testing.T) {
 	} {
 		if _, err := loadProject(writeProject(t, text)); err == nil {
 			t.Errorf("accepted: %q", text)
+		}
+	}
+}
+
+func TestProjectPathsArePortable(t *testing.T) {
+	for _, tc := range []struct {
+		path   string
+		reject bool
+	}{
+		{"", false}, {".", false}, {"../src", false}, {"src/types", false}, {`src\types`, false},
+		{"/src", true}, {"C:/src", true}, {`C:\src`, true}, {"C:src", true},
+		{"z:src", true}, {`\src`, true}, {`\\server\share`, true}, {"//server/share", true},
+	} {
+		for _, field := range []string{"root", "include", "workspace", "source_root"} {
+			t.Run(field+"/"+tc.path, func(t *testing.T) {
+				var err error
+				if field == "root" || field == "include" {
+					e := extractorConf{ID: "a", Language: "csharp", Project: "p"}
+					if field == "root" {
+						e.Root = tc.path
+					} else {
+						e.Include = []string{tc.path}
+					}
+					err = validateExtractors([]extractorConf{e})
+				} else {
+					file := writeProject(t, "# keep this\nworkspace: maps\nsource_root: .\n")
+					before, _ := os.ReadFile(file)
+					patch := settingsPatch{}
+					if field == "workspace" {
+						patch.Workspace = &tc.path
+					} else {
+						patch.SourceRoot = &tc.path
+					}
+					err = patchSettings(file, patch)
+					if tc.reject {
+						after, _ := os.ReadFile(file)
+						if string(after) != string(before) {
+							t.Error("rejected machine path changed the project file")
+						}
+					}
+				}
+				if (err != nil) != tc.reject {
+					t.Fatalf("path %q: error %v, want rejection %v", tc.path, err, tc.reject)
+				}
+			})
 		}
 	}
 }

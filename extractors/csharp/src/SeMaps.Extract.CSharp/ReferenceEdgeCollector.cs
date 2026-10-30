@@ -26,7 +26,8 @@ internal static class ReferenceEdgeCollector
         HashSet<EdgeWithVia> edges,
         HashSet<string>? requestedEdgeKinds,
         string fromFile,
-        Func<ISymbol, (string File, int Line)?> locate)
+        Func<ISymbol, (string File, int Line)?> locate,
+        Func<INamedTypeSymbol, string?>? resolve = null)
     {
         foreach (var member in symbol.GetMembers())
         {
@@ -35,27 +36,27 @@ internal static class ReferenceEdgeCollector
             switch (member)
             {
                 case IFieldSymbol field:
-                    AddForMember(fromId, field, field.Type, "holds", outputIds, edges, requestedEdgeKinds, fromFile, locate);
+                    AddForMember(fromId, field, field.Type, "holds", outputIds, edges, requestedEdgeKinds, fromFile, locate,resolve);
                     break;
 
                 case IPropertySymbol { IsIndexer: false } property:
-                    AddForMember(fromId, property, property.Type, "holds", outputIds, edges, requestedEdgeKinds, fromFile, locate);
+                    AddForMember(fromId, property, property.Type, "holds", outputIds, edges, requestedEdgeKinds, fromFile, locate,resolve);
                     break;
 
                 case IEventSymbol @event when symbol.TypeKind == TypeKind.Interface:
-                    AddForMember(fromId, @event, @event.Type, "holds", outputIds, edges, requestedEdgeKinds, fromFile, locate);
+                    AddForMember(fromId, @event, @event.Type, "holds", outputIds, edges, requestedEdgeKinds, fromFile, locate,resolve);
                     break;
 
                 case IMethodSymbol method
                     when IsScannedMethod(method, symbol):
-                    AddForMethodSignature(fromId, method, outputIds, edges, requestedEdgeKinds, fromFile, locate);
+                    AddForMethodSignature(fromId, method, outputIds, edges, requestedEdgeKinds, fromFile, locate,resolve);
                     break;
             }
         }
 
         if (symbol.TypeKind == TypeKind.Delegate && symbol.DelegateInvokeMethod is { } invoke)
         {
-            AddForMethodSignature(fromId, invoke, outputIds, edges, requestedEdgeKinds, fromFile, locate);
+            AddForMethodSignature(fromId, invoke, outputIds, edges, requestedEdgeKinds, fromFile, locate,resolve);
         }
     }
 
@@ -79,7 +80,8 @@ internal static class ReferenceEdgeCollector
         HashSet<EdgeWithVia> edges,
         HashSet<string>? requestedEdgeKinds,
         string fromFile,
-        Func<ISymbol, (string File, int Line)?> locate)
+        Func<ISymbol, (string File, int Line)?> locate,
+        Func<INamedTypeSymbol, string?>? resolve)
     {
         // Skip if edge kind not requested (holds/uses edges only when explicitly requested)
         if (requestedEdgeKinds is null || !requestedEdgeKinds.Contains(edgeKind))
@@ -98,7 +100,8 @@ internal static class ReferenceEdgeCollector
 
         foreach (var analyzed in typeAnalysis)
         {
-            var toId = SymbolIds.TypeId(analyzed.ReferencedType);
+            var toId = resolve is null ? SymbolIds.TypeId(analyzed.ReferencedType) : resolve(analyzed.ReferencedType);
+            if (toId is null) continue;
             if (toId == fromId) continue;
             if (!outputIds.Contains(toId)) continue;
 
@@ -133,19 +136,20 @@ internal static class ReferenceEdgeCollector
         HashSet<EdgeWithVia> edges,
         HashSet<string>? requestedEdgeKinds,
         string fromFile,
-        Func<ISymbol, (string File, int Line)?> locate)
+        Func<ISymbol, (string File, int Line)?> locate,
+        Func<INamedTypeSymbol, string?>? resolve)
     {
         var methodName = method.Name;
         var location = locate(method);
 
         // Return type: uses with method name as member
-        AddForMethodParameter(fromId, method.ReturnType, methodName, "return", outputIds, edges, requestedEdgeKinds, fromFile, location);
+        AddForMethodParameter(fromId, method.ReturnType, methodName, "return", outputIds, edges, requestedEdgeKinds, fromFile, location,resolve);
 
         // Parameters: uses with parameter name as member
         foreach (var param in method.Parameters)
         {
             var memberKindStr = method.MethodKind == MethodKind.Constructor ? "constructor" : "parameter";
-            AddForMethodParameter(fromId, param.Type, param.Name, memberKindStr, outputIds, edges, requestedEdgeKinds, fromFile, location);
+            AddForMethodParameter(fromId, param.Type, param.Name, memberKindStr, outputIds, edges, requestedEdgeKinds, fromFile, location,resolve);
         }
     }
 
@@ -158,7 +162,8 @@ internal static class ReferenceEdgeCollector
         HashSet<EdgeWithVia> edges,
         HashSet<string>? requestedEdgeKinds,
         string fromFile,
-        (string File, int Line)? location)
+        (string File, int Line)? location,
+        Func<INamedTypeSymbol, string?>? resolve)
     {
         var edgeKind = "uses";
 
@@ -183,7 +188,8 @@ internal static class ReferenceEdgeCollector
         var typeAnalysis = AnalyzeType(type);
         foreach (var analyzed in typeAnalysis)
         {
-            var toId = SymbolIds.TypeId(analyzed.ReferencedType);
+            var toId = resolve is null ? SymbolIds.TypeId(analyzed.ReferencedType) : resolve(analyzed.ReferencedType);
+            if (toId is null) continue;
             if (toId == fromId) continue;
             if (!outputIds.Contains(toId)) continue;
 
@@ -230,6 +236,11 @@ internal static class ReferenceEdgeCollector
         List<AnalyzedSymbol> results,
         HashSet<INamedTypeSymbol> visited)
     {
+        if (type is IPointerTypeSymbol pointer)
+        {
+            AnalyzeTypeRecursive(pointer.PointedAtType, new List<string>(path) { "pointee" }, results, visited);
+            return;
+        }
         // Handle arrays: T[] -> item path
         if (type is IArrayTypeSymbol array)
         {

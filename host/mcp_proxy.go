@@ -86,9 +86,10 @@ type mcpProxy struct {
 	endpoint func(ctx context.Context) (url, key string, err error)
 	client   *mcp.Client
 
-	mu      sync.Mutex
-	session *mcp.ClientSession
-	tools   map[string]string // name -> JSON of the tool as registered on local
+	mu          sync.Mutex
+	session     *mcp.ClientSession
+	tools       map[string]string // name -> JSON of the tool as registered on local
+	initialized bool              // local's instructions are set once, before the agent connects
 }
 
 func newMCPProxy(projectID string, endpoint func(ctx context.Context) (string, string, error)) *mcpProxy {
@@ -132,11 +133,20 @@ func (p *mcpProxy) connectLocked(ctx context.Context) error {
 	if err != nil {
 		return err
 	}
+	if !p.initialized {
+		// The upstream initialize response carries the workflow and model rules.
+		// Build the agent-facing server before Run/Connect: SDK instructions are
+		// immutable, and replacing it on a later reconnect would lose sessions.
+		p.local = mcp.NewServer(&mcp.Implementation{Name: "semaps", Version: "1"}, &mcp.ServerOptions{
+			HasTools: true, Instructions: session.InitializeResult().Instructions,
+		})
+	}
 	if err := p.syncLocked(ctx, session); err != nil {
 		session.Close()
 		return err
 	}
 	p.session = session
+	p.initialized = true
 	return nil
 }
 

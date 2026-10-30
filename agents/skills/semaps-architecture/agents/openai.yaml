@@ -1,0 +1,9 @@
+interface:
+  display_name: "SeMaps Architecture"
+  short_description: "Work from diagrams to code and from code to diagrams"
+  default_prompt: "Use $semaps-architecture to read the relevant SeMaps design and reconcile it with the requested code or diagram work."
+dependencies:
+  tools:
+    - type: "mcp"
+      value: "semaps"
+      description: "Installed SeMaps MCP connected to the consuming repository"

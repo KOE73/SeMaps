@@ -51,6 +51,9 @@ internal sealed class FactsExtractor(string rootArgument, string rootFullPath, P
     }
 
     private readonly HashSet<string>? _requestedEdgeKinds;
+    private readonly Options? _externalOptions;
+    private readonly List<IAssemblySymbol> _references = [];
+    private ExternalLibraryCollector? _external;
 
     /// <summary>
     /// Call/construct sites whose target is not printed in this output (library code, code
@@ -63,10 +66,11 @@ internal sealed class FactsExtractor(string rootArgument, string rootFullPath, P
     /// <summary>
     /// Constructor that accepts options for edge kinds filtering.
     /// </summary>
-    internal FactsExtractor(string rootArgument, string rootFullPath, PathFilter pathFilter, HashSet<string>? requestedEdgeKinds = null)
+    internal FactsExtractor(string rootArgument, string rootFullPath, PathFilter pathFilter, HashSet<string>? requestedEdgeKinds = null, Options? externalOptions = null)
         : this(rootArgument, rootFullPath, pathFilter)
     {
         _requestedEdgeKinds = requestedEdgeKinds?.Count > 0 ? requestedEdgeKinds : null;
+        _externalOptions = externalOptions;
     }
 
     /// <summary>
@@ -76,6 +80,7 @@ internal sealed class FactsExtractor(string rootArgument, string rootFullPath, P
     /// </summary>
     public void ProcessProject(Project project, Compilation compilation)
     {
+        if (_externalOptions?.External is not (null or "off")) _references.AddRange(compilation.SourceModule.ReferencedAssemblySymbols);
         var assembly = ConsiderAssembly(project);
 
         foreach (var tree in compilation.SyntaxTrees)
@@ -261,6 +266,7 @@ internal sealed class FactsExtractor(string rootArgument, string rootFullPath, P
         ResolveNamespaceLocations();
 
         var outputIds = new HashSet<string>(_types.Keys, StringComparer.Ordinal);
+        if (_externalOptions?.External is not (null or "off")) _external = new ExternalLibraryCollector(_externalOptions,outputIds,_references);
         var symbols = new List<SymbolFact>();
         var edges = new HashSet<EdgeWithVia>();
 
@@ -396,6 +402,7 @@ internal sealed class FactsExtractor(string rootArgument, string rootFullPath, P
             }
         }
 
+        _external?.Build(symbols,edges);
         symbols.Sort((a, b) => string.CompareOrdinal(a.Id, b.Id));
 
         var edgeFacts = edges
@@ -462,6 +469,7 @@ internal sealed class FactsExtractor(string rootArgument, string rootFullPath, P
             EdgeKinds = edgeKinds,
             Symbols = symbols,
             Edges = edgeFacts,
+            Libraries = _external?.Libraries,
         };
     }
 
@@ -535,8 +543,8 @@ internal sealed class FactsExtractor(string rootArgument, string rootFullPath, P
         var (members, memberLines) = MembersBuilder.Build(symbol, kind, entry.File, m => SourceLocation(m));
 
         var baseListLocation = BaseListLocation(symbol);
-        AddStructuralEdges(id, symbol, outputIds, edges, entry.File, baseListLocation);
-        ReferenceEdgeCollector.Collect(id, symbol, outputIds, edges, _requestedEdgeKinds, entry.File, m => SourceLocation(m));
+        AddStructuralEdges(id, symbol, outputIds, edges, entry.File, baseListLocation,_external is null ? null : _external.Resolve);
+        ReferenceEdgeCollector.Collect(id, symbol, outputIds, edges, _requestedEdgeKinds, entry.File, m => SourceLocation(m),_external is null ? null : _external.Resolve);
 
         // A file linked into two projects yields one Consider() call per project for the
         // same physical declaration: dedupe by (file, line) before deciding whether there
@@ -635,21 +643,22 @@ internal sealed class FactsExtractor(string rootArgument, string rootFullPath, P
         return null;
     }
 
-    private static void AddStructuralEdges(
+    internal static void AddStructuralEdges(
         string id,
         INamedTypeSymbol symbol,
         HashSet<string> outputIds,
         HashSet<EdgeWithVia> edges,
         string fromFile,
-        (string File, int Line)? baseListLocation)
+        (string File, int Line)? baseListLocation,
+        Func<INamedTypeSymbol,string?>? resolve = null)
     {
         int? line = baseListLocation?.Line;
         string? file = baseListLocation is { } loc && loc.File != fromFile ? loc.File : null;
 
         if (symbol.TypeKind == TypeKind.Class && symbol.BaseType is { } baseType && IsExtendableBase(baseType))
         {
-            var baseId = SymbolIds.TypeId(baseType);
-            if (outputIds.Contains(baseId) && baseId != id)
+            var baseId = resolve is null ? SymbolIds.TypeId(baseType) : resolve(baseType);
+            if (baseId is not null && outputIds.Contains(baseId) && baseId != id)
             {
                 edges.Add(new EdgeWithVia { From = id, To = baseId, Kind = "extends", Native = "class", Line = line, File = file });
             }
@@ -657,8 +666,8 @@ internal sealed class FactsExtractor(string rootArgument, string rootFullPath, P
 
         foreach (var iface in symbol.Interfaces)
         {
-            var ifaceId = SymbolIds.TypeId(iface);
-            if (outputIds.Contains(ifaceId) && ifaceId != id)
+            var ifaceId = resolve is null ? SymbolIds.TypeId(iface) : resolve(iface);
+            if (ifaceId is not null && outputIds.Contains(ifaceId) && ifaceId != id)
             {
                 // interface IA : IB extends the contract; class/struct : IA implements it.
                 edges.Add(symbol.TypeKind == TypeKind.Interface
@@ -970,7 +979,7 @@ internal sealed class FactsExtractor(string rootArgument, string rootFullPath, P
         SpecialType.System_Delegate or
         SpecialType.System_MulticastDelegate);
 
-    private static (string Kind, string NativeKind) ClassifyType(INamedTypeSymbol symbol) => symbol.TypeKind switch
+    internal static (string Kind, string NativeKind) ClassifyType(INamedTypeSymbol symbol) => symbol.TypeKind switch
     {
         TypeKind.Interface => ("interface", "interface"),
         TypeKind.Delegate => ("function", "delegate"),

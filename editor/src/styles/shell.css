@@ -139,6 +139,39 @@
   color: var(--muted);
 }
 
+.tool-external-description {
+  margin-top: var(--tp-row-gap);
+}
+
+.tool-external-fields {
+  margin-top: var(--tp-row-gap);
+  align-items: start;
+}
+
+.tool-external-fields .tool-hint {
+  margin: 4px 0 0;
+  overflow-wrap: anywhere;
+}
+
+.tool-external-filter {
+  margin-top: var(--tp-row-gap);
+}
+
+.tool-external-filter summary {
+  cursor: pointer;
+  color: var(--muted);
+}
+
+.tool-library-list {
+  display: grid;
+  gap: 6px;
+  max-height: 260px;
+  overflow: auto;
+  margin: 8px 0;
+}
+
+.tool-library-list .tool-check { overflow-wrap: anywhere; }
+
 .tool-actions {
   display: flex;
   flex-wrap: wrap;

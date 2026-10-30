@@ -87,6 +87,8 @@ export type { BoundarySlot, Point, Rect, Side } from "./geometry/types.js";
 
 // Workbench Architecture components
 export { Workbench } from "./workbench/Workbench.js";
+export { attachEditorBridge } from "./integration/editorAdapter.js";
+export { frameTransport, webViewTransport } from "./integration/transport.js";
 export { CommandRegistry } from "./workbench/commands/CommandRegistry.js";
 export { ShortcutManager } from "./workbench/commands/ShortcutManager.js";
 export { DockviewHost } from "./workbench/dockview/DockviewHost.js";

@@ -179,6 +179,7 @@ func Sync(model *Model, facts *Facts, opt SyncOptions) (*SyncReport, error) {
 		return nil, err
 	}
 	facts = dropMethodsAndCalls(facts)
+	scope := newLibraryCoverage(facts)
 	if model == nil {
 		return nil, errors.New("nil model")
 	}
@@ -209,7 +210,7 @@ func Sync(model *Model, facts *Facts, opt SyncOptions) (*SyncReport, error) {
 	for _, s := range facts.Symbols {
 		// An external symbol has no file to filter by (ADR_20260927-4); it
 		// stays whatever sources.include says.
-		if s.NativeKind == ExternalKind || included(s.File, manifest.Sources.Include) {
+		if s.Library != "" || s.NativeKind == ExternalKind || included(s.File, manifest.Sources.Include) {
 			symbols[s.ID] = s
 			order = append(order, s.ID)
 		}
@@ -233,6 +234,21 @@ func Sync(model *Model, facts *Facts, opt SyncOptions) (*SyncReport, error) {
 	}
 
 	ents, rels := working.registries["entity"], working.registries["relation"]
+	for _, l := range facts.Libraries {
+		old := working.libraries[l.ID]
+		if old != nil && old.str("version") != l.Version && !l.Complete {
+			rep.Broken = append(rep.Broken, fmt.Sprintf("library %s changed version %s → %s: extract the full assembly before merging", l.ID, old.str("version"), l.Version))
+			continue
+		}
+		doc := newObject()
+		doc.set("id", l.ID)
+		doc.set("name", l.Name)
+		doc.set("version", l.Version)
+		if l.Complete || old != nil && old.str("version") == l.Version && string(old.vals["complete"]) == "true" {
+			doc.set("complete", true)
+		}
+		working.libraries[l.ID] = doc
+	}
 
 	// ------------------------------------------------ registry must be sane
 	taken := map[string]bool{}   // every entity id, any origin
@@ -310,14 +326,18 @@ func Sync(model *Model, facts *Facts, opt SyncOptions) (*SyncReport, error) {
 		}
 		e := ents.items[i]
 		inCode[e.str("id")] = true
-		if msg := updateEntity(e, symbols[sid], lang); msg != "" {
+		s := symbols[sid]
+		if !scope.symbolExpanded(s) {
+			s.Members = nil
+		}
+		if msg := updateEntity(e, s, lang); msg != "" {
 			rep.Changed = append(rep.Changed, msg)
 			ents.dirty = true
 		}
 	}
 	gone := map[string]bool{}
 	for i, e := range ents.items {
-		if !managed(e, lang) || held[i] {
+		if !managed(e, lang) || !scope.entityCovered(facts, e) || held[i] {
 			continue
 		}
 		if _, ok := matched[i]; ok {
@@ -357,6 +377,10 @@ func Sync(model *Model, facts *Facts, opt SyncOptions) (*SyncReport, error) {
 		rep.Added = append(rep.Added, fmt.Sprintf("%s ← %s (%s)", id, sid, s.NativeKind))
 	}
 
+	entitiesByID := make(map[string]*object, len(ents.items))
+	for _, e := range ents.items {
+		entitiesByID[e.str("id")] = e
+	}
 	// ------------------------------------------------ relations
 	structural := setOf(structuralTypes)
 	byKey := map[string][]int{} // relation key -> relation indices
@@ -499,6 +523,9 @@ func Sync(model *Model, facts *Facts, opt SyncOptions) (*SyncReport, error) {
 				continue // not a member relation
 			}
 			from, to := r.str("from"), r.str("to")
+			if source := entitiesByID[from]; source != nil && !scope.entityCovered(facts, source) {
+				continue
+			}
 			if !(inCode[from] || gone[from]) || !(inCode[to] || gone[to]) {
 				continue
 			}
@@ -556,6 +583,9 @@ func Sync(model *Model, facts *Facts, opt SyncOptions) (*SyncReport, error) {
 		if confirmed[i] || r.str("origin") != "code" || memberRenameHolds[i] {
 			continue
 		}
+		if from := entitiesByID[r.str("from")]; from != nil && !scope.entityCovered(facts, from) {
+			continue
+		}
 		relType := relationType(r)
 
 		// Check if this relation type's kind is covered by the facts
@@ -581,7 +611,9 @@ func Sync(model *Model, facts *Facts, opt SyncOptions) (*SyncReport, error) {
 
 		from, to := r.str("from"), r.str("to")
 		// Only when sync can see both ends
-		if !(inCode[from] || gone[from]) || !(inCode[to] || gone[to]) {
+		target := entitiesByID[to]
+		knownExternal := target != nil && entityLibrary(target) != ""
+		if !(inCode[from] || gone[from]) || !(inCode[to] || gone[to] || knownExternal) {
 			continue
 		}
 		if r.str("status") != "missing" {
@@ -594,10 +626,22 @@ func Sync(model *Model, facts *Facts, opt SyncOptions) (*SyncReport, error) {
 	// A relation type needs no record: it is a string on the relation, and what
 	// it means — name, base style, default visibility — is the dictionary's
 	// (CONTRACT §5, §6).
-	if opt.DryRun {
-		return rep, nil
-	}
 	var ops []Op
+	files := map[string]bool{}
+	for _, l := range facts.Libraries {
+		doc := working.libraries[l.ID]
+		value, _ := doc.MarshalJSON()
+		var previous []byte
+		if old := base.libraries[l.ID]; old != nil {
+			previous, _ = old.MarshalJSON()
+		}
+		if compactJSON(previous) != compactJSON(value) {
+			ops = append(ops, Op{Kind: "library", ID: l.ID, Value: value})
+			rep.Changed = append(rep.Changed, "library "+l.ID+": snapshot metadata")
+			files[LibraryFile(l.ID)] = true
+		}
+	}
+	owners := entityOwners(ents.items)
 	for _, kind := range []string{"entity", "relation"} {
 		reg := working.registries[kind]
 		if !reg.dirty {
@@ -611,10 +655,23 @@ func Sync(model *Model, facts *Facts, opt SyncOptions) (*SyncReport, error) {
 			value, _ := item.MarshalJSON()
 			if !bytes.Equal(previous[item.str("id")], value) {
 				ops = append(ops, Op{Kind: kind, ID: item.str("id"), Value: value})
+				file := reg.name
+				if kind == "relation" {
+					file = relationFile(item, owners)
+				} else if owner := owners[item.str("id")]; owner != "" {
+					file = LibraryFile(owner)
+				}
+				files[file] = true
 			}
 		}
-		rep.Written = append(rep.Written, path.Join("projects", project, reg.name))
 	}
+	if opt.DryRun {
+		return rep, nil
+	}
+	for file := range files {
+		rep.Written = append(rep.Written, path.Join("projects", project, file))
+	}
+	sort.Strings(rep.Written)
 	if _, err := model.Apply(ops, "sync"); err != nil {
 		return rep, err
 	}
@@ -701,7 +758,7 @@ func adopt(items []*object, symbols map[string]Symbol, order []string,
 	for _, r := range rules {
 		free := map[string][]string{} // key -> unmatched symbols
 		for _, sid := range order {
-			if _, ok := match[sid]; ok || heldSym[sid] {
+			if _, ok := match[sid]; ok || heldSym[sid] || symbols[sid].Library != "" {
 				continue
 			}
 			k := r.symbolKey(symbols[sid])
@@ -779,7 +836,7 @@ func renames(items []*object, symbols map[string]Symbol, order []string,
 		return groups[k]
 	}
 	for i, e := range items {
-		if !managed(e, lang) || held[i] || e.str("status") == "missing" {
+		if !managed(e, lang) || held[i] || e.str("status") == "missing" || entityLibrary(e) != "" {
 			continue
 		}
 		if _, ok := matched[i]; ok {

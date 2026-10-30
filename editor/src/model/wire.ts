@@ -85,6 +85,7 @@ function parseEdge(w: WireEdge): DiagramEdge {
     ...(w.origin === "code" || w.toLabel === undefined ? {} : { toLabel: w.toLabel }),
     type: w.type ?? "call",
     ...(w.styleId === undefined ? {} : { styleId: w.styleId }),
+    modifiers: w.modifiers, disabledModifiers: w.disabledModifiers, automaticModifiers: w.automaticModifiers,
     ...(w.override === undefined ? {} : { override: w.override }),
     ...(w.origin === undefined ? {} : { origin: w.origin }),
     // The *choice* of line shape travels; the polyline it produces never does
@@ -102,6 +103,7 @@ function placementToElement(p: WirePlacement, order: number): DiagramElement {
     tags: p.tags ?? [],
     metadata: p.metadata ?? {},
     ...(p.styleId === undefined ? {} : { styleId: p.styleId }),
+    modifiers: p.modifiers, disabledModifiers: p.disabledModifiers, automaticModifiers: p.automaticModifiers,
     ...(p.override === undefined ? {} : { override: p.override }),
     x: p.x,
     y: p.y,
@@ -173,6 +175,7 @@ function serializeEdge(edge: DiagramEdge): WireEdge {
     if (edge.toLabel !== undefined && edge.toLabel !== "") out.toLabel = edge.toLabel;
   }
   out.type = edge.type;
+  for (const key of ["modifiers", "disabledModifiers", "automaticModifiers"] as const) if (edge[key] !== undefined) (out as unknown as Record<string, unknown>)[key] = edge[key];
   if (edge.styleId !== undefined) out.styleId = edge.styleId;
   const override = serializeOverride(EDGE_OVERRIDE_FIELDS, edge.override);
   if (override !== undefined) out.override = override;
@@ -197,6 +200,7 @@ function elementToPlacement(el: DiagramElement): WirePlacement {
   };
   if (el.tags.length > 0) out.tags = el.tags;
   else delete out.tags;
+  for (const key of ["modifiers", "disabledModifiers", "automaticModifiers"] as const) { if (el[key] !== undefined) (out as unknown as Record<string, unknown>)[key] = el[key]; else delete out[key]; }
   if (el.styleId !== undefined) out.styleId = el.styleId;
   else delete out.styleId;
   const override = serializeOverride(OVERRIDE_FIELDS, el.override);

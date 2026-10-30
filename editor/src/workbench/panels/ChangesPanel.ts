@@ -33,11 +33,23 @@ export class ChangesPanel implements IContentRenderer {
     const t = i18n.d.panels.changes;
     const view = this.editor.currentView;
     const project = view ? this.editor.projectOf(view) : undefined;
-    if (!view || !project) { replaceChildren(this.body, el("div", { class: "changes-empty", text: t.noView })); return; }
+    const shared = this.editor.styleChanges;
+    const stylesGroup=el("div",{class:"changes-group"},[
+      el("div",{class:"changes-title",text:`Стили рабочего пространства · ${shared.length}`}),
+      el("div",{class:"muted",text:"Сохранить: стили всего рабочего пространства и переименованные ссылки; затем изменения текущего проекта. Отмена вида/реестра стили не отменяет."}),
+      ...shared.map(ref=>el("div",{class:"changes-row",text:`${ref.kind === "modifiers" ? "Модификатор · " : ref.kind === "styleRules" ? "Правило · " : ""}${ref.id} · ${ref.author}`,on:{click:()=>{
+        if(ref.kind === "modifiers" || ref.kind === "styleRules") this.editor.openStyleExtension(ref.kind,ref.id);
+        else this.editor.openStyle(ref.id);
+      }}})),
+      el("button",{class:"btn btn-small",text:"Отменить изменения стилей",disabled:shared.length===0,on:{click:()=>void this.editor.discardStyles()}}),
+    ]);
+    if (!view || !project) {
+      replaceChildren(this.body, stylesGroup, el("div", { class: "changes-empty", text: t.noView }));
+      return;
+    }
     const dirty = this.editor.dirtyForProject(project.id);
     const filter = this.editor.changesFilter;
     const filterView = filter ? project.views.find((v) => v.id === filter) : undefined;
-
     const head = el("div", { class: "changes-head" }, [
       el("div", { class: "changes-title", text: filterView
         ? i18n.format(t.onlyView, { view: this.editor.viewName(filterView) })
@@ -48,10 +60,10 @@ export class ChangesPanel implements IContentRenderer {
     const viewIds = Object.keys(dirty?.views ?? {})
       .filter((id) => (dirty!.views[id]?.length ?? 0) > 0 && (!filter || id === filter))
       .sort((a, b) => Number(b === view.id) - Number(a === view.id));
-    const groups: HTMLElement[] = viewIds.map((id) => {
+    const groups: HTMLElement[] = [stylesGroup,...viewIds.map((id) => {
       const entry = project.views.find((v) => v.id === id);
       return this.group("map", entry ? this.editor.viewName(entry) : id, dirty!.views[id]!, project.id);
-    });
+    })];
     // Narrowed to a view, the registry part keeps what is drawn on it and the view's own texts.
     // A rename is a text under the entity's id: it belongs to the view the entity is placed on.
     const drawn = new Set((filter ? dirty?.views[filter] ?? [] : []).map((r) => r.id));

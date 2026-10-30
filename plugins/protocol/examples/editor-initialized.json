@@ -1,0 +1,8 @@
+{
+  "protocol": "semaps.ide", "version": 1, "sessionId": "example-session",
+  "kind": "response", "requestId": "initialize",
+  "result": {
+    "capabilities": ["context.get", "symbols.resolve", "selection.set", "entities.reveal", "entities.place", "bridge.cancel"],
+    "context": { "contextId": "example-context", "projectId": "example-project", "viewId": "example-view", "mode": "diagram" }
+  }
+}

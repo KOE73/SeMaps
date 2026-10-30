@@ -47,6 +47,9 @@ export interface WirePlacement {
   width: number;
   height: number;
   tags?: string[];
+  modifiers?: string[];
+  disabledModifiers?: string[];
+  automaticModifiers?: boolean;
   styleId?: string;
   override?: PlacementOverride;
   collapsed?: boolean;
@@ -65,6 +68,9 @@ export interface WireEdge {
   /** Cardinality/role caption at the `to` end, e.g. "0..*". */
   toLabel?: string;
   type?: string;
+  modifiers?: string[];
+  disabledModifiers?: string[];
+  automaticModifiers?: boolean;
   styleId?: string;
   /** Colour, width and dash of this one edge on this view (CONTRACT.md §11.6). */
   override?: PlacementOverride;
@@ -159,6 +165,8 @@ export interface EntityCatalog {
 
 /** One realization of an entity in code. */
 export interface CodeRealization {
+  /** Stable assembly identity for a metadata realization, with no source ref. */
+  library?: string;
   /** Language of the extractor facts (`go`, `csharp`, `typescript`, …); comes with `symbol`. */
   lang?: string;
   /**
@@ -174,6 +182,7 @@ export interface CodeRealization {
 
 /** One language's evidence for a relation. */
 export interface RelationEvidence {
+  library?: string;
   lang?: string;
   ref?: string;
   symbol?: string;
@@ -249,7 +258,7 @@ export interface TextCatalog {
  * not by refusing to show the diagram.
  */
 export interface ModelIssue {
-  kind: "view-without-axis" | "override-field" | "edges-old-shape";
+  kind: "view-without-axis" | "override-field" | "edges-old-shape" | "style-reference";
   /** Human-readable, shown in the editor's banner. */
   message: string;
 }
@@ -284,6 +293,9 @@ export interface ViewPlacement {
   y: number;
   width?: number;
   height?: number;
+  modifiers?: string[];
+  disabledModifiers?: string[];
+  automaticModifiers?: boolean;
   styleId?: string;
   /** Partial style of this one placement (§11.6); fields from `OVERRIDE_FIELDS` only. */
   override?: PlacementOverride;
@@ -306,6 +318,9 @@ export interface ViewPlacement {
  */
 export interface ViewEdgePlacement {
   id: string;
+  modifiers?: string[];
+  disabledModifiers?: string[];
+  automaticModifiers?: boolean;
   styleId?: string;
   /** Colour, width and dash of this one edge (§11.6); fields from `EDGE_OVERRIDE_FIELDS` only. */
   override?: PlacementOverride;
@@ -316,6 +331,7 @@ export interface ViewEdgePlacement {
 export interface ViewDocument {
   id: string;
   project: string;
+  disabledStyleRules?: string[];
   /**
    * What this view's containers classify — `axis_layer`, `axis_project`,
    * `axis_security_zone`, ... Required: without it, a node sitting inside a

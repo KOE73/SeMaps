@@ -45,6 +45,9 @@ export interface DiagramElement {
    * never written here — choosing it removes the field — and changing the kind
    * removes it too (ADR_20260927-7).
    */
+  modifiers?: string[];
+  disabledModifiers?: string[];
+  automaticModifiers?: boolean;
   styleId?: string;
   /**
    * Partial style of this one placement, laid over its style when drawn
@@ -93,6 +96,9 @@ export interface DiagramEdge {
    * style. Never the base style itself; changing the type removes it
    * (ADR_20260930-2).
    */
+  modifiers?: string[];
+  disabledModifiers?: string[];
+  automaticModifiers?: boolean;
   styleId?: string;
   /**
    * Colour, width and dash of this one edge on this view (CONTRACT.md §11.6):

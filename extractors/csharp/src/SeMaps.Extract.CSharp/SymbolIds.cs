@@ -54,6 +54,17 @@ internal static class SymbolIds
     /// </summary>
     public static string AssemblyId(string assemblyName) => "[" + assemblyName + "]";
 
+    /// <summary>Stable library identity; version belongs to the snapshot, not symbol ids.</summary>
+    public static string LibraryId(IAssemblySymbol assembly)
+    {
+        var token = assembly.Identity.PublicKeyToken;
+        return assembly.Identity.Name + (token.IsDefaultOrEmpty ? "" : "-" + string.Concat(token.Select(b => b.ToString("x2"))));
+    }
+
+    /// <summary>A metadata type's assembly-qualified identity. Local TypeId stays unchanged.</summary>
+    public static string ExternalTypeId(INamedTypeSymbol type) =>
+        "[" + LibraryId(type.ContainingAssembly) + "]::" + TypeId(type.OriginalDefinition);
+
     /// <summary>
     /// Id of a method-like symbol per ADR_20260928-4 §2:
     /// <c>&lt;id типа&gt;.&lt;имя&gt;(&lt;типы параметров&gt;)</c>. A constructor's name is
