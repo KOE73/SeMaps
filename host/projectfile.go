@@ -178,6 +178,14 @@ func loadProject(file string) (project, error) {
 	return p, nil
 }
 
+// machinePath recognizes rooted and drive-qualified paths from either platform.
+// filepath.IsAbs and VolumeName alone depend on the OS reading the shared file.
+func machinePath(path string) bool {
+	path = strings.ReplaceAll(path, "\\", "/")
+	return strings.HasPrefix(path, "/") || len(path) >= 2 && path[1] == ':' &&
+		(path[0] >= 'A' && path[0] <= 'Z' || path[0] >= 'a' && path[0] <= 'z')
+}
+
 func validateExtractors(list []extractorConf) error {
 	validEdges := map[string]bool{"holds": true, "uses": true, "injects": true, "calls": true}
 	var problems []string
@@ -199,7 +207,7 @@ func validateExtractors(list []extractorConf) error {
 			problems = append(problems, where+": project is required")
 		}
 		for _, path := range append([]string{e.Root}, e.Include...) {
-			if path != "" && (filepath.IsAbs(filepath.FromSlash(path)) || filepath.VolumeName(filepath.FromSlash(path)) != "") {
+			if machinePath(path) {
 				problems = append(problems, fmt.Sprintf("%s: %q must be relative to the project root", where, path))
 			}
 		}
@@ -337,7 +345,7 @@ func patchSettings(file string, patch settingsPatch) error {
 			if v == nil {
 				continue
 			}
-			if filepath.IsAbs(filepath.FromSlash(*v)) || filepath.VolumeName(filepath.FromSlash(*v)) != "" {
+			if machinePath(*v) {
 				return fmt.Errorf("%s must be relative to the project root", key)
 			}
 			setMapValue(top, key, scalar(*v))

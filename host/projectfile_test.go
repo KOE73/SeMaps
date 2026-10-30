@@ -100,6 +100,51 @@ func TestLoadProjectRejects(t *testing.T) {
 	}
 }
 
+func TestProjectPathsArePortable(t *testing.T) {
+	for _, tc := range []struct {
+		path   string
+		reject bool
+	}{
+		{"", false}, {".", false}, {"../src", false}, {"src/types", false}, {`src\types`, false},
+		{"/src", true}, {"C:/src", true}, {`C:\src`, true}, {"C:src", true},
+		{"z:src", true}, {`\src`, true}, {`\\server\share`, true}, {"//server/share", true},
+	} {
+		for _, field := range []string{"root", "include", "workspace", "source_root"} {
+			t.Run(field+"/"+tc.path, func(t *testing.T) {
+				var err error
+				if field == "root" || field == "include" {
+					e := extractorConf{ID: "a", Language: "csharp", Project: "p"}
+					if field == "root" {
+						e.Root = tc.path
+					} else {
+						e.Include = []string{tc.path}
+					}
+					err = validateExtractors([]extractorConf{e})
+				} else {
+					file := writeProject(t, "# keep this\nworkspace: maps\nsource_root: .\n")
+					before, _ := os.ReadFile(file)
+					patch := settingsPatch{}
+					if field == "workspace" {
+						patch.Workspace = &tc.path
+					} else {
+						patch.SourceRoot = &tc.path
+					}
+					err = patchSettings(file, patch)
+					if tc.reject {
+						after, _ := os.ReadFile(file)
+						if string(after) != string(before) {
+							t.Error("rejected machine path changed the project file")
+						}
+					}
+				}
+				if (err != nil) != tc.reject {
+					t.Fatalf("path %q: error %v, want rejection %v", tc.path, err, tc.reject)
+				}
+			})
+		}
+	}
+}
+
 func TestPatchExtractorKeepsComments(t *testing.T) {
 	file := writeProject(t, `# SeMaps project file.
 name: Demo   # shown in the console

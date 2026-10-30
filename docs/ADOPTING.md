@@ -20,6 +20,9 @@ and for SeMaps itself — an agent does not need it, since it never edits those 
    with `netstat` that nothing is listening on it), so it does not clash with other projects'
    servers (see the port trap below). First check that the target folder (`docs/diagrams`) is free.
    A `.semaps` file in the SeMaps repo itself is not the answer; the file goes into the consuming repo.
+   Keep paths relative to the project file. Extractor roots/includes and settings edits reject
+   rooted or drive-qualified paths on every OS, including `C:/src`, `C:src`, `/src` and UNC
+   paths. Use a relative path such as `src` or `../shared` instead.
 2. **MCP server** in the consuming repo root, `.mcp.json`:
    ```json
    {

@@ -548,6 +548,10 @@ to it. Requests without `Origin` (curl, agents) pass. Directories are never list
 
 The editor bundle (`app/`) and the defaults (`defaults/`) are embedded into the binary, never taken from the workspace.
 
+Project-relative path validation is independent of the host OS: extractor `root`/`include`
+and settings edits to `workspace`/`source_root` reject Unix-rooted, Windows-rooted, UNC and
+drive-qualified paths (including `C:src`). Relative paths such as `../src` remain valid.
+
 ## 5. Tool API: settings, extractors, runs
 
 Served only when the host was started from a `.semaps` file; with `--workspace` every endpoint
