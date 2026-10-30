@@ -24,16 +24,29 @@ jobs:
           npm run check:content-template
           npm run check:routers
           npm run check:nudge
+          npm run check:model-sync
+          npm run check:ide-bridge
+          npm run check:host-session
+          npm run check:style-extensions
+          npm run check:style-sync
           npm run build:app
+          npm run build
+
+      - name: IDE protocol — schema and transport tests
+        working-directory: plugins/protocol
+        run: |
+          npm ci
+          npm test
 
       - uses: actions/setup-go@v7
         with:
           go-version-file: go.mod
 
-      - name: Host — vet and build
+      - name: Host and core — vet, tests and build
         run: |
           gofmt -l . | tee /dev/stderr | test -z "$(cat)"
           go vet ./...
+          go test ./... -count=1 -timeout 180s
           go build ./...
 
       - name: Extractor Go — vet and tests

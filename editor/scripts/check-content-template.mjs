@@ -11,7 +11,7 @@
  */
 
 import { build } from "esbuild";
-import { mkdtempSync, writeFileSync } from "node:fs";
+import { mkdtempSync, readFileSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { pathToFileURL } from "node:url";
@@ -20,7 +20,11 @@ const ROOT = new URL("..", import.meta.url).pathname.replace(/^\/([A-Za-z]:)/, "
 
 async function loadModule() {
   const result = await build({
-    entryPoints: [join(ROOT, "src/content/index.ts")],
+    stdin: {
+      contents: 'export * from "./src/content/index.ts"; export { renderContent } from "./src/content/ContentRenderer.ts";',
+      resolveDir: ROOT,
+      loader: "ts",
+    },
     bundle: true,
     write: false,
     format: "esm",
@@ -34,7 +38,7 @@ async function loadModule() {
   return import(pathToFileURL(file).href);
 }
 
-const { compileTemplate, createDefaultDirectiveRegistry } = await loadModule();
+const { compileTemplate, createDefaultDirectiveRegistry, renderContent } = await loadModule();
 
 let failures = 0;
 let passed = 0;
@@ -189,6 +193,82 @@ testCase("реестр директив расширяется извне", () =
   registry.register({ name: "Icon", description: "тест", positional: { shape: "value", required: true } });
   const { errors } = compileTemplate("@Icon(key)", registry);
   assert(errors.length === 0, "новая директива должна компилироваться без ошибок");
+});
+
+// Rendering uses a deterministic proportional-font metric here; browser QA
+// separately verifies real font measurement and applying the template in UI.
+globalThis.document = {
+  createElement: () => ({ getContext: () => ({
+    measureText: (value) => ({ width: Array.from(value).reduce((sum, char) => sum + (char === "W" ? 15 : 5), 0) }),
+  }) }),
+  createElementNS: (_, tag) => ({
+    tag, attrs: {}, children: [], textContent: "",
+    setAttribute(name, value) { this.attrs[name] = value; },
+    removeAttribute(name) { delete this.attrs[name]; },
+    appendChild(child) { this.children.push(child); },
+  }),
+};
+const look = { family: "sans-serif", size: 10, weight: 400, italic: false, color: "#123", opacity: 1, show: true, align: "middle" };
+const style = { title: look, subtitle: look };
+const render = (source, description, width = 100, customStyle = style) => {
+  const { tree, errors } = compileTemplate(source);
+  assert(errors.length === 0, `ошибка шаблона: ${JSON.stringify(errors)}`);
+  return renderContent(tree, { x: 0, y: 0, width, height: 80 }, customStyle, { name: "Stage", description }, { x: 0, top: 0 });
+};
+
+testCase("описание переносится целыми словами; высота учитывает все строки", () => {
+  const drawn = render("@Description(wrap)", "decode video to CUDA NV12", 50);
+  assert(drawn.nodes.map((n) => n.textContent).join("|") === "decode|video to|CUDA NV12", "перенос по словам");
+  assert(drawn.usedHeight === 3 * 13.5 + 3, "высота трёх строк с отступом");
+});
+
+testCase("лимит описания обозначает скрытый текст многоточием", () => {
+  const drawn = render("@Description(wrap, maxLines=2)", "decode video to CUDA NV12", 50);
+  assert(drawn.nodes.length === 2 && drawn.nodes[1].textContent === "video to…", "две строки, остаток обозначен");
+});
+
+testCase("явные переносы и длинные Unicode-идентификаторы сохраняются", () => {
+  const drawn = render("@Description(wrap, maxLines=10)", "CUDA\n😀😀😀😀😀😀\nNV12", 20);
+  assert(drawn.nodes.map((n) => n.textContent).join("|") === "CUDA|😀😀😀😀|😀😀|NV12", "без потери символов или разрыва surrogate pair");
+});
+
+testCase("широкие символы учитываются по метрике шрифта", () => {
+  const drawn = render("@Description(wrap)", "WWW", 30);
+  assert(drawn.nodes.map((n) => n.textContent).join("|") === "WW|W", "ширина W больше средней");
+});
+
+testCase("пустое описание не занимает места, старый @Description остаётся однострочным", () => {
+  assert(render("@Name\n@Description(wrap)", " \n ").usedHeight === render("@Name", "").usedHeight, "пустая секция скрыта");
+  assert(render("@Description", "decode video to CUDA NV12", 50).nodes.length === 1, "старый шаблон не меняет переносы");
+});
+
+testCase("шаблон явно показывает описание при скрытом типе, и наследует выравнивание имени", () => {
+  const templates = JSON.parse(readFileSync(join(ROOT, "../host/defaults/templates.json"), "utf8")).templates;
+  const template = templates.find((t) => t.id === "title-description");
+  assert(template !== undefined, "новый шаблон в реестре");
+  const drawn = render(template.lines.join("\n"), "CUDA NV12", 100, { title: look, subtitle: { ...look, show: false } });
+  assert(drawn.nodes.length === 2, "видны заголовок и описание");
+  assert(drawn.nodes[0].attrs.x === "50" && drawn.nodes[0].attrs["text-anchor"] === "middle", "имя по центру, как в стиле");
+  assert(drawn.nodes[1].attrs.x === "0" && drawn.nodes[1].attrs["text-anchor"] === "start", "описание слева");
+});
+
+testCase("невидимое описание и неверный лимит обрабатываются без ошибки", () => {
+  assert(render("@Description(wrap, show=false)", "CUDA").nodes.length === 0, "явно скрыто");
+  for (const limit of ["0", "-1", "oops", "1.5"]) {
+    const drawn = render(`@Description(wrap, maxLines=${limit})`, "one two three four five", 20);
+    assert(drawn.nodes.length === 3 && drawn.nodes[2].textContent.endsWith("…"), `fallback 3 для ${limit}`);
+  }
+});
+
+testCase("описание не выходит за уменьшенный блок; измерение сохраняет естественную высоту", () => {
+  const { tree } = compileTemplate("@Name\n@Description(wrap)");
+  const box = { x: 0, y: 0, width: 50, height: 48 };
+  const data = { name: "Stage", description: "decode video to CUDA NV12" };
+  const drawn = renderContent(tree, box, style, data, { x: 0, top: 0, fitHeight: true });
+  assert(drawn.nodes.length === 3 && drawn.nodes[2].textContent.endsWith("…"), "заголовок и две строки с многоточием");
+  assert(drawn.usedHeight <= box.height, "высота в границах блока");
+  const measured = renderContent(tree, box, style, data, { x: 0, top: 0 });
+  assert(measured.nodes.length === 4 && measured.usedHeight > box.height, "измерение для увеличения блока учитывает три строки");
 });
 
 console.log(`\n${passed} пройдено, ${failures} провалено`);

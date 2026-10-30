@@ -13,10 +13,11 @@ type ViewHead struct {
 	Detail string `json:"detail"`
 	Axis   string `json:"axis,omitempty"`
 	// AxisInherited: the view declares no axis, Axis is project.defaultAxis (CONTRACT §8.1).
-	AxisInherited bool   `json:"axisInherited,omitempty"`
-	Relations     any    `json:"relations,omitempty"`
-	Routing       string `json:"routing,omitempty"`
-	Scope         string `json:"scope,omitempty"`
+	AxisInherited      bool     `json:"axisInherited,omitempty"`
+	Relations          any      `json:"relations,omitempty"`
+	Routing            string   `json:"routing,omitempty"`
+	Scope              string   `json:"scope,omitempty"`
+	DisabledStyleRules []string `json:"disabledStyleRules,omitempty"`
 }
 
 // PlacementInfo is one placement as a human sees it: the entity's name and
@@ -29,11 +30,14 @@ type PlacementInfo struct {
 	Container bool    `json:"container"`
 	Parent    *string `json:"parent"`
 	Rect
-	StyleID   string           `json:"styleId,omitempty"`
-	Override  json.RawMessage  `json:"override,omitempty"`
-	Template  string           `json:"template,omitempty"`
-	Collapsed bool             `json:"collapsed,omitempty"`
-	Children  []*PlacementInfo `json:"children,omitempty"`
+	StyleID            string           `json:"styleId,omitempty"`
+	Modifiers          []string         `json:"modifiers,omitempty"`
+	DisabledModifiers  []string         `json:"disabledModifiers,omitempty"`
+	AutomaticModifiers *bool            `json:"automaticModifiers,omitempty"`
+	Override           json.RawMessage  `json:"override,omitempty"`
+	Template           string           `json:"template,omitempty"`
+	Collapsed          bool             `json:"collapsed,omitempty"`
+	Children           []*PlacementInfo `json:"children,omitempty"`
 	// Blocks: in the tree detail, how many non-container placements lie directly
 	// in this container (they are not listed). Nil otherwise.
 	Blocks *int `json:"blocks,omitempty"`
@@ -63,13 +67,16 @@ func (p PlacementInfo) MarshalJSON() ([]byte, error) {
 // (CONTRACT §8.5). StyleID, Override and Routing are what the view's `edges`
 // entry of the same id says (§8.5, §11.6); a line without such an entry has none.
 type EdgeInfo struct {
-	ID       string          `json:"id"`
-	From     string          `json:"from"`
-	To       string          `json:"to"`
-	Type     string          `json:"type"`
-	StyleID  string          `json:"styleId,omitempty"`
-	Override json.RawMessage `json:"override,omitempty"`
-	Routing  string          `json:"routing,omitempty"`
+	ID                 string          `json:"id"`
+	From               string          `json:"from"`
+	To                 string          `json:"to"`
+	Type               string          `json:"type"`
+	StyleID            string          `json:"styleId,omitempty"`
+	Modifiers          []string        `json:"modifiers,omitempty"`
+	DisabledModifiers  []string        `json:"disabledModifiers,omitempty"`
+	AutomaticModifiers *bool           `json:"automaticModifiers,omitempty"`
+	Override           json.RawMessage `json:"override,omitempty"`
+	Routing            string          `json:"routing,omitempty"`
 }
 
 // The details of a read of a view.
@@ -174,6 +181,7 @@ func (m *Model) GetViewWith(ref string, opts ViewOptions) (ViewInfo, error) {
 	for _, p := range items {
 		id := p.str("entity")
 		info := &PlacementInfo{Entity: id, StyleID: p.str("styleId"), Template: p.str("template")}
+		info.Modifiers, info.DisabledModifiers, info.AutomaticModifiers = stringList(p, "modifiers"), stringList(p, "disabledModifiers"), automaticModifierSetting(p)
 		if e := ents[id]; e != nil {
 			info.Name, info.Kind = names[id], e.str("kind")
 		}
@@ -224,7 +232,7 @@ func (m *Model) GetViewWith(ref string, opts ViewOptions) (ViewInfo, error) {
 		top = []*PlacementInfo{}
 	}
 
-	out := ViewInfo{View: ViewHead{ID: r.View, Project: m.project, Axis: doc.str("axis"), Routing: doc.str("routing")},
+	out := ViewInfo{View: ViewHead{ID: r.View, Project: m.project, Axis: doc.str("axis"), Routing: doc.str("routing"), DisabledStyleRules: stringList(doc, "disabledStyleRules")},
 		Placements: top, Edges: []EdgeInfo{}, Unsaved: append([]Ref{}, m.Dirty().Views[r.View]...)}
 	if out.View.Axis == "" {
 		var manifest struct {
@@ -313,12 +321,16 @@ func treeOf(p *PlacementInfo) *PlacementInfo {
 // nothing about visibility: an entry of the same id only adds its own styleId,
 // override and routing to the line.
 func (m *Model) edgesByRule(doc *object, placed map[string]bool) (shown, hidden []EdgeInfo) {
+	return m.edgesByRuleRecords(doc, placed, m.records("relation"))
+}
+
+func (m *Model) edgesByRuleRecords(doc *object, placed map[string]bool, relations []*object) (shown, hidden []EdgeInfo) {
 	own := map[string]*object{}
 	for _, e := range viewItems(doc, "edges") {
 		own[e.str("id")] = e
 	}
 	rule := m.relationRule(doc)
-	for _, r := range m.records("relation") {
+	for _, r := range relations {
 		from, to := r.str("from"), r.str("to")
 		if !placed[from] || !placed[to] {
 			continue
@@ -326,6 +338,7 @@ func (m *Model) edgesByRule(doc *object, placed map[string]bool) (shown, hidden 
 		info := EdgeInfo{ID: r.str("id"), From: from, To: to, Type: relationType(r)}
 		if e := own[info.ID]; e != nil {
 			info.StyleID, info.Routing = e.str("styleId"), e.str("routing")
+			info.Modifiers, info.DisabledModifiers, info.AutomaticModifiers = stringList(e, "modifiers"), stringList(e, "disabledModifiers"), automaticModifierSetting(e)
 			if raw, ok := e.vals["override"]; ok && string(raw) != "null" {
 				info.Override = append(json.RawMessage(nil), raw...)
 			}
@@ -337,4 +350,15 @@ func (m *Model) edgesByRule(doc *object, placed map[string]bool) (shown, hidden 
 		}
 	}
 	return shown, hidden
+}
+
+func automaticModifierSetting(o *object) *bool {
+	if !has(o, "automaticModifiers") {
+		return nil
+	}
+	var enabled bool
+	if json.Unmarshal(o.vals["automaticModifiers"], &enabled) != nil {
+		return nil
+	}
+	return &enabled
 }

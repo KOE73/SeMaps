@@ -49,6 +49,11 @@ export class TooltipManager {
   }
 
   private bindGlobal(): void {
+    document.addEventListener("focusin", (e) => {
+      const target = (e.target as Element)?.closest<HTMLElement>(TIP_SELECTOR);
+      if (target && target !== this.currentTarget) this.showFor(target);
+    });
+    document.addEventListener("focusout", () => this.hide());
     document.addEventListener("pointerover", (e) => {
       const target = (e.target as Element)?.closest<HTMLElement>(TIP_SELECTOR);
       if (target && target !== this.currentTarget) {
@@ -83,6 +88,11 @@ export class TooltipManager {
     if (this.showTimer !== null) window.clearTimeout(this.showTimer);
 
     this.showTimer = window.setTimeout(() => {
+      const popupId = target.getAttribute("aria-controls");
+      if (popupId && document.getElementById(popupId)?.matches(":popover-open")) {
+        this.hide();
+        return;
+      }
       this.titleEl.textContent = state.title;
       this.titleEl.style.fontWeight = "600";
 

@@ -452,7 +452,7 @@ func (w *WorkspaceModel) EditStyle(edit StyleEdit, author string) (StyleDetail, 
 				refs, err := c.styleReference(edit.ID, replacement)
 				savedReference := slices.ContainsFunc(uses, func(use StyleUse) bool { return use.Project == pid })
 				if err == nil && (len(refs) > 0 || savedReference) {
-					op := Op{Kind: "style_ref", ID: edit.ID, Value: encodeJSON(styleReferencePatch{replacement, refs}), Author: author}
+					op := Op{Kind: "style_ref", ID: edit.ID, Value: encodeJSON(styleReferencePatch{NewID: replacement, References: refs}), Author: author}
 					c.journal = append(c.journal, []Op{op})
 					for _, ref := range refs {
 						ref.Author = author
@@ -525,6 +525,12 @@ func (w *WorkspaceModel) validateStyle(s, sheet, kinds *object) error {
 		return refuse("style %s requires name", id)
 	}
 	target := targetOfStyle(s)
+	if fallbackStyle(id) {
+		expected := map[string]string{"default.node": "block", "default.container": "container", "default.edge": "edge"}[id]
+		if target != expected {
+			return refuse("fallback %s requires appliesTo %s", id, expected)
+		}
+	}
 	if raw, ok := s.vals["appliesTo"]; ok {
 		var targetValue string
 		if json.Unmarshal(raw, &targetValue) != nil || !slices.Contains([]string{"block", "container", "edge"}, targetValue) {
@@ -594,6 +600,9 @@ func (w *WorkspaceModel) checkStyleRef(sheet *object, id, kind, target, on strin
 	return nil
 }
 func (w *WorkspaceModel) checkAllReferences(m *Model, sheet *object) error {
+	if err := w.checkAppearanceReferences(m, sheet); err != nil {
+		return err
+	}
 	for _, id := range m.allViewIDs() {
 		v, err := m.loadView(id)
 		if err != nil {
@@ -624,6 +633,9 @@ func (w *WorkspaceModel) checkAllReferences(m *Model, sheet *object) error {
 	return nil
 }
 func (w *WorkspaceModel) checkChangedReferences(before, after *Model, ops []Op) error {
+	if err := w.checkAppearanceReferences(after, w.styles); err != nil {
+		return err
+	}
 	for _, op := range ops {
 		if op.Kind == "placement" {
 			v, err := after.loadView(op.View)

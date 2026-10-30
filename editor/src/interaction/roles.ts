@@ -32,6 +32,8 @@ export const Role = {
   DocEdit: "doc-edit",
   /** Releasing here opens the code viewer or shows code preview tooltip. */
   CodeView: "code-view",
+  /** Opens the applied automatic style layers in the inspector. */
+  StyleInfo: "style-info",
 } as const;
 
 export type RoleName = (typeof Role)[keyof typeof Role];

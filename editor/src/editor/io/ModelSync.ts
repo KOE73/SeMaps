@@ -31,6 +31,7 @@ function fileFields(p: WirePlacement): Record<string, unknown> {
     width: p.width,
     height: p.height,
     styleId: p.styleId,
+    modifiers: p.modifiers, disabledModifiers: p.disabledModifiers, automaticModifiers: p.automaticModifiers,
     override: serializeOverride(OVERRIDE_FIELDS, p.override),
     template: typeof template === "string" ? template : undefined,
     collapsed: p.collapsed,
@@ -71,6 +72,9 @@ function ownFields(e: WireEdgeOf | undefined): Record<string, unknown> | undefin
   if (e === undefined) return undefined;
   const override = serializeOverride(EDGE_OVERRIDE_FIELDS, e.override);
   const out = {
+    ...(e.modifiers !== undefined ? { modifiers: e.modifiers } : {}),
+    ...(e.disabledModifiers !== undefined ? { disabledModifiers: e.disabledModifiers } : {}),
+    ...(e.automaticModifiers !== undefined ? { automaticModifiers: e.automaticModifiers } : {}),
     ...(e.styleId ? { styleId: e.styleId } : {}),
     ...(override ? { override } : {}),
     ...(e.routing ? { routing: e.routing } : {}),
@@ -82,7 +86,7 @@ function ownFields(e: WireEdgeOf | undefined): Record<string, unknown> | undefin
 function entryFields(entry: Record<string, unknown> | undefined): Record<string, unknown> | undefined {
   if (entry === undefined) return undefined;
   const out: Record<string, unknown> = {};
-  for (const key of ["styleId", "override", "routing"]) if (entry[key] !== undefined) out[key] = entry[key];
+  for (const key of ["styleId", "override", "routing", "modifiers", "disabledModifiers", "automaticModifiers"]) if (entry[key] !== undefined) out[key] = entry[key];
   return Object.keys(out).length > 0 ? out : undefined;
 }
 

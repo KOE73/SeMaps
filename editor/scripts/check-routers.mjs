@@ -304,12 +304,16 @@ const bz = (fromRect, toRect, from, to, fromSide, toSide, zones) =>
   check("bezier :: free vertical gives a straight line", isStraight(r) && finitePath(r), r.path);
   check("bezier :: the vertical line is square", /^M (\S+) 50 L \1 300$/.test(r.path), r.path);
 }
-// No overlap in either extent: straight via side midpoints (diagonal).
+// No overlap in either extent: a free diagonal must remain a curve.
 {
   const a = { x: 0, y: 0, width: 100, height: 50 };
   const b = { x: 300, y: 200, width: 100, height: 50 };
   const r = bz(a, b, { x: 100, y: 10 }, { x: 300, y: 240 }, "east", "west", []);
-  check("bezier :: free diagonal via side midpoints is straight", isStraight(r) && finitePath(r), r.path);
+  check("bezier :: free diagonal remains curved", r.path.includes(" C ") && finitePath(r), r.path);
+  const reverse = bz(b, a, { x: 300, y: 240 }, { x: 100, y: 10 }, "west", "east", []);
+  check("bezier :: reverse diagonal remains curved", reverse.path.includes(" C ") && finitePath(reverse), reverse.path);
+  const vertical = bz(a, b, { x: 50, y: 50 }, { x: 350, y: 200 }, "south", "north", []);
+  check("bezier :: diagonal with vertical ports remains curved", vertical.path.includes(" C ") && finitePath(vertical), vertical.path);
 }
 // Blocked everywhere: back to the curve.
 {
@@ -318,10 +322,10 @@ const bz = (fromRect, toRect, from, to, fromSide, toSide, zones) =>
   const wall = { x: -1000, y: 60, width: 3000, height: 100 };
   const r = bz(a, b, { x: 100, y: 25 }, { x: 300, y: 225 }, "east", "west", [solidZone(wall, "w")]);
   check("bezier :: blocked falls back to the curve", r.path.includes(" C ") && finitePath(r), r.path);
-  // Only the midline is in the way: another point on the facing sides is free.
+  // A small obstacle must not trigger an arbitrary diagonal shortcut either.
   const b2 = { x: 300, y: 60, width: 100, height: 50 };
   const free = bz(a, b2, { x: 100, y: 25 }, { x: 300, y: 85 }, "east", "west", [solidZone({ x: 190, y: 30, width: 20, height: 20 }, "side")]);
-  check("bezier :: a small obstacle is dodged by choosing another line", isStraight(free), free.path);
+  check("bezier :: small obstacle does not flatten the curve", free.path.includes(" C ") && finitePath(free), free.path);
   const noScene = bezier.route({ from: { x: 100, y: 25 }, to: { x: 300, y: 225 }, fromSide: "east", toSide: "west", fromRect: a, toRect: b });
   check("bezier :: without a scene, the curve as before", noScene.path.includes(" C "), noScene.path);
 }

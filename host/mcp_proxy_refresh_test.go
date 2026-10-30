@@ -156,6 +156,42 @@ func proxyTo(t *testing.T, url func() string) *mcpProxy {
 	return p
 }
 
+func TestMCPProxyForwardsInstructionsAndRetainsThemOnReconnect(t *testing.T) {
+	upstream := func(text string) *mcp.Server {
+		srv := mcp.NewServer(&mcp.Implementation{Name: "instructions-test", Version: "1"}, &mcp.ServerOptions{Instructions: text})
+		mcp.AddTool(srv, &mcp.Tool{Name: "echo"}, func(context.Context, *mcp.CallToolRequest, echoIn) (*mcp.CallToolResult, any, error) {
+			return &mcp.CallToolResult{Content: []mcp.Content{&mcp.TextContent{Text: "ok"}}}, nil, nil
+		})
+		return srv
+	}
+	host := newFakeHost(upstream("initial workflow"))
+	httpHost := httptest.NewServer(host)
+	defer stop(httpHost)
+	p := proxyTo(t, func() string { return httpHost.URL })
+	a := connectAgent(t, p)
+	if got := a.session.InitializeResult().Instructions; got != "initial workflow" {
+		t.Fatalf("proxy lost upstream instructions: %q", got)
+	}
+	local := p.local
+	host.use(upstream("updated workflow"))
+	if _, err := p.reconnect(context.Background(), p.session); err != nil {
+		t.Fatal(err)
+	}
+	if p.local != local {
+		t.Fatal("reconnect replaced the server of the connected agent")
+	}
+	if got := a.session.InitializeResult().Instructions; got != "initial workflow" {
+		t.Fatalf("reconnect changed initialized instructions: %q", got)
+	}
+	if got, err := a.call(t, "echo", map[string]any{"text": "probe"}); err != nil || got != "ok" {
+		t.Fatalf("agent stopped working after reconnect: %q, %v", got, err)
+	}
+	newProxy := proxyTo(t, func() string { return httpHost.URL })
+	if got := connectAgent(t, newProxy).session.InitializeResult().Instructions; got != "updated workflow" {
+		t.Fatalf("new agent missed updated instructions: %q", got)
+	}
+}
+
 func stop(ts *httptest.Server) {
 	ts.CloseClientConnections()
 	ts.Close()

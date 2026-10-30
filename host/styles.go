@@ -7,6 +7,7 @@ import (
 )
 
 func (s *modelService) registerStyles(mux *http.ServeMux) {
+	s.registerStyleExtensions(mux)
 	mux.HandleFunc("GET /api/model/{project}/views/{id}/styled", func(w http.ResponseWriter, r *http.Request) {
 		value, err := s.shared.View(r.PathValue("project"), r.PathValue("id"))
 		if err != nil {
@@ -32,15 +33,19 @@ func (s *modelService) registerStyles(mux *http.ServeMux) {
 }
 
 func (s *modelService) publishStyles(author string, clients ...string) {
-	s.publishStyleChange(author, nil, nil, clients...)
+	s.publishStyleChange(author, nil, "", nil, clients...)
 }
 
 func (s *modelService) publishStyleEdit(author string, edit core.StyleEdit, clients ...string) {
 	var renamed *styleRename
+	var deleted string
 	if edit.Action == "rename" {
 		renamed = &styleRename{OldID: edit.ID, NewID: edit.NewID}
 	}
-	s.publishStyleChange(author, renamed, nil, clients...)
+	if edit.Action == "delete" {
+		deleted = edit.ID
+	}
+	s.publishStyleChange(author, renamed, deleted, nil, clients...)
 }
 
 // Capture before Discard clears dirt: its reverted view references must still
@@ -63,7 +68,7 @@ func (s *modelService) styleViewChanges() map[string][]core.Ref {
 	return changes
 }
 
-func (s *modelService) publishStyleChange(author string, renamed *styleRename, changes map[string][]core.Ref, clients ...string) {
+func (s *modelService) publishStyleChange(author string, renamed *styleRename, deleted string, changes map[string][]core.Ref, clients ...string) {
 	snapshot := s.shared.Styles()
 	s.mu.Lock()
 	ids := make([]string, 0, len(s.clients))
@@ -85,7 +90,7 @@ func (s *modelService) publishStyleChange(author string, renamed *styleRename, c
 		for _, viewRefs := range dirty.Views {
 			refs = append(refs, viewRefs...)
 		}
-		s.publish(id, modelEvent{Client: client, Author: author, Changed: refs, Dirty: dirty, Styles: &snapshot, StyleRenamed: renamed})
+		s.publish(id, modelEvent{Client: client, Author: author, Changed: refs, Dirty: dirty, Styles: &snapshot, StyleRenamed: renamed, StyleDeleted: deleted})
 	}
 }
 
@@ -138,6 +143,6 @@ func (s *modelService) discardStylesHTTP(w http.ResponseWriter, r *http.Request)
 		modelError(w, err)
 		return
 	}
-	s.publishStyleChange("human", nil, changes)
+	s.publishStyleChange("human", nil, "", changes)
 	writeJSON(w, s.shared.Styles())
 }

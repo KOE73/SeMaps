@@ -37,7 +37,10 @@ export class ChangesPanel implements IContentRenderer {
     const stylesGroup=el("div",{class:"changes-group"},[
       el("div",{class:"changes-title",text:`Стили рабочего пространства · ${shared.length}`}),
       el("div",{class:"muted",text:"Сохранить: стили всего рабочего пространства и переименованные ссылки; затем изменения текущего проекта. Отмена вида/реестра стили не отменяет."}),
-      ...shared.map(ref=>el("div",{class:"changes-row",text:`${ref.id} · ${ref.author}`,on:{click:()=>this.editor.openStyle(ref.id)}})),
+      ...shared.map(ref=>el("div",{class:"changes-row",text:`${ref.kind === "modifiers" ? "Модификатор · " : ref.kind === "styleRules" ? "Правило · " : ""}${ref.id} · ${ref.author}`,on:{click:()=>{
+        if(ref.kind === "modifiers" || ref.kind === "styleRules") this.editor.openStyleExtension(ref.kind,ref.id);
+        else this.editor.openStyle(ref.id);
+      }}})),
       el("button",{class:"btn btn-small",text:"Отменить изменения стилей",disabled:shared.length===0,on:{click:()=>void this.editor.discardStyles()}}),
     ]);
     if (!view || !project) {

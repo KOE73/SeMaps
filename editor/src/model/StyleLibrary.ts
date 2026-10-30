@@ -1,3 +1,4 @@
+import type { AutomaticStyleLayer, StyleAppearance } from "./style-extensions.js";
 import type {
   BlockShape,
   EndShape,
@@ -192,6 +193,15 @@ export interface StyleListEntry {
 }
 
 export class StyleLibrary {
+  private appearances: Record<string, StyleAppearance> = {};
+  setAppearances(value: Record<string, StyleAppearance>): void { this.appearances = value; this.blockCache.clear(); this.edgeCache.clear(); }
+  /** Actual applied layers in cascade order; excluded and manual modifiers do not qualify. */
+  automaticModifiersFor(id: string): AutomaticStyleLayer[] {
+    return (this.appearances[id]?.applied ?? []).filter(m => m.stage === "automatic").map(m => ({
+      modifierId: m.id, modifierName: m.name || m.id,
+      ruleId: m.rule ?? "", ruleName: this.sheetExtras.styleRules?.find(r => r.id === m.rule)?.name || m.rule || "",
+    }));
+  }
   private readonly byId = new Map<string, WireStyle>();
   /** Insertion order, so the list panel and the file agree. */
   private order: string[] = [];
@@ -385,39 +395,39 @@ export class StyleLibrary {
 
   /** The look an element is drawn with: its style, with its `override` on top (§11.6). */
   blockStyle(el: DiagramElement): ResolvedBlockStyle {
-    return this.resolveBlock(this.blockStyleIdFor(el), el.override);
+    return this.resolveBlock(this.blockStyleIdFor(el), el.override, this.appearances[el.id]?.patch);
   }
 
   /** The look a line is drawn with: its style, with its entry's `override` on top (§11.6). */
   edgeStyle(edge: DiagramEdge): ResolvedEdgeStyle {
-    return this.resolveEdge(this.edgeStyleIdFor(edge), edge.override);
+    return this.resolveEdge(this.edgeStyleIdFor(edge), edge.override, this.appearances[edge.id]?.patch);
   }
 
-  resolveBlock(id: string | null, override?: PlacementOverride): ResolvedBlockStyle {
-    const key = `${id ?? ""}|${overrideKey(OVERRIDE_FIELDS, override)}`;
+  resolveBlock(id: string | null, override?: PlacementOverride, patch?: Partial<WireStyle>): ResolvedBlockStyle {
+    const key = `${id ?? ""}|${overrideKey(OVERRIDE_FIELDS, override)}|${JSON.stringify(patch)}`;
     const cached = this.blockCache.get(key);
     if (cached !== undefined) return cached;
     const resolved =
-      id === null && override === undefined
+      id === null && override === undefined && patch === undefined
         ? FALLBACK_BLOCK
         : buildBlock(
             id ?? FALLBACK_BLOCK.id,
-            applyOverride(OVERRIDE_FIELDS, id === null ? { id: FALLBACK_BLOCK.id } : this.flatten(id), override),
+            applyOverride(OVERRIDE_FIELDS, mergeStyle(id === null ? { id: FALLBACK_BLOCK.id } : this.flatten(id), { ...patch, id: id ?? FALLBACK_BLOCK.id }), override),
           );
     this.blockCache.set(key, resolved);
     return resolved;
   }
 
-  resolveEdge(id: string | null, override?: PlacementOverride): ResolvedEdgeStyle {
-    const key = `${id ?? ""}|${overrideKey(EDGE_OVERRIDE_FIELDS, override)}`;
+  resolveEdge(id: string | null, override?: PlacementOverride, patch?: Partial<WireStyle>): ResolvedEdgeStyle {
+    const key = `${id ?? ""}|${overrideKey(EDGE_OVERRIDE_FIELDS, override)}|${JSON.stringify(patch)}`;
     const cached = this.edgeCache.get(key);
     if (cached !== undefined) return cached;
     const resolved =
-      id === null && override === undefined
+      id === null && override === undefined && patch === undefined
         ? FALLBACK_EDGE
         : buildEdge(
             id ?? FALLBACK_EDGE.id,
-            applyOverride(EDGE_OVERRIDE_FIELDS, id === null ? { id: FALLBACK_EDGE.id } : this.flatten(id), override),
+            applyOverride(EDGE_OVERRIDE_FIELDS, mergeStyle(id === null ? { id: FALLBACK_EDGE.id } : this.flatten(id), { ...patch, id: id ?? FALLBACK_EDGE.id }), override),
           );
     this.edgeCache.set(key, resolved);
     return resolved;

@@ -35,6 +35,7 @@ import {
 import { blockPreview, edgePreview, paintPreview } from "./style-preview.js";
 import type { StylePanelHost } from "./StyleList.js";
 import { i18n } from "../workbench/i18n/I18nService.js";
+import { StyleSelection } from "./StyleSelection.js";
 
 /**
  * One form for both kinds of style.
@@ -54,7 +55,8 @@ import { i18n } from "../workbench/i18n/I18nService.js";
  * the value already in the box.
  */
 export class StyleEditor {
-  private id: string | null = null;
+  private readonly selection = new StyleSelection();
+  private get id(): string | null { return this.selection.id; }
   /**
    * Live previews to refresh after an edit.
    *
@@ -67,19 +69,33 @@ export class StyleEditor {
   constructor(
     private readonly mount: HTMLElement,
     private readonly host: StylePanelHost,
+    private readonly modifier = false,
   ) {}
 
   get openId(): string | null {
     return this.id;
   }
 
+  followRename(oldId: string, newId: string): boolean {
+    // A view reload can already contain the new stylesheet before its rename
+    // event arrives. Keep the missing selection just long enough to follow it.
+    if (!this.selection.rename(oldId, newId)) return false;
+    this.render();
+    return true;
+  }
+
+  removed(id: string): void {
+    this.selection.remove(id);
+    this.render();
+  }
+
   open(id: string | null): void {
-    this.id = id;
+    this.selection.open(id);
     this.render();
   }
 
   render(): void {
-    if(this.id!==null&&!this.host.styles.has(this.id))this.id=null;
+    this.selection.reconcile(id => this.host.styles.has(id));
     this.previews = [];
     const style = this.currentStyle();
 
@@ -101,14 +117,14 @@ export class StyleEditor {
     const box = target !== "edge";
     replaceChildren(
       this.mount,
-      this.headerSection(style, target),
+      this.modifier ? this.livePreview(target) : this.headerSection(style, target),
       box ? this.blockFillSection(style) : null,
       box ? this.blockBorderSection(style) : this.edgeLineSection(style),
       box ? this.blockTextSection(style) : this.edgeLabelSection(style),
       box ? this.iconSection(style) : null,
       target === "container" ? this.headerBandSection(style) : null,
       target === "edge" ? this.endsSection(style) : null,
-      target === "edge" ? this.familySection(style) : null,
+      target === "edge" && !this.modifier ? this.familySection(style) : null,
     );
   }
 
@@ -495,7 +511,7 @@ export class StyleEditor {
         },
         inherited.header.fill,
       ),
-      optionalNumberField(i18n.d.panels.styles.headerHeightField, style.header?.height, inherited.header.height, (v) => {
+      this.modifier ? null : optionalNumberField(i18n.d.panels.styles.headerHeightField, style.header?.height, inherited.header.height, (v) => {
         this.patch((d) => {
           d.header = { ...d.header, height: v };
         });
@@ -959,7 +975,7 @@ export class StyleEditor {
     const value = read(style) ?? {};
 
     return el("div", { class: "sub-group" }, [
-      optionalSelectField(
+      this.modifier ? null : optionalSelectField(
         "Форма",
         value.shape,
         SHAPE_OPTIONS,

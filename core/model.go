@@ -282,7 +282,7 @@ func (m *Model) apply(ops []Op, author string, record bool) ([]Ref, error) {
 			return nil, refuse("operation value is invalid JSON")
 		}
 		if op.Kind == "style_ref" {
-			changed, err := m.styleReference(op.ID, decodeStyleReference(op).NewID)
+			changed, err := m.applyStyleReference(op)
 			if err != nil {
 				return nil, err
 			}
@@ -350,7 +350,7 @@ func orderedReplacement(old, next *object) *object {
 
 func (m *Model) applyOne(op Op) error {
 	if op.Kind == "style_ref" {
-		_, err := m.styleReference(op.ID, decodeStyleReference(op).NewID)
+		_, err := m.applyStyleReference(op)
 		return err
 	}
 	if op.Kind == "library" {

@@ -1,3 +1,4 @@
+import type { StyleAppearance } from "../../model/style-extensions.js";
 import type { WireDocument, EntityCatalog, RelationCatalog, ProjectManifest, ViewDocument } from "../../model/wire-types.js";
 import type { SaveTarget } from "./types.js";
 import { HttpProjectStore } from "./ProjectStore.js";
@@ -17,7 +18,7 @@ export interface RenderRequest {
   scale?: number;
   maxSize?: number;
 }
-export interface ModelEvent { client: string; author: string; changed: ChangedRef[]; dirty: DirtySummary; styles?: StyleState; styleRenamed?: { oldId: string; newId: string }; render?: RenderRequest; projectReloaded?: { oldProject: string; newProject: string; oldView?: string; newView?: string } }
+export interface ModelEvent { client: string; author: string; changed: ChangedRef[]; dirty: DirtySummary; styles?: StyleState; refresh?: boolean; styleExtension?: { collection: "modifiers" | "styleRules"; action: string; id: string; newId?: string }; styleRenamed?: { oldId: string; newId: string }; styleDeleted?: string; render?: RenderRequest; projectReloaded?: { oldProject: string; newProject: string; oldView?: string; newView?: string } }
 
 interface Snapshot {
   project: ProjectManifest;
@@ -54,6 +55,8 @@ export class HostModelStore extends HttpProjectStore {
   private readonly key = document.querySelector<HTMLMetaElement>('meta[name="semaps-key"]')?.content ?? "";
   private readonly snapshots = new Map<string, Snapshot>();
   private readonly views = new Map<string, ViewDocument>();
+  /** Identity survives SSE cache invalidation, independently of view contents. */
+  private readonly viewIds = new Map<string, string>();
   private readonly baselines = new Map<string, WireDocument>();
   private pending: Promise<void> = Promise.resolve();
   private events: EventSource | null = null;
@@ -94,8 +97,9 @@ export class HostModelStore extends HttpProjectStore {
     }
     const viewId = Object.entries(snapshot.viewFiles ?? {}).find(([, path]) => path === file)?.[0]
       ?? file.split("/").at(-1)!.replace(/\.view\.json$/, "");
-    const styled = await (await this.request(`/api/model/${encodeURIComponent(project)}/views/${encodeURIComponent(viewId)}/styled`)).json() as { view: ViewDocument; styles: StyleState };
-    this.stylesLoaded?.(styled.styles);
+    this.viewIds.set(file, viewId);
+    const styled = await (await this.request(`/api/model/${encodeURIComponent(project)}/views/${encodeURIComponent(viewId)}/styled`)).json() as { view: ViewDocument; styles: StyleState; appearances: Record<string, StyleAppearance> };
+    this.stylesLoaded?.(styled.styles, styled.appearances);
     const view = styled.view;
     this.views.set(file, clone(view));
     const registry = snapshot.registry;
@@ -292,7 +296,16 @@ export class HostModelStore extends HttpProjectStore {
 
   /** Who draws a view when the host asks for a picture of it (set by the app once the editor exists). */
   renderer: ((request: RenderRequest) => Promise<unknown>) | null = null;
-  stylesLoaded: ((state: StyleState)=>void) | null = null;
+  async refreshAppearance(file: string): Promise<void> {
+    const project = this.projectOf(file);
+    // A file name and its view ID are independent (main.view.json can hold v_main).
+    const view = this.viewIds.get(file) ?? this.views.get(file)?.id
+      ?? Object.entries(this.snapshots.get(project)?.viewFiles ?? {}).find(([, path]) => path === file)?.[0];
+    if (!view) throw new Error(`Вид ещё не загружен: ${file}`);
+    const styled = await (await this.request(`/api/model/${encodeURIComponent(project)}/views/${encodeURIComponent(view)}/styled`)).json() as { styles: StyleState; appearances: Record<string, StyleAppearance> };
+    this.stylesLoaded?.(styled.styles, styled.appearances);
+  }
+  stylesLoaded: ((state: StyleState, appearances: Record<string, StyleAppearance>)=>void) | null = null;
 
   private async answerRender(request: RenderRequest): Promise<void> {
     let body: unknown;
@@ -313,7 +326,7 @@ export class HostModelStore extends HttpProjectStore {
     this.events.onopen=()=>{
       void this.pending.then(async()=>{
         const [styles,dirty]=await Promise.all([this.request("/api/styles").then(r=>r.json() as Promise<StyleState>),this.dirty(project)]);
-        this.invalidate(project);onEvent({client:"",author:"host",changed:[],dirty,styles});
+        this.invalidate(project);onEvent({client:"",author:"host",changed:[],dirty,styles,refresh:true});
       }).catch(()=>{});
     };
     this.events.onmessage = (message) => {
@@ -321,7 +334,12 @@ export class HostModelStore extends HttpProjectStore {
       // A render request is not a model change: answer it, do not reload anything.
       if (event.render) { void this.answerRender(event.render); return; }
       if (event.client === this.client) return;
-      const deliver=()=>{this.invalidate(project);onEvent(event)};
+      const deliver=()=>{
+        // Style-only events refresh appearance without reloading the model.
+        // Keep its baselines: the next edit still needs them to produce ops.
+        if (event.changed.length > 0 || event.projectReloaded) this.invalidate(project);
+        onEvent(event);
+      };
       void this.pending.then(deliver,deliver);
     };
   }

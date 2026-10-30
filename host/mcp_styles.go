@@ -39,6 +39,7 @@ type deleteStyleIn struct {
 }
 
 func (s *mcpServer) registerStyleTools(srv *mcp.Server) {
+	s.registerStyleExtensionTools(srv)
 	mcp.AddTool(srv, read("list_styles", "Shared workspace named styles, including unsaved edits. Filter by exact id/appliesTo, any forKinds and name substring. Styles belong to kinds, independently of the entity's kind."), s.listStyles)
 	mcp.AddTool(srv, read("get_style", "Definition, basedOn, fully inherited formatting including terminal defaults, unsaved authors, workspace usage references and revision."), s.getStyle)
 	mcp.AddTool(srv, write("create_style", "Create a named workspace style with explicit id/name/appliesTo and own forKinds (except three fallbacks). Block, container and edge styles stay separate. Unsaved; visible in every editor immediately."), s.createStyle)

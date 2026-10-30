@@ -4,6 +4,8 @@ import { fileURLToPath } from 'node:url';
 
 const bundle = await build({ entryPoints: [fileURLToPath(new URL('../src/editor/io/HostStyleStore.ts', import.meta.url))], bundle: true, write: false, format: 'esm', platform: 'neutral' });
 const { HostStyleStore, stylePatch } = await import('data:text/javascript;base64,' + Buffer.from(bundle.outputFiles[0].text).toString('base64'));
+const selectionBundle = await build({ entryPoints: [fileURLToPath(new URL('../src/editor/StyleSelection.ts', import.meta.url))], bundle: true, write: false, format: 'esm', platform: 'neutral' });
+const { StyleSelection } = await import('data:text/javascript;base64,' + Buffer.from(selectionBundle.outputFiles[0].text).toString('base64'));
 globalThis.window = { location: { href: 'http://localhost:8777/app/', origin: 'http://localhost:8777' } };
 globalThis.document = { querySelector: () => ({ content: 'test-key' }) };
 const base = { id: 'debug', name: 'Debug', appliesTo: 'block', forKinds: ['class'], fill: '#ffe4e6', border: { color: '#dc2626', width: 3 } };
@@ -54,5 +56,26 @@ await check('A conflicting revision is reported and a reload recovers accepted h
     : Response.json({ ...initial(), revision: 8 });
   await assert.rejects(store.sync({ styles: [{ ...base, name: 'Rejected' }] }), /revision conflict/);
   assert.deepEqual(await store.load(), initial().sheet); assert.equal(store.state.revision, 8);
+});
+await check('A latest snapshot arriving before queued rename events preserves the selected form', async () => {
+  const selection = new StyleSelection(); selection.open('old');
+  const has = id => id === 'latest';
+  selection.reconcile(has); assert.equal(selection.id, null);
+  assert.equal(selection.rename('old', 'middle'), true);
+  selection.reconcile(has); assert.equal(selection.id, null);
+  assert.equal(selection.rename('middle', 'latest'), true);
+  selection.reconcile(has); assert.equal(selection.id, 'latest');
+});
+
+await check('Deletion or a new human selection prevents a delayed rename from reopening a form', async () => {
+  const selection = new StyleSelection(); selection.open('old'); selection.reconcile(() => false);
+  selection.remove('old'); assert.equal(selection.rename('old', 'new'), false);
+  selection.open('old'); selection.reconcile(() => false); selection.open('chosen');
+  assert.equal(selection.rename('old', 'new'), false); assert.equal(selection.id, 'chosen');
+});
+
+await check('Discard restoring a temporarily missing definition also restores its selection', async () => {
+  const selection = new StyleSelection(); selection.open('saved'); selection.reconcile(() => false);
+  selection.reconcile(id => id === 'saved'); assert.equal(selection.id, 'saved');
 });
 console.log(`All ${count} style sync checks passed.`);

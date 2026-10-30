@@ -2,6 +2,7 @@ import type { Rect } from "../geometry/types.js";
 import type { ResolvedBlockStyle } from "../model/StyleLibrary.js";
 import { svg, text } from "../canvas/svg.js";
 import type { DirectiveNode, SizeValue, TemplateTree } from "./template-types.js";
+import { wrapText } from "./textLayout.js";
 
 /**
  * Drawing the inside of a block from a compiled template.
@@ -50,6 +51,8 @@ export interface ContentData {
 export interface ContentPadding {
   readonly x: number;
   readonly top: number;
+  /** Bound wrapped descriptions to the outline; omit when measuring natural height. */
+  readonly fitHeight?: boolean;
 }
 
 const DEFAULT_PADDING: ContentPadding = { x: 10, top: 22 };
@@ -87,7 +90,8 @@ export function renderContent(
     // the "empty hides itself" rule: without it a marker interface would show
     // a gap where its methods would have been, and templates would need
     // conditionals to avoid it.
-    const drawn = layoutRow(row.cells, rect.x + padding.x, y, innerWidth, style, data);
+    const availableHeight = padding.fitHeight ? Math.max(0, rect.y + rect.height - padding.x - ROW_GAP - y) : undefined;
+    const drawn = layoutRow(row.cells, rect.x + padding.x, y, innerWidth, style, data, availableHeight);
     if (drawn.nodes.length === 0) continue;
 
     nodes.push(...drawn.nodes);
@@ -104,6 +108,7 @@ function layoutRow(
   width: number,
   style: ResolvedBlockStyle,
   data: ContentData,
+  availableHeight?: number,
 ): { nodes: SVGElement[]; height: number } {
   const nodes: SVGElement[] = [];
   let height = 0;
@@ -119,7 +124,7 @@ function layoutRow(
   let cursor = x;
   cells.forEach((cell, i) => {
     const cellWidth = explicit[i] ?? share;
-    const drawn = drawDirective(cell, cursor, y, cellWidth, style, data);
+    const drawn = drawDirective(cell, cursor, y, cellWidth, style, data, availableHeight);
     nodes.push(...drawn.nodes);
     height = Math.max(height, drawn.height);
     cursor += cellWidth;
@@ -135,13 +140,14 @@ function drawDirective(
   width: number,
   style: ResolvedBlockStyle,
   data: ContentData,
+  availableHeight?: number,
 ): { nodes: SVGElement[]; height: number } {
   switch (cell.name.toLowerCase()) {
     case "name":
-      return line(data.name, x, y, width, style.title, "semaps-node-label");
+      return line(data.name, x, y, width, style.title, "semaps-node-label", cell.args.geometry.align);
 
     case "description":
-      return line(data.description ?? "", x, y, width, style.subtitle, "semaps-node-subtitle");
+      return description(cell, data.description ?? "", x, y, width, style.subtitle, availableHeight);
 
     case "members":
       return members(cell, x, y, width, style, data);
@@ -164,6 +170,62 @@ interface TextLook {
   readonly color: string;
   readonly opacity: number;
   readonly show: boolean;
+  readonly align: "start" | "middle" | "end";
+}
+
+function textPosition(x: number, width: number, look: TextLook, align?: string): { x: number; "text-anchor": string } {
+  const anchor = align === "style" ? look.align : align;
+  if (anchor === "middle") return { x: x + width / 2, "text-anchor": "middle" };
+  if (anchor === "end") return { x: x + width, "text-anchor": "end" };
+  return { x, "text-anchor": "start" };
+}
+
+let measuringContext: CanvasRenderingContext2D | null | undefined;
+
+function measureText(value: string, look: TextLook): number {
+  if (measuringContext === undefined) measuringContext = document.createElement("canvas").getContext("2d");
+  if (measuringContext === null) return Array.from(value).length * look.size * CHAR_RATIO;
+  measuringContext.font = `${look.italic ? "italic " : ""}${look.weight} ${look.size}px ${look.family}`;
+  return measuringContext.measureText(value).width;
+}
+
+function description(
+  cell: DirectiveNode,
+  value: string,
+  x: number,
+  y: number,
+  width: number,
+  look: TextLook,
+  availableHeight?: number,
+): { nodes: SVGElement[]; height: number } {
+  const show = cell.args.named["show"];
+  const appearance = show === true || show === "true" ? { ...look, show: true }
+    : show === "false" ? { ...look, show: false } : look;
+  const align = cell.args.geometry.align;
+  if (cell.args.named["wrap"] !== true && cell.args.named["wrap"] !== "true") {
+    return line(value, x, y, width, appearance, "semaps-node-subtitle", align);
+  }
+  if (value.trim() === "" || !appearance.show) return { nodes: [], height: 0 };
+  const requested = Number(cell.args.named["maxLines"]);
+  const step = appearance.size * 1.35;
+  const limit = Number.isInteger(requested) && requested > 0 ? Math.min(requested, 100) : 3;
+  const maxLines = availableHeight === undefined ? limit : Math.min(limit, Math.floor(availableHeight / step));
+  if (maxLines <= 0) return { nodes: [], height: 0 };
+  const lines = wrapText(value, width, maxLines, (s) => measureText(s, appearance));
+  return {
+    nodes: lines.map((value, i) => text({
+      ...textPosition(x, width, appearance, align),
+      y: y + appearance.size + i * step,
+      "font-family": appearance.family,
+      "font-size": appearance.size,
+      "font-weight": appearance.weight,
+      "font-style": appearance.italic ? "italic" : null,
+      fill: appearance.color,
+      opacity: appearance.opacity === 1 ? null : appearance.opacity,
+      class: "semaps-node-subtitle",
+    }, value)),
+    height: lines.length * step,
+  };
 }
 
 function line(
@@ -173,6 +235,7 @@ function line(
   width: number,
   look: TextLook,
   cls: string,
+  align?: string,
 ): { nodes: SVGElement[]; height: number } {
   if (value.trim() === "" || !look.show) return { nodes: [], height: 0 };
 
@@ -181,7 +244,7 @@ function line(
     nodes: [
       text(
         {
-          x,
+          ...textPosition(x, width, look, align),
           y: y + look.size,
           "font-family": look.family,
           "font-size": look.size,

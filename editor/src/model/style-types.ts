@@ -1,3 +1,4 @@
+import type { StyleModifier, StyleRule } from "./style-extensions.js";
 /**
  * The style contract as it exists on disk — `styles.json` (host defaults or workspace override).
  *
@@ -204,6 +205,8 @@ export interface WireStyle {
 }
 
 export interface WireStyleSheet {
+  modifiers?: StyleModifier[];
+  styleRules?: StyleRule[];
   /** Informational; the loader accepts any value. */
   version?: number;
   description?: string;

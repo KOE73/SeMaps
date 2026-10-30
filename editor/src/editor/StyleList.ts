@@ -100,11 +100,14 @@ export class StyleList {
   constructor(
     private readonly mount: HTMLElement,
     private readonly host: StylePanelHost,
+    private readonly externalTabs = false,
   ) {
     host.canvas.events.on("select", () => {
       for (const refresh of this.applyRefreshers) refresh();
     });
   }
+
+  showMode(mode: Mode): void { this.switchMode(mode); this.render(); }
 
   get shownTarget(): StyleTarget {
     return this.mode === "edge" ? "edge" : "block";
@@ -153,12 +156,12 @@ export class StyleList {
     replaceChildren(
       this.mount,
       el("div", { class: "style-list-head" }, [
-        el("div", { class: "tab-row segmented" }, [
+        this.externalTabs ? null : el("div", { class: "tab-row segmented" }, [
           this.modeButton("kinds", i18n.d.panels.styles.blocksTab),
           this.modeButton("edge", i18n.d.panels.styles.edgesTab),
         ]),
         el("button", {
-          class: "btn btn-small btn-primary",
+          class: `btn btn-small btn-primary${this.externalTabs ? " style-create-button" : ""}`,
           title: this.createTitle(),
           disabled: shape === null,
           on: { click: () => this.create() },

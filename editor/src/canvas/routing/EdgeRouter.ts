@@ -43,8 +43,8 @@ export interface RouteRequest {
    * a kind, and the phases that consume them — search and nudging — must not be
    * free to disagree about what either means.
    *
-   * Optional: `BezierRouter` only looks at the solid zones, to draw a straight
-   * line when one is free; a caller with nothing to say leaves it out.
+   * Optional: `BezierRouter` only looks at the solid zones, to draw a square
+   * straight line when one is free; diagonals remain curves.
    */
   readonly zones?: readonly RouteZone[];
   /**
@@ -175,7 +175,7 @@ export class BezierRouter implements EdgeRouter {
     const fromOffset = req.fromMarkerOffset ?? 0;
     const toOffset = req.toMarkerOffset ?? 0;
 
-    // With a scene: a straight line between the boxes, if one clears every block.
+    // With a scene: a horizontal/vertical line if one clears every block.
     const free = req.zones ? freeStraightLine(req) : null;
     if (free !== null) {
       const dx = free.b.x - free.a.x;
@@ -259,12 +259,10 @@ function segmentHitsRect(a: Point, b: Point, r: Rect, pad: number): boolean {
 }
 
 /**
- * A straight segment from the source box to the target box that crosses no
- * block, or null. Candidates, in order of preference: a line along the overlap
- * of the boxes' extents (square to the facing sides), the side midpoints (and
- * the ports the assigner gave), a few points spread along the facing sides.
- * The shortest free one of the first group that has any wins. Few candidates
- * on purpose: this runs for every edge on every drag.
+ * A horizontal/vertical segment along the overlap of the boxes' extents that
+ * crosses no block, or null. A free diagonal must not replace the requested
+ * curve: on a sparse diagram that would turn almost every relation straight.
+ * Few candidates on purpose: this runs for every edge on every drag.
  */
 function freeStraightLine(req: RouteRequest): { a: Point; b: Point } | null {
   const fr = req.fromRect;
@@ -290,17 +288,7 @@ function freeStraightLine(req: RouteRequest): { a: Point; b: Point } | null {
   const tx = right ? tr.x : tr.x + tr.width;
 
   const along = (lo: number, size: number, f: number) => lo + MARGIN + (size - 2 * MARGIN) * f;
-  const best = (cands: Array<[Point, Point]>): { a: Point; b: Point } | null => {
-    let found: { a: Point; b: Point } | null = null;
-    let bestLen = Infinity;
-    for (const [a, b] of cands) {
-      const len = Math.hypot(b.x - a.x, b.y - a.y);
-      if (len < bestLen && free(a, b)) { bestLen = len; found = { a, b }; }
-    }
-    return found;
-  };
-
-  // 1. Along the overlap of the extents.
+  // Along the overlap of the extents.
   const overlap: Array<[Point, Point]> = [];
   const xLo = Math.max(fr.x, tr.x);
   const xHi = Math.min(fr.x + fr.width, tr.x + tr.width);
@@ -319,21 +307,7 @@ function freeStraightLine(req: RouteRequest): { a: Point; b: Point } | null {
   // The first free one in preference order (the middle first); they differ little in length.
   for (const [a, b] of overlap) if (free(a, b)) return { a, b };
 
-  // 2. Side midpoints, and the ports the assigner chose.
-  const mids: Array<[Point, Point]> = [[req.from, req.to]];
-  if (vertical) mids.push([{ x: fr.x + fr.width / 2, y: fy }, { x: tr.x + tr.width / 2, y: ty }]);
-  if (horizontal) mids.push([{ x: fx, y: fr.y + fr.height / 2 }, { x: tx, y: tr.y + tr.height / 2 }]);
-  const m = best(mids);
-  if (m !== null) return m;
-
-  // 3. A few points along the facing sides.
-  const spread: Array<[Point, Point]> = [];
-  const fs = [0.15, 0.5, 0.85];
-  for (const f of fs) for (const g of fs) {
-    if (vertical) spread.push([{ x: along(fr.x, fr.width, f), y: fy }, { x: along(tr.x, tr.width, g), y: ty }]);
-    if (horizontal) spread.push([{ x: fx, y: along(fr.y, fr.height, f) }, { x: tx, y: along(tr.y, tr.height, g) }]);
-  }
-  return best(spread);
+  return null;
 }
 
 function straightLine(from: Point, to: Point): Route {

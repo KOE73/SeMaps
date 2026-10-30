@@ -138,6 +138,7 @@ export class HttpProjectStore implements ModelStore {
         y: vp.y,
         width: vp.width || 170,
         height: vp.height || 50,
+        modifiers: vp.modifiers, disabledModifiers: vp.disabledModifiers, automaticModifiers: vp.automaticModifiers,
         ...(vp.styleId === undefined ? {} : { styleId: vp.styleId }),
         ...(override.value === undefined ? {} : { override: override.value }),
         ...(vp.collapsed === undefined ? {} : { collapsed: vp.collapsed }),
@@ -216,6 +217,7 @@ export class HttpProjectStore implements ModelStore {
         fromLabel: text?.fromLabel,
         toLabel: text?.toLabel,
         styleId: ve.styleId,
+        modifiers: ve.modifiers as string[] | undefined, disabledModifiers: ve.disabledModifiers as string[] | undefined, automaticModifiers: ve.automaticModifiers as boolean | undefined,
         ...(override.value === undefined ? {} : { override: override.value }),
         points: ve.points || [],
         ...(origin === undefined ? {} : { origin }),
@@ -287,7 +289,7 @@ export class HttpProjectStore implements ModelStore {
 function pickOverlay(entry: Record<string, any> | undefined): Record<string, unknown> {
   if (entry === undefined) return {};
   const out: Record<string, unknown> = {};
-  for (const key of ["styleId", "override", "routing"] as const) {
+  for (const key of ["styleId", "override", "routing", "modifiers", "disabledModifiers", "automaticModifiers"] as const) {
     if (entry[key] !== undefined) out[key] = entry[key];
   }
   return out;

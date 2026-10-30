@@ -14,6 +14,7 @@ import { DIAGRAM_CONFIG } from "../../constants/diagram-constants.js";
 import { canvas } from "../../constants/canvas.js";
 import { iconGlyph } from "./iconGlyph.js";
 import { fileRealizations, langTag, refOf } from "../../model/realizations.js";
+import { styleIndicator } from "./styleIndicator.js";
 
 /**
  * The default leaf renderer: a rounded rectangle with a caption, a subtitle and
@@ -53,6 +54,7 @@ export class BoxRenderer implements ElementRenderer {
     // Buttons are laid out from an anchor plus a direction, so that a shape
     // with no room to the right of its anchor can stack them the other way.
     const docWidth = NODE_LAYOUT.docButtonWidth;
+    const automatic = ctx.automaticStyles?.(el) ?? [];
     const docX = chrome.docGrow === "right" ? chrome.docAnchor.x : chrome.docAnchor.x - docWidth;
     const docY = chrome.docAnchor.y;
 
@@ -118,13 +120,17 @@ export class BoxRenderer implements ElementRenderer {
     const relSummary = resolveElementRelations(ctx.doc, el);
     const visibleCount = relSummary.visible;
     const total = relSummary.total;
+    const badgeText = `${total}/${visibleCount}`;
+    const bw = total > 0 ? Math.max(22, badgeText.length * 6 + 8) : 0;
+    const bx = chrome.badgeGrow === "left" ? chrome.badgeAnchor.x - bw : chrome.badgeAnchor.x;
+    const by = chrome.badgeAnchor.y;
+
+    if (automatic.length) {
+      g.appendChild(styleIndicator(automatic, bx - docWidth - (total > 0 ? 4 : 0), by, docWidth, NODE_LAYOUT.topBarHeight));
+    }
 
     if (total > 0) {
       const isGhost = ctx.ghostNodeId === el.id;
-      const badgeText = `${total}/${visibleCount}`;
-      const bw = Math.max(22, badgeText.length * 6 + 8);
-      const bx = chrome.badgeGrow === "left" ? chrome.badgeAnchor.x - bw : chrome.badgeAnchor.x;
-      const by = chrome.badgeAnchor.y;
 
       const badgeGroup = svg("g", {
         class: `semaps-node-badge${isGhost ? " is-active" : ""}`,
@@ -165,6 +171,7 @@ export class BoxRenderer implements ElementRenderer {
       const drawn = renderContent(content.tree, chrome.textBox, style, content.data, {
         x: chrome.padX,
         top: chrome.contentTop,
+        fitHeight: true,
       });
       drawn.nodes.forEach((n) => g.appendChild(n));
       return;

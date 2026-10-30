@@ -55,6 +55,16 @@ and for SeMaps itself — an agent does not need it, since it never edits those 
   tool takes such references.
 - **Report** each changed object and the link to the view from the last tool answer.
 
+**Architecture and code in both directions.** SeMaps is part of ordinary coding work, even when
+the task names no diagram. Before changing code, discover and read the relevant existing views
+and texts for intended responsibilities, boundaries and flows. Compare them with fresh code
+facts and source evidence; a planned part may have no implementation yet. After the change,
+check its architectural impact and report discrepancies or explain why the map needs no change.
+Keep authored intent, implementation facts and proposals distinct. Update the map only within
+the requested scope; a code task alone does not authorize new/rearranged views, removal, or
+Save/Discard. These workflow instructions come from MCP, including its stdio proxy; restart
+the agent session after changing the server build to receive updated instructions.
+
 **Graph before grep.** A question about the structure of the code — what a type extends or
 implements, who holds, calls or constructs it, what a namespace contains, where something is
 declared — is one graph call, answered with `file:line`. Searching the text and reading whole
@@ -202,6 +212,30 @@ with its entities and outgoing relations. Views and MCP tools use a single merge
 Keep these generated files with the workspace. Do not copy DLLs into it or create a source
 `ref` for a metadata type. A later partial run preserves previously expanded parts; a changed
 assembly version requires a full extraction before merging.
+
+### Shared palettes and automatic formatting
+
+When asked to distinguish libraries or namespaces visually, keep the base styles of class,
+interface and relation types. Use `style_selector_fields` first, then `create_modifier` with
+sparse family patches and `create_style_rule` with a version-1 selector and ordered modifierIds.
+One palette can cover blocks, containers and relations. Conditions use registry facts:
+`library` is the exact code[].library ID, `assembly` follows structural contains, `namespace`
+with `within` respects dot boundaries. `project` means a SeMaps map project. A visual parent
+does not establish assembly membership. Missing facts stay unknown even under NOT; use
+`exists` for absence. Compare exact identifiers; do not guess membership from display names.
+
+Use `preview_style_rule` before applying a rule and `explain_style` to inspect the result:
+base style → automatic modifiers → manual modifiers → local override. Existing local colour
+overrides win; remove only obsolete colour fields when the requested conversion includes them.
+Manual `set_modifiers` and `set_style_rule_exclusions` require requestedByHuman, preserve geometry,
+and stay unsaved in the project. Definitions share the common style Save/Discard boundary;
+save styles before projects referencing new definitions, only when explicitly asked.
+
+The UI has **Styles → Modifiers** and a separate **Style rules** panel. Applying a draft updates
+all editors; disk persistence is still explicit. `semaps check` validates saved modifiers,
+selectors and assignment/exclusion references; it ignores working journals. Older workspaces
+without modifiers or rules need no migration. See [CONTRACT §11.7](CONTRACT.md#117-модификаторы-оформления-и-правила-применения)
+and [API §3.4c](API.md#34c-modifiers-and-application-rules).
 
 ## 4. Two languages: link them or `check` fails
 

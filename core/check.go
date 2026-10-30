@@ -159,6 +159,9 @@ func Check(workspace, sourceRoot string, defaultKinds []byte) []Finding {
 		report("workspace", "не читается", err.Error())
 	}
 	checkWorkspaceFiles(workspace, kinds, report)
+	if err := CheckStyleExtensions(workspace, defaultKinds); err != nil {
+		report("workspace", "модификаторы оформления", err.Error())
+	}
 
 	root := filepath.Join(workspace, "projects")
 	projectDirs, err := os.ReadDir(root)

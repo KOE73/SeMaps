@@ -97,7 +97,20 @@ const narrowTrapsHelp = "Traps found in practice: " +
 // existing for small models, whose standard level cost 3x the general tool
 // because the same explanation was repeated in each of its nine tools).
 func serverInstructions(toolsSet, level string) string {
-	return mentalModel(toolsSet == "narrow", level) + " " + serverInstructionsBody(toolsSet, level)
+	return architectureWorkflow(toolsSet == "narrow", level) + mentalModel(toolsSet == "narrow", level) + " " + serverInstructionsBody(toolsSet, level)
+}
+
+// architectureWorkflow applies to both graph tool sets. It describes SeMaps'
+// role in ordinary coding work, not a new permission to edit a human's view.
+func architectureWorkflow(narrow bool, level string) string {
+	if narrow || level == "brief" {
+		return "SeMaps links design and code: read relevant authored views before ordinary coding; compare afterward. Separate intent/facts; map edits and Save/Discard stay within task scope. "
+	}
+	return "SeMaps connects human-authored architecture and implementation in both directions. " +
+		"Before changing code, discover and read relevant existing views and their texts, even when the task does not mention a diagram; use their responsibilities, boundaries and flows as design intent, and fresh code facts/source as implementation evidence. " +
+		"After a code change, compare its architectural impact with the affected map and report discrepancies or explain why no map change is needed. " +
+		"A planned design may have no code yet. Neither side silently overrides the other: distinguish authored intent, implementation facts and your proposals. " +
+		"Reconcile or author the map only within the requested scope; a code task alone does not authorize creating or rearranging views, removing records, or Save/Discard. "
 }
 
 // mentalModel: what the system IS, said before anything about how to read
@@ -107,8 +120,7 @@ func serverInstructions(toolsSet, level string) string {
 // its own tools (there is no get_graph or graph_formats in that set).
 func mentalModel(narrow bool, level string) string {
 	if level == "brief" {
-		return "SeMaps has three layers: the registry (entities and relations, in git, changed only through these tools and `sync`), the live graph (facts read from the code, never stored), and views (a picture of part of the model: references to registry entities and relations plus geometry and look, no copies). " +
-			"The graph follows the code by itself; the registry follows it only through `sync`."
+		return "The three layers: registry (in git; MCP/`sync`), live code facts (never stored), views (references to registry entities and relations plus geometry and look, no copies). The graph refreshes; `sync` updates the registry."
 	}
 	common := "SeMaps has three layers. " +
 		"The registry (the model) holds entities `e_*` and the relations between them; it lives in git and changes only through these tools and `sync`. " +
@@ -131,9 +143,8 @@ func mentalModel(narrow bool, level string) string {
 // so its wording is the short one.
 func viewsLayer(narrow bool) string {
 	if narrow {
-		return "Views store no entities or relations: a placement references a registry entity and adds only its geometry and look; a line is a registry relation, " +
-			"drawn when both ends are placed and the rule says visible (`set_relation_visible` shows or hides a list, or all of a type, on one view), and a view's entry for it holds only its look. " +
-			"To make something appear, place an entity or add it to the registry (`add_entity`, `add_relation`); `get_view` with `hidden: true` lists the hidden lines. "
+		return "Views store no entities or relations. Placements add geometry/look; a line is a registry relation, drawn only with both ends placed and visibility enabled. " +
+			"Use `set_relation_visible` for IDs/types, `get_view` with `hidden: true` for hidden lines; `add_entity`/`add_relation` add registry records. "
 	}
 	return "Views are a human's projection of part of the model and store no entities or relations of their own: a placement is a reference to a registry entity plus its own geometry and look (x, y, size, parent, style, override, template, collapsed), the name, kind and members coming from the registry; containers are placements of entities of a container kind, following an `axis`. " +
 		"A line is a registry relation, drawn when both ends are placed and the rule says visible (the type's default in the dictionary, else the view's; `set_relation_visible` shows or hides a list of relations, or those of given types, on one view in one call, all or nothing); a view's entry for a line holds only its look and never decides visibility. " +

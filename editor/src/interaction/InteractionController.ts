@@ -13,6 +13,7 @@ import { KindCatalog } from "../model/KindCatalog.js";
 import { langTag, realizationsOf, refOf } from "../model/realizations.js";
 import { i18n } from "../workbench/i18n/I18nService.js";
 import { iconSvg } from "../ui/icons.js";
+import { automaticStyleTitle, automaticStyleLines, automaticStyleHint } from "../ui/automaticStyle.js";
 
 const minSize = () => {
   const c = canvas();
@@ -262,6 +263,14 @@ export class InteractionController {
   }
 
   private readonly onKeyDown = (e: KeyboardEvent): void => {
+    if ((e.key === "Enter" || e.key === " ") && e.target instanceof Element && this.host.contains(e.target)) {
+      const hit = hitTest(e.target);
+      if (hit?.role === Role.StyleInfo && hit.elementId !== null) {
+        e.preventDefault();
+        this.openStyleInfo(hit.elementId);
+        return;
+      }
+    }
     if (e.key !== "Escape" || this.gesture?.kind !== "connect") return;
     this.gesture = null;
     this.canvas.setConnectPreview(null);
@@ -322,6 +331,7 @@ export class InteractionController {
     switch (hit.role) {
       case Role.CollapseToggle:
       case Role.GhostToggle:
+      case Role.StyleInfo:
         // Handled on mouse-up so that pressing the button never starts a drag.
         e.stopPropagation();
         return;
@@ -444,6 +454,10 @@ export class InteractionController {
     } else if (hit?.role === Role.GhostToggle && hit.elementId !== null) {
       e.stopPropagation();
       this.canvas.toggleGhostNode(hit.elementId);
+    } else if (hit?.role === Role.StyleInfo && hit.elementId !== null) {
+      if (e.button !== 0) return;
+      e.stopPropagation();
+      this.openStyleInfo(hit.elementId);
     } else if (hit?.role === Role.DocEdit && (hit.elementId !== null || hit.edgeId !== null)) {
       e.stopPropagation();
       this.canvas.hideAllTooltips();
@@ -464,6 +478,12 @@ export class InteractionController {
       }
     }
   };
+
+  private openStyleInfo(id: string): void {
+    this.canvas.hideAllTooltips();
+    this.canvas.select(id);
+    this.canvas.events.emit("openStyleInfo", { id });
+  }
 
   private readonly onMouseMove = (e: MouseEvent): void => {
     const gesture = this.gesture;
@@ -527,6 +547,16 @@ export class InteractionController {
     }
 
     const lang = this.canvas.dataLang || "ru";
+
+    if (hit.role === Role.StyleInfo && hit.elementId !== null) {
+      const layers = this.canvas.styles.automaticModifiersFor(hit.elementId);
+      this.scheduleEdgeControlsHide();
+      this.canvas.showTooltip(
+        `<div class="semaps-tooltip-header">${escapeHtml(automaticStyleTitle())}</div>` +
+        automaticStyleLines(layers).map(line => `<div class="semaps-tooltip-body">${escapeHtml(line)}</div>`).join("") +
+        `<div class="semaps-tooltip-body">${escapeHtml(automaticStyleHint())}</div>`, e.clientX, e.clientY);
+      return;
+    }
 
     // 1. Hover on DocEdit Button -> Show Rich Doc Tooltip immediately
     if (hit.role === Role.DocEdit) {

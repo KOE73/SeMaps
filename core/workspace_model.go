@@ -34,8 +34,20 @@ type WorkspaceModel struct {
 }
 
 type styleReferencePatch struct {
-	NewID      string `json:"newId"`
-	References []Ref  `json:"references"`
+	NewID       string                `json:"newId"`
+	References  []Ref                 `json:"references"`
+	Field       string                `json:"field,omitempty"`
+	Replacement bool                  `json:"replacement,omitempty"`
+	Values      []styleReferenceValue `json:"values,omitempty"`
+}
+
+type styleReferenceValue struct {
+	View   string   `json:"view"`
+	Kind   string   `json:"kind"`
+	ID     string   `json:"id"`
+	Field  string   `json:"field"`
+	Before []string `json:"before"`
+	After  []string `json:"after"`
 }
 
 func decodeStyleReference(op Op) styleReferencePatch {
@@ -52,6 +64,8 @@ func projectJournalWithoutStyleRefs(journal [][]Op, undo bool) [][]Op {
 	changes := []struct {
 		old, next string
 		refs      []Ref
+		field     string
+		patch     styleReferencePatch
 	}{}
 	for _, batch := range journal {
 		for _, op := range batch {
@@ -60,7 +74,9 @@ func projectJournalWithoutStyleRefs(journal [][]Op, undo bool) [][]Op {
 				changes = append(changes, struct {
 					old, next string
 					refs      []Ref
-				}{op.ID, patch.NewID, patch.References})
+					field     string
+					patch     styleReferencePatch
+				}{op.ID, patch.NewID, patch.References, patch.Field, patch})
 			}
 		}
 	}
@@ -81,6 +97,59 @@ func projectJournalWithoutStyleRefs(journal [][]Op, undo bool) [][]Op {
 				doc := newObject()
 				if json.Unmarshal(op.Value, doc) == nil {
 					for _, change := range changes {
+						if undo && change.patch.Replacement && change.field != "" {
+							// A replacement already existed: reversing its ID globally would
+							// change unrelated assignments and lose deduplicated original lists.
+							for _, value := range change.patch.Values {
+								if value.View != op.View {
+									continue
+								}
+								target := doc
+								edges := viewItems(doc, "edges")
+								if value.Kind == "placement" && (op.Kind != "placement" || op.ID != value.ID) {
+									continue
+								}
+								if value.Kind == "view" && op.Kind != "view" {
+									continue
+								}
+								if value.Kind == "edge" {
+									if op.Kind != "view" {
+										continue
+									}
+									target = findByID(edges, value.ID)
+								}
+								// An explicitly edited assignment stays as the human chose it.
+								if has(target, value.Field) && slices.Equal(stringList(target, value.Field), value.After) {
+									target.set(value.Field, value.Before)
+									if value.Kind == "edge" {
+										doc.set("edges", edges)
+									}
+								}
+							}
+							continue
+						}
+						if change.field != "" {
+							if op.Kind == "placement" && change.field == "modifier" {
+								replaceReferenceList(doc, "modifiers", change.old, change.next)
+								replaceReferenceList(doc, "disabledModifiers", change.old, change.next)
+							}
+							if op.Kind == "view" {
+								if change.field == "rule" {
+									replaceReferenceList(doc, "disabledStyleRules", change.old, change.next)
+								}
+								if change.field == "modifier" {
+									edges := viewItems(doc, "edges")
+									for _, edge := range edges {
+										replaceReferenceList(edge, "modifiers", change.old, change.next)
+										replaceReferenceList(edge, "disabledModifiers", change.old, change.next)
+									}
+									if len(edges) > 0 {
+										doc.set("edges", edges)
+									}
+								}
+							}
+							continue
+						}
 						for _, ref := range change.refs {
 							if ref.View != op.View {
 								continue
@@ -130,6 +199,9 @@ func LoadWorkspaceModel(root string, defaultStyles, defaultKinds []byte) (*Works
 		w.savedKinds = newObject()
 	}
 	w.styles, w.kinds = cloneObject(w.savedStyles), cloneObject(w.savedKinds)
+	if err = checkStyleExtensions(w.styles); err != nil {
+		return nil, err
+	}
 	b, err := os.ReadFile(w.workFile())
 	if errors.Is(err, fs.ErrNotExist) {
 		return w, nil
@@ -142,6 +214,9 @@ func LoadWorkspaceModel(root string, defaultStyles, defaultKinds []byte) (*Works
 		return nil, fmt.Errorf("workspace work: %w", err)
 	}
 	if err = json.Unmarshal(work.Styles, w.styles); err != nil {
+		return nil, err
+	}
+	if err = checkStyleExtensions(w.styles); err != nil {
 		return nil, err
 	}
 	if len(work.Kinds) > 0 {
@@ -263,8 +338,9 @@ func (w *WorkspaceModel) Styles() StyleSnapshot {
 }
 
 type StyledView struct {
-	View   json.RawMessage `json:"view"`
-	Styles StyleSnapshot   `json:"styles"`
+	View        json.RawMessage            `json:"view"`
+	Styles      StyleSnapshot              `json:"styles"`
+	Appearances map[string]StyleAppearance `json:"appearances"`
 }
 
 func (w *WorkspaceModel) View(project, view string) (StyledView, error) {
@@ -275,7 +351,11 @@ func (w *WorkspaceModel) View(project, view string) (StyledView, error) {
 		return StyledView{}, err
 	}
 	data, err := m.View(view)
-	return StyledView{data, w.snapshot()}, err
+	if err != nil {
+		return StyledView{}, err
+	}
+	appearances, err := w.viewAppearances(m, view, nil)
+	return StyledView{View: data, Styles: w.snapshot(), Appearances: appearances}, err
 }
 func (w *WorkspaceModel) snapshot() StyleSnapshot {
 	catalog, _ := w.catalog()
@@ -310,6 +390,14 @@ func (m *Model) styleReference(old, next string) ([]Ref, error) {
 	}
 	return refs, nil
 }
+
+func (m *Model) applyStyleReference(op Op) ([]Ref, error) {
+	patch := decodeStyleReference(op)
+	if patch.Field != "" {
+		return m.extensionReference(op.ID, patch.NewID, patch.Field)
+	}
+	return m.styleReference(op.ID, patch.NewID)
+}
 func (m *Model) allViewIDs() []string {
 	ids := []string{}
 	files, _ := filepath.Glob(filepath.Join(m.dir, "views", "*"+ViewSuffix))
@@ -342,7 +430,7 @@ func (w *WorkspaceModel) SaveStyles() error {
 				for _, op := range batch {
 					if op.Kind == "style_ref" {
 						var changed []Ref
-						changed, err = fresh.styleReference(op.ID, decodeStyleReference(op).NewID)
+						changed, err = fresh.applyStyleReference(op)
 						refs = append(refs, changed...)
 					}
 				}

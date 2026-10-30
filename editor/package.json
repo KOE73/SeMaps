@@ -30,6 +30,7 @@
     "check:model-sync": "node scripts/check-model-sync.mjs",
     "check:ide-bridge": "node scripts/check-ide-bridge.mjs",
     "check:host-session": "node scripts/check-host-session.mjs",
+    "check:style-extensions": "node scripts/check-style-extensions.mjs",
     "check:style-sync": "node scripts/check-style-sync.mjs"
   },
   "devDependencies": {

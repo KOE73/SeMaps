@@ -265,7 +265,7 @@ The editor and MCP use the same workspace style operations; no client owns a pri
 stylesheet. `GET /api/styles` returns `{sheet, kinds, dirty, revision}`: the working stylesheet,
 merged dictionary (including pending base-style renames), workspace dirty refs with authors, and
 the current style revision. `GET /styles.json` returns just the working sheet. Responses are not
-cached. `GET /api/model/{project}/views/{id}/styled` returns `{view, styles}` under the same lock,
+cached. `GET /api/model/{project}/views/{id}/styled` returns `{view, styles, appearances}` under the same lock,
 so a placement and the definitions it references arrive together. The editor refreshes this
 state when subscribing/reconnecting to SSE.
 
@@ -283,10 +283,13 @@ change explicitly; the editor reloads the host state and reports the conflict.
 Rename changes all explicit placement/edge references in **every** project, `basedOn` references,
 and explicit or implicit dictionary base styles, in one checkpoint before exposing the result.
 Delete lists uses and requires an explicit compatible `replacement` while used. Replacing a
-base with its descendant is refused. Fallback ids cannot be renamed or deleted. Each successful
+base with its descendant is refused. Fallback ids cannot be renamed or deleted and keep their
+fixed `appliesTo` family (block, container or edge). Each successful
 write broadcasts an SSE model event with `styles: {sheet,kinds,dirty,revision}` to all subscribed
 projects, including its authoring editor. Rename adds `styleRenamed: {oldId,newId}` so an open
-style form follows its new identifier. The editor updates filtering, type groups, pickers,
+style form follows its new identifier, even if a newer stylesheet arrived first. Delete adds
+`styleDeleted: id` to clear that selection, including a selection awaiting its rename event.
+The editor updates filtering, type groups, pickers,
 previews, the selected style form, usage counts and the canvas. Deletion clears the selected
 style. Unknown/mismatched explicit `styleId` assignments are refused; existing broken references
 are displayed as an explicit canvas warning, not inferred successful from a fallback colour.
@@ -308,6 +311,44 @@ styles or pending reference renames. A project Save is refused while it would pe
 style definition or workspace reference rename; save styles first. Project geometry/override
 edits preserve their fields through style Save/Discard. `/api/save?file=styles.json` and
 `/api/save?file=kinds.json` are rejected (`410`) to prevent bypassing the shared model.
+
+### 3.4c. Modifiers and application rules
+
+`sheet.modifiers` and `sheet.styleRules` share the stylesheet revision, journal, authoring,
+Save/Discard and SSE model of §3.4b. Definitions and assignments follow CONTRACT §11.7;
+automatic formatting is computed and never persisted in placements.
+
+| Path | Method | Body → answer |
+|---|---|---|
+| `/api/style-selectors` | `GET` | `{version:1, fields:[{id,name,description,operators}], missing, order}`; authoritative field/operator catalogue for the UI and MCP |
+| `/api/style-modifiers` | `POST` | `{action,id,definition?,patch?,newId?,replacement?,expectedRevision?,client?}` → `{detail,state}`; modifier CRUD |
+| `/api/style-rules` | `POST` | same operation envelope → `{detail,state}`; application-rule CRUD |
+| `/api/style-rules/preview` | `POST` | `{project,view,rule}` → `{count,matches}`; substitutes the draft for the rule of the same ID in the normal cascade without writing anything |
+| `/api/model/{project}/views/{id}/modifiers` | `POST` | `{elements?:entityIds,relations?:relationIds,fields:{modifiers?,disabledModifiers?,automaticModifiers?},client?}` → `{changed,dirty}`; existing placements and registry relations, one atomic batch, only supplied fields change, null drops the field |
+| `/api/model/{project}/views/{id}/style-rule-exclusions` | `POST` | `{ids:string[],client?}` → `{changed,dirty}`; complete disabled-rule list of this view; empty clears it |
+
+POST endpoints require the usual host key and same origin. Invalid selectors, fields, values,
+references and incompatible manual-family assignments return `422` without changing the model.
+Rename/replacement includes closed projects and saved references hidden by pending assignments;
+a used definition requires an explicit compatible replacement. HTTP edits have author `human`,
+MCP edits `agent`. `expectedRevision` checks the common library revision.
+
+`appearances` in `/styled` is a map keyed by entity or visible relation ID:
+`{id,family,baseStyleId,applied,skipped,patch,resolved,origins,facts}`. `patch` is the combined
+modifier formatting **before** local override; `resolved` includes defaults, inherited base,
+modifiers and local override. `applied`/`skipped` entries are `{id,name,stage,rule?}`; `stage` is
+`automatic` or `manual`, skipped lists matching automatic applications excluded by the object
+or view. `origins` maps each final property path to `style:<baseId>`, `rule:<ruleId>/<modifierId>`,
+`manual:<modifierId>` or `override`; `facts` exposes the exact multi-valued selector inputs.
+Preview returns placements/visible relations where the draft has an applied or skipped entry,
+with all other active rules, manual modifiers and local overrides retained. Disabled or
+out-of-scope draft rules have no matches.
+
+Successful definition edits broadcast `styles` plus
+`styleExtension:{collection:modifiers|styleRules,action,id,newId?}`. The editor follows open
+forms across rename, refreshes appearance from the view's ID (independent of file name), and
+retains conflicting local drafts for explicit reload/reconciliation. Save/Discard covers all
+three collections; ordinary project Save still requires definitions to be saved first.
 
 ### 3.4a. Creating projects and views
 
@@ -369,7 +410,7 @@ When embedding `@semaps/editor` in non-HTTP hosts (e.g., VSCode Extension WebVie
    }
    ```
 
-Any host fulfilling these three interfaces will provide complete visualizer and editor functionality without requiring a running Go HTTP server.
+These interfaces provide file-based canvas editing without a Go HTTP server. Shared modifier/rule editing and automatic evaluation require the common workspace services of §3.4b–c; file adapters preserve their fields but do not implement that evaluator.
 
 ## Reference host (`host/`)
 
@@ -753,6 +794,18 @@ and the types of relations with their meaning → `get_kinds`. The `narrow` word
 tools that set has. The vocabulary itself is not repeated there: `graph_formats` answers it
 (`terms`, §5).
 
+**Bidirectional architecture workflow.** Every tool-set/description combination also explains
+SeMaps' role in ordinary coding work: discover and read relevant authored views/texts before
+changing code, even when the task names no diagram; afterward compare the architectural impact
+with the affected map and report discrepancies or explain why no map change is needed. Authored
+intent, fresh implementation facts and agent proposals remain distinct; a planned design need
+not have code yet. Map reconciliation stays within the requested scope. A code change alone
+does not authorize creating/rearranging views, removing records, or Save/Discard.
+
+The stdio proxy copies the upstream `initialize` response's `Instructions` before the first
+agent connection. They remain fixed for that agent session on host reconnect, just like the
+HTTP session's initialized instructions; restart the agent to receive updated wording.
+
 **A call that does not fit.** When a tool call fails input validation (`unexpected additional
 properties ["items"]`, a missing required field), the error text keeps the SDK's message and adds a
 line naming the tool's own parameters, required ones first — `get_view accepts: view (required),
@@ -803,7 +856,7 @@ editor's sandbox land in the same file.
 | `move_elements` | `view?`, `elements`, `dx`/`dy` or `x`/`y`, `requestedByHuman` | shifts placements, or puts the top-left corner of their common box at `x`,`y`; a container goes with everything inside it; a container that stops holding its content grows (ancestors too); written exactly as given, not snapped to the grid |
 | `resize_elements` | `view?`, `elements`, `width?`, `height?`, `requestedByHuman` | a block not below `node.minWidth` × `node.minHeight`, a container not below `container.minWidth` × `container.minHeight` and not below its content (`canvas.json`, §2.1a) |
 | `set_parent` | `view?`, `elements`, `parent` (an entity id of a container placement; `null` takes them out of any), `requestedByHuman` | the `parent` of the placements only, coordinates untouched; a container cannot go into itself or its own content; a parent whose kind is no container kind is refused |
-| `set_placement` | `view?`, `elements`, and any of `styleId`, `override` (the table of `CONTRACT.md` §11.6), `template`, `collapsed` (containers only), `requestedByHuman` | the look of placements already on the view. Only the fields present in the call change — a field given as `null` is dropped, one left out stays; at least one is required. Geometry and `parent` are untouched. What is valid is the write rule of §3.4 (`styleId` and `template` non-empty strings, `override` only of the table, `collapsed` a boolean on a container placement): a refused element refuses the whole step. Answers with what changed, not saved, and a link |
+| `set_placement` | `view?`, `elements`, and any of `styleId`, `override` (the table of `CONTRACT.md` §11.6), `template`, `collapsed` (containers only), `modifiers`, `disabledModifiers`, `automaticModifiers`, `requestedByHuman` | the look of placements already on the view. Only the fields present in the call change — a field given as `null` is dropped, one left out stays; at least one is required. Geometry and `parent` are untouched. What is valid is the write rule of §3.4 (`styleId` and `template` non-empty strings, `override` only of the table, `collapsed` a boolean on a container placement, modifier assignments as CONTRACT §11.7): a refused element refuses the whole step. Answers with what changed, not saved, and a link |
 | `set_routing` | `view`, `routing` (`bezier` \| `orthogonal` \| `tree-horizontal` \| `tree-vertical`, or `null`), `relations?` (relation ids) or `types?` (relation type ids, not both), `requestedByHuman` | the shape of lines (`CONTRACT.md` §11.3). Without `relations` and `types`: the view's own `routing` (`null` removes the key, the relation type's and style's choice applies). With `types` the tool first expands to the registry relations of those types with both ends placed on the view now (a one-time action, no match is an answer) and then acts as with `relations`. Optional `list` (bool, default false) adds the relations whose entry was written, in full: text lines `<id>  <from> -> <to>  <type>` under `written (n):` and structured `written: [{id, from, to, type}]` (empty on zero matches). With `relations`: the `routing` of the view's `edges` entry of each, in one batch — the entry is created when missing, `null` removes the field, an entry left with none of `styleId`, `override`, `routing` is removed, and so is `edges` when the list empties. Each id must be a relation of the registry; one whose line is not drawn on the view now (an end not placed, or hidden) is accepted, and the answer names it. The routed polyline is never stored |
 | `add_container` | `view`, `entity`, `name?`, `kind?`, `parent?`, `styleId?`, `x`, `y`, `width`, `height`, `contents?`, `requestedByHuman` | **`contents: true`** also places what the container directly contains: the entities its `contains` relations (`core.ContainsKind`, the family of the relation type, as the graph reads containment) lead to, one level; a relation or an entity with status `missing` is skipped, and so is an entity already on the view (not moved, not re-parented — a placement made by someone is not moved). Each is placed with `parent` = the container; a member of a container kind comes as an empty frame of the default container size (call again for it). Layout: a plain grid of `ceil(sqrt(n))` columns, members ordered by name, one cell for all (the largest default size) plus `gap.node`, positions on multiples of `grid`, the first cell at the top left of the content area (`container.padding`, below the caption strip `container.headerHeight`); then the container is sized to hold its content exactly as `fit_container` does, growing right and below from the `x`,`y` given — `width` and `height` are then optional and a minimum. Membership is the registry's fact, the grid only a starting arrangement. One batch, whole or nothing. A container **already on the view** is not touched but for the members it lacks: they go in a grid at the left of the existing content under its lowest child, the container and its ancestors grow to hold them; the answer says which. Answer text: `container <id>: N member(s) placed inside it (ids; where the grid went). … Skipped: id (reason); … <n> changed on <view>, not saved; review and Save: <link>`, and `contents: {placed, skipped:[{entity,reason}], note}` in the structured answer. Without `contents`, `width` and `height` are required and it works as follows: places a container by the id of its entity (`entity`, required, `e_` then something — the same rule as `add_entity`; an id is never made from a name). An existing entity must be of a container kind (`get_kinds`: `container: true`) and is placed as it is: a `name` is refused (a name is changed with `set_text`), a `kind` only if it repeats the entity's own. An id that does not exist creates, in one batch with the placement, an authored entity with that id, the `name` (required) as its text in the project's first language, and `kind` (a container kind, default `group`). The id is returned as `entity` |
 | `fit_container` | `view?`, `container` (an entity id or a reference), `requestedByHuman` | the container = its content plus caption strip `container.headerHeight` and padding `container.padding`, exactly, no grid rounding; ancestors grow if they stop holding it |
@@ -831,12 +884,35 @@ Every geometry step is one batch — a bad element applies nothing — authored 
 | `delete_style` | `id`, `replacement?`, `expectedRevision?` | unused deletion, or explicit compatible replacement; otherwise an error enumerates usage |
 
 Style writes are authored `agent`, durable and **unsaved**, and return `{style, saved:false,
-scope, link}`. Use `save(scope: styles, requestedByHuman: true)` only when asked. A colour-to-style
-conversion reads entity `code[].library` and library headers, or assembly membership relations;
-never infers assembly from a name substring. Create separate block/container/edge definitions
-when required. Read the placements' `override`, remove only former colour fields and pass back
-its remaining fields through `set_placement` together with `styleId`; geometry, parent, template
-and other fields are preserved by that tool.
+scope, link}`. Use `save(scope: styles, requestedByHuman: true)` only when asked. Shared library
+palettes use modifiers and rules below: one definition can format several families while type
+styles remain independent. Read exact `code[].library` or structural assembly IDs, never infer
+membership from a name substring. Local colour overrides have final priority; remove only the
+former colour fields when explicitly converting such colouring, keeping all other fields.
+
+**Modifiers and rules (definitions are workspace-wide)**
+
+| Tool | Input | Result/effect |
+|---|---|---|
+| `style_selector_fields` | — | `{version:1,fields}`; selectors and operator vocabulary, CONTRACT §11.7 |
+| `list_modifiers`, `list_style_rules` | — | `{modifiers,state}` / `{style_rules,state}`; includes unsaved definitions |
+| `get_modifier`, `get_style_rule` | `id` | `{definition,usage,dirty,revision}`; working and hidden saved references |
+| `create_modifier` | `id`, `definition`, `expectedRevision?` | name, optional description and sparse patches keyed by block/container/edge |
+| `create_style_rule` | `id`, `definition`, `expectedRevision?` | name, selectorVersion:1, selector tree, ordered modifierIds; optional description/enabled/order/scope |
+| `update_modifier`, `update_style_rule` | `id`, `patch`, `expectedRevision?` | recursive patch; omitted fields stay, null removes; rename required for ID |
+| `rename_modifier`, `rename_style_rule` | `id`, `newId`, `expectedRevision?` | atomic reference replacement across all projects and library definitions |
+| `delete_modifier`, `delete_style_rule` | `id`, `replacement?`, `expectedRevision?` | explicit compatible replacement required while used |
+| `preview_style_rule` | `project`, `view`, `rule` | `{count,matches}`; draft substituted into the normal cascade, no writes (§3.4c) |
+| `explain_style` | `project`, `view`, `id` | appearance of a visible placement/relation, including inputs, layers, exclusions and final-property origins |
+| `set_modifiers` | `project`, `view`, `elements?`, `relations?`, one or more of `modifiers?`, `disabledModifiers?`, `automaticModifiers?`, `requestedByHuman` | arrays of entity/relation IDs; only supplied fields change, null drops a field; geometry/parent/template/override untouched |
+| `set_style_rule_exclusions` | `project`, `view`, `ids`, `requestedByHuman` | complete list of disabled rules on the view; empty restores all |
+
+Definition writes return `{detail,state,saved:false,scope:"workspace styles"}`. Assignment tools
+return `{changed,saved:false}` and are saved/discarded with the project. `save`/`discard` with
+scope `styles` includes both new collections and their rename/replacement references.
+`get_view` exposes modifiers/disabledModifiers/automaticModifiers on placements and edges,
+and `view.disabledStyleRules`. `set_placement` also accepts the three modifier assignment fields
+for placements, with its usual reference syntax and null/omission semantics.
 
 **Entry** in the consuming project, `.mcp.json` at its root:
 ```json

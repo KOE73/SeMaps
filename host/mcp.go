@@ -249,14 +249,17 @@ type setParentIn struct {
 // (which of them are present is read from the raw arguments, since a pointer
 // cannot tell absent from null).
 type setPlacementIn struct {
-	Project          string          `json:"project,omitempty"`
-	View             string          `json:"view,omitempty" jsonschema:"view id; may be left out when elements are references view#e_x"`
-	Elements         []string        `json:"elements" jsonschema:"entity ids of placements (blocks or containers), or references view#e_x"`
-	StyleID          *string         `json:"styleId,omitempty" jsonschema:"the placement's style; null drops it (the style of the entity's kind applies)"`
-	Override         *map[string]any `json:"override,omitempty" jsonschema:"a partial style of these placements: fill, border {color, dash}, header {fill}, icon {glyph}; null drops it"`
-	Template         *string         `json:"template,omitempty" jsonschema:"the content template of these placements; null drops it"`
-	Collapsed        *bool           `json:"collapsed,omitempty" jsonschema:"containers only: collapsed to the header; null drops it"`
-	RequestedByHuman bool            `json:"requestedByHuman" jsonschema:"true only when a human asked for this in so many words"`
+	Modifiers          []string        `json:"modifiers,omitempty"`
+	DisabledModifiers  []string        `json:"disabledModifiers,omitempty"`
+	AutomaticModifiers *bool           `json:"automaticModifiers,omitempty"`
+	Project            string          `json:"project,omitempty"`
+	View               string          `json:"view,omitempty" jsonschema:"view id; may be left out when elements are references view#e_x"`
+	Elements           []string        `json:"elements" jsonschema:"entity ids of placements (blocks or containers), or references view#e_x"`
+	StyleID            *string         `json:"styleId,omitempty" jsonschema:"the placement's style; null drops it (the style of the entity's kind applies)"`
+	Override           *map[string]any `json:"override,omitempty" jsonschema:"a partial style of these placements: fill, border {color, dash}, header {fill}, icon {glyph}; null drops it"`
+	Template           *string         `json:"template,omitempty" jsonschema:"the content template of these placements; null drops it"`
+	Collapsed          *bool           `json:"collapsed,omitempty" jsonschema:"containers only: collapsed to the header; null drops it"`
+	RequestedByHuman   bool            `json:"requestedByHuman" jsonschema:"true only when a human asked for this in so many words"`
 }
 
 type setRoutingIn struct {
@@ -373,7 +376,7 @@ func (s *mcpServer) server() *mcp.Server {
 	mcp.AddTool(srv, write("move_elements", "Move placements by dx/dy or to x/y; a container goes with everything inside it. Only when a human asked: requestedByHuman."), s.moveElements)
 	mcp.AddTool(srv, write("resize_elements", "Set width/height of placements, not below the minimum nor, for a container, below its content. requestedByHuman."), s.resizeElements)
 	mcp.AddTool(srv, write("set_parent", "Put placements into a container (parent: its entity id), or out of any (parent: null); coordinates untouched. requestedByHuman."), s.setParent)
-	mcp.AddTool(srv, write("set_placement", "Change the look of placements already on a view: styleId, override (fill, border, header fill, icon), template, collapsed (containers only); only the fields you give change, null drops one; geometry and parent untouched. requestedByHuman."), s.setPlacement)
+	mcp.AddTool(srv, write("set_placement", "Change the look of placements already on a view: styleId, override (fill, border, header fill, icon), template, collapsed (containers only), ordered modifiers, disabledModifiers, automaticModifiers; only the fields you give change, null drops one; geometry and parent untouched. requestedByHuman."), s.setPlacement)
 	mcp.AddTool(srv, write("set_routing", "Set the shape of lines on a view: routing bezier, orthogonal, tree-horizontal or tree-vertical, null to remove the choice. Without relations and types it is the view's own routing; with relations (ids) only those lines' own routing on this view; types (relation type ids) stands for the lines of those types on this view right now, one-time, as if you had listed their ids. `list: true` also returns which relations were written. The routed path is never stored. requestedByHuman."), s.setRouting)
 	mcp.AddTool(srv, write("add_container", "Place a container on a view by its entity id (required, e_<name>): an existing entity of a container kind is placed as it is (no name, no other kind); an id that does not exist yet creates an authored entity with that id, name (required) and kind (a container kind, default group) — entity and placement in one step, with a rectangle, optional parent and style. The id is never made from a name. "+
 		"With contents: true it also places what the container directly contains — its `contains` relations, one level, members that are missing left out — in a plain grid (default block size and gap, on the grid step, by name), sized to hold them; width and height are then only a minimum. "+
@@ -521,7 +524,7 @@ func (s *mcpServer) discard(_ context.Context, _ *mcp.CallToolRequest, in discar
 		if err := s.service().shared.DiscardStyles(); err != nil {
 			return nil, nil, err
 		}
-		s.models.publishStyleChange("agent", nil, changes)
+		s.models.publishStyleChange("agent", nil, "", changes)
 		return done("unsaved workspace styles and reference renames discarded; project edits retained")
 	}
 	m, err := s.model(in.Project)

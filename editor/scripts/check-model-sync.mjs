@@ -16,7 +16,11 @@ const ROOT = new URL("..", import.meta.url).pathname.replace(/^\/([A-Za-z]:)/, "
 
 async function loadModule() {
   const result = await build({
-    entryPoints: [join(ROOT, "src/editor/io/ModelSync.ts")],
+    stdin: {
+      contents: 'export * from "./src/editor/io/ModelSync.ts"; export { HostModelStore } from "./src/editor/io/HostModelStore.ts";',
+      resolveDir: ROOT,
+      loader: "ts",
+    },
     bundle: true,
     write: false,
     format: "esm",
@@ -29,7 +33,7 @@ async function loadModule() {
   return import(pathToFileURL(file).href);
 }
 
-const { diffModel } = await loadModule();
+const { diffModel, HostModelStore } = await loadModule();
 
 let failures = 0;
 const fail = (name, detail) => { failures++; console.log(`[FAIL] ${name} :: ${detail}`); };
@@ -267,6 +271,62 @@ const viewOp = (ops) => ops.find((o) => o.kind === "view")?.value;
   const before = doc(relations.map(wireEdge));
   if (viewOp(run(before, clone(before), viewFile()))) fail("no change", "view op sent");
   else ok("no change, no view op");
+}
+
+// A style-only event must leave the model diff baselines available. Reopening
+// SSE must request a full reload before edits can be sent again.
+{
+  globalThis.document = { querySelector: () => ({ content: "test-key" }) };
+  globalThis.location = { href: "http://localhost:8777/app/" };
+  let eventSource;
+  globalThis.EventSource = class { constructor() { eventSource = this; } close() {} };
+  const dirty = { registry: [], views: {} };
+  const file = "projects/p/views/main.view.json";
+  const view = { id: "v", project: "p", placements: [{ entity: "e_a", parent: null, x: 0, y: 0, width: 200, height: 80 }] };
+  const snapshot = {
+    project: { id: "p", languages: ["ru"], contractVersion: 5 },
+    registry: { "entities.json": { entities: [{ id: "e_a", name: "Stage", kind: "class", origin: "code" }] }, "relations.json": { relations: [] } },
+    texts: {}, views: { v: view }, viewFiles: { v: file }, dirty,
+  };
+  const posts = [];
+  const styles = { sheet: { styles: [] }, revision: 1, dirty: [], kinds: {} };
+  globalThis.fetch = async (url, init) => {
+    if (init?.method === "POST") { posts.push(JSON.parse(init.body)); return Response.json({ dirty }); }
+    if (url === "/api/styles") return Response.json(styles);
+    if (url.endsWith("/styled")) return Response.json({ view, styles, appearances: {} });
+    return Response.json(snapshot);
+  };
+  const store = new HostModelStore();
+  let wire = await store.load(file);
+  let resolveEvent;
+  let done;
+  const nextEvent = () => { done = new Promise(resolve => { resolveEvent = resolve; }); };
+  store.subscribe("p", async (event) => {
+    if (event.refresh) wire = await store.load(file);
+    resolveEvent(event);
+  });
+  nextEvent(); eventSource.onopen();
+  const opened = await done;
+  wire.placements[0].metadata.template = "title-description";
+  await store.sync(file, wire);
+  if (!opened.refresh || posts[0]?.ops[0]?.value.template !== "title-description") fail("SSE opened then template selected", JSON.stringify(posts));
+  else ok("SSE open reloads baselines and the next template choice is sent to the host");
+
+  nextEvent(); eventSource.onmessage({ data: JSON.stringify({ client: "agent", author: "agent", changed: [], dirty, styles }) });
+  await done;
+  wire.placements[0].height = 98;
+  await store.sync(file, wire);
+  if (posts[1]?.ops[0]?.value.height !== 98) fail("style-only event then edit", JSON.stringify(posts));
+  else ok("style-only SSE preserves baselines: the next model edit is sent");
+
+  // A reconnection refreshes from the host's current view, including geometry
+  // changed while disconnected; the following edit keeps that geometry.
+  view.placements[0].width = 300;
+  nextEvent(); eventSource.onopen(); await done;
+  wire.placements[0].metadata.template = "title-description";
+  await store.sync(file, wire);
+  if (posts[2]?.ops[0]?.value.width !== 300) fail("SSE reconnect then edit", JSON.stringify(posts));
+  else ok("SSE reconnection refreshes the current model before the next edit");
 }
 
 console.log(failures === 0 ? "\nAll cases clean." : `\n${failures} FAILURES`);

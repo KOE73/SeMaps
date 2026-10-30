@@ -1,3 +1,4 @@
+import type { ExtensionCollection, ExtensionEdit } from "../../model/style-extensions.js";
 import type { WireStyleSheet, WireStyle } from "../../model/style-types.js";
 import type { StyleStore } from "./types.js";
 import type { ChangedRef } from "./HostModelStore.js";
@@ -57,6 +58,15 @@ export class HostStyleStore implements StyleStore {
     return operation;
   }
   async edit(edit: StyleEdit): Promise<WireStyleSheet> { await this.enqueue([edit]); return this.load(); }
+  async extensionEdit(collection: ExtensionCollection, edit: ExtensionEdit): Promise<void> {
+    const operation = this.pending.then(async () => {
+      const body = { ...edit, client: this.client, expectedRevision: edit.expectedRevision ?? this.state?.revision };
+      const response = await (await this.request(collection === "modifiers" ? "/api/style-modifiers" : "/api/style-rules", { method: "POST", body: JSON.stringify(body) })).json() as { state: StyleState };
+      this.accept(response.state);
+    });
+    this.pending = operation.catch(() => {});
+    return operation;
+  }
   async save(_sheet: WireStyleSheet): Promise<void> { await this.pending; this.accept(await (await this.request("/api/styles/save", { method: "POST" })).json() as StyleState); }
   async discard(): Promise<WireStyleSheet> { await this.pending; this.accept(await (await this.request("/api/styles/discard", { method: "POST" })).json() as StyleState); return this.state!.sheet; }
 }

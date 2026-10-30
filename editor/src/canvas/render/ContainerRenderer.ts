@@ -9,6 +9,7 @@ import { alignX, dashArray, textAttrs } from "./textAttrs.js";
 import { DIAGRAM_CONFIG } from "../../constants/diagram-constants.js";
 import { canvas } from "../../constants/canvas.js";
 import { iconGlyph, iconGlyphByKey } from "./iconGlyph.js";
+import { styleIndicator } from "./styleIndicator.js";
 
 /** Left inset of the header caption: clear of the collapse toggle at x+8..x+28. */
 const TITLE_PAD = DIAGRAM_CONFIG.container.titlePad;
@@ -89,6 +90,9 @@ export class ContainerRenderer implements ElementRenderer {
       }),
     );
 
+    const automatic = ctx.automaticStyles?.(el) ?? [];
+    const indicatorSpace = automatic.length ? 24 : 0;
+    if (automatic.length) g.appendChild(styleIndicator(automatic, el.x + el.width - 52, el.y + 7, 20, 20, "zone"));
     g.appendChild(this.docToggle(el, ctx));
     g.appendChild(this.collapseToggle(el, collapsed));
 
@@ -99,7 +103,7 @@ export class ContainerRenderer implements ElementRenderer {
       // key draws the fallback icon), in the title's own colour.
       const iconSize = 14;
       const showIcon = style.icon.show;
-      const pos = alignX(titleStyle, rect, TITLE_PAD);
+      const pos = alignX(titleStyle, rect, TITLE_PAD + (titleStyle.align === "end" ? indicatorSpace : 0));
       if (showIcon) {
         g.appendChild(
           iconGlyphByKey(style.icon.glyph, rect.x + TITLE_PAD, el.y + (headerHeight - iconSize) / 2, iconSize, "semaps-zone-glyph", titleStyle.color),
@@ -125,7 +129,7 @@ export class ContainerRenderer implements ElementRenderer {
         text(
           {
             ...textAttrs(style.subtitle),
-            ...alignX(style.subtitle, rect, 34),
+            ...alignX(style.subtitle, rect, 34 + (style.subtitle.align === "end" ? indicatorSpace : 0)),
             y: baseline(el.y, headerHeight, style.subtitle),
             class: "semaps-zone-semantic",
           },

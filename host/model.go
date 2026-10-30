@@ -17,13 +17,15 @@ import (
 )
 
 type modelEvent struct {
-	Styles          *core.StyleSnapshot `json:"styles,omitempty"`
-	StyleRenamed    *styleRename        `json:"styleRenamed,omitempty"`
-	Client          string              `json:"client"`
-	Author          string              `json:"author"`
-	Changed         []core.Ref          `json:"changed"`
-	Dirty           core.DirtySummary   `json:"dirty"`
-	ProjectReloaded *projectReloaded    `json:"projectReloaded,omitempty"`
+	StyleExtension  *styleExtensionChange `json:"styleExtension,omitempty"`
+	Styles          *core.StyleSnapshot   `json:"styles,omitempty"`
+	StyleRenamed    *styleRename          `json:"styleRenamed,omitempty"`
+	StyleDeleted    string                `json:"styleDeleted,omitempty"`
+	Client          string                `json:"client"`
+	Author          string                `json:"author"`
+	Changed         []core.Ref            `json:"changed"`
+	Dirty           core.DirtySummary     `json:"dirty"`
+	ProjectReloaded *projectReloaded      `json:"projectReloaded,omitempty"`
 	// Graph carries what changed in the live code graph after a run
 	// (PLAN_20260928_host_graph-provider.md step 5), never the graph
 	// itself. It is a field the current editor's ModelEvent interface does
@@ -36,6 +38,13 @@ type modelEvent struct {
 	// a view (the render_view tool, host/render.go). Only those clients get
 	// such an event.
 	Render *renderRequest `json:"render,omitempty"`
+}
+
+type styleExtensionChange struct {
+	Collection string `json:"collection"`
+	Action     string `json:"action"`
+	ID         string `json:"id"`
+	NewID      string `json:"newId,omitempty"`
 }
 
 type styleRename struct {

@@ -56,3 +56,12 @@ func TestInternalStyleReferenceOperationCannotBypassWorkspaceValidation(t *testi
 		t.Fatal("public operation bypassed style validation")
 	}
 }
+
+func TestFallbackStyleKeepsItsTargetFamily(t *testing.T) {
+	for id, wrongTarget := range map[string]string{"default.node": "container", "default.container": "block", "default.edge": "block"} {
+		w := stylesFixture(t)
+		if _, err := w.EditStyle(StyleEdit{Action: "create", ID: id, Definition: map[string]any{"name": "Fallback", "appliesTo": wrongTarget}}, "agent"); err == nil {
+			t.Fatalf("fallback %s accepted for %s", id, wrongTarget)
+		}
+	}
+}

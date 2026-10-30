@@ -60,7 +60,7 @@ func TestMCPStylesTwoEditorsAndPersistence(t *testing.T) {
 			t.Fatalf("%s: %s", name, text)
 		}
 	}
-	expectStyles := func(id, fill string, renamed ...bool) {
+	expectStyles := func(id, fill string, notification ...string) {
 		t.Helper()
 		for _, stream := range streams {
 			for {
@@ -75,8 +75,11 @@ func TestMCPStylesTwoEditorsAndPersistence(t *testing.T) {
 					if event.StyleRenamed != nil && (event.StyleRenamed.OldID != "debug" || event.StyleRenamed.NewID != "debug.renamed") {
 						t.Fatalf("invalid rename notification: %+v", event.StyleRenamed)
 					}
-					if len(renamed) > 0 && event.StyleRenamed == nil {
+					if len(notification) > 0 && notification[0] == "rename" && event.StyleRenamed == nil {
 						t.Fatal("rename notification missing; selected style cannot follow its new id")
+					}
+					if len(notification) > 0 && notification[0] == "delete" && event.StyleDeleted != "debug.renamed" {
+						t.Fatal("delete notification missing; pending selected style must be cleared")
 					}
 					goto next
 				case <-time.After(3 * time.Second):
@@ -92,7 +95,7 @@ func TestMCPStylesTwoEditorsAndPersistence(t *testing.T) {
 	invoke("update_style", map[string]any{"id": "debug", "patch": map[string]any{"fill": "#fed7aa"}})
 	expectStyles("debug", "#fed7aa")
 	invoke("rename_style", map[string]any{"id": "debug", "newId": "debug.renamed"})
-	expectStyles("debug.renamed", "#fed7aa", true)
+	expectStyles("debug.renamed", "#fed7aa", "rename")
 	for range 2 {
 		res, err := srv.Client().Get(srv.URL + "/api/model/p/views/v_main/styled")
 		if err != nil {
@@ -147,7 +150,7 @@ func TestMCPStylesTwoEditorsAndPersistence(t *testing.T) {
 		t.Fatal("used deletion did not enumerate references", text)
 	}
 	invoke("delete_style", map[string]any{"id": "debug.renamed", "replacement": "class"})
-	expectStyles("class", "#ffffff")
+	expectStyles("class", "#ffffff", "delete")
 	invoke("discard", map[string]any{"scope": "styles", "requestedByHuman": true})
 	for _, stream := range streams {
 		select {

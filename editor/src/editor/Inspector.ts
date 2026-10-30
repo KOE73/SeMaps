@@ -25,6 +25,7 @@ import {
 import { kindSelect, relationTypeSelect, variantLabel } from "./kindSelects.js";
 import { nameIsText } from "../model/entityName.js";
 import { evidenceOf, langTag, realizationsOf, refOf } from "../model/realizations.js";
+import { automaticStyleLines, automaticStyleTitle } from "../ui/automaticStyle.js";
 
 export interface InspectorHost {
   readonly canvas: DiagramCanvas;
@@ -76,6 +77,10 @@ export interface InspectorHost {
  */
 export class Inspector {
   private coordsNode: HTMLElement | null = null;
+
+  revealAutomaticStyles(): void {
+    this.body.querySelector<HTMLElement>(".automatic-style-section")?.scrollIntoView({ block: "nearest" });
+  }
 
   constructor(
     private readonly badge: HTMLElement,
@@ -183,6 +188,7 @@ export class Inspector {
       ]),
       container ? this.containerPanel(element) : null,
       this.styleSection(element),
+      this.automaticStyleSection(element.id),
       this.overrideSection(element),
       this.templatePicker(element),
       this.descriptionField(element),
@@ -567,6 +573,18 @@ export class Inspector {
       })),
       choose: (id) => this.host.applyKindAndStyle(ids, kind, id),
     });
+  }
+
+  private automaticStyleSection(id: string): HTMLElement | null {
+    const layers = this.host.styles.automaticModifiersFor(id);
+    if (!layers.length) return null;
+    return el("div", { class: "panel-section automatic-style-section" }, [
+      el("div", { class: "field-row gap" }, [iconEl("brush"), el("strong", { text: automaticStyleTitle() })]),
+      ...automaticStyleLines(layers).map((line, index) => el("p", {
+        text: line, title: `${layers[index]!.ruleId} → ${layers[index]!.modifierId}`,
+        attrs: { style: "overflow-wrap:anywhere" },
+      })),
+    ]);
   }
 
   /**

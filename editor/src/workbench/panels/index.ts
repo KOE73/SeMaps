@@ -9,3 +9,5 @@ export * from "./ChangesPanel.js";
 export * from "./BasePanel.js";
 export * from "./NeighbourhoodPanel.js";
 export * from "./RoutingPanel.js";
+
+export { StyleRulesPanel } from "./StyleExtensionsPanel.js";
